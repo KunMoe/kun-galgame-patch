@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DOMPurify from 'isomorphic-dompurify'
+
 interface Props {
   comment: PatchComment
 }
@@ -6,9 +8,15 @@ interface Props {
 const props = defineProps<Props>()
 
 const patchName = computed(() =>
-  props.comment.patch_name
-    ? getPreferredLanguageText(props.comment.patch_name)
-    : ''
+  props.comment.patch?.name
+    ? getPreferredLanguageText(props.comment.patch.name)
+    : `补丁 #${props.comment.patch_id}`
+)
+
+const contentHtml = computed(() =>
+  DOMPurify.sanitize(props.comment.content_html || '', {
+    ADD_ATTR: ['data-uid']
+  })
 )
 </script>
 
@@ -28,7 +36,7 @@ const patchName = computed(() =>
             <span class="text-primary-500">{{ patchName }}</span>
           </span>
         </div>
-        <p class="mt-1">{{ props.comment.content }}</p>
+        <div class="kun-prose mt-1" v-html="contentHtml" />
         <div class="mt-2 flex items-center gap-4">
           <div class="text-small text-default-500 flex items-center gap-1">
             <KunIcon name="lucide:thumbs-up" class="size-3.5" />

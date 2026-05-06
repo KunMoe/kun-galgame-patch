@@ -18,7 +18,10 @@ const { data: detail, pending } = await useAsyncData<PatchResourceDetail | null>
 
 const noteHtml = computed(() => {
   if (!detail.value?.resource.note_html) return ''
-  return DOMPurify.sanitize(detail.value.resource.note_html)
+  // Allow `data-uid` so mention links rendered server-side keep the attribute.
+  return DOMPurify.sanitize(detail.value.resource.note_html, {
+    ADD_ATTR: ['data-uid']
+  })
 })
 
 // The `patch` field may be null if the owning patch has been deleted mid-flight.

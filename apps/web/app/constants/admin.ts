@@ -42,6 +42,7 @@ export const ADMIN_MENU = [
   { name: '数据概览', href: '/admin', icon: 'lucide:chart-column-big' },
   { name: '用户管理', href: '/admin/user', icon: 'lucide:users' },
   { name: '创作者管理', href: '/admin/creator', icon: 'lucide:badge-check' },
+  { name: 'Galgame 列表', href: '/admin/galgame', icon: 'lucide:gamepad-2' },
   { name: '补丁资源管理', href: '/admin/resource', icon: 'lucide:puzzle' },
   { name: '孤儿补丁', href: '/admin/orphans', icon: 'lucide:unlink' },
   { name: '评论管理', href: '/admin/comment', icon: 'lucide:message-square' },

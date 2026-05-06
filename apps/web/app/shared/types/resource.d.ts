@@ -9,6 +9,7 @@ interface PatchResource {
   language: string[]
   platform: string[]
   note: string
+  note_html: string
   blake3?: string
   s3_key?: string
   content?: string
@@ -23,11 +24,12 @@ interface PatchResource {
   created: string
   update_time?: Date | string
   user: KunUser
+  // Populated only by global resource lists (/api/v1/resource, /api/v1/home).
+  patch?: PatchSummary | null
 }
 
-interface PatchResourceHtml extends PatchResource {
-  note_html: string
-}
+// Backwards-compat alias: `note_html` is now part of PatchResource itself.
+type PatchResourceHtml = PatchResource
 
 interface HomeResource extends PatchResource {}
 

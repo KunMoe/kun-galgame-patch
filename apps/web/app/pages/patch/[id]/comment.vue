@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import DOMPurify from 'isomorphic-dompurify'
+
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+
+// DOMPurify allows <a> by default but strips data-* attrs unless we whitelist
+// them. The mention renderer emits data-uid so the frontend can wire up
+// click-to-profile behaviour later.
+const sanitize = (html: string) =>
+  DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
 
 const patchId = computed(() => Number(route.params.id))
 
@@ -104,7 +112,7 @@ const renderComment = (c: PatchPageComment): PatchPageComment => c
                 {{ formatDate(c.created, { isPrecise: true, isShowYear: true }) }}
               </span>
             </div>
-            <p class="whitespace-pre-wrap">{{ c.content }}</p>
+            <div class="kun-prose" v-html="sanitize(c.content_html)" />
             <div class="text-default-500 flex items-center gap-1 text-xs">
               <KunIcon name="lucide:thumbs-up" class="size-3.5" />
               {{ c.like_count }}
@@ -124,7 +132,7 @@ const renderComment = (c: PatchPageComment): PatchPageComment => c
                     }}
                   </span>
                 </div>
-                <p class="mt-1 whitespace-pre-wrap">{{ r.content }}</p>
+                <div class="kun-prose mt-1" v-html="sanitize(r.content_html)" />
               </div>
             </div>
           </div>

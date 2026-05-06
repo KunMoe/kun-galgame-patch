@@ -315,6 +315,29 @@ func (r *AdminRepository) CreateLog(adminUID int, logType string, data any) erro
 	return r.db.Create(log).Error
 }
 
+// ===== All Patches (admin browse) =====
+
+// GetAllPatches lists every patch with pagination, optionally filtering by
+// substring of vndb_id (game names are owned by Wiki and cannot be searched
+// locally; the admin frontend pairs this listing with the patch_id-based
+// patch detail link to navigate further).
+func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]patchModel.Patch, int64, error) {
+	var patches []patchModel.Patch
+	var total int64
+
+	query := r.db.Model(&patchModel.Patch{})
+	if search != "" {
+		query = query.Where("vndb_id ILIKE ?", "%"+search+"%")
+	}
+	query.Count(&total)
+
+	err := query.Order("created DESC").Offset(offset).Limit(limit).
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "name", "avatar")
+		}).Find(&patches).Error
+	return patches, total, err
+}
+
 // ===== Orphan Patches (D12 cleanup) =====
 
 // GetOrphanPatches returns a paginated list of patches with galgame_id=0

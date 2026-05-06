@@ -5,12 +5,20 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Resource rows come back without an owning patch object (see
-// apps/api/internal/common/handler.go GetGlobalResources). We display the
-// resource name as the headline and let the user follow through to /resource/:id
-// for the full patch context.
+// Global resource rows now carry a `patch` summary (id/name/banner) — fall
+// back to the resource's own name when the row is rendered in a context where
+// the patch wasn't enriched (e.g. user profile page).
+const galgameName = computed(() =>
+  props.resource.patch?.name
+    ? getPreferredLanguageText(props.resource.patch.name)
+    : ''
+)
 const title = computed(
-  () => props.resource.name || props.resource.note || '补丁资源'
+  () =>
+    galgameName.value ||
+    props.resource.name ||
+    props.resource.note ||
+    '补丁资源'
 )
 
 const userDescription = computed(() => {

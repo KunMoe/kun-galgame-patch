@@ -3,7 +3,9 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
-const sortBy = ref(String(route.query.sortBy ?? 'moemoepoint'))
+const sortBy = ref(
+  String(route.query.sort_by ?? route.query.sortBy ?? 'moemoepoint')
+)
 
 useKunSeoMeta({
   title: '用户排行榜',
@@ -14,7 +16,7 @@ const { data, pending, refresh } = await useAsyncData<RankingUser[]>(
   () => `ranking-user-${sortBy.value}`,
   async () => {
     const res = await api.get<RankingUser[]>(
-      `/ranking/user?sortBy=${sortBy.value}&timeRange=all`
+      `/ranking/user?sort_by=${sortBy.value}`
     )
     return res.code === 0 ? res.data : []
   },
@@ -30,7 +32,7 @@ const sortOptions = [
 
 const onChangeSort = async (v: string | number) => {
   sortBy.value = String(v)
-  await router.replace({ query: { ...route.query, sortBy: sortBy.value } })
+  await router.replace({ query: { ...route.query, sort_by: sortBy.value } })
   await refresh()
 }
 </script>

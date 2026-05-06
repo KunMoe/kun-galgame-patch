@@ -7,6 +7,7 @@ import (
 
 	"kun-galgame-patch-api/internal/admin/dto"
 	"kun-galgame-patch-api/internal/admin/repository"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 
 	"github.com/redis/go-redis/v9"
@@ -24,7 +25,13 @@ func New(repo *repository.AdminRepository, rdb *redis.Client) *AdminService {
 // ===== Comments =====
 
 func (s *AdminService) GetComments(search string, page, limit int) ([]patchModel.PatchComment, int64, error) {
-	return s.repo.GetComments(search, (page-1)*limit, limit)
+	comments, total, err := s.repo.GetComments(search, (page-1)*limit, limit)
+	if err == nil {
+		for i := range comments {
+			comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
+		}
+	}
+	return comments, total, err
 }
 
 func (s *AdminService) UpdateComment(commentID int, content string, adminUID int) error {
@@ -46,7 +53,11 @@ func (s *AdminService) DeleteComment(commentID, adminUID int) error {
 // ===== Resources =====
 
 func (s *AdminService) GetResources(search string, page, limit int) ([]patchModel.PatchResource, int64, error) {
-	return s.repo.GetResources(search, (page-1)*limit, limit)
+	resources, total, err := s.repo.GetResources(search, (page-1)*limit, limit)
+	if err == nil {
+		patchModel.RenderResourceNotes(resources)
+	}
+	return resources, total, err
 }
 
 func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int) error {
@@ -104,6 +115,12 @@ func (s *AdminService) DeleteUser(uid, adminUID int) error {
 	}
 	s.repo.CreateLog(adminUID, "deleteUser", map[string]any{"uid": uid, "email": user.Email})
 	return nil
+}
+
+// ===== All Patches =====
+
+func (s *AdminService) GetAllPatches(search string, page, limit int) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetAllPatches(search, (page-1)*limit, limit)
 }
 
 // ===== Creator Applications =====

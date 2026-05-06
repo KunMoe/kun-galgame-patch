@@ -3,11 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strconv"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
@@ -155,13 +154,27 @@ func (s *PatchService) GetRandomPatchID() (int, error) {
 
 // ===== Comments =====
 
-// GetComments returns a page of top-level comments (plus their replies) and marks
-// each comment/reply with is_liked=true for the given currentUID (0 = anonymous).
+// GetComments returns a page of top-level comments (plus their replies),
+// renders content_html, and marks is_liked for the given currentUID
+// (0 = anonymous, no like marks applied).
 func (s *PatchService) GetComments(patchID, currentUID, page, limit int) ([]model.PatchComment, int64, error) {
 	offset := (page - 1) * limit
 	comments, total, err := s.repo.GetComments(patchID, offset, limit)
-	if err != nil || currentUID == 0 || len(comments) == 0 {
+	if err != nil {
 		return comments, total, err
+	}
+
+	// Render content_html for every top-level comment and each reply. Done
+	// here so all consumers of GetComments share the same rendered output.
+	for i := range comments {
+		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
+		for j := range comments[i].Replies {
+			comments[i].Replies[j].ContentHTML = markdown.MustRender(comments[i].Replies[j].Content)
+		}
+	}
+
+	if currentUID == 0 || len(comments) == 0 {
+		return comments, total, nil
 	}
 
 	// Collect all comment IDs (top-level + replies) in one pass.
@@ -211,6 +224,10 @@ func (s *PatchService) CreateComment(patchID, userID int, content string, parent
 
 	// Ensure contributor
 	s.repo.EnsureContributor(userID, patchID)
+
+	// Pre-render content_html so the immediate POST response can be appended
+	// directly into the comment list on the frontend without a second fetch.
+	comment.ContentHTML = markdown.MustRender(comment.Content)
 
 	return comment, nil
 }
@@ -281,7 +298,11 @@ func (s *PatchService) GetCommentMarkdown(commentID int) (string, error) {
 // ===== Resources =====
 
 func (s *PatchService) GetResources(patchID int) ([]model.PatchResource, error) {
-	return s.repo.GetResources(patchID)
+	resources, err := s.repo.GetResources(patchID)
+	if err == nil {
+		model.RenderResourceNotes(resources)
+	}
+	return resources, err
 }
 
 func (s *PatchService) CreateResource(resource *model.PatchResource, userID int) error {
@@ -307,6 +328,9 @@ func (s *PatchService) CreateResource(resource *model.PatchResource, userID int)
 
 	// Notify favorited users
 	s.notifyFavoritedUsers(resource.PatchID, userID)
+
+	// Pre-render note_html for the immediate POST response.
+	resource.NoteHTML = markdown.MustRender(resource.Note)
 
 	return nil
 }
@@ -447,21 +471,11 @@ func (s *PatchService) GetContributors(patchID int) ([]model.PatchUser, error) {
 
 // ===== Mention detection =====
 
-var mentionRegex = regexp.MustCompile(`\[@[^\]]+\]\(/user/(\d+)/resource\)`)
-
+// ExtractMentionUserIDs delegates to the markdown package so the regex used
+// for notification routing matches exactly what the renderer treats as a
+// mention link.
 func (s *PatchService) ExtractMentionUserIDs(content string) []int {
-	matches := mentionRegex.FindAllStringSubmatch(content, -1)
-	var ids []int
-	seen := make(map[int]bool)
-	for _, match := range matches {
-		if len(match) > 1 {
-			if id, err := strconv.Atoi(match[1]); err == nil && !seen[id] {
-				ids = append(ids, id)
-				seen[id] = true
-			}
-		}
-	}
-	return ids
+	return markdown.ExtractMentionedUIDs(content)
 }
 
 // ===== Notifications (simplified) =====

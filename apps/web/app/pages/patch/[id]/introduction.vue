@@ -17,10 +17,10 @@ const { data: detail } = await useAsyncData<PatchDetail | null>(
 const lang = ref<Language>('zh-cn')
 
 const pickInitialLang = () => {
-  if (!detail.value?.introduction_markdown) return 'zh-cn' as Language
+  if (!detail.value?.introduction_html) return 'zh-cn' as Language
   const langs: Language[] = ['zh-cn', 'ja-jp', 'en-us']
   return (
-    langs.find((l) => detail.value!.introduction_markdown[l]) ?? ('zh-cn' as Language)
+    langs.find((l) => detail.value!.introduction_html[l]) ?? ('zh-cn' as Language)
   )
 }
 
@@ -28,13 +28,16 @@ watchEffect(() => {
   lang.value = pickInitialLang()
 })
 
+// introduction_html is pre-rendered server-side via the markdown package; we
+// only need to sanitize before mounting it. ADD_ATTR keeps mention links'
+// data-uid attribute (the renderer adds class="kun-mention").
 const introHtml = computed(() => {
-  if (!detail.value?.introduction_markdown) return ''
+  if (!detail.value?.introduction_html) return ''
   const text = getPreferredLanguageText(
-    detail.value.introduction_markdown,
+    detail.value.introduction_html,
     lang.value
   )
-  return DOMPurify.sanitize(text)
+  return DOMPurify.sanitize(text, { ADD_ATTR: ['data-uid'] })
 })
 
 const langOptions = [

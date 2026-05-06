@@ -35,6 +35,25 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	return response.Paginated(c, messages, total)
 }
 
+// GetAllMessages GET /api/message/all
+//
+// Same as GET /api/message but ignores the type filter. Kept as a separate
+// route for parity with the legacy frontend that has /message/all hard-coded.
+func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
+	var req dto.GetMessageRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+
+	user := middleware.MustGetUser(c)
+	messages, total, err := h.service.GetMessages(user.UID, "", req.Page, req.Limit)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+
+	return response.Paginated(c, messages, total)
+}
+
 // GetUnreadTypes GET /api/message/unread
 func (h *MessageHandler) GetUnreadTypes(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)

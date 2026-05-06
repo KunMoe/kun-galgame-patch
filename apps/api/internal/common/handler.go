@@ -5,6 +5,7 @@ import (
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	userModel "kun-galgame-patch-api/internal/user/model"
@@ -23,6 +24,20 @@ type CommonHandler struct {
 
 func NewHandler(db *gorm.DB, wiki *galgameClient.Client) *CommonHandler {
 	return &CommonHandler{db: db, wiki: wiki}
+}
+
+// patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so the
+// enricher can fetch the minimal patch projection without depending on gorm.
+type patchSummaryFinder struct{ db *gorm.DB }
+
+func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []patchModel.Patch
+	err := p.db.Select("id", "vndb_id", "galgame_id").
+		Where("id IN ?", ids).Find(&rows).Error
+	return rows, err
 }
 
 // ===== Home =====
@@ -57,6 +72,12 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "name", "avatar")
 		}).Find(&comments)
+
+	patchModel.RenderResourceNotes(resources)
+	for i := range comments {
+		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
+	}
+	h.attachPatchSummaries(c, comments, resources)
 
 	return response.OK(c, homeResponse{
 		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, patches),
@@ -141,7 +162,50 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+
+	for i := range comments {
+		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
+	}
+	h.attachPatchSummaries(c, comments, nil)
 	return response.Paginated(c, comments, total)
+}
+
+// attachPatchSummaries fills the `Patch` field on every comment / resource row
+// in one Wiki batch call, avoiding an N+1 over the page. Either slice may be
+// nil when the corresponding endpoint does not need it.
+func (h *CommonHandler) attachPatchSummaries(c *fiber.Ctx, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
+	if len(comments) == 0 && len(resources) == 0 {
+		return
+	}
+
+	idSet := make(map[int]struct{}, len(comments)+len(resources))
+	for _, m := range comments {
+		idSet[m.PatchID] = struct{}{}
+	}
+	for _, r := range resources {
+		idSet[r.PatchID] = struct{}{}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	summaries := enricher.BuildPatchSummaryMap(c.Context(), h.wiki, patchSummaryFinder{db: h.db}, ids)
+	for i := range comments {
+		if s, ok := summaries[comments[i].PatchID]; ok {
+			summary := s
+			comments[i].Patch = &summary
+		}
+	}
+	for i := range resources {
+		if s, ok := summaries[resources[i].PatchID]; ok {
+			summary := s
+			resources[i].Patch = &summary
+		}
+	}
 }
 
 // ===== Global Resources =====
@@ -182,6 +246,8 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	patchModel.RenderResourceNotes(resources)
+	h.attachPatchSummaries(c, nil, resources)
 	return response.Paginated(c, resources, total)
 }
 
@@ -214,6 +280,9 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	var recs []patchModel.PatchResource
 	h.db.Where("patch_id = ? AND id != ?", resource.PatchID, resource.ID).
 		Limit(5).Order("like_count DESC").Find(&recs)
+
+	resource.NoteHTML = markdown.MustRender(resource.Note)
+	patchModel.RenderResourceNotes(recs)
 
 	return response.OK(c, map[string]any{
 		"resource":        resource,
@@ -290,11 +359,113 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 			resources[i].Content = ""
 		}
 	}
+	patchModel.RenderResourceNotes(resources)
 
 	return response.OK(c, map[string]any{
 		"patch":     patch,
 		"resources": resources,
 	})
+}
+
+// ===== Ranking =====
+
+// rankingUser is the public-safe shape of a row on the user ranking page.
+type rankingUser struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	Avatar        string `json:"avatar"`
+	Moemoepoint   int    `json:"moemoepoint"`
+	PatchCount    int64  `json:"patch_count"`
+	ResourceCount int64  `json:"resource_count"`
+	CommentCount  int64  `json:"comment_count"`
+}
+
+// GetUserRanking GET /api/ranking/user
+//
+// Top 60 users sorted by one of:
+//   - moemoepoint (default)
+//   - patch        — count of patches the user owns
+//   - resource     — count of resources the user owns
+//   - comment      — count of comments the user authored
+//
+// timeRange is accepted for API parity with the legacy frontend but currently
+// ignored ("all" is the only behavior). Aggregate counts are computed in one
+// query so we do not pay an N+1 over 60 users.
+func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
+	sortBy := c.Query("sort_by", c.Query("sortBy", "moemoepoint"))
+
+	const limit = 60
+	type row struct {
+		ID            int    `gorm:"column:id"`
+		Name          string `gorm:"column:name"`
+		Avatar        string `gorm:"column:avatar"`
+		Moemoepoint   int    `gorm:"column:moemoepoint"`
+		PatchCount    int64  `gorm:"column:patch_count"`
+		ResourceCount int64  `gorm:"column:resource_count"`
+		CommentCount  int64  `gorm:"column:comment_count"`
+	}
+
+	orderBy := "moemoepoint DESC"
+	switch sortBy {
+	case "patch", "patch_count":
+		orderBy = "patch_count DESC, u.moemoepoint DESC"
+	case "resource", "resource_count":
+		orderBy = "resource_count DESC, u.moemoepoint DESC"
+	case "comment", "comment_count":
+		orderBy = "comment_count DESC, u.moemoepoint DESC"
+	default:
+		orderBy = "u.moemoepoint DESC"
+	}
+
+	var rows []row
+	err := h.db.Table(`"user" u`).
+		Select(`u.id, u.name, u.avatar, u.moemoepoint,
+			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
+			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count,
+			COALESCE((SELECT COUNT(*) FROM patch_comment pc WHERE pc.user_id = u.id), 0) AS comment_count`).
+		Where("u.status = 0").
+		Order(orderBy).
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+
+	out := make([]rankingUser, len(rows))
+	for i, r := range rows {
+		out[i] = rankingUser(r)
+	}
+	return response.OK(c, out)
+}
+
+// GetPatchRanking GET /api/ranking/patch
+//
+// Top 60 patches sorted by view / download / favorite. Results are passed
+// through the enricher so each row carries the same shape the frontend uses
+// elsewhere on the site.
+func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
+	sortBy := c.Query("sort_by", c.Query("sortBy", "view"))
+
+	column := "view"
+	switch sortBy {
+	case "download":
+		column = "download"
+	case "favorite", "favorite_by", "favorite_count":
+		column = "favorite_count"
+	}
+
+	var patches []patchModel.Patch
+	err := h.db.Model(&patchModel.Patch{}).
+		Where("status = 0").
+		Order(fmt.Sprintf("%s DESC", column)).
+		Limit(60).
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "name", "avatar")
+		}).Find(&patches).Error
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, patches))
 }
 
 // GetMoyuHasPatch GET /api/moyu/patch/has-patch

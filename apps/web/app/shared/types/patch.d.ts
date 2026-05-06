@@ -72,6 +72,7 @@ interface PatchDetailOfficial {
 
 interface PatchDetail extends GalgameCard {
   introduction_markdown: KunLanguage
+  introduction_html: KunLanguage
   updated: string
   tags: PatchDetailTag[]
   officials: PatchDetailOfficial[]

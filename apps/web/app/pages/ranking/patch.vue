@@ -3,18 +3,19 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
-const sortBy = ref(String(route.query.sortBy ?? 'view'))
+const sortBy = ref(String(route.query.sort_by ?? route.query.sortBy ?? 'view'))
 
 useKunSeoMeta({
   title: '补丁排行榜',
   description: '鲲 Galgame 补丁排行榜'
 })
 
-const { data, pending, refresh } = await useAsyncData<RankingPatch[]>(
+// /api/v1/ranking/patch returns enricher GalgameCard rows directly.
+const { data, pending, refresh } = await useAsyncData<GalgameCard[]>(
   () => `ranking-patch-${sortBy.value}`,
   async () => {
-    const res = await api.get<RankingPatch[]>(
-      `/ranking/patch?sortBy=${sortBy.value}&timeRange=all`
+    const res = await api.get<GalgameCard[]>(
+      `/ranking/patch?sort_by=${sortBy.value}`
     )
     return res.code === 0 ? res.data : []
   },
@@ -31,7 +32,7 @@ const sortOptions = [
 
 const onChangeSort = async (v: string | number) => {
   sortBy.value = String(v)
-  await router.replace({ query: { ...route.query, sortBy: sortBy.value } })
+  await router.replace({ query: { ...route.query, sort_by: sortBy.value } })
   await refresh()
 }
 </script>

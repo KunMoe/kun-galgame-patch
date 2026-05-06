@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import DOMPurify from 'isomorphic-dompurify'
+
 const route = useRoute()
 const api = useApi()
 
 const patchId = computed(() => Number(route.params.id))
+
+const sanitize = (html: string) =>
+  DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
 
 const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   () => `patch-resource-${patchId.value}`,
@@ -47,9 +52,11 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
           size="sm"
         />
 
-        <p v-if="r.note" class="text-default-500 text-sm whitespace-pre-wrap">
-          {{ r.note }}
-        </p>
+        <div
+          v-if="r.note_html"
+          class="kun-prose text-default-500 text-sm"
+          v-html="sanitize(r.note_html)"
+        />
 
         <div
           v-if="r.code || r.password"

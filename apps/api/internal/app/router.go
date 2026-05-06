@@ -93,6 +93,7 @@ func (a *App) RegisterRoutes() {
 	// ===== Message Routes =====
 	msgRoutes := api.Group("/message", auth)
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)
+	msgRoutes.Get("/all", a.MessageHandler.GetAllMessages)
 	msgRoutes.Get("/unread", a.MessageHandler.GetUnreadTypes)
 	msgRoutes.Post("/", a.MessageHandler.CreateMessage)
 	msgRoutes.Put("/read", a.MessageHandler.MarkAsRead)
@@ -133,6 +134,9 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Get("/stats/sum", a.AdminHandler.GetStatsSum)
 	adminRoutes.Get("/log", a.AdminHandler.GetLogs)
 
+	// All patches (admin browse, paginated, optional vndb_id search)
+	adminRoutes.Get("/galgame", a.AdminHandler.GetGalgame)
+
 	// D12: "orphan patches" whose galgame is missing in Wiki, for admin manual handling
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
 
@@ -148,6 +152,10 @@ func (a *App) RegisterRoutes() {
 	api.Get("/comment", a.CommonHandler.GetGlobalComments)
 	api.Get("/resource", a.CommonHandler.GetGlobalResources)
 	api.Get("/resource/:id", a.CommonHandler.GetResourceDetail)
+
+	// Rankings (public).
+	api.Get("/ranking/user", a.CommonHandler.GetUserRanking)
+	api.Get("/ranking/patch", a.CommonHandler.GetPatchRanking)
 
 	// ===== Chat Routes (D9: REST only, no WebSocket) =====
 	chatRoutes := api.Group("/chat", auth)

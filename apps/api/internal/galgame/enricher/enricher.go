@@ -22,6 +22,7 @@ import (
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 )
 
@@ -98,6 +99,64 @@ func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, patches []pa
 	return cards
 }
 
+// BuildPatchSummaryMap fetches Wiki briefs for the given patch IDs and returns
+// a map keyed by patch_id (the local row id) of compact summaries. Patches
+// whose galgame_id is missing or whose Wiki fetch fails are still included
+// with empty Name/Banner so callers can render at least a link.
+func BuildPatchSummaryMap(ctx context.Context, wiki *galgameClient.Client, db PatchSummaryDB, patchIDs []int) map[int]patchModel.PatchSummary {
+	out := map[int]patchModel.PatchSummary{}
+	if len(patchIDs) == 0 {
+		return out
+	}
+
+	rows, err := db.LookupPatchesByIDs(patchIDs)
+	if err != nil || len(rows) == 0 {
+		return out
+	}
+
+	galgameIDs := make([]int, 0, len(rows))
+	seen := make(map[int]struct{}, len(rows))
+	for _, r := range rows {
+		if r.GalgameID > 0 {
+			if _, ok := seen[r.GalgameID]; !ok {
+				seen[r.GalgameID] = struct{}{}
+				galgameIDs = append(galgameIDs, r.GalgameID)
+			}
+		}
+	}
+
+	briefByGID := map[int]*galgameClient.GalgameBrief{}
+	if wiki != nil && len(galgameIDs) > 0 {
+		if briefs, err := wiki.GalgameBatch(ctx, galgameIDs); err == nil {
+			for i := range briefs {
+				briefByGID[briefs[i].ID] = &briefs[i]
+			}
+		}
+	}
+
+	for _, r := range rows {
+		s := patchModel.PatchSummary{ID: r.ID, VndbID: r.VndbID}
+		if g, ok := briefByGID[r.GalgameID]; ok {
+			s.Banner = g.Banner
+			s.Name = patchModel.PatchSummaryName{
+				EnUs: g.NameEnUs,
+				JaJp: g.NameJaJp,
+				ZhCn: g.NameZhCn,
+				ZhTw: g.NameZhTw,
+			}
+		}
+		out[r.ID] = s
+	}
+	return out
+}
+
+// PatchSummaryDB is the minimal access surface BuildPatchSummaryMap needs.
+// Callers typically supply a thin wrapper around their *gorm.DB so this
+// package stays free of gorm imports.
+type PatchSummaryDB interface {
+	LookupPatchesByIDs(ids []int) ([]patchModel.Patch, error)
+}
+
 // EnrichPatch enriches a single patch (for the header card; no intro/tag/official).
 func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, p *patchModel.Patch) GalgameCard {
 	if p == nil {
@@ -139,9 +198,14 @@ type PatchDetailOfficial struct {
 // resolved Wiki tags / officials / engine IDs. We embed the full tag/official
 // objects (rather than just IDs) so the frontend can render names without a
 // second round-trip to the Wiki Service.
+//
+// Both the raw markdown (`introduction_markdown`) and the rendered HTML
+// (`introduction_html`) are returned: the frontend uses HTML for display and
+// can fall back to markdown for editing.
 type PatchDetailCard struct {
 	GalgameCard
 	IntroductionMarkdown KunLanguage           `json:"introduction_markdown"`
+	IntroductionHTML     KunLanguage           `json:"introduction_html"`
 	Updated              time.Time             `json:"updated"`
 	Tags                 []PatchDetailTag      `json:"tags"`
 	Officials            []PatchDetailOfficial `json:"officials"`
@@ -182,6 +246,12 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, p *patch
 		JaJp: g.IntroJaJp,
 		ZhCn: g.IntroZhCn,
 		ZhTw: g.IntroZhTw,
+	}
+	base.IntroductionHTML = KunLanguage{
+		EnUs: markdown.MustRender(g.IntroEnUs),
+		JaJp: markdown.MustRender(g.IntroJaJp),
+		ZhCn: markdown.MustRender(g.IntroZhCn),
+		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
 
 	for _, t := range g.Tag {

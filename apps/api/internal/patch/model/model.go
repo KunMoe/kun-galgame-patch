@@ -5,7 +5,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 )
+
+// PatchSummary is a compact projection of a patch for embedding inside other
+// rows (e.g. a global comment row that wants to show "评论在 <game name>" without
+// fetching the full patch). The Name field is filled by the enricher from
+// Wiki, leaving this package free of Wiki/HTTP concerns.
+type PatchSummary struct {
+	ID     int           `json:"id"`
+	VndbID string        `json:"vndb_id"`
+	Banner string        `json:"banner"`
+	Name   PatchSummaryName `json:"name"`
+}
+
+// PatchSummaryName mirrors the four-language KunLanguage shape but is defined
+// here to avoid a model→enricher import.
+type PatchSummaryName struct {
+	EnUs string `json:"en-us"`
+	JaJp string `json:"ja-jp"`
+	ZhCn string `json:"zh-cn"`
+	ZhTw string `json:"zh-tw"`
+}
+
+// renderNote is the single point where a resource's markdown note becomes HTML.
+// Pulled out so RenderResourceNotes (and its single-element callers) share
+// the same fallback behavior on render error.
+func renderNote(src string) string {
+	if src == "" {
+		return ""
+	}
+	return markdown.MustRender(src)
+}
 
 // JSONArray represents a PostgreSQL jsonb array field
 type JSONArray []string
@@ -73,6 +105,16 @@ type PatchUser struct {
 
 func (PatchUser) TableName() string { return "user" }
 
+// RenderResourceNotes fills note_html for every resource in the slice.
+// Idempotent: re-rendering an already-rendered slice is a no-op rerender.
+// Defined here (alongside the model) so every consumer can call it without
+// importing the patch service package.
+func RenderResourceNotes(rs []PatchResource) {
+	for i := range rs {
+		rs[i].NoteHTML = renderNote(rs[i].Note)
+	}
+}
+
 // PatchResource represents a patch resource.
 //
 // D10 change (2026-04-21):
@@ -107,6 +149,15 @@ type PatchResource struct {
 	Updated               time.Time `gorm:"autoUpdateTime" json:"updated"`
 
 	User *PatchUser `gorm:"foreignKey:UserID" json:"user,omitempty"`
+
+	// NoteHTML is the rendered Note via the markdown package.
+	// Filled by the service layer before serialization; not a DB column.
+	NoteHTML string `gorm:"-" json:"note_html"`
+
+	// Patch is a compact summary of the owning patch. Populated only on the
+	// global resource list (/api/resource) and a few admin views; left nil
+	// when the surrounding context already identifies the patch.
+	Patch *PatchSummary `gorm:"-" json:"patch,omitempty"`
 }
 
 func (PatchResource) TableName() string { return "patch_resource" }
@@ -129,6 +180,16 @@ type PatchComment struct {
 	// IsLiked is populated per-request from the current user's like relation.
 	// Not a DB column.
 	IsLiked bool `gorm:"-" json:"is_liked"`
+
+	// ContentHTML is the rendered Content via the markdown package
+	// (with @mention support). Filled by the service layer before serialization.
+	ContentHTML string `gorm:"-" json:"content_html"`
+
+	// Patch is a compact summary of the owning patch. Populated only on the
+	// global comment list (/api/comment) where the frontend wants to show
+	// "评论在 <game name>"; left nil for the per-patch comment list since the
+	// page already has the patch context.
+	Patch *PatchSummary `gorm:"-" json:"patch,omitempty"`
 }
 
 func (PatchComment) TableName() string { return "patch_comment" }

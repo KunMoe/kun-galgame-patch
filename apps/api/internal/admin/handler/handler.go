@@ -5,6 +5,8 @@ import (
 
 	"kun-galgame-patch-api/internal/admin/dto"
 	"kun-galgame-patch-api/internal/admin/service"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -15,10 +17,11 @@ import (
 
 type AdminHandler struct {
 	service *service.AdminService
+	wiki    *galgameClient.Client
 }
 
-func New(svc *service.AdminService) *AdminHandler {
-	return &AdminHandler{service: svc}
+func New(svc *service.AdminService, wiki *galgameClient.Client) *AdminHandler {
+	return &AdminHandler{service: svc, wiki: wiki}
 }
 
 func getIDParam(c *fiber.Ctx, name string) (int, error) {
@@ -182,6 +185,29 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "User deleted")
+}
+
+// ===== All Patches (admin browse) =====
+
+// GetGalgame GET /api/admin/galgame
+//
+// Lists every patch with pagination. The optional `search` query is matched
+// against vndb_id (game names live in Wiki and cannot be searched locally; the
+// admin frontend pairs this list with the per-row "open detail" link to drill
+// down). Each row is enriched via Wiki so the admin sees the same name/banner
+// they see elsewhere on the site.
+func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
+	var req dto.AdminPaginationRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+
+	patches, total, err := h.service.GetAllPatches(req.Search, req.Page, req.Limit)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	cards := enricher.EnrichPatches(c.Context(), h.wiki, patches)
+	return response.Paginated(c, cards, total)
 }
 
 // ===== Creator Applications =====
