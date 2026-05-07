@@ -28,7 +28,7 @@ const { data, pending } = await useAsyncData<ListResponse>(
       <NuxtLink
         v-for="r in data.items"
         :key="r.id"
-        :to="`/patch/${r.patch_id}/resource`"
+        :to="`/patch/${r.galgame_id}/resource`"
         class="border-default/20 bg-background hover:bg-default-100 flex gap-4 rounded-lg border p-4 transition-colors"
       >
         <img

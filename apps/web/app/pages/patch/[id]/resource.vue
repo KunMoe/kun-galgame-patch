@@ -4,16 +4,16 @@ import DOMPurify from 'isomorphic-dompurify'
 const route = useRoute()
 const api = useApi()
 
-const patchId = computed(() => Number(route.params.id))
+const galgameId = computed(() => Number(route.params.id))
 
 const sanitize = (html: string) =>
   DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
 
 const { data: resources, pending } = await useAsyncData<PatchResource[]>(
-  () => `patch-resource-${patchId.value}`,
+  () => `patch-resource-${galgameId.value}`,
   async () => {
     const res = await api.get<PatchResource[]>(
-      `/patch/${patchId.value}/resource`
+      `/patch/${galgameId.value}/resource`
     )
     return res.code === 0 ? res.data : []
   },

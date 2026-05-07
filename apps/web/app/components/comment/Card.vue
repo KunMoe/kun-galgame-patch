@@ -10,7 +10,7 @@ const props = defineProps<Props>()
 const patchName = computed(() =>
   props.comment.patch?.name
     ? getPreferredLanguageText(props.comment.patch.name)
-    : `补丁 #${props.comment.patch_id}`
+    : `补丁 #${props.comment.galgame_id}`
 )
 
 const contentHtml = computed(() =>
@@ -23,7 +23,7 @@ const contentHtml = computed(() =>
 <template>
   <KunCard
     is-pressable
-    :href="`/patch/${props.comment.patch_id}/comment`"
+    :href="`/patch/${props.comment.galgame_id}/comment`"
     class-name="w-full"
   >
     <div class="flex gap-4">

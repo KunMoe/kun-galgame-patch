@@ -11,7 +11,7 @@ const userStore = useUserStore()
 const sanitize = (html: string) =>
   DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
 
-const patchId = computed(() => Number(route.params.id))
+const galgameId = computed(() => Number(route.params.id))
 
 // /patch/:id/comment requires page+limit and returns the standard paginated
 // envelope { items, total } (apps/api/internal/patch/dto/dto.go
@@ -22,10 +22,10 @@ interface CommentListResponse {
 }
 
 const { data, pending, refresh } = await useAsyncData<CommentListResponse>(
-  () => `patch-comments-${patchId.value}`,
+  () => `patch-comments-${galgameId.value}`,
   async () => {
     const res = await api.get<CommentListResponse>(
-      `/patch/${patchId.value}/comment?page=1&limit=30`
+      `/patch/${galgameId.value}/comment?page=1&limit=30`
     )
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
@@ -49,7 +49,7 @@ const submit = async () => {
   submitting.value = true
   try {
     const res = await api.post<PatchPageComment>(
-      `/patch/${patchId.value}/comment`,
+      `/patch/${galgameId.value}/comment`,
       { content: content.value }
     )
     if (res.code === 0) {

@@ -51,10 +51,10 @@ const handleDelete = async (id: number) => {
               <span class="text-default-500">
                 在
                 <NuxtLink
-                  :to="`/patch/${c.patch_id}/comment`"
+                  :to="`/patch/${c.galgame_id}/comment`"
                   class="text-primary hover:underline"
                 >
-                  补丁 #{{ c.patch_id }}
+                  补丁 #{{ c.galgame_id }}
                 </NuxtLink>
               </span>
               <span class="text-default-400 text-xs">

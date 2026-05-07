@@ -7,12 +7,12 @@ import {
 const route = useRoute()
 const api = useApi()
 
-const patchId = computed(() => Number(route.params.id))
+const galgameId = computed(() => Number(route.params.id))
 
 const { data: patch } = await useAsyncData<PatchHeader | null>(
-  () => `patch-${patchId.value}`,
+  () => `patch-${galgameId.value}`,
   async () => {
-    const res = await api.get<PatchHeader>(`/patch/${patchId.value}`)
+    const res = await api.get<PatchHeader>(`/patch/${galgameId.value}`)
     return res.code === 0 ? res.data : null
   }
 )
@@ -22,12 +22,12 @@ const displayName = computed(() =>
 )
 
 useKunSeoMeta({
-  title: displayName.value || `补丁 ${patchId.value}`,
+  title: displayName.value || `补丁 ${galgameId.value}`,
   description: displayName.value ? `${displayName.value} 的补丁下载` : ''
 })
 
 onMounted(async () => {
-  await api.put(`/patch/${patchId.value}/view`).catch(() => {})
+  await api.put(`/patch/${galgameId.value}/view`).catch(() => {})
 })
 
 provide('patch', patch)
@@ -38,9 +38,9 @@ const currentTab = computed(() => {
 })
 
 const tabs = computed(() => [
-  { key: 'introduction', title: 'Galgame 信息', href: `/patch/${patchId.value}/introduction` },
-  { key: 'resource', title: '补丁资源下载', href: `/patch/${patchId.value}/resource` },
-  { key: 'comment', title: '游戏评论', href: `/patch/${patchId.value}/comment` }
+  { key: 'introduction', title: 'Galgame 信息', href: `/patch/${galgameId.value}/introduction` },
+  { key: 'resource', title: '补丁资源下载', href: `/patch/${galgameId.value}/resource` },
+  { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` }
 ])
 </script>
 

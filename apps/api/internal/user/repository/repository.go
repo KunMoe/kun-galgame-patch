@@ -84,7 +84,7 @@ func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchMod
 func (r *UserRepository) GetUserFavorites(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
-	subQuery := r.db.Table("user_patch_favorite_relation").Where("user_id = ?", userID).Select("patch_id")
+	subQuery := r.db.Table("user_patch_favorite_relation").Where("user_id = ?", userID).Select("galgame_id")
 	query := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
 	query.Count(&total)
 	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
@@ -103,7 +103,7 @@ func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchMode
 func (r *UserRepository) GetUserContributions(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
-	subQuery := r.db.Table("user_patch_contribute_relation").Where("user_id = ?", userID).Select("patch_id")
+	subQuery := r.db.Table("user_patch_contribute_relation").Where("user_id = ?", userID).Select("galgame_id")
 	query := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
 	query.Count(&total)
 	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error

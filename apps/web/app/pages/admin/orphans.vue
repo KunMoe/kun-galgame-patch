@@ -49,34 +49,34 @@ const submitting = reactive<Record<number, boolean>>({})
 
 const isPlaceholder = (v: string) => v.startsWith('pending-')
 
-const handleRebind = async (patchId: number) => {
-  const newID = (editVndbID[patchId] || '').trim()
+const handleRebind = async (galgameId: number) => {
+  const newID = (editVndbID[galgameId] || '').trim()
   if (!/^v\d+$/.test(newID)) {
     useKunMessage('vndb_id 格式不合法，应为 vXXX', 'error')
     return
   }
-  submitting[patchId] = true
+  submitting[galgameId] = true
   try {
-    const res = await api.put(`/patch/${patchId}`, { vndb_id: newID })
+    const res = await api.put(`/patch/${galgameId}`, { vndb_id: newID })
     if (res.code === 0) {
       useKunMessage('已重新绑定，Wiki 校验通过', 'success')
-      delete editVndbID[patchId]
+      delete editVndbID[galgameId]
       await refresh()
     } else {
       useKunMessage(res.message || '重绑失败（Wiki 里可能还没这个游戏）', 'error')
     }
   } finally {
-    submitting[patchId] = false
+    submitting[galgameId] = false
   }
 }
 
-const handleDelete = async (patchId: number) => {
-  if (!confirm(`确定删除补丁 #${patchId}？会级联删除其资源、评论、收藏关系，不可恢复！`)) {
+const handleDelete = async (galgameId: number) => {
+  if (!confirm(`确定删除补丁 #${galgameId}？会级联删除其资源、评论、收藏关系，不可恢复！`)) {
     return
   }
-  submitting[patchId] = true
+  submitting[galgameId] = true
   try {
-    const res = await api.delete(`/patch/${patchId}`)
+    const res = await api.delete(`/patch/${galgameId}`)
     if (res.code === 0) {
       useKunMessage('已删除', 'success')
       await refresh()
@@ -84,7 +84,7 @@ const handleDelete = async (patchId: number) => {
       useKunMessage(res.message || '删除失败', 'error')
     }
   } finally {
-    submitting[patchId] = false
+    submitting[galgameId] = false
   }
 }
 

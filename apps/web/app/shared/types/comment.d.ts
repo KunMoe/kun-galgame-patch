@@ -14,7 +14,7 @@ interface PatchComment {
   user: KunUser
   content: string
   content_html: string
-  patch_id: number
+  galgame_id: number
   like_count: number
   created: Date | string
   // Populated only by /api/v1/comment and /api/v1/home; null on per-patch lists.
@@ -33,7 +33,7 @@ interface PatchPageComment {
   like_count: number
   parent_id: number | null
   user_id: number
-  patch_id: number
+  galgame_id: number
   created: string
   updated: string
   reply: PatchPageComment[]

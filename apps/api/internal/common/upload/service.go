@@ -162,7 +162,7 @@ func (s *Service) InitSmall(ctx context.Context, uid int, req SmallInitRequest) 
 		return nil, err
 	}
 
-	key, err := buildPatchResourceKey(req.PatchID, req.FileName)
+	key, err := buildPatchResourceKey(req.GalgameID, req.FileName)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (s *Service) InitMultipart(ctx context.Context, uid int, req MultipartInitR
 		return nil, err
 	}
 
-	key, err := buildPatchResourceKey(req.PatchID, req.FileName)
+	key, err := buildPatchResourceKey(req.GalgameID, req.FileName)
 	if err != nil {
 		return nil, err
 	}

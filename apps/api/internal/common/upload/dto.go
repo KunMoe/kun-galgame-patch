@@ -4,9 +4,9 @@ package upload
 
 // SmallInitRequest initializes a small-file upload.
 type SmallInitRequest struct {
-	PatchID  int    `json:"patch_id" validate:"required,min=1"`
-	FileName string `json:"file_name" validate:"required,min=1,max=300"`
-	FileSize int64  `json:"file_size" validate:"required,min=1"`
+	GalgameID int    `json:"galgame_id" validate:"required,min=1"`
+	FileName  string `json:"file_name" validate:"required,min=1,max=300"`
+	FileSize  int64  `json:"file_size" validate:"required,min=1"`
 }
 
 // SmallInitResponse returns the presigned PUT URL and the pre-allocated s3_key.
@@ -31,7 +31,7 @@ type CompleteResponse struct {
 
 // MultipartInitRequest initializes a large-file multipart upload.
 type MultipartInitRequest struct {
-	PatchID   int    `json:"patch_id" validate:"required,min=1"`
+	GalgameID int    `json:"galgame_id" validate:"required,min=1"`
 	FileName  string `json:"file_name" validate:"required,min=1,max=300"`
 	FileSize  int64  `json:"file_size" validate:"required,min=1"`
 	PartCount int    `json:"part_count" validate:"required,min=1,max=10000"`

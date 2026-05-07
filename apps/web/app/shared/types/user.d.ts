@@ -21,7 +21,7 @@ interface UserInfo {
 
 interface UserResourceItem {
   id: number
-  patch_id: number
+  galgame_id: number
   patch_name: KunLanguage
   patch_banner: string
   size: string
@@ -33,7 +33,7 @@ interface UserResourceItem {
 
 interface UserContribute {
   id: number
-  patch_id: number
+  galgame_id: number
   patch_name: KunLanguage
   created: string
 }
@@ -43,7 +43,7 @@ interface UserComment {
   content: string
   like: number
   user_id: number
-  patch_id: number
+  galgame_id: number
   patch_name: KunLanguage
   created: string
   quoted_user_uid?: number | null

@@ -92,7 +92,7 @@ func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, patches []pa
 	}
 
 	for i := range cards {
-		if g, ok := byID[patches[i].GalgameID]; ok {
+		if g, ok := byID[patches[i].ID]; ok {
 			applyGalgame(&cards[i], g)
 		}
 	}
@@ -117,10 +117,10 @@ func BuildPatchSummaryMap(ctx context.Context, wiki *galgameClient.Client, db Pa
 	galgameIDs := make([]int, 0, len(rows))
 	seen := make(map[int]struct{}, len(rows))
 	for _, r := range rows {
-		if r.GalgameID > 0 {
-			if _, ok := seen[r.GalgameID]; !ok {
-				seen[r.GalgameID] = struct{}{}
-				galgameIDs = append(galgameIDs, r.GalgameID)
+		if r.ID > 0 {
+			if _, ok := seen[r.ID]; !ok {
+				seen[r.ID] = struct{}{}
+				galgameIDs = append(galgameIDs, r.ID)
 			}
 		}
 	}
@@ -136,7 +136,7 @@ func BuildPatchSummaryMap(ctx context.Context, wiki *galgameClient.Client, db Pa
 
 	for _, r := range rows {
 		s := patchModel.PatchSummary{ID: r.ID, VndbID: r.VndbID}
-		if g, ok := briefByGID[r.GalgameID]; ok {
+		if g, ok := briefByGID[r.ID]; ok {
 			s.Banner = g.Banner
 			s.Name = patchModel.PatchSummaryName{
 				EnUs: g.NameEnUs,
@@ -163,12 +163,12 @@ func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, p *patchModel.
 		return GalgameCard{}
 	}
 	card := baseCard(p)
-	if wiki == nil || p.GalgameID <= 0 {
+	if wiki == nil || p.ID <= 0 {
 		return card
 	}
-	briefs, err := wiki.GalgameBatch(ctx, []int{p.GalgameID})
+	briefs, err := wiki.GalgameBatch(ctx, []int{p.ID})
 	if err != nil || len(briefs) == 0 {
-		slog.Warn("Wiki 富化失败", "patch_id", p.ID, "error", err)
+		slog.Warn("Wiki 富化失败", "galgame_id", p.ID, "error", err)
 		return card
 	}
 	applyGalgame(&card, &briefs[0])
@@ -221,12 +221,12 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, p *patch
 	base.GalgameCard = baseCard(p)
 	base.Updated = p.Updated
 
-	if wiki == nil || p.GalgameID <= 0 {
+	if wiki == nil || p.ID <= 0 {
 		return base
 	}
-	env, err := wiki.GetGalgame(ctx, p.GalgameID)
+	env, err := wiki.GetGalgame(ctx, p.ID)
 	if err != nil {
-		slog.Warn("Wiki 详情富化失败", "patch_id", p.ID, "galgame_id", p.GalgameID, "error", err)
+		slog.Warn("Wiki 详情富化失败", "galgame_id", p.ID, "error", err)
 		return base
 	}
 
@@ -285,14 +285,14 @@ func collectGalgameIDs(patches []patchModel.Patch) []int {
 	seen := map[int]struct{}{}
 	ids := make([]int, 0, len(patches))
 	for _, p := range patches {
-		if p.GalgameID <= 0 {
+		if p.ID <= 0 {
 			continue
 		}
-		if _, ok := seen[p.GalgameID]; ok {
+		if _, ok := seen[p.ID]; ok {
 			continue
 		}
-		seen[p.GalgameID] = struct{}{}
-		ids = append(ids, p.GalgameID)
+		seen[p.ID] = struct{}{}
+		ids = append(ids, p.ID)
 	}
 	return ids
 }

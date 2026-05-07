@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -54,12 +53,18 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 	}
 
 	// 3. Transaction
+	//
+	// D13: patch.id IS the Wiki galgame_id. We assign it explicitly here
+	// rather than relying on the autoincrement sequence. If a row with
+	// id=galgameID already exists (race / re-publish), the unique vndb_id
+	// constraint check above would normally have caught it; the INSERT will
+	// fail with a FK / pkey violation as a safety net.
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		p := &model.Patch{
-			VndbID:    vndbID,
-			GalgameID: galgameID,
-			UserID:    uid,
+			ID:     galgameID,
+			VndbID: vndbID,
+			UserID: uid,
 		}
 		if err := tx.Create(p).Error; err != nil {
 			return fmt.Errorf("创建 patch 失败: %w", err)
@@ -74,7 +79,7 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 
 		// Register contributor
 		if err := tx.Create(&model.UserPatchContributeRelation{
-			UserID: uid, PatchID: p.ID,
+			UserID: uid, GalgameID: p.ID,
 		}).Error; err != nil {
 			return fmt.Errorf("登记 contributor 失败: %w", err)
 		}
@@ -91,58 +96,21 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 }
 
 func (s *PatchService) GetPatch(id int) (*model.Patch, error) {
-	p, err := s.repo.GetPatchByID(id)
-	if err != nil {
-		return nil, err
-	}
-	s.selfHealGalgameID(p)
-	return p, nil
+	return s.repo.GetPatchByID(id)
 }
 
 func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
-	p, err := s.repo.GetPatchDetail(id)
-	if err != nil {
-		return nil, err
-	}
-	s.selfHealGalgameID(p)
-	return p, nil
+	return s.repo.GetPatchDetail(id)
 }
 
-// selfHealGalgameID looks up the Wiki by vndb_id when the local row is missing
-// galgame_id. Hit means the patch is not really an orphan, just a stale row
-// from migration / pre-Wiki publish; we backfill galgame_id in place so the
-// next read is fast and the enricher can find the game.
+// UpdatePatch: after D13, patch.id IS the Wiki galgame_id, so changing vndb_id
+// to one that resolves to a different galgame_id would require remapping
+// patch.id (and every FK in child tables) — that is the job of the
+// cmd/remap-patch-ids migration script, not a per-request handler.
 //
-// Failures (network blip, Wiki really doesn't have this vndb_id) fall through
-// silently — the existing "missing name" rendering still works as the
-// last-resort behavior for genuine orphans.
-func (s *PatchService) selfHealGalgameID(p *model.Patch) {
-	if p == nil || p.GalgameID > 0 || p.VndbID == "" {
-		return
-	}
-	// Skip placeholder vndb_ids ("pending-N") created when a creator left it blank.
-	if strings.HasPrefix(p.VndbID, "pending-") {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	exists, gid, err := s.wiki.CheckGalgameByVndbID(ctx, p.VndbID)
-	if err != nil || !exists || gid <= 0 {
-		return
-	}
-
-	if err := s.db.Model(&model.Patch{}).Where("id = ?", p.ID).
-		UpdateColumn("galgame_id", gid).Error; err != nil {
-		// Log but do not fail the read — backfill is best-effort.
-		return
-	}
-	p.GalgameID = gid
-}
-
-// UpdatePatch: after D12, only "rebind vndb_id" is allowed (a rare case, e.g. a mislinked entry).
-// Re-validates via Wiki and refreshes galgame_id.
+// Here we accept rebinding only when the new vndb_id resolves to the same
+// galgame_id we already have (i.e. Wiki updated the metadata for an existing
+// galgame). Anything else is rejected with a clear hint.
 func (s *PatchService) UpdatePatch(ctx context.Context, id, userID, userRole int, vndbID string) error {
 	existing, err := s.repo.GetPatchByID(id)
 	if err != nil {
@@ -159,11 +127,12 @@ func (s *PatchService) UpdatePatch(ctx context.Context, id, userID, userRole int
 	if !exists {
 		return fmt.Errorf("Galgame Wiki 中不存在 vndb_id=%s 的游戏", vndbID)
 	}
+	if galgameID != existing.ID {
+		return fmt.Errorf("不允许把 patch (id=%d) 重绑到不同的 galgame (id=%d) — 请运行 cmd/remap-patch-ids 完整迁移", existing.ID, galgameID)
+	}
 
-	return s.db.Model(&model.Patch{}).Where("id = ?", id).Updates(map[string]any{
-		"vndb_id":    vndbID,
-		"galgame_id": galgameID,
-	}).Error
+	return s.db.Model(&model.Patch{}).Where("id = ?", id).
+		Update("vndb_id", vndbID).Error
 }
 
 func (s *PatchService) DeletePatch(id, userID, userRole int) error {
@@ -248,7 +217,7 @@ func (s *PatchService) GetComments(patchID, currentUID, page, limit int) ([]mode
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {
 	comment := &model.PatchComment{
-		PatchID:  patchID,
+		GalgameID: patchID,
 		UserID:   userID,
 		Content:  content,
 		ParentID: parentID,
@@ -302,7 +271,7 @@ func (s *PatchService) DeleteComment(commentID, userID, userRole int) error {
 	if err := s.repo.DeleteComment(commentID); err != nil {
 		return err
 	}
-	s.repo.UpdateCount(comment.PatchID, "comment_count", -int(count))
+	s.repo.UpdateCount(comment.GalgameID, "comment_count", -int(count))
 	return nil
 }
 
@@ -357,21 +326,21 @@ func (s *PatchService) CreateResource(resource *model.PatchResource, userID int)
 	}
 
 	// Update aggregates
-	s.repo.UpdateCount(resource.PatchID, "resource_count", 1)
-	s.repo.RecalculatePatchAggregates(resource.PatchID)
+	s.repo.UpdateCount(resource.GalgameID, "resource_count", 1)
+	s.repo.RecalculatePatchAggregates(resource.GalgameID)
 
 	// Update resource_update_time
-	s.db.Model(&model.Patch{}).Where("id = ?", resource.PatchID).
+	s.db.Model(&model.Patch{}).Where("id = ?", resource.GalgameID).
 		Update("resource_update_time", time.Now())
 
 	// Moemoepoint +3
 	s.repo.UpdateMoemoepoint(userID, 3)
 
 	// Ensure contributor
-	s.repo.EnsureContributor(userID, resource.PatchID)
+	s.repo.EnsureContributor(userID, resource.GalgameID)
 
 	// Notify favorited users
-	s.notifyFavoritedUsers(resource.PatchID, userID)
+	s.notifyFavoritedUsers(resource.GalgameID, userID)
 
 	// Pre-render note_html for the immediate POST response.
 	resource.NoteHTML = markdown.MustRender(resource.Note)
@@ -406,7 +375,7 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 		return err
 	}
 
-	s.repo.RecalculatePatchAggregates(existing.PatchID)
+	s.repo.RecalculatePatchAggregates(existing.GalgameID)
 	return nil
 }
 
@@ -423,8 +392,8 @@ func (s *PatchService) DeleteResource(resourceID, userID int) error {
 		return err
 	}
 
-	s.repo.UpdateCount(resource.PatchID, "resource_count", -1)
-	s.repo.RecalculatePatchAggregates(resource.PatchID)
+	s.repo.UpdateCount(resource.GalgameID, "resource_count", -1)
+	s.repo.RecalculatePatchAggregates(resource.GalgameID)
 	s.repo.UpdateMoemoepoint(userID, -3)
 	return nil
 }
@@ -445,7 +414,7 @@ func (s *PatchService) IncrementResourceDownload(resourceID int) error {
 	if err != nil {
 		return fmt.Errorf("resource not found")
 	}
-	return s.repo.IncrementResourceDownload(resourceID, resource.PatchID)
+	return s.repo.IncrementResourceDownload(resourceID, resource.GalgameID)
 }
 
 func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) {
@@ -493,7 +462,7 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 		return false, nil
 	}
 
-	rel := &model.UserPatchFavoriteRelation{UserID: userID, PatchID: patchID}
+	rel := &model.UserPatchFavoriteRelation{UserID: userID, GalgameID: patchID}
 	s.repo.CreateFavorite(rel)
 	s.repo.UpdateCount(patchID, "favorite_count", 1)
 	if patch.UserID != userID {
@@ -527,7 +496,7 @@ func (s *PatchService) ExtractMentionUserIDs(content string) []int {
 func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 	var userIDs []int
 	s.db.Model(&model.UserPatchFavoriteRelation{}).
-		Where("patch_id = ? AND user_id != ?", patchID, senderID).
+		Where("galgame_id = ? AND user_id != ?", patchID, senderID).
 		Pluck("user_id", &userIDs)
 
 	for _, uid := range userIDs {
@@ -578,7 +547,7 @@ func (s *PatchService) CreateCommentNotification(senderID int, comment *model.Pa
 		if err == nil && parent.UserID != senderID {
 			s.createDedupMessage(senderID, parent.UserID, "comment",
 				"Replied to your comment",
-				fmt.Sprintf("/patch/%d", comment.PatchID))
+				fmt.Sprintf("/patch/%d", comment.GalgameID))
 		}
 	}
 }
@@ -587,7 +556,7 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 	if comment.UserID != senderID {
 		s.createDedupMessage(senderID, comment.UserID, "likeComment",
 			"Liked your comment",
-			fmt.Sprintf("/patch/%d", comment.PatchID))
+			fmt.Sprintf("/patch/%d", comment.GalgameID))
 	}
 }
 

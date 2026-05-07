@@ -210,7 +210,7 @@ func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	req.PatchID = patchID
+	req.GalgameID = patchID
 
 	user := middleware.MustGetUser(c)
 	comment, err := h.service.CreateComment(patchID, user.UID, req.Content, req.ParentID)
@@ -324,7 +324,7 @@ func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	resource := &model.PatchResource{
-		PatchID:   patchID,
+		GalgameID: patchID,
 		Storage:   req.Storage,
 		Name:      req.Name,
 		ModelName: req.ModelName,

@@ -65,15 +65,22 @@ func (j JSONArray) Value() (driver.Value, error) {
 //
 // D12 (2026-04-21): almost all galgame metadata (name / introduction / banner /
 // released / content_limit / engine / alias) has moved to the Galgame Wiki.
+//
+// D13 (2026-05-07): patch.id is now equal to Wiki's galgame.id. Every "patch"
+// in this system corresponds to exactly one galgame on the Wiki (1:1 via
+// vndb_id), so duplicating that id locally was redundant. The remap migration
+// (cmd/remap-patch-ids) backfills patch.id from the Wiki and drops the old
+// galgame_id column. Child tables that previously had a `patch_id` FK are
+// renamed to `galgame_id`.
+//
 // Patch now only keeps:
-//   - Foreign keys to Wiki: vndb_id (required), galgame_id (Wiki's id, for easy bulk enrichment)
+//   - Wiki linkage: vndb_id (required); patch.id IS the galgame_id
 //   - Patch-specific data: translation type / supported languages / platforms / counts / user
 //
-// To display game name/banner/introduction, call Wiki /galgame/batch in bulk by galgame_id.
+// To display game name/banner/introduction, call Wiki /galgame/batch with patch.id directly.
 type Patch struct {
 	ID                 int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	VndbID             string    `gorm:"uniqueIndex;type:varchar(107);not null" json:"vndb_id"`
-	GalgameID          int       `gorm:"index;not null" json:"galgame_id"`
 	BID                *int      `gorm:"uniqueIndex" json:"bid"`
 	Status             int       `gorm:"default:0" json:"status"`
 	Download           int       `gorm:"default:0" json:"download"`
@@ -144,7 +151,7 @@ type PatchResource struct {
 	UpdateTime            time.Time `gorm:"autoCreateTime" json:"update_time"`
 	LikeCount             int       `gorm:"default:0" json:"like_count"`
 	UserID                int       `gorm:"not null" json:"user_id"`
-	PatchID               int       `gorm:"not null" json:"patch_id"`
+	GalgameID             int       `gorm:"not null" json:"galgame_id"`
 	Created               time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated               time.Time `gorm:"autoUpdateTime" json:"updated"`
 
@@ -170,7 +177,7 @@ type PatchComment struct {
 	LikeCount int       `gorm:"default:0" json:"like_count"`
 	ParentID  *int      `json:"parent_id"`
 	UserID    int       `gorm:"not null" json:"user_id"`
-	PatchID   int       `gorm:"not null" json:"patch_id"`
+	GalgameID int       `gorm:"not null" json:"galgame_id"`
 	Created   time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
 
@@ -199,7 +206,7 @@ func (PatchComment) TableName() string { return "patch_comment" }
 // PatchLink represents an external link
 type PatchLink struct {
 	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	PatchID int       `gorm:"uniqueIndex:idx_patch_link;index;not null" json:"patch_id"`
+	GalgameID int     `gorm:"uniqueIndex:idx_patch_link;index;not null" json:"galgame_id"`
 	Name    string    `gorm:"uniqueIndex:idx_patch_link;type:varchar(233)" json:"name"`
 	URL     string    `gorm:"type:varchar(1007)" json:"url"`
 	Created time.Time `gorm:"autoCreateTime" json:"created"`
@@ -215,7 +222,7 @@ func (PatchLink) TableName() string { return "patch_link" }
 type UserPatchFavoriteRelation struct {
 	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID  int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"user_id"`
-	PatchID int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"patch_id"`
+	GalgameID int     `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"galgame_id"`
 	Created time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
 }
@@ -225,7 +232,7 @@ func (UserPatchFavoriteRelation) TableName() string { return "user_patch_favorit
 type UserPatchContributeRelation struct {
 	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID  int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"user_id"`
-	PatchID int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"patch_id"`
+	GalgameID int     `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"galgame_id"`
 	Created time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
 }

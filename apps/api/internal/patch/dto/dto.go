@@ -23,7 +23,7 @@ type GetPatchCommentRequest struct {
 
 // PatchCommentCreateRequest is the request body for creating a comment
 type PatchCommentCreateRequest struct {
-	PatchID  int    `json:"patch_id" validate:"required,min=1"`
+	GalgameID int   `json:"galgame_id" validate:"required,min=1"`
 	ParentID *int   `json:"parent_id" validate:"omitempty,min=1"`
 	Content  string `json:"content" validate:"required,min=1,max=10007"`
 	Captcha  string `json:"captcha" validate:"max=10"`
@@ -41,7 +41,7 @@ type PatchCommentUpdateRequest struct {
 // and submits it here; the server verifies via HeadObject.
 // For external-link resources (storage != "s3") leave s3_key empty and put the link in content.
 type PatchResourceCreateRequest struct {
-	PatchID   int      `json:"patch_id" validate:"required,min=1"`
+	GalgameID int      `json:"galgame_id" validate:"required,min=1"`
 	Storage   string   `json:"storage" validate:"required"`
 	Name      string   `json:"name" validate:"max=300"`
 	ModelName string   `json:"model_name" validate:"max=1007"`

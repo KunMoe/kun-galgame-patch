@@ -74,7 +74,7 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 	var comments []model.PatchComment
 	var total int64
 
-	query := r.db.Model(&model.PatchComment{}).Where("patch_id = ? AND parent_id IS NULL", patchID)
+	query := r.db.Model(&model.PatchComment{}).Where("galgame_id = ? AND parent_id IS NULL", patchID)
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
@@ -143,7 +143,7 @@ func (r *PatchRepository) DeleteCommentLike(id int) error {
 
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
-	err := r.db.Where("patch_id = ?", patchID).
+	err := r.db.Where("galgame_id = ?", patchID).
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "name", "avatar")
 		}).
@@ -206,7 +206,7 @@ func (r *PatchRepository) DeleteResourceLike(id int) error {
 
 func (r *PatchRepository) FindFavorite(userID, patchID int) (*model.UserPatchFavoriteRelation, error) {
 	var rel model.UserPatchFavoriteRelation
-	err := r.db.Where("user_id = ? AND patch_id = ?", userID, patchID).First(&rel).Error
+	err := r.db.Where("user_id = ? AND galgame_id = ?", userID, patchID).First(&rel).Error
 	return &rel, err
 }
 
@@ -224,14 +224,14 @@ func (r *PatchRepository) GetContributors(patchID int) ([]model.PatchUser, error
 	var users []model.PatchUser
 	err := r.db.Table("user").
 		Joins("JOIN user_patch_contribute_relation ON user_patch_contribute_relation.user_id = \"user\".id").
-		Where("user_patch_contribute_relation.patch_id = ?", patchID).
+		Where("user_patch_contribute_relation.galgame_id = ?", patchID).
 		Select("\"user\".id, \"user\".name, \"user\".avatar").
 		Find(&users).Error
 	return users, err
 }
 
 func (r *PatchRepository) EnsureContributor(userID, patchID int) error {
-	rel := model.UserPatchContributeRelation{UserID: userID, PatchID: patchID}
+	rel := model.UserPatchContributeRelation{UserID: userID, GalgameID: patchID}
 	result := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rel)
 	if result.Error != nil {
 		return result.Error
@@ -247,7 +247,7 @@ func (r *PatchRepository) EnsureContributor(userID, patchID int) error {
 
 func (r *PatchRepository) RecalculatePatchAggregates(patchID int) error {
 	var resources []model.PatchResource
-	r.db.Where("patch_id = ?", patchID).Select("type", "language", "platform").Find(&resources)
+	r.db.Where("galgame_id = ?", patchID).Select("type", "language", "platform").Find(&resources)
 
 	typeSet := make(map[string]bool)
 	langSet := make(map[string]bool)

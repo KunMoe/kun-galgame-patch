@@ -35,7 +35,8 @@ func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, e
 		return nil, nil
 	}
 	var rows []patchModel.Patch
-	err := p.db.Select("id", "vndb_id", "galgame_id").
+	// D13: patch.id is the Wiki galgame_id, no separate column.
+	err := p.db.Select("id", "vndb_id").
 		Where("id IN ?", ids).Find(&rows).Error
 	return rows, err
 }
@@ -180,10 +181,10 @@ func (h *CommonHandler) attachPatchSummaries(c *fiber.Ctx, comments []patchModel
 
 	idSet := make(map[int]struct{}, len(comments)+len(resources))
 	for _, m := range comments {
-		idSet[m.PatchID] = struct{}{}
+		idSet[m.GalgameID] = struct{}{}
 	}
 	for _, r := range resources {
-		idSet[r.PatchID] = struct{}{}
+		idSet[r.GalgameID] = struct{}{}
 	}
 	if len(idSet) == 0 {
 		return
@@ -195,13 +196,13 @@ func (h *CommonHandler) attachPatchSummaries(c *fiber.Ctx, comments []patchModel
 
 	summaries := enricher.BuildPatchSummaryMap(c.Context(), h.wiki, patchSummaryFinder{db: h.db}, ids)
 	for i := range comments {
-		if s, ok := summaries[comments[i].PatchID]; ok {
+		if s, ok := summaries[comments[i].GalgameID]; ok {
 			summary := s
 			comments[i].Patch = &summary
 		}
 	}
 	for i := range resources {
-		if s, ok := summaries[resources[i].PatchID]; ok {
+		if s, ok := summaries[resources[i].GalgameID]; ok {
 			summary := s
 			resources[i].Patch = &summary
 		}
@@ -271,14 +272,14 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	var patchCard *enricher.GalgameCard
 	if err := h.db.Preload("User", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id", "name", "avatar")
-	}).First(&patch, resource.PatchID).Error; err == nil {
+	}).First(&patch, resource.GalgameID).Error; err == nil {
 		card := enricher.EnrichPatch(c.Context(), h.wiki, &patch)
 		patchCard = &card
 	}
 
 	// Get up to 5 recommendations from the same patch
 	var recs []patchModel.PatchResource
-	h.db.Where("patch_id = ? AND id != ?", resource.PatchID, resource.ID).
+	h.db.Where("galgame_id = ? AND id != ?", resource.GalgameID, resource.ID).
 		Limit(5).Order("like_count DESC").Find(&recs)
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
@@ -352,7 +353,7 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 
 	// Get resources but strip S3 download content
 	var resources []patchModel.PatchResource
-	h.db.Where("patch_id = ?", patch.ID).Find(&resources)
+	h.db.Where("galgame_id = ?", patch.ID).Find(&resources)
 
 	for i := range resources {
 		if resources[i].Storage == "s3" {
@@ -472,7 +473,7 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 func (h *CommonHandler) GetMoyuHasPatch(c *fiber.Ctx) error {
 	var vndbIDs []string
 	h.db.Model(&patchModel.Patch{}).
-		Joins("JOIN patch_resource ON patch_resource.patch_id = patch.id").
+		Joins("JOIN patch_resource ON patch_resource.galgame_id = patch.id").
 		Where("patch.vndb_id IS NOT NULL").
 		Distinct("patch.vndb_id").
 		Pluck("patch.vndb_id", &vndbIDs)

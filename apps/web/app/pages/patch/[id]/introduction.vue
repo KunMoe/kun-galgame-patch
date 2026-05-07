@@ -4,12 +4,12 @@ import DOMPurify from 'isomorphic-dompurify'
 const route = useRoute()
 const api = useApi()
 
-const patchId = computed(() => Number(route.params.id))
+const galgameId = computed(() => Number(route.params.id))
 
 const { data: detail } = await useAsyncData<PatchDetail | null>(
-  () => `patch-detail-${patchId.value}`,
+  () => `patch-detail-${galgameId.value}`,
   async () => {
-    const res = await api.get<PatchDetail>(`/patch/${patchId.value}/detail`)
+    const res = await api.get<PatchDetail>(`/patch/${galgameId.value}/detail`)
     return res.code === 0 ? res.data : null
   }
 )

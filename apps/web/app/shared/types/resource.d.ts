@@ -20,7 +20,7 @@ interface PatchResource {
   status?: number
   download: number
   user_id?: number
-  patch_id: number
+  galgame_id: number
   created: string
   update_time?: Date | string
   user: KunUser

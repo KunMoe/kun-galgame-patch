@@ -57,7 +57,7 @@ interface AdminResourceItem {
   language: string[]
   platform: string[]
   note: string
-  patch_id: number
+  galgame_id: number
   download: number
   like_count: number
   created: string
