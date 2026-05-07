@@ -3,6 +3,8 @@ package app
 import (
 	"log/slog"
 
+	aboutHandler "kun-galgame-patch-api/internal/about/handler"
+	aboutService "kun-galgame-patch-api/internal/about/service"
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
 	adminService "kun-galgame-patch-api/internal/admin/service"
@@ -59,6 +61,7 @@ type App struct {
 	UploadHandler   *uploadPkg.Handler
 	ChatHandler     *chatHandler.ChatHandler
 	SearchHandler   *searchPkg.Handler
+	AboutHandler    *aboutHandler.AboutHandler
 
 	// CronStop is called during graceful shutdown to stop the cron jobs.
 	CronStop func()
@@ -112,6 +115,10 @@ func New(cfg *config.Config) *App {
 	// Search module (D11: delegate to Galgame Wiki Service)
 	searchHdl := searchPkg.New(db, wiki)
 
+	// About module (static .mdx posts under cfg.About.PostsDir)
+	aboutSvc := aboutService.New(cfg.About.PostsDir)
+	aboutHdl := aboutHandler.New(aboutSvc)
+
 	// Cookie mode: use Secure cookies in prod; must be off for HTTP in dev
 	middleware.SecureCookies = cfg.Server.Mode == "prod"
 
@@ -145,6 +152,7 @@ func New(cfg *config.Config) *App {
 		UploadHandler:   uploadHdl,
 		ChatHandler:     chatHdl,
 		SearchHandler:   searchHdl,
+		AboutHandler:    aboutHdl,
 		CronStop:        cronStop,
 	}
 }

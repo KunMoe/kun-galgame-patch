@@ -1,17 +1,40 @@
 <script setup lang="ts">
+import DOMPurify from 'isomorphic-dompurify'
+
+interface ApiEnvelope<T> {
+  code: number
+  message: string
+  data: T
+}
+
 const route = useRoute()
+const config = useRuntimeConfig()
+const baseUrl = config.public.apiBase as string
 
 const slugParam = computed(() => {
   const raw = route.params.slug
   return Array.isArray(raw) ? raw.join('/') : String(raw ?? '')
 })
 
-const { data, error } = await useAsyncData<KunPostDetail>(
-  () => `about-post-${slugParam.value}`,
-  () => $fetch('/api/about/post', { query: { slug: slugParam.value } })
+// Use useFetch for both endpoints — Nuxt's payload mechanism transfers the
+// SSR-rendered data to the client without a refetch-on-mount window where the
+// reactive ref briefly flips to null/empty (which is what makes the TOC vanish
+// after hydration when wrapping useApi in useAsyncData).
+const { data: detailResponse } = await useFetch<ApiEnvelope<KunPostDetail>>(
+  `${baseUrl}/about/post`,
+  {
+    key: `about-post-${slugParam.value}`,
+    query: { slug: slugParam.value },
+    credentials: 'include',
+    watch: false
+  }
 )
 
-if (error.value) {
+const detail = computed<KunPostDetail | null>(() =>
+  detailResponse.value?.code === 0 ? detailResponse.value.data : null
+)
+
+if (!detail.value) {
   throw createError({
     statusCode: 404,
     statusMessage: '文章未找到',
@@ -20,16 +43,57 @@ if (error.value) {
 }
 
 useKunSeoMeta({
-  title: data.value?.frontmatter.title ?? slugParam.value,
-  description: data.value?.frontmatter.description ?? ''
+  title: detail.value.frontmatter.title,
+  description: detail.value.frontmatter.description
 })
+
+// Sidebar uses the tree fetched by /about/posts. Cached under the same key so
+// it shares the response with /about index.
+const emptyTree: KunTreeNode = {
+  name: 'about',
+  label: '关于我们',
+  path: '',
+  type: 'directory',
+  children: []
+}
+const { data: postsResponse } = await useFetch<ApiEnvelope<KunPostsResponse>>(
+  `${baseUrl}/about/posts`,
+  { key: 'about-posts', credentials: 'include', watch: false }
+)
+const tree = computed<KunTreeNode>(() =>
+  postsResponse.value?.code === 0 ? postsResponse.value.data.tree : emptyTree
+)
+
+// data-uid is allowed so server-rendered @mentions keep their attribute.
+const html = computed(() =>
+  DOMPurify.sanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-uid'] })
+)
+
+const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])
 </script>
 
 <template>
-  <div v-if="data" class="mx-auto w-full max-w-3xl px-4 py-6">
-    <AboutBlogHeader :frontmatter="data.frontmatter" />
-    <article class="kun-prose" v-html="data.html" />
-    <AboutNavigation :prev="data.prev" :next="data.next" />
+  <div
+    v-if="detail"
+    class="grid w-full gap-6 px-4 py-6 lg:grid-cols-[16rem_minmax(0,1fr)_16rem]"
+  >
+    <aside
+      class="hidden lg:sticky lg:top-20 lg:block lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+    >
+      <AboutSidebar :tree="tree" :active-slug="slugParam" />
+    </aside>
+
+    <article class="min-w-0">
+      <AboutBlogHeader :frontmatter="detail.frontmatter" />
+      <div class="kun-prose mt-6" v-html="html" />
+      <AboutNavigation :prev="detail.prev" :next="detail.next" />
+    </article>
+
+    <aside
+      class="hidden lg:sticky lg:top-20 lg:block lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+    >
+      <AboutTableOfContents :items="toc" />
+    </aside>
   </div>
 </template>
 
@@ -44,6 +108,7 @@ useKunSeoMeta({
   margin-top: 1.5em;
   margin-bottom: 0.6em;
   font-weight: 700;
+  scroll-margin-top: 6rem;
 }
 .kun-prose h1 {
   font-size: 1.875rem;
@@ -60,6 +125,11 @@ useKunSeoMeta({
 .kun-prose a {
   color: var(--color-primary);
   text-decoration: underline;
+}
+.kun-prose .kun-mention {
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: none;
 }
 .kun-prose ul,
 .kun-prose ol {

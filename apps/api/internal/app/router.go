@@ -188,4 +188,8 @@ func (a *App) RegisterRoutes() {
 	// External APIs
 	api.Get("/hikari", a.CommonHandler.GetHikari)
 	api.Get("/moyu/patch/has-patch", a.CommonHandler.GetMoyuHasPatch)
+
+	// About / docs (static .mdx posts).
+	api.Get("/about/posts", a.AboutHandler.ListPosts)
+	api.Get("/about/post", a.AboutHandler.GetPost)
 }

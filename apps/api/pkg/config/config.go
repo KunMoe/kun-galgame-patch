@@ -11,6 +11,7 @@ type Config struct {
 	Mail        MailConfig
 	GalgameWiki GalgameWikiConfig
 	CORS        CORSConfig
+	About       AboutConfig
 }
 
 type ServerConfig struct {
@@ -65,6 +66,13 @@ type CORSConfig struct {
 	AllowOrigins string
 }
 
+// AboutConfig points at the directory holding the static .mdx posts that drive
+// the /about pages. In dev this is typically ../web/posts; in prod the build
+// pipeline copies the same tree next to the binary.
+type AboutConfig struct {
+	PostsDir string
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -109,6 +117,9 @@ func Load() *Config {
 		},
 		CORS: CORSConfig{
 			AllowOrigins: getEnv("CORS_ALLOW_ORIGINS", "http://127.0.0.1:5213"),
+		},
+		About: AboutConfig{
+			PostsDir: getEnv("KUN_POSTS_DIR", "../web/posts"),
 		},
 	}
 }

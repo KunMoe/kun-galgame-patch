@@ -11,9 +11,11 @@ package markdown
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -21,8 +23,63 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
+
+// TOCItem is a single heading entry surfaced to the frontend table of contents.
+type TOCItem struct {
+	ID    string `json:"id"`
+	Text  string `json:"text"`
+	Level int    `json:"level"`
+}
+
+// cjkIDs is goldmark's parser.IDs implementation but rewritten to preserve CJK
+// (and any other non-ASCII letter) characters in heading IDs. The default
+// implementation in goldmark/parser/parser.go silently skips multi-byte runes,
+// so a heading like "## 关于我们" ends up with an empty slug and falls back to
+// "heading-1" — making the URL fragments useless and unstable across the
+// document.
+type cjkIDs struct {
+	values map[string]bool
+}
+
+func newCJKIDs() parser.IDs {
+	return &cjkIDs{values: map[string]bool{}}
+}
+
+func (s *cjkIDs) Generate(value []byte, kind ast.NodeKind) []byte {
+	raw := strings.ToLower(strings.TrimSpace(string(value)))
+	var b strings.Builder
+	b.Grow(len(raw))
+	for _, r := range raw {
+		switch {
+		case unicode.IsSpace(r):
+			b.WriteByte('-')
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		}
+	}
+	id := strings.Trim(b.String(), "-")
+	if id == "" {
+		id = "section"
+	}
+	if !s.values[id] {
+		s.values[id] = true
+		return []byte(id)
+	}
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", id, i)
+		if !s.values[candidate] {
+			s.values[candidate] = true
+			return []byte(candidate)
+		}
+	}
+}
+
+func (s *cjkIDs) Put(value []byte) { s.values[string(value)] = true }
 
 // mentionURLRegex matches the destination of a mention link: `/user/<digits>`
 // optionally followed by a sub-route. The captured uid is surfaced via a
@@ -143,7 +200,10 @@ func Render(src string) (string, error) {
 		return "", nil
 	}
 	var buf bytes.Buffer
-	if err := md.Convert([]byte(src), &buf); err != nil {
+	// Each call gets its own parser context so heading IDs do not leak across
+	// documents (the default ids registry is shared otherwise).
+	ctx := parser.NewContext(parser.WithIDs(newCJKIDs()))
+	if err := md.Convert([]byte(src), &buf, parser.WithContext(ctx)); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
@@ -156,6 +216,59 @@ func MustRender(src string) string {
 		return src
 	}
 	return out
+}
+
+// RenderWithTOC renders markdown to HTML and additionally returns a flat list
+// of headings (h1-h3) suitable for a "本页索引" sidebar. IDs come from the same
+// CJK-friendly slugifier used by the renderer, so anchor links match heading
+// `id` attributes exactly.
+func RenderWithTOC(src string) (string, []TOCItem, error) {
+	if src == "" {
+		return "", nil, nil
+	}
+
+	source := []byte(src)
+	ids := newCJKIDs()
+	ctx := parser.NewContext(parser.WithIDs(ids))
+
+	// Parse first so we can walk the AST for headings while sharing the same
+	// ids registry — this guarantees the TOC ids match what the renderer
+	// emits as `id="..."` on each <h*>.
+	doc := md.Parser().Parse(text.NewReader(source), parser.WithContext(ctx))
+
+	toc := make([]TOCItem, 0, 16)
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		h, ok := n.(*ast.Heading)
+		if !ok || h.Level > 3 {
+			return ast.WalkContinue, nil
+		}
+		idAttr, _ := h.AttributeString("id")
+		var id string
+		switch v := idAttr.(type) {
+		case []byte:
+			id = string(v)
+		case string:
+			id = v
+		}
+		if id == "" {
+			return ast.WalkContinue, nil
+		}
+		toc = append(toc, TOCItem{
+			ID:    id,
+			Text:  string(h.Text(source)),
+			Level: h.Level,
+		})
+		return ast.WalkContinue, nil
+	})
+
+	var buf bytes.Buffer
+	if err := md.Renderer().Render(&buf, source, doc); err != nil {
+		return "", nil, err
+	}
+	return buf.String(), toc, nil
 }
 
 // ExtractMentionedUIDs scans markdown source for [@text](/user/<id>/...)

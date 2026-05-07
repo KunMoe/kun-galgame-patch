@@ -84,3 +84,71 @@ func TestRenderGFMStrikethrough(t *testing.T) {
 		t.Errorf("expected <del>done</del>, got %s", out)
 	}
 }
+
+func TestRenderWithTOCChineseHeadings(t *testing.T) {
+	src := `# 关于我们
+
+## 简介
+
+### 鲲是什么
+
+## 联系方式
+`
+	html, toc, err := markdown.RenderWithTOC(src)
+	if err != nil {
+		t.Fatalf("RenderWithTOC failed: %v", err)
+	}
+
+	if len(toc) != 4 {
+		t.Fatalf("expected 4 TOC items, got %d: %#v", len(toc), toc)
+	}
+	want := []struct {
+		id    string
+		text  string
+		level int
+	}{
+		{"关于我们", "关于我们", 1},
+		{"简介", "简介", 2},
+		{"鲲是什么", "鲲是什么", 3},
+		{"联系方式", "联系方式", 2},
+	}
+	for i, w := range want {
+		if toc[i].ID != w.id || toc[i].Text != w.text || toc[i].Level != w.level {
+			t.Errorf("toc[%d] = %+v, want %+v", i, toc[i], w)
+		}
+	}
+
+	// HTML should carry the same id values so anchor links work.
+	for _, item := range toc {
+		needle := `id="` + item.ID + `"`
+		if !strings.Contains(html, needle) {
+			t.Errorf("rendered HTML missing %s", needle)
+		}
+	}
+}
+
+func TestRenderWithTOCDuplicateHeadings(t *testing.T) {
+	src := "## 资源\n\n## 资源\n\n## 资源\n"
+	_, toc, err := markdown.RenderWithTOC(src)
+	if err != nil {
+		t.Fatalf("RenderWithTOC failed: %v", err)
+	}
+	got := []string{toc[0].ID, toc[1].ID, toc[2].ID}
+	want := []string{"资源", "资源-1", "资源-2"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("dedup id[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRenderWithTOCSkipsHeadingsBeyondLevel3(t *testing.T) {
+	src := "# A\n\n## B\n\n### C\n\n#### D\n"
+	_, toc, err := markdown.RenderWithTOC(src)
+	if err != nil {
+		t.Fatalf("RenderWithTOC failed: %v", err)
+	}
+	if len(toc) != 3 {
+		t.Fatalf("expected only h1-h3 (3 items), got %d", len(toc))
+	}
+}
