@@ -1,15 +1,14 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"kun-galgame-patch-api/pkg/config"
@@ -197,13 +196,18 @@ func refreshOAuthToken(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID
 	}
 	defer rdb.Del(ctx, lockKey)
 
-	body := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_id=%s&client_secret=%s",
-		session.OAuthRefreshToken, oauthCfg.ClientID, oauthCfg.ClientSecret)
-
+	// KUN OAuth Server takes JSON, not form-urlencoded — see
+	// docs/oauth/oauth-integration-guide.md.
+	payload, _ := json.Marshal(map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": session.OAuthRefreshToken,
+		"client_id":     oauthCfg.ClientID,
+		"client_secret": oauthCfg.ClientSecret,
+	})
 	resp, err := http.Post(
 		oauthCfg.ServerURL+"/oauth/token",
-		"application/x-www-form-urlencoded",
-		strings.NewReader(body),
+		"application/json",
+		bytes.NewReader(payload),
 	)
 	if err != nil {
 		slog.Error("OAuth token refresh failed", "error", err)
@@ -211,24 +215,33 @@ func refreshOAuthToken(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID
 	}
 	defer resp.Body.Close()
 
+	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		respBody, _ := io.ReadAll(resp.Body)
 		slog.Error("OAuth token refresh failed", "status", resp.StatusCode, "body", string(respBody))
 		return
 	}
 
-	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			AccessToken  string `json:"access_token"`
+			RefreshToken string `json:"refresh_token"`
+			ExpiresIn    int64  `json:"expires_in"`
+		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := json.Unmarshal(respBody, &env); err != nil {
+		slog.Error("OAuth token refresh decode failed", "error", err, "body", string(respBody))
+		return
+	}
+	if env.Code != 0 {
+		slog.Error("OAuth token refresh business error", "code", env.Code, "message", env.Message)
 		return
 	}
 
-	session.OAuthAccessToken = tokenResp.AccessToken
-	session.OAuthRefreshToken = tokenResp.RefreshToken
-	session.OAuthExpiresAt = time.Now().Unix() + tokenResp.ExpiresIn
+	session.OAuthAccessToken = env.Data.AccessToken
+	session.OAuthRefreshToken = env.Data.RefreshToken
+	session.OAuthExpiresAt = time.Now().Unix() + env.Data.ExpiresIn
 
 	data, _ := json.Marshal(session)
 	rdb.Set(ctx, SessionPrefix+sessionID, data, SessionTTL)

@@ -69,3 +69,14 @@ func (r *AuthRepository) FindOAuthAccountBySub(sub string) (*model.OAuthAccount,
 func (r *AuthRepository) CreateOAuthAccount(account *model.OAuthAccount) error {
 	return r.db.Create(account).Error
 }
+
+// FindUserByName looks up a user by exact (case-insensitive) name. Used by the
+// OAuth provisioning path to detect display-name collisions before insert.
+func (r *AuthRepository) FindUserByName(name string) (*model.User, error) {
+	var user model.User
+	err := r.db.Where("LOWER(name) = LOWER(?)", name).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}

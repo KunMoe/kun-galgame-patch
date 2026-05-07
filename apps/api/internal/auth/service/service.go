@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"encoding/hex"
@@ -50,37 +51,29 @@ type OAuthUserInfo struct {
 	Picture string `json:"picture"`
 }
 
-// ExchangeCode exchanges an authorization code for a token
+// ExchangeCode exchanges an authorization code for a token.
+//
+// The KUN OAuth Server takes a JSON body (not the RFC-6749 form-urlencoded
+// shape) and wraps the response in `{code, message, data}` — see
+// docs/oauth/oauth-integration-guide.md.
 func (s *AuthService) ExchangeCode(code, codeVerifier string) (*OAuthTokenResponse, error) {
-	body := fmt.Sprintf(
-		"grant_type=authorization_code&code=%s&code_verifier=%s&client_id=%s&client_secret=%s&redirect_uri=%s",
-		code, codeVerifier, s.oauthCfg.ClientID, s.oauthCfg.ClientSecret, s.oauthCfg.RedirectURI,
-	)
-
-	resp, err := http.Post(
-		s.oauthCfg.ServerURL+"/oauth/token",
-		"application/x-www-form-urlencoded",
-		strings.NewReader(body),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("OAuth token request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("OAuth token request failed (%d): %s", resp.StatusCode, string(respBody))
-	}
-
 	var tokenResp OAuthTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, fmt.Errorf("failed to decode token response: %w", err)
+	err := s.oauthPostJSON("/oauth/token", map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"code_verifier": codeVerifier,
+		"client_id":     s.oauthCfg.ClientID,
+		"client_secret": s.oauthCfg.ClientSecret,
+		"redirect_uri":  s.oauthCfg.RedirectURI,
+	}, &tokenResp)
+	if err != nil {
+		return nil, err
 	}
-
 	return &tokenResp, nil
 }
 
-// GetUserInfo retrieves OAuth user info using an access token
+// GetUserInfo retrieves OAuth user info using an access token. The response is
+// wrapped in `{code, message, data: {sub, name, ...}}`.
 func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 	req, err := http.NewRequest("GET", s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
 	if err != nil {
@@ -99,12 +92,69 @@ func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 		return nil, fmt.Errorf("OAuth userinfo request failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 
-	var userInfo OAuthUserInfo
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+	var env struct {
+		Code    int           `json:"code"`
+		Message string        `json:"message"`
+		Data    OAuthUserInfo `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		return nil, fmt.Errorf("failed to decode userinfo: %w", err)
 	}
+	if env.Code != 0 {
+		return nil, fmt.Errorf("OAuth userinfo error code=%d: %s", env.Code, env.Message)
+	}
+	out := env.Data
+	return &out, nil
+}
 
-	return &userInfo, nil
+// oauthPostJSON POSTs a JSON body to the OAuth Server and decodes the
+// `{code, message, data}` envelope into `out`. A non-zero envelope code is
+// treated as an error so callers don't have to.
+func (s *AuthService) oauthPostJSON(path string, body any, out any) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("encode oauth request: %w", err)
+	}
+	resp, err := http.Post(
+		s.oauthCfg.ServerURL+path,
+		"application/json",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return fmt.Errorf("OAuth %s request failed: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("OAuth %s failed (%d): %s", path, resp.StatusCode, truncate(string(respBody), 500))
+	}
+
+	var env struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &env); err != nil {
+		return fmt.Errorf("decode oauth envelope: %w (body=%s)", err, truncate(string(respBody), 200))
+	}
+	if env.Code != 0 {
+		return fmt.Errorf("OAuth %s error code=%d: %s", path, env.Code, env.Message)
+	}
+	if out == nil || len(env.Data) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(env.Data, out); err != nil {
+		return fmt.Errorf("decode oauth data: %w", err)
+	}
+	return nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // FindOrCreateUser finds or creates a local user (core OAuth login logic)
@@ -171,21 +221,13 @@ func (s *AuthService) FindOrCreateUser(oauthUser *OAuthUserInfo) (*model.User, e
 	return newUser, nil
 }
 
-// RevokeOAuthToken revokes an OAuth token
-func (s *AuthService) RevokeOAuthToken(accessToken string) {
-	body := fmt.Sprintf("token=%s&client_id=%s&client_secret=%s",
-		accessToken, s.oauthCfg.ClientID, s.oauthCfg.ClientSecret)
-
-	resp, err := http.Post(
-		s.oauthCfg.ServerURL+"/oauth/revoke",
-		"application/x-www-form-urlencoded",
-		strings.NewReader(body),
-	)
-	if err != nil {
+// RevokeOAuthToken revokes an OAuth token. Fire-and-forget — RFC 7009 says
+// the endpoint always returns 200 regardless of whether the token was valid,
+// so we only log transport-level failures.
+func (s *AuthService) RevokeOAuthToken(token string) {
+	if err := s.oauthPostJSON("/oauth/revoke", map[string]string{"token": token}, nil); err != nil {
 		slog.Error("OAuth revoke failed", "error", err)
-		return
 	}
-	resp.Body.Close()
 }
 
 // SendVerificationCode sends an email verification code

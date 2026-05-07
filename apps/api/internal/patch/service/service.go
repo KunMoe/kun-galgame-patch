@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -90,11 +91,54 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 }
 
 func (s *PatchService) GetPatch(id int) (*model.Patch, error) {
-	return s.repo.GetPatchByID(id)
+	p, err := s.repo.GetPatchByID(id)
+	if err != nil {
+		return nil, err
+	}
+	s.selfHealGalgameID(p)
+	return p, nil
 }
 
 func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
-	return s.repo.GetPatchDetail(id)
+	p, err := s.repo.GetPatchDetail(id)
+	if err != nil {
+		return nil, err
+	}
+	s.selfHealGalgameID(p)
+	return p, nil
+}
+
+// selfHealGalgameID looks up the Wiki by vndb_id when the local row is missing
+// galgame_id. Hit means the patch is not really an orphan, just a stale row
+// from migration / pre-Wiki publish; we backfill galgame_id in place so the
+// next read is fast and the enricher can find the game.
+//
+// Failures (network blip, Wiki really doesn't have this vndb_id) fall through
+// silently — the existing "missing name" rendering still works as the
+// last-resort behavior for genuine orphans.
+func (s *PatchService) selfHealGalgameID(p *model.Patch) {
+	if p == nil || p.GalgameID > 0 || p.VndbID == "" {
+		return
+	}
+	// Skip placeholder vndb_ids ("pending-N") created when a creator left it blank.
+	if strings.HasPrefix(p.VndbID, "pending-") {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	exists, gid, err := s.wiki.CheckGalgameByVndbID(ctx, p.VndbID)
+	if err != nil || !exists || gid <= 0 {
+		return
+	}
+
+	if err := s.db.Model(&model.Patch{}).Where("id = ?", p.ID).
+		UpdateColumn("galgame_id", gid).Error; err != nil {
+		// Log but do not fail the read — backfill is best-effort.
+		return
+	}
+	p.GalgameID = gid
 }
 
 // UpdatePatch: after D12, only "rebind vndb_id" is allowed (a rare case, e.g. a mislinked entry).
