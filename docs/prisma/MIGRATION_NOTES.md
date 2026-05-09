@@ -10,7 +10,7 @@ The KUN ecosystem is migrating its backend to Go (Fiber + GORM). Two issues with
 
 2. **`_count` subqueries** — Prisma's `include: { _count: { select: { like: true } } }` is a Prisma-specific feature with no GORM equivalent. Every list query would need explicit `JOIN + COUNT` subqueries, which is verbose and slow. Denormalized count fields (`like_count`, `favorite_count`, etc.) allow simple `SELECT` queries and are incremented/decremented atomically when the corresponding action occurs.
 
-3. **OAuth integration** — The KUN OAuth system provides centralized authentication. Each site needs an `oauth_account` table to link the OAuth user UUID (`sub` claim) with the local `user.id`.
+3. **OAuth integration** — The KUN OAuth system provides centralized authentication. **No intermediate `oauth_account` table is needed** in this architecture (see "Why no `oauth_account` table" below) — the OAuth callback uses `userinfo.id` directly to look up / insert the local user.
 
 ## Changes by Category
 
@@ -100,36 +100,58 @@ await prisma.$transaction([
 ])
 ```
 
-### 3. OAuth Integration (2 additions)
+### 3. OAuth Integration
 
-**New model: `oauth_account`**
+> **REVISED 2026-05**: An earlier version of this document recommended adding an `oauth_account` table to map the OAuth UUID (`sub`) to the local `user.id`. **That recommendation has been retracted** — see "Why no `oauth_account` table" below.
 
-```prisma
-model oauth_account {
-  id       Int    @id @default(autoincrement())
-  user_id  Int
-  provider String @default("kun-oauth") @db.VarChar(50)
-  sub      String @unique @db.VarChar(255)  // OAuth user UUID
-  user     user   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  created  DateTime @default(now())
-  updated  DateTime @updatedAt
-  @@index([user_id])
+**The right integration model**: directly use `userinfo.id` (integer) returned by `/oauth/userinfo` to query/insert the local `user` table. No intermediate mapping table.
+
+```typescript
+// On OAuth callback:
+const tokenResp = await exchangeCodeForToken(code, codeVerifier)
+const info = await fetchUserinfo(tokenResp.access_token)
+// info = { id: 12345, sub: "uuid-...", name: "kun", email: "...", roles: ["admin"] }
+
+let user = await prisma.user.findUnique({ where: { id: info.id } })
+if (!user) {
+  user = await prisma.user.create({
+    data: {
+      id: info.id,                  // explicit id from OAuth, not autoincrement
+      // site-specific fields only — no name/avatar/bio/email here anymore
+      daily_check_in: 0,
+      moemoepoint: 0,
+      // ...
+    },
+  })
 }
+
+await createSession(user, tokenResp)
 ```
 
-**New relation on `user`:** `oauth_account oauth_account[]`
-
-This is identical to the kungal implementation. The `sub` field stores the UUID from the OAuth server's `/oauth/userinfo` response. When a user logs in via OAuth for the first time, the backend matches by email to link an existing account, or creates a new user.
-
-**OAuth flow overview** (see `docs/integration/oauth-integration-guide.md` for full details):
+**OAuth flow overview** (see `docs/integration/oauth/oauth-integration-guide.md` for full details):
 
 1. User clicks "Login with KUN Account" on MoYu
 2. Browser redirects to `oauth.kungal.com/api/v1/oauth/authorize`
 3. User authenticates on OAuth server
 4. Redirect back to MoYu with authorization code
 5. MoYu server exchanges code for access_token
-6. MoYu server calls `/oauth/userinfo` to get user UUID
-7. MoYu server finds or creates local user via `oauth_account.sub`
+6. MoYu server calls `/oauth/userinfo` to get `{ id, sub, name, email, roles, ... }`
+7. MoYu server finds or creates local user **by `id`** (no `sub` indirection)
+
+### Why no `oauth_account` table
+
+Standard textbook OAuth integration uses an `oauth_account(provider, sub, user_id)` join table. In this project that table is **redundant** — every problem it solves is moot here:
+
+| What `oauth_account` solves in general | Why it doesn't apply here |
+|----------------------------------------|---------------------------|
+| Bind one local user to multiple providers (Google + GitHub + ...) | Only one provider (KUN OAuth); no plans for more |
+| Decouple local `user.id` from OAuth's id | We **deliberately aligned them** via `migrate-users` step 7 |
+| Unlink a provider without deleting the local user | Single provider — "unlinking" = account deletion |
+| Survive OAuth-side user disappearance | OAuth is the identity authority; local follows |
+
+The `sub → user_id` lookup against `oauth_account` would, in this architecture, **always** return `user_id == userinfo.id` because that equality is the migration's invariant. So the indirection is dead weight. Drop the table; query `user` by `id` directly.
+
+> If you previously created the `oauth_account` table, drop it. The `migrate-users` script in `kun-oauth-admin/apps/api/cmd/migrate-users/` handles the case where the table doesn't exist (it filters tables via `pg_tables` before remapping FK columns).
 
 ## Migration Checklist
 
@@ -138,4 +160,6 @@ This is identical to the kungal implementation. The `sub` field stores the UUID 
 3. Run the backfill SQL for count fields
 4. Update all `create`/`delete` operations on like/favorite/follow/comment/resource to also increment/decrement counts
 5. Update TypeScript types where `string[]` becomes `JsonValue`
-6. Deploy and verify
+6. **If you previously added `oauth_account`, drop it** (see "Why no `oauth_account` table" above)
+7. Update OAuth callback to use `userinfo.id` directly instead of `sub`-based indirection
+8. Deploy and verify
