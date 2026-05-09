@@ -466,3 +466,71 @@ export default defineEventHandler(async (event) => {
 4. **存储 refresh_token** 时使用 httpOnly cookie 或加密存储
 5. **令牌轮换**：每次刷新后用新的 refresh_token 替换旧的
 6. **CORS**：生产环境已配置 `kungal.com` 和 `moyu.moe`，其他域名需要在 OAuth Server 管理后台添加
+
+---
+
+## 10. 后端跨服务用户回拉（kungal / moyu / galgame_wiki）
+
+OAuth 是单一用户身份源（single source of truth）。kungal / moyu / galgame_wiki 等业务库
+**不再缓存** `users.name` / `users.avatar` 等字段，只保留 `user_id` 外键。
+渲染列表时按需从 OAuth 批量拉取。
+
+### 10.1 端点
+
+`GET /users/batch?ids=1,2,3` — 详见 [api-reference.md#跨服务批量查询](./api-reference.md#跨服务批量查询)
+
+- 鉴权：OAuth Client Basic Auth（不是终端用户 JWT）
+- 单次最多 100 个 ID
+- 响应不含 `email`、`moemoepoint` 等隐私字段
+- 通过 migrate-users 后，kungal / moyu 中的 `*_user_id` 已与 OAuth `users.id` 对齐
+
+### 10.2 Go SDK：`pkg/userclient`
+
+apps/api 仓库提供了 `pkg/userclient`，封装了：
+
+- TTL 缓存（默认 10 分钟）+ 负缓存（默认 1 分钟，避免反复查不存在的 ID）
+- `singleflight` 合并并发的相同请求
+- 自动分片（>100 个 ID 自动拆成多次请求）
+- 空和重复 ID 的去重
+
+**使用示例**：
+
+```go
+import "api/pkg/userclient"
+
+// 服务启动时初始化一次（建议放进 DI 容器）
+cli := userclient.New(userclient.Config{
+    BaseURL:      "https://oauth.kungal.com/api/v1",
+    ClientID:     "kungal-backend",
+    ClientSecret: os.Getenv("OAUTH_CLIENT_SECRET"),
+    CacheTTL:     10 * time.Minute,
+})
+
+// 批量取
+users, err := cli.Users(ctx, []uint{1, 2, 3, 4})
+// users[1].Name, users[1].Avatar...
+
+// 单个（返回 nil 表示不存在）
+u, err := cli.User(ctx, 1)
+
+// 用户改名/换头像后，主动失效缓存
+cli.Invalidate(uid)
+```
+
+### 10.3 渲染管线建议
+
+1. **DB 查询**：业务表只 `SELECT ..., user_id FROM ...`，不 JOIN 用户表
+2. **收集 ID**：把列表里所有 `user_id` 收成 `[]uint`（去重）
+3. **批量回拉**：`cli.Users(ctx, ids)` 一次调用拿齐
+4. **拼装**：在 service / handler 层把 user brief 注入到响应 DTO
+
+**N+1 防护**：永远批量拉。不要在循环里 `cli.User(ctx, item.UserID)` —— 即使有缓存命中，
+miss 时仍然是 N 次 HTTP 请求。
+
+### 10.4 失效策略
+
+OAuth 端用户改名 / 换头像 / 被封禁时，下游服务的缓存最多滞后 `CacheTTL` 时间。
+对一致性要求严格的场景：
+
+- 短 TTL（30s–2min），靠时间到期被动刷新
+- 或在 OAuth 侧广播 `user.updated` 事件，下游订阅后调 `cli.Invalidate(uid)`
