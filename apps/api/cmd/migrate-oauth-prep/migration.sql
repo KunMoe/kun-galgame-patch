@@ -6,24 +6,11 @@
 --   3. Add OAuth account table
 --   4. Add user follower/following count fields
 --
--- ============================================================
--- ⚠️  This file is kept here for historical reference only.
+-- IMPORTANT: Run this SQL manually BEFORE running `prisma db push`.
+-- After this script completes, Prisma schema and database will be in sync.
 --
--- The canonical entry point for this prep step has moved to a Go cmd:
---
---     cd apps/api
---     go run ./cmd/migrate-oauth-prep                # interactive
---     go run ./cmd/migrate-oauth-prep -yes           # non-interactive (CI)
---     go run ./cmd/migrate-oauth-prep -dry-run       # print SQL only
---
--- The cmd embeds an identical copy of this SQL via go:embed and tracks
--- a one-shot marker (`oauth_prep_20260409`) in the _migrations table so
--- it cannot be applied twice by accident.
---
--- Edit the embedded copy at:
---     apps/api/cmd/migrate-oauth-prep/migration.sql
--- not this file.
--- ============================================================
+-- Usage:
+--   psql -h <host> -U <user> -d <dbname> -f migration.sql
 --
 -- Always backup the database before running!
 
