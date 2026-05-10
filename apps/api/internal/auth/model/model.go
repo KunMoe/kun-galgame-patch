@@ -2,9 +2,18 @@ package model
 
 import "time"
 
-// User is the main user table
+// User is the local user table.
+//
+// Status (Phase 1-4 of OAuth migration): the OAuth-managed columns are still
+// present so existing Preload("User") read paths in patch/admin/common/chat
+// continue to work. Phase 5-6 slims this struct down to site-local fields
+// only and migration 005 drops the OAuth-managed columns from the schema.
+//
+// IMPORTANT: ID is no longer autoIncrement. New users are inserted via the
+// OAuth callback with the integer id returned by /oauth/userinfo (which is
+// aligned with kungal/moyu by the migrate-users script).
 type User struct {
-	ID              int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	ID              int       `gorm:"primaryKey" json:"id"`
 	Name            string    `gorm:"uniqueIndex;type:varchar(17);not null" json:"name"`
 	Email           string    `gorm:"uniqueIndex;type:varchar(1007);not null" json:"email"`
 	Password        string    `gorm:"type:varchar(1007);not null" json:"-"`
@@ -26,15 +35,3 @@ type User struct {
 }
 
 func (User) TableName() string { return "user" }
-
-// OAuthAccount represents an OAuth association
-type OAuthAccount struct {
-	ID       int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID   int       `gorm:"index;not null" json:"user_id"`
-	Provider string    `gorm:"type:varchar(50);default:'kun-oauth'" json:"provider"`
-	Sub      string    `gorm:"uniqueIndex;type:varchar(255);not null" json:"sub"`
-	Created  time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated  time.Time `gorm:"autoUpdateTime" json:"updated"`
-}
-
-func (OAuthAccount) TableName() string { return "oauth_account" }

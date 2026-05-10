@@ -44,10 +44,10 @@ func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
 	return response.OK(c, rooms)
 }
 
-// CreateRoom POST /api/chat/room   (role >= 4)
+// CreateRoom POST /api/chat/room   (admin only)
 func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	if user.Role < 4 {
+	if !middleware.HasRole(c, "admin") {
 		return response.Error(c, errors.ErrForbidden())
 	}
 	var req dto.CreateRoomRequest
@@ -154,7 +154,8 @@ func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	if err := h.svc.DeleteMessage(user.UID, user.Role, id); err != nil {
+	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	if err := h.svc.DeleteMessage(user.UID, isPrivileged, id); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "消息已删除")

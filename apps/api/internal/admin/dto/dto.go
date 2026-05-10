@@ -7,15 +7,6 @@ type AdminPaginationRequest struct {
 	Search string `query:"search" validate:"max=300"`
 }
 
-// AdminUpdateUserRequest is the request for updating a user (admin)
-type AdminUpdateUserRequest struct {
-	Name            string `json:"name" validate:"required,min=1,max=17"`
-	Role            int    `json:"role" validate:"required,min=1,max=3"`
-	Status          int    `json:"status" validate:"min=0,max=2"`
-	DailyImageCount int    `json:"daily_image_count" validate:"min=0,max=50"`
-	Bio             string `json:"bio" validate:"max=107"`
-}
-
 // AdminUpdateCommentRequest is the request for updating a comment (admin)
 type AdminUpdateCommentRequest struct {
 	Content string `json:"content" validate:"required,min=1,max=10007"`
@@ -24,16 +15,6 @@ type AdminUpdateCommentRequest struct {
 // AdminUpdateResourceRequest is the request for updating a resource (admin)
 type AdminUpdateResourceRequest struct {
 	Note string `json:"note" validate:"max=10007"`
-}
-
-// ApproveCreatorRequest is the request for approving a creator application
-type ApproveCreatorRequest struct {
-	UID int `json:"uid" validate:"required,min=1"`
-}
-
-// DeclineCreatorRequest is the request for declining a creator application
-type DeclineCreatorRequest struct {
-	Reason string `json:"reason" validate:"required,min=1,max=1007"`
 }
 
 // AdminSettingBoolRequest is the request for toggling a boolean admin setting

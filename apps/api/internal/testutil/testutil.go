@@ -5,6 +5,7 @@ package testutil
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,22 +53,33 @@ func NewTestApp(t *testing.T) *TestApp {
 	return &TestApp{App: app, RDB: rdb, MR: mr}
 }
 
-// CreateTestSession creates a session in Redis and returns the session cookie value
-func (ta *TestApp) CreateTestSession(t *testing.T, uid int, role int) string {
+// CreateTestSession creates a Redis session and returns the cookie value.
+// roles is the OAuth roles set; pass e.g. "admin" / "moderator" to grant
+// privileged access. The fake access_token is a JWT-shaped string with the
+// given roles in its claims, so middleware.GetRoles works in tests too.
+func (ta *TestApp) CreateTestSession(t *testing.T, uid int, roles ...string) string {
 	t.Helper()
 	sessionID := fmt.Sprintf("test-session-%d-%d", uid, time.Now().UnixNano())
 	session := middleware.SessionData{
 		UserInfo: middleware.UserInfo{
-			UID:   uid,
-			Sub:   fmt.Sprintf("test-sub-%d", uid),
-			Name:  fmt.Sprintf("user%d", uid),
-			Email: fmt.Sprintf("user%d@test.com", uid),
-			Role:  role,
+			UID: uid,
+			Sub: fmt.Sprintf("test-sub-%d", uid),
 		},
+		OAuthAccessToken: fakeJWTWithRoles(roles),
 	}
 	data, _ := json.Marshal(session)
 	ta.RDB.Set(context.Background(), middleware.SessionPrefix+sessionID, data, middleware.SessionTTL)
 	return sessionID
+}
+
+// fakeJWTWithRoles builds a header.payload.sig JWT-shaped string whose
+// payload encodes {"roles": [...]}. Signature is dummy; middleware decodes
+// without verifying.
+func fakeJWTWithRoles(roles []string) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	payloadJSON, _ := json.Marshal(map[string]any{"roles": roles})
+	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return header + "." + payload + ".sig"
 }
 
 // Request sends an HTTP request to the Fiber app and returns the response

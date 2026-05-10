@@ -1,22 +1,7 @@
 package dto
 
-type UpdateUsernameRequest struct {
-	Username string `json:"username" validate:"required,min=1,max=17"`
-}
-
-type UpdateBioRequest struct {
-	Bio string `json:"bio" validate:"required,min=1,max=107"`
-}
-
-type UpdatePasswordRequest struct {
-	OldPassword string `json:"old_password" validate:"required"`
-	NewPassword string `json:"new_password" validate:"required,min=6,max=1007"`
-}
-
-type UpdateEmailRequest struct {
-	Email string `json:"email" validate:"required,email"`
-	Code  string `json:"code" validate:"required,len=6"`
-}
+// Username / bio / password / email / avatar mutations were removed from
+// this site -- they are owned by OAuth (PATCH /auth/me on the OAuth server).
 
 type GetUserProfileRequest struct {
 	Page  int `query:"page" validate:"min=1"`

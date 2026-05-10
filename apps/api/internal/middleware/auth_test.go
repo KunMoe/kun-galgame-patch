@@ -43,7 +43,7 @@ func TestAuth_ValidSession(t *testing.T) {
 		return c.JSON(response.Response{Code: 0, Message: "OK", Data: user.UID})
 	})
 
-	sessionID := ta.CreateTestSession(t, 1, 1)
+	sessionID := ta.CreateTestSession(t, 1, "user")
 	resp := ta.Request(t, http.MethodGet, "/protected", "", sessionID)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -59,7 +59,6 @@ func TestAuth_ExpiredSession(t *testing.T) {
 		return c.JSON(response.Response{Code: 0, Message: "OK"})
 	})
 
-	// Use a session ID that doesn't exist in Redis
 	resp := ta.Request(t, http.MethodGet, "/protected", "", "nonexistent-session")
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -83,7 +82,6 @@ func TestOptionalAuth_NoSession(t *testing.T) {
 
 	r := testutil.ParseResponse(t, resp)
 	assert.Equal(t, 0, r.Code)
-	// Data should be 0 (no user)
 	assert.Equal(t, float64(0), r.Data)
 }
 
@@ -96,7 +94,7 @@ func TestOptionalAuth_ValidSession(t *testing.T) {
 		return c.JSON(response.Response{Code: 0, Data: uid})
 	})
 
-	sessionID := ta.CreateTestSession(t, 42, 2)
+	sessionID := ta.CreateTestSession(t, 42, "user")
 	resp := ta.Request(t, http.MethodGet, "/optional", "", sessionID)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -110,14 +108,13 @@ func TestRequireRole_InsufficientRole(t *testing.T) {
 
 	ta.App.Get("/admin",
 		middleware.Auth(ta.RDB, oauthCfg),
-		middleware.RequireRole(3),
+		middleware.RequireRole("admin"),
 		func(c *fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "admin"})
 		},
 	)
 
-	// User with role 1 (normal user)
-	sessionID := ta.CreateTestSession(t, 1, 1)
+	sessionID := ta.CreateTestSession(t, 1, "user")
 	resp := ta.Request(t, http.MethodGet, "/admin", "", sessionID)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 
@@ -131,13 +128,13 @@ func TestRequireRole_SufficientRole(t *testing.T) {
 
 	ta.App.Get("/admin",
 		middleware.Auth(ta.RDB, oauthCfg),
-		middleware.RequireRole(3),
+		middleware.RequireRole("admin", "moderator"),
 		func(c *fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "admin"})
 		},
 	)
 
-	sessionID := ta.CreateTestSession(t, 1, 3)
+	sessionID := ta.CreateTestSession(t, 1, "moderator")
 	resp := ta.Request(t, http.MethodGet, "/admin", "", sessionID)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -152,7 +149,7 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 
 	ta.App.Post("/login", func(c *fiber.Ctx) error {
 		session := &middleware.SessionData{
-			UserInfo: middleware.UserInfo{UID: 99, Name: "test", Role: 1},
+			UserInfo: middleware.UserInfo{UID: 99, Sub: "test-sub"},
 		}
 		return middleware.CreateSession(c, ta.RDB, session)
 	})
@@ -161,13 +158,11 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 		return middleware.DestroySession(c, ta.RDB)
 	})
 
-	// Login
 	req := httptest.NewRequest(http.MethodPost, "/login", nil)
 	resp, err := ta.App.Test(req, -1)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Extract session cookie
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == middleware.SessionCookieName {
 			capturedCookie = cookie.Value
@@ -175,7 +170,6 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 	}
 	assert.NotEmpty(t, capturedCookie)
 
-	// Verify session exists in Redis
 	val, err := ta.RDB.Get(context.Background(), middleware.SessionPrefix+capturedCookie).Result()
 	require.NoError(t, err)
 	assert.NotEmpty(t, val)
@@ -184,16 +178,14 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 	json.Unmarshal([]byte(val), &session)
 	assert.Equal(t, 99, session.UID)
 
-	// Logout
 	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	logoutReq.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: capturedCookie})
 	logoutResp, err := ta.App.Test(logoutReq, -1)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, logoutResp.StatusCode)
 
-	// Verify session removed from Redis
 	_, err = ta.RDB.Get(context.Background(), middleware.SessionPrefix+capturedCookie).Result()
-	assert.Error(t, err) // should be redis.Nil
+	assert.Error(t, err)
 }
 
 func TestGetUser_Helpers(t *testing.T) {
@@ -204,18 +196,19 @@ func TestGetUser_Helpers(t *testing.T) {
 		user := middleware.GetUser(c)
 		must := middleware.MustGetUser(c)
 		uid := middleware.GetUID(c)
-		role := middleware.GetRole(c)
+		roles := middleware.GetRoles(c)
+		isMod := middleware.HasRole(c, "moderator")
 
 		return c.JSON(map[string]any{
 			"user_nil": user == nil,
 			"must_nil": must == nil,
 			"uid":      uid,
-			"role":     role,
-			"name":     user.Name,
+			"roles":    roles,
+			"is_mod":   isMod,
 		})
 	})
 
-	sessionID := ta.CreateTestSession(t, 7, 2)
+	sessionID := ta.CreateTestSession(t, 7, "moderator")
 	resp := ta.Request(t, http.MethodGet, "/helpers", "", sessionID)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -225,6 +218,5 @@ func TestGetUser_Helpers(t *testing.T) {
 	assert.Equal(t, false, result["user_nil"])
 	assert.Equal(t, false, result["must_nil"])
 	assert.Equal(t, float64(7), result["uid"])
-	assert.Equal(t, float64(2), result["role"])
-	assert.Equal(t, "user7", result["name"])
+	assert.Equal(t, true, result["is_mod"])
 }

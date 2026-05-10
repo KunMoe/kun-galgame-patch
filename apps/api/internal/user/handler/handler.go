@@ -206,65 +206,9 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, patches), total)
 }
 
-// UpdateUsername PUT /api/user/username
-func (h *UserHandler) UpdateUsername(c *fiber.Ctx) error {
-	var req dto.UpdateUsernameRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	user := middleware.MustGetUser(c)
-	if err := h.service.UpdateUsername(user.UID, req.Username); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	return response.OKMessage(c, "Username updated")
-}
-
-// UpdateBio PUT /api/user/bio
-func (h *UserHandler) UpdateBio(c *fiber.Ctx) error {
-	var req dto.UpdateBioRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	user := middleware.MustGetUser(c)
-	if err := h.service.UpdateBio(user.UID, req.Bio); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	return response.OKMessage(c, "Bio updated")
-}
-
-// UpdatePassword PUT /api/user/password
-func (h *UserHandler) UpdatePassword(c *fiber.Ctx) error {
-	var req dto.UpdatePasswordRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	user := middleware.MustGetUser(c)
-	if err := h.service.UpdatePassword(user.UID, req.OldPassword, req.NewPassword); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	return response.OKMessage(c, "Password updated")
-}
-
-// UpdateEmail PUT /api/user/email
-func (h *UserHandler) UpdateEmail(c *fiber.Ctx) error {
-	var req dto.UpdateEmailRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	user := middleware.MustGetUser(c)
-	if err := h.service.UpdateEmail(user.UID, req.Email, req.Code); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	return response.OKMessage(c, "Email updated")
-}
+// Profile mutations (username / bio / password / email / avatar) live on
+// OAuth: the frontend should call OAuth's PATCH /auth/me directly or be
+// redirected to oauth.kungal.com/profile.
 
 // Follow PUT /api/user/:uid/follow
 func (h *UserHandler) Follow(c *fiber.Ctx) error {
@@ -372,20 +316,7 @@ func (h *UserHandler) SearchUsers(c *fiber.Ctx) error {
 	return response.OK(c, users)
 }
 
-// UpdateAvatar PUT /api/user/avatar
-// multipart/form-data: avatar image (<= 10 MB). The server generates two JPEGs at 256 and 100.
-func (h *UserHandler) UpdateAvatar(c *fiber.Ctx) error {
-	user := middleware.MustGetUser(c)
-	raw, err := readImageFormFile(c, "avatar")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-	url, err := h.service.UpdateAvatar(c.Context(), user.UID, raw)
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OK(c, map[string]string{"avatar": url})
-}
+// UpdateAvatar was removed -- avatars are owned by OAuth/image_service.
 
 // UploadImage POST /api/user/image
 // Images used on the user's personal page. Rate-limited by daily_image_count.

@@ -43,14 +43,12 @@ func getIDParam(c *fiber.Ctx, name string) (int, error) {
 //
 // D12 (2026-04-21): the request body is simplified to JSON { "vndb_id": "vXXX" }.
 // The server calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
-// When creator-only is enabled, non-creators are forbidden from creating; non-creators must
-// supply a valid vndb_id (which is now always required anyway).
+//
+// The legacy "creator-only" gate (role >= 2 / role == "creator") was removed
+// when the creator role was retired in the OAuth migration; any logged-in
+// user may now create a patch.
 func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-
-	if h.service.IsCreatorOnlyEnabled() && user.Role < 2 {
-		return response.Error(c, errors.ErrForbidden())
-	}
 
 	var req dto.PatchCreateRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
@@ -130,7 +128,8 @@ func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.UpdatePatch(c.Context(), id, user.UID, user.Role, req.VndbID); err != nil {
+	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	if err := h.service.UpdatePatch(c.Context(), id, user.UID, isPrivileged, req.VndbID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Patch updated")
@@ -144,7 +143,8 @@ func (h *PatchHandler) DeletePatch(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.DeletePatch(id, user.UID, user.Role); err != nil {
+	isAdmin := middleware.HasRole(c, "admin")
+	if err := h.service.DeletePatch(id, user.UID, isAdmin); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -255,7 +255,8 @@ func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.DeleteComment(commentID, user.UID, user.Role); err != nil {
+	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	if err := h.service.DeleteComment(commentID, user.UID, isPrivileged); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -404,7 +405,8 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.ToggleResourceDisable(resourceID, user.UID, user.Role); err != nil {
+	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	if err := h.service.ToggleResourceDisable(resourceID, user.UID, isPrivileged); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 

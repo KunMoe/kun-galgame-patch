@@ -130,63 +130,6 @@ func (h *AdminHandler) DeleteResource(c *fiber.Ctx) error {
 	return response.OKMessage(c, "Resource deleted")
 }
 
-// ===== Users =====
-
-// GetUsers GET /api/admin/user
-func (h *AdminHandler) GetUsers(c *fiber.Ctx) error {
-	var req dto.AdminPaginationRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	users, total, err := h.service.GetUsers(req.Search, req.Page, req.Limit)
-	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-	return response.Paginated(c, users, total)
-}
-
-// UpdateUser PUT /api/admin/user/:uid
-func (h *AdminHandler) UpdateUser(c *fiber.Ctx) error {
-	uid, err := getIDParam(c, "uid")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	var req dto.AdminUpdateUserRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	admin := middleware.MustGetUser(c)
-	fields := map[string]any{
-		"name":              req.Name,
-		"role":              req.Role,
-		"status":            req.Status,
-		"daily_image_count": req.DailyImageCount,
-		"bio":               req.Bio,
-	}
-
-	if err := h.service.UpdateUser(uid, fields, admin.UID, admin.Role); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "User updated")
-}
-
-// DeleteUser DELETE /api/admin/user/:uid
-func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
-	uid, err := getIDParam(c, "uid")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	admin := middleware.MustGetUser(c)
-	if err := h.service.DeleteUser(uid, admin.UID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "User deleted")
-}
-
 // ===== All Patches (admin browse) =====
 
 // GetGalgame GET /api/admin/galgame
@@ -210,60 +153,6 @@ func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
 	return response.Paginated(c, cards, total)
 }
 
-// ===== Creator Applications =====
-
-// GetCreatorApplications GET /api/admin/creator
-func (h *AdminHandler) GetCreatorApplications(c *fiber.Ctx) error {
-	var req dto.AdminPaginationRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	apps, total, err := h.service.GetCreatorApplications(req.Page, req.Limit)
-	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-	return response.Paginated(c, apps, total)
-}
-
-// ApproveCreator PUT /api/admin/creator/:messageId/approve
-func (h *AdminHandler) ApproveCreator(c *fiber.Ctx) error {
-	messageID, err := getIDParam(c, "messageId")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	var req dto.ApproveCreatorRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	admin := middleware.MustGetUser(c)
-	if err := h.service.ApproveCreator(messageID, req.UID, admin.UID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "Creator approved")
-}
-
-// DeclineCreator PUT /api/admin/creator/:messageId/decline
-func (h *AdminHandler) DeclineCreator(c *fiber.Ctx) error {
-	messageID, err := getIDParam(c, "messageId")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	var req dto.DeclineCreatorRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	admin := middleware.MustGetUser(c)
-	if err := h.service.DeclineCreator(messageID, admin.UID, req.Reason); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "Creator declined")
-}
-
 // ===== Settings =====
 
 // GetCommentVerify GET /api/admin/setting/comment-verify
@@ -278,21 +167,6 @@ func (h *AdminHandler) SetCommentVerify(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	h.service.SetSetting("admin:enable_comment_verify", req.Enabled)
-	return response.OKMessage(c, "Setting updated")
-}
-
-// GetCreatorOnly GET /api/admin/setting/creator-only
-func (h *AdminHandler) GetCreatorOnly(c *fiber.Ctx) error {
-	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting("admin:enable_only_creator_create")})
-}
-
-// SetCreatorOnly PUT /api/admin/setting/creator-only
-func (h *AdminHandler) SetCreatorOnly(c *fiber.Ctx) error {
-	var req dto.AdminSettingBoolRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	h.service.SetSetting("admin:enable_only_creator_create", req.Enabled)
 	return response.OKMessage(c, "Setting updated")
 }
 

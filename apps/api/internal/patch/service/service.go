@@ -111,12 +111,12 @@ func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
 // Here we accept rebinding only when the new vndb_id resolves to the same
 // galgame_id we already have (i.e. Wiki updated the metadata for an existing
 // galgame). Anything else is rejected with a clear hint.
-func (s *PatchService) UpdatePatch(ctx context.Context, id, userID, userRole int, vndbID string) error {
+func (s *PatchService) UpdatePatch(ctx context.Context, id, userID int, isPrivileged bool, vndbID string) error {
 	existing, err := s.repo.GetPatchByID(id)
 	if err != nil {
 		return fmt.Errorf("patch not found")
 	}
-	if existing.UserID != userID && userRole < 3 {
+	if existing.UserID != userID && !isPrivileged {
 		return fmt.Errorf("no permission to modify this patch")
 	}
 
@@ -135,12 +135,12 @@ func (s *PatchService) UpdatePatch(ctx context.Context, id, userID, userRole int
 		Update("vndb_id", vndbID).Error
 }
 
-func (s *PatchService) DeletePatch(id, userID, userRole int) error {
+func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 	patch, err := s.repo.GetPatchByID(id)
 	if err != nil {
 		return fmt.Errorf("patch not found")
 	}
-	if patch.UserID != userID && userRole < 4 {
+	if patch.UserID != userID && !isAdmin {
 		return fmt.Errorf("no permission to delete this patch")
 	}
 	return s.repo.DeletePatch(id)
@@ -258,12 +258,12 @@ func (s *PatchService) UpdateComment(commentID, userID int, content string) erro
 	return s.repo.UpdateComment(comment)
 }
 
-func (s *PatchService) DeleteComment(commentID, userID, userRole int) error {
+func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool) error {
 	comment, err := s.repo.GetCommentByID(commentID)
 	if err != nil {
 		return fmt.Errorf("comment not found")
 	}
-	if comment.UserID != userID && userRole < 3 {
+	if comment.UserID != userID && !isPrivileged {
 		return fmt.Errorf("no permission to delete this comment")
 	}
 
@@ -398,12 +398,12 @@ func (s *PatchService) DeleteResource(resourceID, userID int) error {
 	return nil
 }
 
-func (s *PatchService) ToggleResourceDisable(resourceID, userID, userRole int) error {
+func (s *PatchService) ToggleResourceDisable(resourceID, userID int, isPrivileged bool) error {
 	resource, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return fmt.Errorf("resource not found")
 	}
-	if resource.UserID != userID && userRole < 3 {
+	if resource.UserID != userID && !isPrivileged {
 		return fmt.Errorf("no permission to operate on this resource")
 	}
 	return s.repo.ToggleResourceStatus(resourceID)
@@ -564,10 +564,5 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 
 func (s *PatchService) IsCommentVerifyEnabled() bool {
 	val, err := s.rdb.Get(context.Background(), "admin:enable_comment_verify").Result()
-	return err == nil && val == "true"
-}
-
-func (s *PatchService) IsCreatorOnlyEnabled() bool {
-	val, err := s.rdb.Get(context.Background(), "admin:enable_only_creator_create").Result()
 	return err == nil && val == "true"
 }

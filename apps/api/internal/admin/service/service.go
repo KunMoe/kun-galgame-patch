@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"kun-galgame-patch-api/internal/admin/dto"
@@ -76,73 +75,17 @@ func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
 	return nil
 }
 
-// ===== Users =====
-
-func (s *AdminService) GetUsers(search string, page, limit int) ([]repository.AdminUserView, int64, error) {
-	return s.repo.GetUsers(search, (page-1)*limit, limit)
-}
-
-func (s *AdminService) UpdateUser(uid int, fields map[string]any, adminUID, adminRole int) error {
-	if role, ok := fields["role"]; ok {
-		if r, ok := role.(int); ok && r >= 3 && adminRole < 4 {
-			return fmt.Errorf("only super admin can set admin roles")
-		}
-	}
-	if err := s.repo.UpdateUser(uid, fields); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "updateUser", map[string]any{"uid": uid, "fields": fields})
-	return nil
-}
-
-func (s *AdminService) DeleteUser(uid, adminUID int) error {
-	user, err := s.repo.GetUserByID(uid)
-	if err != nil {
-		return fmt.Errorf("user not found")
-	}
-
-	// Cache ban info in Redis
-	ctx := context.Background()
-	if user.Email != "" {
-		s.rdb.Set(ctx, "ban:email:"+user.Email, 1, 0)
-	}
-	if user.IP != "" {
-		s.rdb.Set(ctx, "ban:ip:"+user.IP, 1, 0)
-	}
-
-	if err := s.repo.DeleteUser(uid); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "deleteUser", map[string]any{"uid": uid, "email": user.Email})
-	return nil
-}
+// User management (GetUsers / UpdateUser / DeleteUser) was removed when
+// identity moved to OAuth: name / email / role / status / bans are all owned
+// by the OAuth admin console, not this site.
+//
+// Creator-application flow was removed alongside the creator role itself
+// (decision: creator role = 2 was deleted in the OAuth migration).
 
 // ===== All Patches =====
 
 func (s *AdminService) GetAllPatches(search string, page, limit int) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetAllPatches(search, (page-1)*limit, limit)
-}
-
-// ===== Creator Applications =====
-
-func (s *AdminService) GetCreatorApplications(page, limit int) ([]repository.CreatorApplicationItem, int64, error) {
-	return s.repo.GetCreatorApplications((page-1)*limit, limit)
-}
-
-func (s *AdminService) ApproveCreator(messageID, uid, adminUID int) error {
-	if err := s.repo.ApproveCreator(messageID, uid); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "approveCreator", map[string]any{"message_id": messageID, "uid": uid})
-	return nil
-}
-
-func (s *AdminService) DeclineCreator(messageID, adminUID int, reason string) error {
-	if err := s.repo.DeclineCreator(messageID); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "declineCreator", map[string]any{"message_id": messageID, "reason": reason})
-	return nil
 }
 
 // ===== Settings =====

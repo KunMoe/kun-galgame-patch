@@ -21,7 +21,6 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
 	"kun-galgame-patch-api/internal/infrastructure/database"
-	"kun-galgame-patch-api/internal/infrastructure/mail"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	messageHandler "kun-galgame-patch-api/internal/message/handler"
 	messageRepo "kun-galgame-patch-api/internal/message/repository"
@@ -36,6 +35,7 @@ import (
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -44,24 +44,24 @@ import (
 )
 
 type App struct {
-	Fiber  *fiber.App
-	DB     *gorm.DB
-	RDB    *redis.Client
-	S3     *storage.S3Client
-	Mailer *mail.Mailer
-	Config *config.Config
+	Fiber      *fiber.App
+	DB         *gorm.DB
+	RDB        *redis.Client
+	S3         *storage.S3Client
+	UserClient *userclient.Client
+	Config     *config.Config
 
 	// Handlers
-	AuthHandler     *authHandler.AuthHandler
-	PatchHandler    *patchHandler.PatchHandler
-	UserHandler     *userHandler.UserHandler
-	MessageHandler  *messageHandler.MessageHandler
-	AdminHandler    *adminHandler.AdminHandler
-	CommonHandler   *common.CommonHandler
-	UploadHandler   *uploadPkg.Handler
-	ChatHandler     *chatHandler.ChatHandler
-	SearchHandler   *searchPkg.Handler
-	AboutHandler    *aboutHandler.AboutHandler
+	AuthHandler    *authHandler.AuthHandler
+	PatchHandler   *patchHandler.PatchHandler
+	UserHandler    *userHandler.UserHandler
+	MessageHandler *messageHandler.MessageHandler
+	AdminHandler   *adminHandler.AdminHandler
+	CommonHandler  *common.CommonHandler
+	UploadHandler  *uploadPkg.Handler
+	ChatHandler    *chatHandler.ChatHandler
+	SearchHandler  *searchPkg.Handler
+	AboutHandler   *aboutHandler.AboutHandler
 
 	// CronStop is called during graceful shutdown to stop the cron jobs.
 	CronStop func()
@@ -72,12 +72,18 @@ func New(cfg *config.Config) *App {
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
 	s3 := storage.NewS3(cfg.S3)
-	mailer := mail.NewMailer(cfg.Mail)
 	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+
+	// OAuth user-brief client (Phase 5-6 will inject this into renderers).
+	usrCli := userclient.New(userclient.Config{
+		BaseURL:      cfg.OAuth.ServerURL,
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+	})
 
 	// Auth module
 	authRepository := authRepo.New(db)
-	authSvc := authService.New(authRepository, rdb, mailer, cfg.OAuth)
+	authSvc := authService.New(authRepository, rdb, cfg.OAuth)
 	authHdl := authHandler.New(authSvc, rdb, db)
 
 	// Patch module
@@ -87,7 +93,7 @@ func New(cfg *config.Config) *App {
 
 	// User module
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, authSvc, s3)
+	userSvc := userService.New(userRepository, s3)
 	userHdl := userHandler.New(userSvc, wiki)
 
 	// Message module
@@ -137,23 +143,23 @@ func New(cfg *config.Config) *App {
 	slog.Info("Application initialized")
 
 	return &App{
-		Fiber:           app,
-		DB:              db,
-		RDB:             rdb,
-		S3:              s3,
-		Mailer:          mailer,
-		Config:          cfg,
-		AuthHandler:     authHdl,
-		PatchHandler:    patchHdl,
-		UserHandler:     userHdl,
-		MessageHandler:  messageHdl,
-		AdminHandler:    adminHdl,
-		CommonHandler:   commonHdl,
-		UploadHandler:   uploadHdl,
-		ChatHandler:     chatHdl,
-		SearchHandler:   searchHdl,
-		AboutHandler:    aboutHdl,
-		CronStop:        cronStop,
+		Fiber:          app,
+		DB:             db,
+		RDB:            rdb,
+		S3:             s3,
+		UserClient:     usrCli,
+		Config:         cfg,
+		AuthHandler:    authHdl,
+		PatchHandler:   patchHdl,
+		UserHandler:    userHdl,
+		MessageHandler: messageHdl,
+		AdminHandler:   adminHdl,
+		CommonHandler:  commonHdl,
+		UploadHandler:  uploadHdl,
+		ChatHandler:    chatHdl,
+		SearchHandler:  searchHdl,
+		AboutHandler:   aboutHdl,
+		CronStop:       cronStop,
 	}
 }
 

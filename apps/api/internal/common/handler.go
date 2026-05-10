@@ -6,9 +6,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
-	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
-	userModel "kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
@@ -292,50 +290,8 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	})
 }
 
-// ===== Creator Application =====
-
-// Apply POST /api/apply
-func (h *CommonHandler) Apply(c *fiber.Ctx) error {
-	user := middleware.MustGetUser(c)
-
-	// Check minimum resource count
-	var resourceCount int64
-	h.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", user.UID).Count(&resourceCount)
-	if resourceCount < 3 {
-		return response.Error(c, errors.ErrBadRequest("need at least 3 published resources"))
-	}
-
-	// Check for pending application
-	var pendingCount int64
-	h.db.Model(&userModel.UserMessage{}).
-		Where("type = 'apply' AND sender_id = ? AND status = 0", user.UID).
-		Count(&pendingCount)
-	if pendingCount > 0 {
-		return response.Error(c, errors.ErrBadRequest("you already have a pending application"))
-	}
-
-	msg := &userModel.UserMessage{
-		Type:     "apply",
-		Content:  fmt.Sprintf("Creator application from user %d", user.UID),
-		Status:   0,
-		SenderID: &user.UID,
-	}
-	h.db.Create(msg)
-	return response.OKMessage(c, "Application submitted")
-}
-
-// GetApplyStatus GET /api/apply/status
-func (h *CommonHandler) GetApplyStatus(c *fiber.Ctx) error {
-	user := middleware.MustGetUser(c)
-
-	var resourceCount int64
-	h.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", user.UID).Count(&resourceCount)
-
-	return response.OK(c, map[string]any{
-		"resource_count": resourceCount,
-		"role":           user.Role,
-	})
-}
+// Creator-application endpoints (Apply / GetApplyStatus) were removed alongside
+// the creator role itself in the OAuth migration.
 
 // ===== Hikari External API =====
 

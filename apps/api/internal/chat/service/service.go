@@ -121,13 +121,13 @@ func (s *ChatService) UpdateMessage(uid, messageID int, newContent string) error
 	return s.repo.UpdateMessageContent(m, m.Content, newContent)
 }
 
-// DeleteMessage soft-deletes a message. Sender or role >= 3 may delete.
-func (s *ChatService) DeleteMessage(uid, role, messageID int) error {
+// DeleteMessage soft-deletes a message. Sender or moderator/admin may delete.
+func (s *ChatService) DeleteMessage(uid int, isPrivileged bool, messageID int) error {
 	m, err := s.repo.GetMessage(messageID)
 	if err != nil {
 		return fmt.Errorf("消息不存在")
 	}
-	if m.SenderID != uid && role < 3 {
+	if m.SenderID != uid && !isPrivileged {
 		return fmt.Errorf("仅发送者或管理员可删除消息")
 	}
 	now := time.Now()

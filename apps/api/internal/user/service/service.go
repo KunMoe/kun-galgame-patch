@@ -8,7 +8,6 @@ import (
 	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
-	authService "kun-galgame-patch-api/internal/auth/service"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
@@ -23,13 +22,12 @@ import (
 const DailyImageLimit = 20
 
 type UserService struct {
-	repo    *repository.UserRepository
-	authSvc *authService.AuthService
-	s3      *storage.S3Client
+	repo *repository.UserRepository
+	s3   *storage.S3Client
 }
 
-func New(repo *repository.UserRepository, authSvc *authService.AuthService, s3 *storage.S3Client) *UserService {
-	return &UserService{repo: repo, authSvc: authSvc, s3: s3}
+func New(repo *repository.UserRepository, s3 *storage.S3Client) *UserService {
+	return &UserService{repo: repo, s3: s3}
 }
 
 // GetUserInfo retrieves public user info
@@ -68,54 +66,8 @@ func (s *UserService) GetUserFloating(uid int) (*dto.UserInfoResponse, error) {
 	return s.GetUserInfo(uid, 0)
 }
 
-// UpdateUsername changes the username (costs 30 moemoepoints)
-func (s *UserService) UpdateUsername(userID int, newName string) error {
-	user, err := s.repo.FindByID(userID)
-	if err != nil {
-		return fmt.Errorf("user not found")
-	}
-	if user.Moemoepoint < 30 {
-		return fmt.Errorf("insufficient moemoepoints (30 required)")
-	}
-
-	existing, _ := s.repo.FindByName(newName)
-	if existing != nil && existing.ID != userID {
-		return fmt.Errorf("username is already taken")
-	}
-
-	return s.repo.UpdateFields(userID, map[string]any{
-		"name":        newName,
-		"moemoepoint": gorm.Expr("moemoepoint - 30"),
-	})
-}
-
-// UpdateBio updates the user bio
-func (s *UserService) UpdateBio(userID int, bio string) error {
-	return s.repo.UpdateFields(userID, map[string]any{"bio": bio})
-}
-
-// UpdatePassword changes the user password
-func (s *UserService) UpdatePassword(userID int, oldPassword, newPassword string) error {
-	user, err := s.repo.FindByID(userID)
-	if err != nil {
-		return fmt.Errorf("user not found")
-	}
-
-	if user.Password != "" && !s.authSvc.VerifyPassword(user.Password, oldPassword) {
-		return fmt.Errorf("incorrect old password")
-	}
-
-	hashed := s.authSvc.HashPassword(newPassword)
-	return s.repo.UpdateFields(userID, map[string]any{"password": hashed})
-}
-
-// UpdateEmail changes the user email
-func (s *UserService) UpdateEmail(userID int, email, code string) error {
-	if err := s.authSvc.VerifyCode(email, code); err != nil {
-		return err
-	}
-	return s.repo.UpdateFields(userID, map[string]any{"email": email})
-}
+// Profile mutations (UpdateUsername / UpdateBio / UpdatePassword / UpdateEmail
+// / UpdateAvatar) live on OAuth and were removed from this site.
 
 // Follow follows a user
 func (s *UserService) Follow(followerID, followingID int) error {
@@ -213,36 +165,7 @@ func (s *UserService) GetUserByID(uid int) (*authModel.User, error) {
 	return s.repo.FindByID(uid)
 }
 
-// ─── Avatar and user image uploads ───────────────────
-
-// UpdateAvatar uploads and sets the user avatar (two JPEGs: 256x256 + 100x100).
-func (s *UserService) UpdateAvatar(ctx context.Context, uid int, raw []byte) (string, error) {
-	full, err := imageutil.FitJPEG(raw, 256, 256, 85)
-	if err != nil {
-		return "", err
-	}
-	mini, err := imageutil.FitJPEG(raw, 100, 100, 85)
-	if err != nil {
-		return "", err
-	}
-
-	prefix := fmt.Sprintf("user/avatar/user_%d", uid)
-	avatarKey := prefix + "/avatar.jpg"
-	miniKey := prefix + "/avatar-mini.jpg"
-
-	if err := s.s3.PutObject(ctx, avatarKey, bytes.NewReader(full), int64(len(full)), "image/jpeg"); err != nil {
-		return "", err
-	}
-	if err := s.s3.PutObject(ctx, miniKey, bytes.NewReader(mini), int64(len(mini)), "image/jpeg"); err != nil {
-		return "", err
-	}
-
-	avatarURL := s.s3.PublicURL(avatarKey)
-	if err := s.repo.UpdateFields(uid, map[string]any{"avatar": avatarURL}); err != nil {
-		return "", err
-	}
-	return avatarURL, nil
-}
+// ─── User image uploads ──────────────────────────────
 
 // UploadUserImage uploads an image for the user's personal page (fit within 1920x1080, JPEG q=50).
 // Rate-limited by daily_image_count (aligned with the original project's DailyImageLimit).

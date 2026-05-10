@@ -8,7 +8,6 @@ type Config struct {
 	Redis       RedisConfig
 	OAuth       OAuthConfig
 	S3          S3Config
-	Mail        MailConfig
 	GalgameWiki GalgameWikiConfig
 	CORS        CORSConfig
 	About       AboutConfig
@@ -33,12 +32,14 @@ type RedisConfig struct {
 	DB       int
 }
 
+// OAuthConfig holds the OAuth integration settings. ClientID/ClientSecret
+// are used both for the user-facing PKCE flow (token exchange / refresh)
+// and for service-to-service Basic Auth against /users/batch and /users/search.
 type OAuthConfig struct {
 	ServerURL    string
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
-	JWTSecret    string
 }
 
 type S3Config struct {
@@ -47,14 +48,6 @@ type S3Config struct {
 	Bucket    string
 	AccessKey string
 	SecretKey string
-}
-
-type MailConfig struct {
-	Host     string
-	Port     string
-	From     string
-	Username string
-	Password string
 }
 
 // GalgameWikiConfig points at the separately deployed Galgame Wiki Service (D11).
@@ -96,7 +89,6 @@ func Load() *Config {
 			ClientID:     getEnv("OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("OAUTH_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("OAUTH_REDIRECT_URI", ""),
-			JWTSecret:    getEnv("OAUTH_JWT_SECRET", ""),
 		},
 		S3: S3Config{
 			Endpoint:  getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_ENDPOINT", ""),
@@ -104,13 +96,6 @@ func Load() *Config {
 			Bucket:    getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_BUCKET", ""),
 			AccessKey: getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID", ""),
 			SecretKey: getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY", ""),
-		},
-		Mail: MailConfig{
-			Host:     getEnv("KUN_VISUAL_NOVEL_EMAIL_HOST", ""),
-			Port:     getEnv("KUN_VISUAL_NOVEL_EMAIL_PORT", "587"),
-			From:     getEnv("KUN_VISUAL_NOVEL_EMAIL_ACCOUNT", ""),
-			Username: getEnv("KUN_VISUAL_NOVEL_EMAIL_ACCOUNT", ""),
-			Password: getEnv("KUN_VISUAL_NOVEL_EMAIL_PASSWORD", ""),
 		},
 		GalgameWiki: GalgameWikiConfig{
 			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),

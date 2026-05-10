@@ -12,24 +12,20 @@ func (a *App) RegisterRoutes() {
 
 	auth := middleware.Auth(a.RDB, a.Config.OAuth)
 	optionalAuth := middleware.OptionalAuth(a.RDB, a.Config.OAuth)
-	adminAuth := middleware.RequireRole(3)
-	superAdminAuth := middleware.RequireRole(4)
+	// OAuth role mapping (see docs/user-migration/02-data-mapping.md §7):
+	//   moyu super-admin (legacy role 4) -> "admin"
+	//   moyu/kungal admin (legacy role 3) -> "moderator"
+	moderatorAuth := middleware.RequireRole("admin", "moderator")
+	adminAuth := middleware.RequireRole("admin")
 
 	// Rate limits (Redis-backed per-user/per-IP rolling window)
 	checkInRL := middleware.RateLimit(a.RDB, "checkin", 1, 24*time.Hour)
-	usernameRL := middleware.RateLimit(a.RDB, "username", 3, time.Hour)
-	emailRL := middleware.RateLimit(a.RDB, "email", 3, time.Hour)
-	avatarRL := middleware.RateLimit(a.RDB, "avatar", 5, time.Hour)
-	sendCodeRL := middleware.RateLimit(a.RDB, "send-code", 3, time.Hour)
 
 	// ===== Auth Routes =====
 	authRoutes := api.Group("/auth")
 	authRoutes.Post("/oauth/callback", a.AuthHandler.OAuthCallback)
 	authRoutes.Post("/logout", a.AuthHandler.Logout)
 	authRoutes.Get("/me", auth, a.AuthHandler.Me)
-	authRoutes.Post("/forgot/send-code", sendCodeRL, a.AuthHandler.ForgotSendCode)
-	authRoutes.Post("/forgot/reset", a.AuthHandler.ForgotReset)
-	authRoutes.Post("/email/send-code", auth, sendCodeRL, a.AuthHandler.SendEmailCode)
 
 	// ===== Patch Routes =====
 	patchRoutes := api.Group("/patch")
@@ -63,14 +59,12 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 
 	// ===== User Routes =====
+	//
+	// Profile mutations (username/bio/password/email/avatar) live on OAuth and
+	// are intentionally absent here. The frontend either redirects to
+	// oauth.kungal.com/profile or proxies PATCH /auth/me to OAuth itself.
 	userRoutes := api.Group("/user")
 
-	// Authenticated settings (must be before /:uid routes)
-	userRoutes.Put("/username", auth, usernameRL, a.UserHandler.UpdateUsername)
-	userRoutes.Put("/bio", auth, a.UserHandler.UpdateBio)
-	userRoutes.Put("/password", auth, a.UserHandler.UpdatePassword)
-	userRoutes.Put("/email", auth, emailRL, a.UserHandler.UpdateEmail)
-	userRoutes.Put("/avatar", auth, avatarRL, a.UserHandler.UpdateAvatar)
 	userRoutes.Post("/image", auth, a.UserHandler.UploadImage)
 	userRoutes.Post("/check-in", auth, checkInRL, a.UserHandler.CheckIn)
 	userRoutes.Get("/search", auth, a.UserHandler.SearchUsers)
@@ -99,7 +93,11 @@ func (a *App) RegisterRoutes() {
 	msgRoutes.Put("/read", a.MessageHandler.MarkAsRead)
 
 	// ===== Admin Routes =====
-	adminRoutes := api.Group("/admin", auth, adminAuth)
+	//
+	// User management (/admin/user/*), creator-application approvals
+	// (/admin/creator/*), and the creator-only setting were removed when
+	// identity moved to OAuth and the creator role was retired.
+	adminRoutes := api.Group("/admin", auth, moderatorAuth)
 
 	// Comments
 	adminRoutes.Get("/comment", a.AdminHandler.GetComments)
@@ -111,23 +109,11 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Put("/resource/:id", a.AdminHandler.UpdateResource)
 	adminRoutes.Delete("/resource/:id", a.AdminHandler.DeleteResource)
 
-	// Users
-	adminRoutes.Get("/user", a.AdminHandler.GetUsers)
-	adminRoutes.Put("/user/:uid", a.AdminHandler.UpdateUser)
-	adminRoutes.Delete("/user/:uid", superAdminAuth, a.AdminHandler.DeleteUser)
-
-	// Creator applications
-	adminRoutes.Get("/creator", a.AdminHandler.GetCreatorApplications)
-	adminRoutes.Put("/creator/:messageId/approve", a.AdminHandler.ApproveCreator)
-	adminRoutes.Put("/creator/:messageId/decline", a.AdminHandler.DeclineCreator)
-
 	// Settings
 	adminRoutes.Get("/setting/comment-verify", a.AdminHandler.GetCommentVerify)
-	adminRoutes.Put("/setting/comment-verify", a.AdminHandler.SetCommentVerify)
-	adminRoutes.Get("/setting/creator-only", a.AdminHandler.GetCreatorOnly)
-	adminRoutes.Put("/setting/creator-only", a.AdminHandler.SetCreatorOnly)
+	adminRoutes.Put("/setting/comment-verify", adminAuth, a.AdminHandler.SetCommentVerify)
 	adminRoutes.Get("/setting/register", a.AdminHandler.GetRegisterDisabled)
-	adminRoutes.Put("/setting/register", a.AdminHandler.SetRegisterDisabled)
+	adminRoutes.Put("/setting/register", adminAuth, a.AdminHandler.SetRegisterDisabled)
 
 	// Stats & Logs
 	adminRoutes.Get("/stats", a.AdminHandler.GetStats)
@@ -177,10 +163,6 @@ func (a *App) RegisterRoutes() {
 	uploadRoutes.Post("/multipart/init", a.UploadHandler.InitMultipart)
 	uploadRoutes.Post("/multipart/complete", a.UploadHandler.CompleteMultipart)
 	uploadRoutes.Post("/multipart/abort", a.UploadHandler.AbortMultipart)
-
-	// Creator application
-	api.Post("/apply", auth, a.CommonHandler.Apply)
-	api.Get("/apply/status", auth, a.CommonHandler.GetApplyStatus)
 
 	// Full-text search (Meilisearch)
 	api.Post("/search", a.SearchHandler.Search)
