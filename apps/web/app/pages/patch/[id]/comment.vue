@@ -65,6 +65,29 @@ const submit = async () => {
 }
 
 const renderComment = (c: PatchPageComment): PatchPageComment => c
+
+// Optimistic toggle for the heart on each comment / reply.
+//
+// Backend returns { liked: boolean }; we apply it to the local row plus
+// adjust the displayed like_count by the resulting delta. On error we leave
+// state untouched so the next refresh reconciles.
+const toggleLike = async (c: PatchPageComment) => {
+  if (!userStore.user.uid) {
+    useKunMessage('请先登录后再点赞', 'warn')
+    return
+  }
+  const res = await api.put<{ liked: boolean }>(
+    `/patch/comment/${c.id}/like`
+  )
+  if (res.code === 0) {
+    const liked = res.data.liked
+    const delta = liked === c.is_liked ? 0 : liked ? 1 : -1
+    c.is_liked = liked
+    c.like_count = Math.max(0, c.like_count + delta)
+  } else {
+    useKunMessage(res.message || '操作失败', 'error')
+  }
+}
 </script>
 
 <template>
@@ -113,10 +136,25 @@ const renderComment = (c: PatchPageComment): PatchPageComment => c
               </span>
             </div>
             <div class="kun-prose" v-html="sanitize(c.content_html)" />
-            <div class="text-default-500 flex items-center gap-1 text-xs">
-              <KunIcon name="lucide:thumbs-up" class="size-3.5" />
+            <button
+              type="button"
+              :class="
+                cn(
+                  'flex items-center gap-1 text-xs transition-colors',
+                  c.is_liked
+                    ? 'text-danger-500'
+                    : 'text-default-500 hover:text-danger-500'
+                )
+              "
+              :aria-label="c.is_liked ? '取消点赞' : '点赞'"
+              @click="toggleLike(c)"
+            >
+              <KunIcon
+                name="lucide:thumbs-up"
+                :class="cn('size-3.5', c.is_liked ? 'fill-current' : '')"
+              />
               {{ c.like_count }}
-            </div>
+            </button>
             <div v-if="c.reply?.length" class="mt-3 space-y-2 border-l-2 border-default/20 pl-3">
               <div
                 v-for="r in c.reply"
@@ -133,6 +171,25 @@ const renderComment = (c: PatchPageComment): PatchPageComment => c
                   </span>
                 </div>
                 <div class="kun-prose mt-1" v-html="sanitize(r.content_html)" />
+                <button
+                  type="button"
+                  :class="
+                    cn(
+                      'mt-1 flex items-center gap-1 text-xs transition-colors',
+                      r.is_liked
+                        ? 'text-danger-500'
+                        : 'text-default-500 hover:text-danger-500'
+                    )
+                  "
+                  :aria-label="r.is_liked ? '取消点赞' : '点赞'"
+                  @click="toggleLike(r)"
+                >
+                  <KunIcon
+                    name="lucide:thumbs-up"
+                    :class="cn('size-3.5', r.is_liked ? 'fill-current' : '')"
+                  />
+                  {{ r.like_count }}
+                </button>
               </div>
             </div>
           </div>

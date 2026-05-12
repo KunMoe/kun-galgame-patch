@@ -50,11 +50,12 @@ type SessionData struct {
 }
 
 const (
-	SessionCookieName = "kun_session"
-	SessionTTL        = 7 * 24 * time.Hour
-	SessionPrefix     = "session:"
-	userContextKey    = "user"
-	rolesContextKey   = "oauth_roles"
+	SessionCookieName     = "kun_session"
+	SessionTTL            = 7 * 24 * time.Hour
+	SessionPrefix         = "session:"
+	userContextKey        = "user"
+	rolesContextKey       = "oauth_roles"
+	accessTokenContextKey = "oauth_access_token"
 )
 
 func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
@@ -84,6 +85,7 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 
 		c.Locals(userContextKey, &session.UserInfo)
 		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
+		c.Locals(accessTokenContextKey, session.OAuthAccessToken)
 		return c.Next()
 	}
 }
@@ -107,6 +109,7 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 
 		c.Locals(userContextKey, &session.UserInfo)
 		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
+		c.Locals(accessTokenContextKey, session.OAuthAccessToken)
 		return c.Next()
 	}
 }
@@ -129,6 +132,19 @@ func GetUID(c *fiber.Ctx) int {
 		return 0
 	}
 	return user.UID
+}
+
+// GetAccessToken returns the OAuth access_token bound to the current session
+// (empty string if no session). Handlers that proxy write operations to
+// upstream services (e.g. the Galgame Wiki Service) forward this token as
+// `Authorization: Bearer ...` so the upstream can validate user identity and
+// apply its own creator/admin authorization.
+func GetAccessToken(c *fiber.Ctx) string {
+	v, ok := c.Locals(accessTokenContextKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 // GetRoles returns the OAuth roles for the current request, or an empty slice

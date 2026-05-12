@@ -305,7 +305,8 @@ func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	resources, err := h.service.GetResources(c.Context(), id)
+	currentUID := middleware.GetUID(c)
+	resources, err := h.service.GetResources(c.Context(), id, currentUID)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -497,4 +498,43 @@ func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.OK(c, map[string]int{"id": id})
+}
+
+// UpdateGalgame PUT /api/v1/galgame/:gid
+//
+// Thin proxy over the Wiki Service's PUT /galgame/:gid. The Wiki Service owns
+// all galgame metadata (D12); editing it from this site means forwarding the
+// user's request — together with their OAuth access_token — and propagating
+// Wiki's response code verbatim back to the frontend.
+//
+// We do not enforce authorization locally: Wiki itself permits only the
+// creator or an admin. Local side effects (e.g. moemoepoint rewards on edit)
+// are intentionally not added here to keep this a pure proxy; if we want
+// them later they go on success after the Wiki call returns.
+func (h *PatchHandler) UpdateGalgame(c *fiber.Ctx) error {
+	gid, err := getIDParam(c, "gid")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+
+	// Decode body into the Wiki client's request shape so callers cannot smuggle
+	// unsupported keys (e.g. vndb_id which Wiki blocks on update anyway).
+	var req galgameClient.UpdateGalgameRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
+	}
+
+	data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			// Forward Wiki's business code (4xxxx / 6xxxx) without remapping.
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+	return c.JSON(response.Response{Code: 0, Message: "OK", Data: data})
 }

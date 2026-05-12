@@ -168,6 +168,10 @@ type PatchResource struct {
 	// global resource list (/api/resource) and a few admin views; left nil
 	// when the surrounding context already identifies the patch.
 	Patch *PatchSummary `gorm:"-" json:"patch,omitempty"`
+
+	// IsLiked is populated per-request from the current user's like relation
+	// (mirrors PatchComment.IsLiked). Not a DB column.
+	IsLiked bool `gorm:"-" json:"is_liked"`
 }
 
 func (PatchResource) TableName() string { return "patch_resource" }

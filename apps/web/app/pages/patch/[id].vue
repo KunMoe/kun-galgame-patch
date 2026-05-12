@@ -119,6 +119,8 @@ const tabs = computed(() => [
               :is-mobile="false"
             />
           </div>
+
+          <PatchHeaderActions :patch="patch" />
         </div>
       </div>
 

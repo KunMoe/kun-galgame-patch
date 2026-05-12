@@ -58,6 +58,12 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 
+	// Galgame metadata edit (proxy to Galgame Wiki PUT /galgame/:gid).
+	// Lives on /galgame/:gid to match the Wiki path verbatim, even though the
+	// patch.id and galgame.id are aligned. The Wiki Service enforces creator/
+	// admin authorization itself — we just forward the user's access_token.
+	api.Put("/galgame/:gid", auth, a.PatchHandler.UpdateGalgame)
+
 	// ===== User Routes =====
 	//
 	// Profile mutations (username/bio/password/email/avatar) live on OAuth and

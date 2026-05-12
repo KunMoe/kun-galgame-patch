@@ -337,14 +337,38 @@ func (s *PatchService) GetCommentMarkdown(commentID int) (string, error) {
 
 // ===== Resources =====
 
-func (s *PatchService) GetResources(ctx context.Context, patchID int) ([]model.PatchResource, error) {
+func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int) ([]model.PatchResource, error) {
 	resources, err := s.repo.GetResources(patchID)
 	if err != nil {
 		return resources, err
 	}
 	model.RenderResourceNotes(resources)
 	attachUsersToResources(ctx, s.users, resources)
+	s.markResourceLiked(currentUID, resources)
 	return resources, nil
+}
+
+// markResourceLiked stamps is_liked on each resource for the given currentUID.
+// Anonymous (currentUID == 0) leaves is_liked false everywhere.
+func (s *PatchService) markResourceLiked(currentUID int, rs []model.PatchResource) {
+	if currentUID == 0 || len(rs) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		ids = append(ids, r.ID)
+	}
+	liked, err := s.repo.GetLikedResourceIDs(currentUID, ids)
+	if err != nil {
+		return
+	}
+	likedSet := make(map[int]bool, len(liked))
+	for _, id := range liked {
+		likedSet[id] = true
+	}
+	for i := range rs {
+		rs[i].IsLiked = likedSet[rs[i].ID]
+	}
 }
 
 // attachUsersToResources batch-fetches publisher briefs from OAuth and

@@ -10,6 +10,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,20 @@ import (
 	"strings"
 	"time"
 )
+
+// WikiError is returned by write methods on the Client when the Wiki Service
+// envelope reports a non-zero `code`. It carries the wire-level (code,
+// message) so the outer handler can transparently forward them — per
+// docs/galgame_wiki/integration-guide.md §2 "直接透传 Wiki Service 的 code +
+// message 给前端".
+type WikiError struct {
+	Code    int
+	Message string
+}
+
+func (e *WikiError) Error() string {
+	return fmt.Sprintf("wiki business error code=%d: %s", e.Code, e.Message)
+}
 
 // Client is a thin wrapper around calls to the Wiki Service.
 type Client struct {
@@ -370,6 +385,78 @@ func (c *Client) SearchOfficial(ctx context.Context, q, category, lang string, l
 		return nil, err
 	}
 	return &out, nil
+}
+
+// ─── Write methods (require user OAuth access_token) ───
+//
+// Per integration-guide.md §2, write operations are proxied through the site
+// backend, but the user identity is carried by the user's OAuth access_token
+// (the same one we already keep in the Redis session). The Wiki Service
+// validates the JWT, extracts the uid, and enforces creator/admin rules
+// itself — the patch backend does not need to re-implement authorization.
+
+// UpdateGalgameRequest mirrors the documented JSON body of PUT /galgame/:gid.
+// All fields are pointers so the JSON encoding only includes what was set
+// (any unset field on the Wiki side stays unchanged).
+type UpdateGalgameRequest struct {
+	NameEnUs         *string `json:"name_en_us,omitempty"`
+	NameJaJp         *string `json:"name_ja_jp,omitempty"`
+	NameZhCn         *string `json:"name_zh_cn,omitempty"`
+	NameZhTw         *string `json:"name_zh_tw,omitempty"`
+	IntroEnUs        *string `json:"intro_en_us,omitempty"`
+	IntroJaJp        *string `json:"intro_ja_jp,omitempty"`
+	IntroZhCn        *string `json:"intro_zh_cn,omitempty"`
+	IntroZhTw        *string `json:"intro_zh_tw,omitempty"`
+	ContentLimit     *string `json:"content_limit,omitempty"`
+	AgeLimit         *string `json:"age_limit,omitempty"`
+	OriginalLanguage *string `json:"original_language,omitempty"`
+	Aliases          *string `json:"aliases,omitempty"`
+	BannerImageHash  *string `json:"banner_image_hash,omitempty"`
+	SeriesID         *int    `json:"series_id,omitempty"`
+	TagIDs           *[]int  `json:"tag_ids,omitempty"`
+	OfficialIDs      *[]int  `json:"official_ids,omitempty"`
+	EngineIDs        *[]int  `json:"engine_ids,omitempty"`
+	IsMinor          *bool   `json:"is_minor,omitempty"`
+}
+
+// UpdateGalgame proxies PUT /galgame/:gid. Returns the raw `data` payload
+// (left as RawMessage so callers can re-wrap without an extra unmarshal).
+// On a non-zero Wiki envelope code, returns *WikiError.
+func (c *Client) UpdateGalgame(ctx context.Context, accessToken string, gid int, body any) (json.RawMessage, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode update body: %w", err)
+	}
+	u := fmt.Sprintf("%s/galgame/%d", c.baseURL, gid)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build wiki update request: %w", err)
+	}
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wiki PUT galgame: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read wiki response: %w", err)
+	}
+
+	var env wikiResponse[json.RawMessage]
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+	}
+	if env.Code != 0 {
+		return nil, &WikiError{Code: env.Code, Message: env.Message}
+	}
+	return env.Data, nil
 }
 
 // ─── helpers ─────────────────────────────────────────

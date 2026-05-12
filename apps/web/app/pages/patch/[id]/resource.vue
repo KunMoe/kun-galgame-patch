@@ -3,6 +3,7 @@ import DOMPurify from 'isomorphic-dompurify'
 
 const route = useRoute()
 const api = useApi()
+const userStore = useUserStore()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -19,6 +20,27 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   },
   { default: () => [] }
 )
+
+// Optimistic resource-like toggle, mirroring the comment pattern: backend
+// returns { liked }, we fold it onto the local row.
+const toggleLike = async (r: PatchResource) => {
+  if (!userStore.user.uid) {
+    useKunMessage('请先登录后再点赞', 'warn')
+    return
+  }
+  const res = await api.put<{ liked: boolean }>(
+    `/patch/resource/${r.id}/like`
+  )
+  if (res.code === 0) {
+    const liked = res.data.liked
+    const prev = r.is_liked ?? false
+    const delta = liked === prev ? 0 : liked ? 1 : -1
+    r.is_liked = liked
+    r.like_count = Math.max(0, r.like_count + delta)
+  } else {
+    useKunMessage(res.message || '操作失败', 'error')
+  }
+}
 </script>
 
 <template>
@@ -80,10 +102,25 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
           class="text-default-500 flex flex-wrap items-center justify-between gap-2 pt-2 text-sm"
         >
           <div class="flex items-center gap-4">
-            <div class="flex items-center gap-1">
-              <KunIcon name="lucide:heart" class="size-4" />
+            <button
+              type="button"
+              :class="
+                cn(
+                  'flex items-center gap-1 transition-colors',
+                  r.is_liked
+                    ? 'text-danger-500'
+                    : 'text-default-500 hover:text-danger-500'
+                )
+              "
+              :aria-label="r.is_liked ? '取消点赞' : '点赞'"
+              @click="toggleLike(r)"
+            >
+              <KunIcon
+                name="lucide:heart"
+                :class="cn('size-4', r.is_liked ? 'fill-current' : '')"
+              />
               {{ r.like_count }}
-            </div>
+            </button>
             <div class="flex items-center gap-1">
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
