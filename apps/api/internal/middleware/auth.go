@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -65,7 +66,8 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 			return response.Error(c, errors.ErrUnauthorized())
 		}
 
-		data, err := rdb.Get(context.Background(), SessionPrefix+sessionID).Result()
+		ctx := c.Context()
+		data, err := rdb.Get(ctx, SessionPrefix+sessionID).Result()
 		if err == redis.Nil {
 			return response.Error(c, errors.ErrAuthExpired())
 		}
@@ -79,8 +81,27 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 			return response.Error(c, errors.ErrInternal(""))
 		}
 
-		if session.OAuthExpiresAt > 0 && time.Now().Unix() > session.OAuthExpiresAt-300 {
-			go refreshOAuthToken(rdb, oauthCfg, sessionID, &session)
+		// Two-tier refresh:
+		//   - HARD expired (now >= ExpiresAt): synchronous refresh. If OAuth
+		//     permanently rejects (invalid_grant / revoked / 401), the
+		//     refresher itself deletes the Redis session; we then clear the
+		//     cookie and reject the request so the user re-logs in.
+		//   - SOFT window (T-5min .. T): the token is still valid, refresh in
+		//     the background and let the request through.
+		now := time.Now().Unix()
+		if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt {
+			if err := refreshOAuthToken(ctx, rdb, oauthCfg, sessionID, &session); err != nil {
+				slog.Warn("OAuth access token expired and refresh failed; rejecting request",
+					"sessionPrefix", sessionID[:min(8, len(sessionID))], "error", err)
+				clearSessionCookie(c)
+				return response.Error(c, errors.ErrAuthExpired())
+			}
+		} else if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt-300 {
+			go func(s SessionData) {
+				if err := refreshOAuthToken(context.Background(), rdb, oauthCfg, sessionID, &s); err != nil {
+					slog.Warn("OAuth background refresh failed", "error", err)
+				}
+			}(session)
 		}
 
 		c.Locals(userContextKey, &session.UserInfo)
@@ -97,7 +118,8 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 			return c.Next()
 		}
 
-		data, err := rdb.Get(context.Background(), SessionPrefix+sessionID).Result()
+		ctx := c.Context()
+		data, err := rdb.Get(ctx, SessionPrefix+sessionID).Result()
 		if err != nil {
 			return c.Next()
 		}
@@ -105,6 +127,23 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 		var session SessionData
 		if err := json.Unmarshal([]byte(data), &session); err != nil {
 			return c.Next()
+		}
+
+		// Same two-tier policy as Auth, but on hard-expired-and-cannot-refresh
+		// we degrade to anonymous (continue without user context) instead of
+		// returning an error -- OptionalAuth's contract is "best effort".
+		now := time.Now().Unix()
+		if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt {
+			if err := refreshOAuthToken(ctx, rdb, oauthCfg, sessionID, &session); err != nil {
+				clearSessionCookie(c)
+				return c.Next()
+			}
+		} else if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt-300 {
+			go func(s SessionData) {
+				if err := refreshOAuthToken(context.Background(), rdb, oauthCfg, sessionID, &s); err != nil {
+					slog.Warn("OAuth background refresh failed", "error", err)
+				}
+			}(session)
 		}
 
 		c.Locals(userContextKey, &session.UserInfo)
@@ -181,6 +220,13 @@ func HasAnyRole(c *fiber.Ctx, roles ...string) bool {
 // the app at startup based on KUN_SERVER_MODE; in dev over HTTP this must
 // be false or the browser refuses to store the cookie.
 var SecureCookies = true
+
+// oauthRefreshHTTP is the timeout-bound HTTP client used for OAuth
+// /oauth/token refresh calls in the auth middleware. Shared (and reused)
+// across middleware invocations because the middleware itself is constructed
+// per-route and would otherwise allocate a fresh client every call.
+// 10s is consistent with the wiki/userclient transports.
+var oauthRefreshHTTP = &http.Client{Timeout: 10 * time.Second}
 
 func CreateSession(c *fiber.Ctx, rdb *redis.Client, session *SessionData) error {
 	sessionID, err := generateSessionID()
@@ -266,16 +312,29 @@ func decodeJWTRoles(token string) []string {
 	return claims.Roles
 }
 
-func refreshOAuthToken(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string, session *SessionData) {
-	ctx := context.Background()
+// refreshOAuthToken performs one OAuth refresh round-trip and persists the
+// new tokens back to Redis on success. Semantics:
+//
+//   - Returns nil on success. The passed-in *session pointer is mutated to
+//     the new tokens, and the Redis session blob is rewritten.
+//   - Returns a non-nil error in all other cases. Two distinct buckets:
+//   - PERMANENT: OAuth says the refresh_token is invalid / revoked / expired
+//     (4xx). The Redis session is DELETED as a side effect — any future
+//     request bearing this cookie should fail closed.
+//   - TRANSIENT: network errors, 5xx, JSON decode errors. The Redis session
+//     is left intact so a subsequent retry can succeed.
+//
+// A per-session Redis lock (`lock:refresh:<sid>`, 30s TTL) prevents
+// concurrent refreshes; a lock miss returns a transient error so callers can
+// re-read the (possibly already-refreshed) session.
+func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string, session *SessionData) error {
 	lockKey := "lock:refresh:" + sessionID
-
 	ok, err := rdb.SetArgs(ctx, lockKey, 1, redis.SetArgs{
 		TTL:  30 * time.Second,
 		Mode: "NX",
 	}).Result()
 	if err != nil || ok != "OK" {
-		return
+		return fmt.Errorf("refresh lock contended")
 	}
 	defer rdb.Del(ctx, lockKey)
 
@@ -287,23 +346,20 @@ func refreshOAuthToken(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID
 		"client_id":     oauthCfg.ClientID,
 		"client_secret": oauthCfg.ClientSecret,
 	})
-	resp, err := http.Post(
-		oauthCfg.ServerURL+"/oauth/token",
-		"application/json",
-		bytes.NewReader(payload),
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		oauthCfg.ServerURL+"/oauth/token", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("OAuth token refresh failed", "error", err)
-		return
+		return fmt.Errorf("build refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := oauthRefreshHTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("oauth refresh transport: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		slog.Error("OAuth token refresh failed", "status", resp.StatusCode, "body", string(respBody))
-		return
-	}
-
 	var env struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -313,19 +369,55 @@ func refreshOAuthToken(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID
 			ExpiresIn    int64  `json:"expires_in"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(respBody, &env); err != nil {
-		slog.Error("OAuth token refresh decode failed", "error", err, "body", string(respBody))
-		return
+	_ = json.Unmarshal(respBody, &env)
+
+	// Permanent reject: 401/403 (RFC 6749 invalid_grant style) or the
+	// OAuth-side business codes that mean "this refresh_token is dead":
+	//   10002 invalid token / 10003 token expired / 15003 invalid auth code.
+	// In every case we destroy the local session — there is no recovery.
+	if resp.StatusCode == http.StatusUnauthorized ||
+		resp.StatusCode == http.StatusForbidden ||
+		env.Code == 10002 || env.Code == 10003 || env.Code == 15003 {
+		slog.Warn("OAuth refresh permanently rejected; destroying session",
+			"status", resp.StatusCode, "code", env.Code, "msg", env.Message)
+		rdb.Del(ctx, SessionPrefix+sessionID)
+		return fmt.Errorf("refresh permanently rejected (status=%d code=%d)", resp.StatusCode, env.Code)
+	}
+	// Transient failure: leave the session for a future retry.
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("oauth refresh status=%d body=%s", resp.StatusCode, truncate(string(respBody), 200))
 	}
 	if env.Code != 0 {
-		slog.Error("OAuth token refresh business error", "code", env.Code, "message", env.Message)
-		return
+		return fmt.Errorf("oauth refresh code=%d msg=%s", env.Code, env.Message)
 	}
 
 	session.OAuthAccessToken = env.Data.AccessToken
 	session.OAuthRefreshToken = env.Data.RefreshToken
 	session.OAuthExpiresAt = time.Now().Unix() + env.Data.ExpiresIn
 
-	data, _ := json.Marshal(session)
-	rdb.Set(ctx, SessionPrefix+sessionID, data, SessionTTL)
+	blob, _ := json.Marshal(session)
+	return rdb.Set(ctx, SessionPrefix+sessionID, blob, SessionTTL).Err()
+}
+
+// clearSessionCookie wipes the kun_session cookie on the response. Used
+// when we reject a request because the upstream OAuth refresh permanently
+// failed -- the cookie no longer points to a valid Redis session so it
+// shouldn't keep being presented.
+func clearSessionCookie(c *fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     SessionCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		HTTPOnly: true,
+		Secure:   SecureCookies,
+		SameSite: "Lax",
+		Path:     "/",
+	})
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

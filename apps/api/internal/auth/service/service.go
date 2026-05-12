@@ -17,13 +17,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/auth/repository"
 	"kun-galgame-patch-api/pkg/config"
-
-	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -33,10 +33,20 @@ type AuthService struct {
 	repo     *repository.AuthRepository
 	rdb      *redis.Client
 	oauthCfg config.OAuthConfig
+	http     *http.Client
 }
 
 func New(repo *repository.AuthRepository, rdb *redis.Client, oauthCfg config.OAuthConfig) *AuthService {
-	return &AuthService{repo: repo, rdb: rdb, oauthCfg: oauthCfg}
+	return &AuthService{
+		repo:     repo,
+		rdb:      rdb,
+		oauthCfg: oauthCfg,
+		// All OAuth-server round-trips share one timeout-bound client so a
+		// slow/dead OAuth server cannot tie up login / userinfo / revoke
+		// indefinitely (audit finding: http.Post / http.DefaultClient were
+		// previously used here without a timeout).
+		http: &http.Client{Timeout: 10 * time.Second},
+	}
 }
 
 // OAuthTokenResponse is the OAuth /oauth/token response payload.
@@ -88,7 +98,7 @@ func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("OAuth userinfo request failed: %w", err)
 	}
@@ -157,11 +167,12 @@ func (s *AuthService) oauthPostJSON(path string, body any, out any) error {
 	if err != nil {
 		return fmt.Errorf("encode oauth request: %w", err)
 	}
-	resp, err := http.Post(
-		s.oauthCfg.ServerURL+path,
-		"application/json",
-		bytes.NewReader(payload),
-	)
+	req, err := http.NewRequest(http.MethodPost, s.oauthCfg.ServerURL+path, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("build oauth %s request: %w", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("OAuth %s request failed: %w", path, err)
 	}

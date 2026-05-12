@@ -95,13 +95,19 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 }
 
 // Logout POST /api/v1/auth/logout
+//
+// Best-effort: revoke the OAuth refresh_token on the upstream OAuth server
+// (per its implementation, /oauth/revoke looks up the session by refresh
+// token — sending the access_token is a no-op), then destroy the local
+// Redis session and clear the cookie. Revoke runs in a goroutine because
+// network failure to OAuth must not block logout from this site.
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	sessionID := c.Cookies(middleware.SessionCookieName)
 	if sessionID != "" {
 		if data, err := h.rdb.Get(c.Context(), middleware.SessionPrefix+sessionID).Result(); err == nil {
 			var session middleware.SessionData
-			if err := json.Unmarshal([]byte(data), &session); err == nil && session.OAuthAccessToken != "" {
-				go h.service.RevokeOAuthToken(session.OAuthAccessToken)
+			if err := json.Unmarshal([]byte(data), &session); err == nil && session.OAuthRefreshToken != "" {
+				go h.service.RevokeOAuthToken(session.OAuthRefreshToken)
 			}
 		}
 	}
