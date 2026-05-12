@@ -7,6 +7,7 @@ package handler
 
 import (
 	"encoding/json"
+	stderrors "errors"
 	"log/slog"
 	"time"
 
@@ -54,6 +55,10 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 
 	userInfo, err := h.service.GetUserInfo(tokenResp.AccessToken)
 	if err != nil {
+		if stderrors.Is(err, service.ErrUserBanned) {
+			slog.Warn("OAuth login blocked: account banned (10014)")
+			return response.Error(c, errors.ErrAccountBanned(""))
+		}
 		slog.Error("OAuth get userinfo failed", "error", err)
 		return response.Error(c, errors.ErrBadRequest("failed to get user info"))
 	}
@@ -160,6 +165,7 @@ func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string,
 	if brief != nil {
 		resp.Name = brief.Name
 		resp.Avatar = brief.Avatar
+		resp.AvatarImageHash = brief.AvatarImageHash
 		resp.Bio = brief.Bio
 	}
 	return resp

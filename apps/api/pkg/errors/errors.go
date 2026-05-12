@@ -71,6 +71,16 @@ func ErrWikiGalgameNotFound(msg string) *AppError {
 	return New(44001, msg, fiber.StatusBadRequest)
 }
 
+// ErrAccountBanned mirrors OAuth's code 10014 (HTTP 403). Per
+// docs/oauth/api-reference.md the frontend should land users on an
+// "account banned" page rather than the login page — re-login will not help.
+func ErrAccountBanned(msg string) *AppError {
+	if msg == "" {
+		msg = "账号已被封禁，无法登录"
+	}
+	return New(10014, msg, fiber.StatusForbidden)
+}
+
 func ErrConflict(msg string) *AppError {
 	return New(40900, msg, fiber.StatusConflict)
 }

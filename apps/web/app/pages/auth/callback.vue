@@ -34,6 +34,16 @@ onMounted(async () => {
 
   if (res.code !== 0) {
     error.value = res.message
+    // Per docs/oauth/api-reference.md, code 10014 (HTTP 403) means the
+    // account is banned — re-logging in won't help, so go to the dedicated
+    // banned-account page instead of looping back to /login.
+    if (res.code === 10014) {
+      await navigateTo({
+        path: '/account-banned',
+        query: res.message ? { reason: res.message } : {}
+      })
+      return
+    }
     useKunMessage(res.message || '登录失败', 'error')
     setTimeout(() => navigateTo('/login'), 2000)
     return

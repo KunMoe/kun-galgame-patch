@@ -25,6 +25,7 @@ type MeResponse struct {
 	Roles           []string `json:"roles"`
 	Name            string   `json:"name"`
 	Avatar          string   `json:"avatar"`
+	AvatarImageHash string   `json:"avatar_image_hash"`
 	Bio             string   `json:"bio"`
 	Moemoepoint     int      `json:"moemoepoint"`
 	DailyCheckIn    int      `json:"daily_check_in"`

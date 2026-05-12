@@ -124,9 +124,11 @@ func attachUsersToCards(ctx context.Context, users *userclient.Client, patches [
 	for i := range cards {
 		if b := briefs[patches[i].UserID]; b != nil {
 			cards[i].User = &patchModel.PatchUser{
-				ID:     int(b.ID),
-				Name:   b.Name,
-				Avatar: b.Avatar,
+				ID:              int(b.ID),
+				Name:            b.Name,
+				Avatar:          b.Avatar,
+				AvatarImageHash: b.AvatarImageHash,
+				Roles:           b.Roles,
 			}
 		}
 	}
@@ -200,9 +202,11 @@ func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *usercli
 	if users != nil && p.UserID > 0 {
 		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
 			card.User = &patchModel.PatchUser{
-				ID:     int(b.ID),
-				Name:   b.Name,
-				Avatar: b.Avatar,
+				ID:              int(b.ID),
+				Name:            b.Name,
+				Avatar:          b.Avatar,
+				AvatarImageHash: b.AvatarImageHash,
+				Roles:           b.Roles,
 			}
 		}
 	}
@@ -267,9 +271,11 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	if users != nil && p.UserID > 0 {
 		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
 			base.User = &patchModel.PatchUser{
-				ID:     int(b.ID),
-				Name:   b.Name,
-				Avatar: b.Avatar,
+				ID:              int(b.ID),
+				Name:            b.Name,
+				Avatar:          b.Avatar,
+				AvatarImageHash: b.AvatarImageHash,
+				Roles:           b.Roles,
 			}
 		}
 	}

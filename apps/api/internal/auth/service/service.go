@@ -90,6 +90,12 @@ func (s *AuthService) ExchangeCode(code, codeVerifier string) (*OAuthTokenRespon
 	return &tokenResp, nil
 }
 
+// ErrUserBanned is returned by GetUserInfo when the OAuth server signals
+// the account is banned (HTTP 403 + envelope code 10014). The caller MUST
+// translate this into errors.ErrAccountBanned so the frontend can redirect
+// to a banned-account page rather than the login page.
+var ErrUserBanned = errors.New("oauth user banned")
+
 // GetUserInfo fetches the current user's identity from /oauth/userinfo.
 func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
@@ -104,18 +110,21 @@ func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("OAuth userinfo request failed (%d): %s", resp.StatusCode, string(respBody))
-	}
-
+	// Parse the envelope eagerly so we can detect business codes (e.g. 10014
+	// banned) that ship under non-2xx responses.
+	respBody, _ := io.ReadAll(resp.Body)
 	var env struct {
 		Code    int           `json:"code"`
 		Message string        `json:"message"`
 		Data    OAuthUserInfo `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		return nil, fmt.Errorf("failed to decode userinfo: %w", err)
+	_ = json.Unmarshal(respBody, &env)
+
+	if env.Code == 10014 || resp.StatusCode == http.StatusForbidden {
+		return nil, ErrUserBanned
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("OAuth userinfo request failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 	if env.Code != 0 {
 		return nil, fmt.Errorf("OAuth userinfo error code=%d: %s", env.Code, env.Message)

@@ -108,10 +108,17 @@ func (Patch) TableName() string { return "patch" }
 
 // PatchUser is the wire shape of a user brief embedded in patch responses.
 // Filled at request time from OAuth /users/batch via pkg/userclient.
+//
+// avatar_image_hash mirrors OAuth's `users.avatar_image_hash` — preferred over
+// `avatar` by the frontend's resolveAvatarUrl once image_service is live.
+// roles surfaces the OAuth role set so the UI can render an admin / mod badge
+// next to a username (e.g. on comments) without an extra round-trip.
 type PatchUser struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Avatar string `json:"avatar"`
+	ID              int      `json:"id"`
+	Name            string   `json:"name"`
+	Avatar          string   `json:"avatar"`
+	AvatarImageHash string   `json:"avatar_image_hash"`
+	Roles           []string `json:"roles,omitempty"`
 }
 
 // RenderResourceNotes fills note_html for every resource in the slice.

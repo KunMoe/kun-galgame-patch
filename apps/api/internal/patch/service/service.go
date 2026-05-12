@@ -255,7 +255,7 @@ func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
 	if b == nil {
 		return nil
 	}
-	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
 }
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {

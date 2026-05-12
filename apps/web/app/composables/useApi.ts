@@ -37,7 +37,7 @@ export const useApi = () => {
     const { method = 'GET', body, headers = {} } = options
 
     try {
-      return await $fetch<ApiResponse<T>>(`${baseUrl}${endpoint}`, {
+      const res = await $fetch<ApiResponse<T>>(`${baseUrl}${endpoint}`, {
         method,
         body: body ? JSON.stringify(body) : undefined,
         headers: {
@@ -46,10 +46,29 @@ export const useApi = () => {
         },
         credentials: 'include'
       })
+      // OAuth code 10014 = account banned. Per docs/oauth/api-reference.md
+      // the frontend must NOT redirect to /login (re-login hits the same
+      // error). Send the user to the dedicated banned-account page instead.
+      if (res.code === 10014 && import.meta.client) {
+        navigateTo({
+          path: '/account-banned',
+          query: res.message ? { reason: res.message } : {}
+        })
+      }
+      return res
     } catch (error: unknown) {
       const fetchError = error as { statusCode?: number; data?: ApiError }
+      const code = fetchError.data?.code ?? fetchError.statusCode ?? -1
+      if (code === 10014 && import.meta.client) {
+        navigateTo({
+          path: '/account-banned',
+          query: fetchError.data?.message
+            ? { reason: fetchError.data.message }
+            : {}
+        })
+      }
       return {
-        code: fetchError.data?.code ?? fetchError.statusCode ?? -1,
+        code,
         message: fetchError.data?.message ?? 'Request failed',
         data: null as T
       }
