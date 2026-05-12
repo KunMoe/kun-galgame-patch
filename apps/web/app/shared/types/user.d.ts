@@ -1,13 +1,15 @@
 // Backend returns flat snake_case counts (not a nested _count wrapper).
 // See apps/api/internal/user/dto/dto.go UserInfoResponse.
+//
+// `roles` is the OAuth-side role set for the profile being viewed. Per-site
+// numeric `role` / `status` / `email` were dropped in the OAuth migration --
+// identity is owned by OAuth and not re-exposed by /user/:uid.
 interface UserInfo {
   id: number
   name: string
-  email?: string
   avatar: string
   bio: string
-  role: number
-  status: number
+  roles: string[]
   moemoepoint: number
   register_time: string
   follower_count: number

@@ -114,6 +114,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dt
 			resp.Name = b.Name
 			resp.Avatar = b.Avatar
 			resp.Bio = b.Bio
+			resp.Roles = b.Roles
 		}
 	}
 

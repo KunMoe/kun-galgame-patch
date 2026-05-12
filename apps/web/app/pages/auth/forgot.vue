@@ -1,11 +1,17 @@
 <script setup lang="ts">
+// Password recovery is handled entirely by the KUN OAuth server (passwords
+// are not stored on this site after Phase 4 of the OAuth migration). This
+// page just bounces the user to OAuth's reset-password flow.
 useKunSeoMeta({
   title: '忘记密码',
-  description: '重置您的鲲 Galgame 补丁账号密码'
+  description: '通过 KUN 账号中心重置密码'
 })
 
-const step = ref(1)
-const username = ref('')
+const config = useRuntimeConfig()
+const oauthOrigin = computed(
+  () => (config.public.oauthServerUrl || '').replace(/\/api\/v\d+\/?$/, '')
+)
+const forgotUrl = computed(() => `${oauthOrigin.value}/forgot`)
 </script>
 
 <template>
@@ -18,29 +24,21 @@ const username = ref('')
           </div>
           <h1 class="text-center text-2xl font-bold">重置密码</h1>
           <p class="text-default-500 text-center text-sm">
-            {{
-              step === 1
-                ? '输入您的邮箱以发送邮箱验证码'
-                : '请输入您收到的验证码和新密码'
-            }}
+            密码由 KUN 账号中心统一管理，请前往 KUN 重置
           </p>
         </div>
       </template>
 
-      <KunDivider color="default" />
-
-      <div class="space-y-4 p-6">
-        <ForgotStepOne
-          v-if="step === 1"
-          :model-step="step"
-          @update:model-step="step = $event"
-          @update:email="username = $event"
-        />
-        <ForgotStepTwo
-          v-else
-          :name="username"
-          @update:model-step="step = $event"
-        />
+      <div class="space-y-3 p-6 pt-0">
+        <a :href="forgotUrl" target="_blank" rel="noopener noreferrer">
+          <KunButton color="primary" full-width>
+            <KunIcon name="lucide:external-link" class="size-4" />
+            前往 KUN 账号中心重置密码
+          </KunButton>
+        </a>
+        <NuxtLink to="/login">
+          <KunButton variant="bordered" full-width>返回登录</KunButton>
+        </NuxtLink>
       </div>
     </KunCard>
   </div>

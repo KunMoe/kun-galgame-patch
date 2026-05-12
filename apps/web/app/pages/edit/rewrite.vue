@@ -18,15 +18,14 @@ useKunSeoMeta({
 
 const route = useRoute()
 const userStore = useUserStore()
-
-// Page-level auth gate (no shared `auth` middleware exists yet in this app).
-// Anonymous visits get bounced to /login with a return target.
-onMounted(() => {
-  if (!userStore.user.uid) {
-    navigateTo({ path: '/login', query: { from: route.fullPath } })
-  }
-})
 const api = useApi()
+
+// Page-level auth gate. Cookie-backed Pinia gives us userStore.user.uid
+// during SSR, so anonymous visits get a 302 from the server -- no flash of
+// the form before the client-side redirect.
+if (!userStore.user.uid) {
+  await navigateTo({ path: '/login', query: { from: route.fullPath } })
+}
 
 const galgameId = computed(() => Number(route.query.id))
 const validId = computed(() => Number.isFinite(galgameId.value) && galgameId.value > 0)

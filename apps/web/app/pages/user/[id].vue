@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { USER_ROLE_MAP } from '~/constants/user'
+import { pickRoleLabel } from '~/constants/user'
 
 const route = useRoute()
 const api = useApi()
@@ -100,7 +100,7 @@ const toggleFollow = async () => {
             <div class="flex flex-col items-center gap-1">
               <h4 class="text-2xl font-bold">{{ user.name }}</h4>
               <KunBadge color="primary" variant="flat" size="sm">
-                {{ USER_ROLE_MAP[user.role] ?? '用户' }}
+                {{ pickRoleLabel(user.roles) }}
               </KunBadge>
 
               <div class="text-default-500 mt-2 flex gap-4 text-sm">

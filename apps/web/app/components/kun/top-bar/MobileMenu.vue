@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { kunMoyuMoe } from '~/config/moyu-moe'
-import { kunMobileNavItem } from '~/constants/top-bar'
+import { kunMobileAdminItem, kunMobileNavItem } from '~/constants/top-bar'
+
+const userStore = useUserStore()
+const navItems = computed(() =>
+  userStore.isAdmin
+    ? [...kunMobileNavItem, ...kunMobileAdminItem]
+    : kunMobileNavItem
+)
 
 interface Props {
   isOpen: boolean
@@ -56,7 +63,7 @@ onUnmounted(() => {
 
       <nav class="flex flex-col gap-1">
         <NuxtLink
-          v-for="item in kunMobileNavItem"
+          v-for="item in navItems"
           :key="item.href"
           :to="item.href"
           class="hover:bg-default-100 rounded-lg px-3 py-3"

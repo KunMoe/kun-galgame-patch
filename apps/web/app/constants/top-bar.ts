@@ -17,12 +17,19 @@ export const kunNavItemDesktop: KunNavItem[] = [
   { name: '关于我们', href: '/about' }
 ]
 
+// Public mobile nav entries (visible to everyone). The admin entry is
+// rendered separately, gated on userStore.isAdmin in MobileMenu.vue, so
+// non-admins don't see (and can't 403 on) it.
 export const kunMobileNavItem: KunNavItem[] = [
   ...kunNavItem,
   { name: '补丁评论列表', href: '/comment' },
   { name: '补丁资源列表', href: '/resource' },
-  { name: '管理系统', href: '/admin' },
   { name: '联系我们', href: '/about/notice/feedback' }
+]
+
+// Admin-only entries. Filter into the rendered list at the call site.
+export const kunMobileAdminItem: KunNavItem[] = [
+  { name: '管理系统', href: '/admin' }
 ]
 
 export const KUN_CONTENT_LIMIT_MAP: Record<string, string> = {

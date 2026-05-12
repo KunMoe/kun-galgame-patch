@@ -11,9 +11,13 @@ const handleOAuthLogin = async () => {
   }
 }
 
-const registerUrl = computed(
-  () => (config.public.oauthServerUrl || '').replace(/\/api\/v\d+\/?$/, '') + '/register'
+const oauthOrigin = computed(
+  () => (config.public.oauthServerUrl || '').replace(/\/api\/v\d+\/?$/, '')
 )
+const registerUrl = computed(() => `${oauthOrigin.value}/register`)
+// Local /auth/forgot is just a redirect page; we link directly to OAuth's
+// reset flow to save the extra hop.
+const forgotUrl = computed(() => `${oauthOrigin.value}/forgot`)
 </script>
 
 <template>
@@ -36,14 +40,12 @@ const registerUrl = computed(
 
     <KunTextDivider text="或" />
 
-    <KunButton
-      color="primary"
-      variant="bordered"
-      full-width
-      href="/auth/forgot"
-    >
-      忘记密码
-    </KunButton>
+    <a :href="forgotUrl" target="_blank" rel="noopener noreferrer">
+      <KunButton color="primary" variant="bordered" full-width>
+        <KunIcon name="lucide:external-link" class="size-4" />
+        忘记密码
+      </KunButton>
+    </a>
 
     <div class="flex items-center justify-center">
       <span class="mr-2 text-sm">没有 KUN 账号?</span>

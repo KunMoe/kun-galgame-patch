@@ -2,13 +2,18 @@ import { defineStore } from 'pinia'
 
 // Mirrors GET /api/v1/auth/me (and /oauth/callback) MeResponse. Keys are
 // snake_case to match the wire format verbatim; no client-side remapping.
+//
+// `roles` is the OAuth-side role set ("admin", "moderator", "user", ...).
+// After the OAuth migration, per-site numeric role (1/2/3/4) is no longer
+// returned by the backend; downstream gates (isAdmin / isModerator) read
+// this array directly.
 export interface UserState {
   uid: number
   name: string
   avatar: string
   bio: string
   moemoepoint: number
-  role: number
+  roles: string[]
 
   daily_check_in: number
   daily_image_count: number
@@ -23,7 +28,7 @@ const initialUserState: UserState = {
   avatar: '',
   bio: '',
   moemoepoint: 0,
-  role: 1,
+  roles: [],
   daily_check_in: 1,
   daily_image_count: 0,
   daily_upload_size: 0,
@@ -57,10 +62,25 @@ export const useUserStore = defineStore('user', {
   },
   getters: {
     isLoggedIn: (state) => state.user.uid > 0 && !!state.user.name,
-    isAdmin: (state) => state.user.role >= 3
+    // OAuth role mapping (see docs/user-migration/02-data-mapping.md §7):
+    //   moyu super-admin -> "admin"
+    //   moyu/kungal admin -> "moderator"
+    // The backend's middleware.RequireRole("admin", "moderator") matches the
+    // isModerator getter; admin-only gates use isAdmin.
+    isAdmin: (state) => state.user.roles.includes('admin'),
+    isModerator: (state) =>
+      state.user.roles.includes('admin') ||
+      state.user.roles.includes('moderator')
   },
+  // Cookie-backed persistence is intentional: the cookie is sent on the
+  // initial HTML request so the SSR pass already has the logged-in user
+  // available (name / avatar / roles / counts). Without this the page would
+  // render anonymously on the server and only "fill in" after onMounted on
+  // the client, producing a visible flicker. cookieOptions (maxAge 7d,
+  // sameSite=strict) come from the global piniaPluginPersistedstate config
+  // in nuxt.config.ts.
   persist: {
     key: 'kun-patch-user-store',
-    storage: piniaPluginPersistedstate.localStorage()
+    storage: piniaPluginPersistedstate.cookies()
   }
 })
