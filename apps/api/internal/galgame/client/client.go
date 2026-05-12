@@ -15,7 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -449,6 +451,86 @@ func (c *Client) UpdateGalgame(ctx context.Context, accessToken string, gid int,
 		return nil, fmt.Errorf("read wiki response: %w", err)
 	}
 
+	var env wikiResponse[json.RawMessage]
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+	}
+	if env.Code != 0 {
+		return nil, &WikiError{Code: env.Code, Message: env.Message}
+	}
+	return env.Data, nil
+}
+
+// UpdateGalgameMultipart proxies PUT /galgame/:gid in multipart/form-data
+// mode (per docs/galgame_wiki/01-galgame.md §Banner 上传). The wire shape:
+//
+//   data=<JSON string mirroring UpdateGalgameRequest>
+//   file=<image binary>           (optional, only when changing banner)
+//
+// Used by the patch site's edit form when the user picks a new banner.
+// Returns Wiki's raw `data` payload on success and *WikiError on a non-zero
+// envelope code (so the handler can transparently forward it).
+func (c *Client) UpdateGalgameMultipart(
+	ctx context.Context,
+	accessToken string,
+	gid int,
+	jsonBody any,
+	fileName string,
+	fileContent []byte,
+	fileMime string,
+) (json.RawMessage, error) {
+	payload, err := json.Marshal(jsonBody)
+	if err != nil {
+		return nil, fmt.Errorf("encode update body: %w", err)
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if err := w.WriteField("data", string(payload)); err != nil {
+		return nil, fmt.Errorf("write data field: %w", err)
+	}
+	if len(fileContent) > 0 {
+		// Build a proper Content-Type part header for the binary so the Wiki
+		// side recognizes the mime type (image/jpeg|png|webp).
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition",
+			fmt.Sprintf(`form-data; name="file"; filename=%q`, fileName))
+		if fileMime != "" {
+			h.Set("Content-Type", fileMime)
+		}
+		fw, err := w.CreatePart(h)
+		if err != nil {
+			return nil, fmt.Errorf("create file part: %w", err)
+		}
+		if _, err := fw.Write(fileContent); err != nil {
+			return nil, fmt.Errorf("write file part: %w", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/galgame/%d", c.baseURL, gid)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("build wiki update request: %w", err)
+	}
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wiki PUT galgame (multipart): %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read wiki response: %w", err)
+	}
 	var env wikiResponse[json.RawMessage]
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))

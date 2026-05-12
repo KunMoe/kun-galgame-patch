@@ -1,15 +1,18 @@
 <script setup lang="ts">
 // Galgame metadata edit form.
 //
-// Per docs/galgame_wiki/01-galgame.md, PUT /galgame/:gid accepts any subset
-// of name / intro / content_limit / age_limit / aliases / etc. Editing is
-// proxied through our backend (PUT /api/v1/galgame/:gid) which forwards the
-// user's OAuth access_token so the Wiki Service can apply creator/admin
-// authorization itself.
+// Per docs/galgame_wiki/01-galgame.md PUT /galgame/:gid, we send any subset
+// of:
+//   - name_{en_us,ja_jp,zh_cn,zh_tw}, intro_*
+//   - content_limit, age_limit, original_language
+//   - aliases (comma-separated string)
+//   - banner via multipart `file`
+//   - is_minor
 //
-// Tag / official / engine selection is intentionally NOT in this form —
-// those need a search-and-select UI which is more naturally done on the
-// Wiki frontend. A link to the Wiki edit page is shown for those cases.
+// All editing is proxied through the backend (PUT /api/v1/galgame/:gid) which
+// forwards the user's OAuth access_token; Wiki itself enforces creator/admin
+// authorization. Tag / official / engine / series selection still requires a
+// search-and-select UI which lives on the Wiki frontend.
 
 useKunSeoMeta({
   title: '编辑 Galgame',
@@ -20,23 +23,20 @@ const route = useRoute()
 const userStore = useUserStore()
 const api = useApi()
 
-// Page-level auth gate. Cookie-backed Pinia gives us userStore.user.uid
-// during SSR, so anonymous visits get a 302 from the server -- no flash of
-// the form before the client-side redirect.
 if (!userStore.user.uid) {
   await navigateTo({ path: '/login', query: { from: route.fullPath } })
 }
 
 const galgameId = computed(() => Number(route.query.id))
-const validId = computed(() => Number.isFinite(galgameId.value) && galgameId.value > 0)
+const validId = computed(
+  () => Number.isFinite(galgameId.value) && galgameId.value > 0
+)
 
 const config = useRuntimeConfig()
 const wikiOrigin =
   ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
   'https://galgame.kungal.com'
 
-// Initial values come from /patch/:id/detail (already proxies Wiki under the
-// hood through the enricher).
 const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
   () => `edit-rewrite-${galgameId.value}`,
   async () => {
@@ -45,6 +45,18 @@ const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
     return res.code === 0 ? res.data : null
   }
 )
+
+// Wiki accepts these literal values (see 01-galgame.md). For original_language
+// we mirror the four-language UI that lives elsewhere on the site.
+const CONTENT_LIMIT_OPTIONS = ['sfw', 'nsfw'] as const
+const AGE_LIMIT_OPTIONS = ['all', 'r18'] as const
+const ORIGINAL_LANG_OPTIONS = [
+  { value: '', label: '保持不变' },
+  { value: 'ja-jp', label: '日本語' },
+  { value: 'zh-cn', label: '简体中文' },
+  { value: 'zh-tw', label: '繁體中文' },
+  { value: 'en-us', label: 'English' }
+] as const
 
 interface FormState {
   name_en_us: string
@@ -56,6 +68,9 @@ interface FormState {
   intro_zh_cn: string
   intro_zh_tw: string
   content_limit: 'sfw' | 'nsfw'
+  age_limit: 'all' | 'r18'
+  original_language: string
+  aliases: string
   is_minor: boolean
 }
 
@@ -69,7 +84,25 @@ const form = reactive<FormState>({
   intro_zh_cn: '',
   intro_zh_tw: '',
   content_limit: 'sfw',
+  age_limit: 'all',
+  original_language: '',
+  aliases: '',
   is_minor: false
+})
+
+// The optional banner file is held separately from `form` (FormData doesn't
+// round-trip File objects cleanly through reactive state).
+const bannerFile = ref<File | null>(null)
+const bannerPreview = ref<string | null>(null)
+const onBannerChange = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const f = input.files?.[0] ?? null
+  bannerFile.value = f
+  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
+  bannerPreview.value = f ? URL.createObjectURL(f) : null
+}
+onBeforeUnmount(() => {
+  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
 
 watch(
@@ -85,21 +118,31 @@ watch(
     form.intro_zh_cn = d.introduction_markdown['zh-cn'] ?? ''
     form.intro_zh_tw = d.introduction_markdown['zh-tw'] ?? ''
     form.content_limit = (d.content_limit as 'sfw' | 'nsfw') ?? 'sfw'
+    // age_limit / original_language come from the embedded Wiki object on
+    // PatchDetail (apps/web/app/shared/types/patch.d.ts); fall back to
+    // sensible defaults when Wiki returned nothing.
+    form.age_limit = (d.galgame?.age_limit as 'all' | 'r18') ?? 'all'
+    form.original_language = d.galgame?.original_language ?? ''
+    // aliases isn't returned by /patch/:id/detail (the enricher doesn't
+    // surface it); leaving it blank means "don't touch". The user can still
+    // edit it as a fresh value.
+    form.aliases = ''
+    form.is_minor = false
   },
   { immediate: true }
 )
 
-// We hand Wiki only the fields that actually changed (omit anything equal to
-// the original). This minimizes diff noise in the revision history and
-// avoids accidentally clobbering a parallel edit.
+// Hand Wiki only the fields that actually changed.
 const buildPayload = () => {
   if (!detail.value) return {}
   const d = detail.value
   const payload: Record<string, unknown> = {}
+
   if (form.name_en_us !== (d.name['en-us'] ?? '')) payload.name_en_us = form.name_en_us
   if (form.name_ja_jp !== (d.name['ja-jp'] ?? '')) payload.name_ja_jp = form.name_ja_jp
   if (form.name_zh_cn !== (d.name['zh-cn'] ?? '')) payload.name_zh_cn = form.name_zh_cn
   if (form.name_zh_tw !== (d.name['zh-tw'] ?? '')) payload.name_zh_tw = form.name_zh_tw
+
   if (form.intro_en_us !== (d.introduction_markdown['en-us'] ?? ''))
     payload.intro_en_us = form.intro_en_us
   if (form.intro_ja_jp !== (d.introduction_markdown['ja-jp'] ?? ''))
@@ -108,7 +151,17 @@ const buildPayload = () => {
     payload.intro_zh_cn = form.intro_zh_cn
   if (form.intro_zh_tw !== (d.introduction_markdown['zh-tw'] ?? ''))
     payload.intro_zh_tw = form.intro_zh_tw
+
   if (form.content_limit !== d.content_limit) payload.content_limit = form.content_limit
+  if (form.age_limit !== (d.galgame?.age_limit ?? 'all'))
+    payload.age_limit = form.age_limit
+  if (form.original_language !== (d.galgame?.original_language ?? '') && form.original_language)
+    payload.original_language = form.original_language
+
+  // aliases: only include when non-empty (Wiki replaces the alias set wholesale,
+  // so sending "" would wipe out existing aliases).
+  if (form.aliases.trim()) payload.aliases = form.aliases.trim()
+
   payload.is_minor = form.is_minor
   return payload
 }
@@ -121,17 +174,41 @@ const handleSubmit = async () => {
     return
   }
   const payload = buildPayload()
-  // is_minor alone counts as no change; require at least one real diff.
-  const keys = Object.keys(payload).filter((k) => k !== 'is_minor')
-  if (keys.length === 0) {
+  const realKeys = Object.keys(payload).filter((k) => k !== 'is_minor')
+  if (realKeys.length === 0 && !bannerFile.value) {
     useKunMessage('没有任何字段被修改', 'warn')
     return
   }
   submitting.value = true
   try {
-    const res = await api.put(`/galgame/${galgameId.value}`, payload)
+    let res: { code: number; message: string; data: unknown }
+    if (bannerFile.value) {
+      // multipart mode: send `data` (JSON string) + `file` (the banner image)
+      // so backend can forward to Wiki as a single atomic edit.
+      const fd = new FormData()
+      fd.append('data', JSON.stringify(payload))
+      fd.append('file', bannerFile.value, bannerFile.value.name)
+      const config = useRuntimeConfig()
+      const base = config.public.apiBase || ''
+      const r = await $fetch.raw<typeof res>(`${base}/galgame/${galgameId.value}`, {
+        method: 'PUT',
+        body: fd,
+        credentials: 'include'
+      }).catch((e) => e?.response)
+      res = (r?._data ?? { code: -1, message: '上传失败', data: null }) as typeof res
+    } else {
+      res = await api.put(`/galgame/${galgameId.value}`, payload)
+    }
+
     if (res.code === 0) {
       useKunMessage('修改成功', 'success')
+      // Invalidate any stale cache of this patch's data on the detail/header
+      // pages before navigating back, so users see their edit immediately
+      // instead of the previous Wiki snapshot.
+      await refreshNuxtData([
+        `patch-${galgameId.value}`,
+        `patch-detail-${galgameId.value}`
+      ])
       await navigateTo(`/patch/${galgameId.value}/introduction`)
     } else {
       useKunMessage(res.message || '修改失败', 'error')
@@ -214,6 +291,26 @@ const handleSubmit = async () => {
         </section>
 
         <section class="space-y-3">
+          <h3 class="text-lg font-semibold">Banner</h3>
+          <p class="text-default-500 text-xs">
+            可选，支持 JPEG / PNG / WebP，最大 10MB。上传后会在 Wiki 创建一个新版本快照。
+          </p>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
+            @change="onBannerChange"
+          />
+          <div v-if="bannerPreview" class="mt-2">
+            <img
+              :src="bannerPreview"
+              alt="新 banner 预览"
+              class="bg-default-100 max-h-48 w-full rounded object-contain"
+            />
+          </div>
+        </section>
+
+        <section class="space-y-3">
           <h3 class="text-lg font-semibold">内容分级</h3>
           <div class="flex gap-4">
             <label class="flex items-center gap-2">
@@ -232,9 +329,58 @@ const handleSubmit = async () => {
                 value="nsfw"
                 class="accent-primary"
               />
-              <span>NSFW (R18 / 成人向)</span>
+              <span>NSFW (含成人向元素)</span>
             </label>
           </div>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-lg font-semibold">年龄分级</h3>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2">
+              <input
+                v-model="form.age_limit"
+                type="radio"
+                value="all"
+                class="accent-primary"
+              />
+              <span>全年龄</span>
+            </label>
+            <label class="flex items-center gap-2">
+              <input
+                v-model="form.age_limit"
+                type="radio"
+                value="r18"
+                class="accent-primary"
+              />
+              <span>R18</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-lg font-semibold">原始语言</h3>
+          <select
+            v-model="form.original_language"
+            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
+          >
+            <option
+              v-for="opt in ORIGINAL_LANG_OPTIONS"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-lg font-semibold">别名</h3>
+          <p class="text-default-500 text-xs">
+            多个别名用英文逗号分隔；留空则不修改现有别名。提交时会
+            <strong>替换</strong>整个别名集合，不要漏填已有的。
+          </p>
+          <KunInput v-model="form.aliases" placeholder="别名1, 别名2, 别名3" />
         </section>
 
         <section class="space-y-2">
@@ -246,7 +392,7 @@ const handleSubmit = async () => {
 
         <div class="border-default/20 bg-default-50 rounded-lg border p-3 text-sm">
           <p class="text-default-700">
-            如需修改 banner / 标签 / 会社 / 引擎 / 别名 / 系列等，请前往
+            如需修改 标签 / 会社 / 引擎 / 系列 等，请前往
             <a
               :href="`${wikiOrigin}/galgame/${galgameId}/edit`"
               target="_blank"
@@ -255,7 +401,7 @@ const handleSubmit = async () => {
             >
               Galgame Wiki 编辑页
             </a>
-            操作。
+            操作（这些字段需要搜索/选择 UI，本站不重复实现）。
           </p>
         </div>
 

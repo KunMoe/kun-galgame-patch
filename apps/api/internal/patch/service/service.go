@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+// ErrWikiGalgameMissing is returned by CreatePatch when the supplied
+// vndb_id has no corresponding row on the Galgame Wiki yet. The handler
+// translates this into the typed AppError so the frontend can pick it up
+// via code = 44001 and render a "前往 Wiki 创建" CTA.
+var ErrWikiGalgameMissing = errors.New("wiki galgame missing for vndb_id")
 
 type PatchService struct {
 	repo  *repository.PatchRepository
@@ -33,12 +40,20 @@ func New(repo *repository.PatchRepository, rdb *redis.Client, db *gorm.DB, s3 *s
 
 // CreatePatch handles POST /api/patch (D12, 2026-04-21).
 //
-// The client only provides vndb_id; the server:
-//  1. Calls Wiki /galgame/check?vndb_id=... to verify existence and fetch galgame_id
-//  2. Checks whether a patch with the same vndb_id already exists locally
-//  3. In one transaction: create the patch row, award +3 moemoepoint to the user, register contributor
+// Strict policy: vndb_id MUST already exist on the Galgame Wiki. We do not
+// POST /galgame on behalf of the user -- galgame metadata curation is
+// pushed to the Wiki frontend (which has the search-and-pick UI for
+// tag/official/engine that we don't want to re-implement here).
 //
-// No banner upload (banner is fetched directly from Wiki).
+// When Wiki returns "not found" we surface ErrWikiGalgameMissing so the
+// handler can map to AppError 44001 and the frontend renders a "前往 Wiki
+// 创建" CTA with the vndb_id pre-filled.
+//
+// Steps:
+//  1. Wiki /galgame/check?vndb_id=... -> exists + galgame_id (or 44001)
+//  2. Local dedup on vndb_id
+//  3. One transaction: insert patch with id=galgame_id, +3 moemoepoint,
+//     register contributor.
 func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) (int, error) {
 	// 1. Check with Wiki: must exist, and get galgame_id
 	exists, galgameID, err := s.wiki.CheckGalgameByVndbID(ctx, vndbID)
@@ -46,7 +61,8 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 		return 0, fmt.Errorf("调用 Wiki 校验 vndb_id 失败: %w", err)
 	}
 	if !exists {
-		return 0, fmt.Errorf("Galgame Wiki 中不存在 vndb_id=%s 的游戏，请先在 Wiki 创建", vndbID)
+		// Sentinel error so the handler can map this to 44001 (typed AppError).
+		return 0, ErrWikiGalgameMissing
 	}
 
 	// 2. Local dedup

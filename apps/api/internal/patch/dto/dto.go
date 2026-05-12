@@ -6,13 +6,13 @@ package dto
 // comes from the Galgame Wiki; the client only needs to supply vndb_id. The server
 // calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
 type PatchCreateRequest struct {
-	VndbID string `json:"vndb_id" validate:"required,max=10"`
+	VndbID string `json:"vndb_id" validate:"required,max=20"`
 }
 
 // PatchUpdateRequest: after D12, the patch itself has almost no editable fields.
 // This DTO is kept only for the edge case of rebinding vndb_id (e.g. a mislinked entry).
 type PatchUpdateRequest struct {
-	VndbID string `json:"vndb_id" validate:"required,max=10"`
+	VndbID string `json:"vndb_id" validate:"required,max=20"`
 }
 
 // GetPatchCommentRequest is the request for fetching a comment list
@@ -63,5 +63,5 @@ type PatchResourceUpdateRequest struct {
 
 // DuplicateCheckRequest is the request for checking VNDB ID duplicates
 type DuplicateCheckRequest struct {
-	VndbID string `query:"vndb_id" validate:"required,max=10"`
+	VndbID string `query:"vndb_id" validate:"required,max=20"`
 }

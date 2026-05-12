@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"encoding/json"
+	stderrors "errors"
+	"io"
 	"regexp"
 	"strconv"
+	"strings"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
@@ -62,6 +66,12 @@ func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
 
 	id, err := h.service.CreatePatch(c.Context(), user.UID, req.VndbID)
 	if err != nil {
+		// Distinct error code so the frontend can render a "前往 Wiki 创建"
+		// CTA when the vndb_id is missing on Wiki, vs the generic toast for
+		// any other failure (e.g. duplicate vndb_id locally).
+		if stderrors.Is(err, service.ErrWikiGalgameMissing) {
+			return response.Error(c, errors.ErrWikiGalgameNotFound(""))
+		}
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OK(c, map[string]int{"id": id})
@@ -502,15 +512,17 @@ func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
 
 // UpdateGalgame PUT /api/v1/galgame/:gid
 //
-// Thin proxy over the Wiki Service's PUT /galgame/:gid. The Wiki Service owns
-// all galgame metadata (D12); editing it from this site means forwarding the
-// user's request — together with their OAuth access_token — and propagating
-// Wiki's response code verbatim back to the frontend.
+// Thin proxy over the Wiki Service's PUT /galgame/:gid. Two modes:
+//
+//   - application/json  -> forwards the JSON body unchanged.
+//   - multipart/form-data with `data` (JSON) and optional `file` (banner)
+//     -> forwards as multipart so Wiki/image_service can attach the banner
+//     in the same revision (no orphan files; see docs/galgame_wiki/01-galgame.md
+//     §Banner 上传).
 //
 // We do not enforce authorization locally: Wiki itself permits only the
-// creator or an admin. Local side effects (e.g. moemoepoint rewards on edit)
-// are intentionally not added here to keep this a pure proxy; if we want
-// them later they go on success after the Wiki call returns.
+// creator or an admin. The user's OAuth access_token is forwarded verbatim
+// (carries the JWT roles claim Wiki validates).
 func (h *PatchHandler) UpdateGalgame(c *fiber.Ctx) error {
 	gid, err := getIDParam(c, "gid")
 	if err != nil {
@@ -521,17 +533,84 @@ func (h *PatchHandler) UpdateGalgame(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
 
-	// Decode body into the Wiki client's request shape so callers cannot smuggle
-	// unsupported keys (e.g. vndb_id which Wiki blocks on update anyway).
+	ctype := string(c.Request().Header.ContentType())
+	if strings.HasPrefix(ctype, "multipart/form-data") {
+		return h.updateGalgameMultipart(c, gid, accessToken)
+	}
+	return h.updateGalgameJSON(c, gid, accessToken)
+}
+
+// updateGalgameJSON is the plain JSON path. Decoding into the client's
+// pointer-fielded shape filters out unsupported keys (e.g. vndb_id, which
+// Wiki rejects on update anyway).
+func (h *PatchHandler) updateGalgameJSON(c *fiber.Ctx, gid int, accessToken string) error {
 	var req galgameClient.UpdateGalgameRequest
 	if err := c.BodyParser(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
-
 	data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+	return writeWikiResult(c, data, err)
+}
+
+// updateGalgameMultipart reads `data` + optional `file` from the incoming
+// multipart body and forwards them through the wiki client. Size cap is
+// 10 MB (consistent with other image-upload paths in this project).
+func (h *PatchHandler) updateGalgameMultipart(c *fiber.Ctx, gid int, accessToken string) error {
+	form, err := c.MultipartForm()
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest("multipart 表单解析失败"))
+	}
+
+	// data field: JSON string mirroring UpdateGalgameRequest. Re-decode into
+	// the typed shape to strip unsupported keys before forwarding.
+	dataStrs, _ := form.Value["data"]
+	if len(dataStrs) == 0 {
+		return response.Error(c, errors.ErrBadRequest("缺少 data 字段"))
+	}
+	var req galgameClient.UpdateGalgameRequest
+	if err := json.Unmarshal([]byte(dataStrs[0]), &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest("data 字段不是合法 JSON"))
+	}
+
+	// file field is optional -- if absent, fall back to JSON mode so we don't
+	// invent an empty multipart that Wiki could misinterpret.
+	fileHeaders, _ := form.File["file"]
+	if len(fileHeaders) == 0 {
+		data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+		return writeWikiResult(c, data, err)
+	}
+
+	fh := fileHeaders[0]
+	if fh.Size > 10*1024*1024 {
+		return response.Error(c, errors.ErrBadRequest("banner 超过 10MB 上限"))
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest("无法读取上传文件"))
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest("读取上传文件失败"))
+	}
+	mime := fh.Header.Get("Content-Type")
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+
+	data, err := h.wiki.UpdateGalgameMultipart(
+		c.Context(), accessToken, gid, &req, fh.Filename, raw, mime,
+	)
+	return writeWikiResult(c, data, err)
+}
+
+// writeWikiResult is the shared result -> response mapping for both modes.
+// Wiki business errors (e.g. 80008 image quota, 60002 review rejected,
+// 40300 forbidden) flow through as-is via WikiError so the frontend can
+// render specific messages.
+func writeWikiResult(c *fiber.Ctx, data json.RawMessage, err error) error {
 	if err != nil {
 		if werr, ok := err.(*galgameClient.WikiError); ok {
-			// Forward Wiki's business code (4xxxx / 6xxxx) without remapping.
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))

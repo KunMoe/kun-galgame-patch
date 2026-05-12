@@ -307,6 +307,22 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
 
+	// Stamp the raw Wiki object so the edit form can pre-fill age_limit /
+	// original_language without an extra round-trip. Brief fields only --
+	// intro/tags/officials are surfaced via their own response fields.
+	base.Galgame = &galgameClient.GalgameBrief{
+		ID:               g.ID,
+		VndbID:           g.VndbID,
+		NameEnUs:         g.NameEnUs,
+		NameZhCn:         g.NameZhCn,
+		NameJaJp:         g.NameJaJp,
+		NameZhTw:         g.NameZhTw,
+		Banner:           g.Banner,
+		ContentLimit:     g.ContentLimit,
+		AgeLimit:         g.AgeLimit,
+		OriginalLanguage: g.OriginalLanguage,
+	}
+
 	for _, t := range g.Tag {
 		base.Tags = append(base.Tags, PatchDetailTag{
 			ID:           t.Tag.ID,

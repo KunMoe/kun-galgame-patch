@@ -61,6 +61,16 @@ func ErrBusiness(msg string) *AppError {
 	return New(40000, msg, fiber.StatusBadRequest)
 }
 
+// ErrWikiGalgameNotFound is returned by POST /patch when the supplied
+// vndb_id does not yet exist on the Galgame Wiki. Distinct code (44001) so
+// the frontend can render a "前往 Wiki 创建" CTA instead of a generic toast.
+func ErrWikiGalgameNotFound(msg string) *AppError {
+	if msg == "" {
+		msg = "Galgame Wiki 中不存在该游戏，请先到 Wiki 创建"
+	}
+	return New(44001, msg, fiber.StatusBadRequest)
+}
+
 func ErrConflict(msg string) *AppError {
 	return New(40900, msg, fiber.StatusConflict)
 }
