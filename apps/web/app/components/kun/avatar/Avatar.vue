@@ -23,7 +23,9 @@ const safeUser = computed(() => ({
 const handleClickAvatar = async (event: MouseEvent) => {
   event.preventDefault()
   if (props.isNavigation && safeUser.value.id > 0) {
-    await navigateTo(`/user/${safeUser.value.id}/info`)
+    // /user/:id/ has no `info` child page; the canonical landing tab is
+    // /resource (also what /user/:id/index.vue redirects to).
+    await navigateTo(`/user/${safeUser.value.id}/resource`)
   }
 }
 

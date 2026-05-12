@@ -93,7 +93,7 @@ func New(cfg *config.Config) *App {
 
 	// User module
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, s3, usrCli)
+	userSvc := userService.New(userRepository, s3, usrCli, wiki, db)
 	userHdl := userHandler.New(userSvc, wiki, usrCli)
 
 	// Message module

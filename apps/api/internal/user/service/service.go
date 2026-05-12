@@ -8,6 +8,8 @@ import (
 	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
@@ -26,10 +28,62 @@ type UserService struct {
 	repo  *repository.UserRepository
 	s3    *storage.S3Client
 	users *userclient.Client
+	wiki  *galgameClient.Client
+	db    *gorm.DB
 }
 
-func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client) *UserService {
-	return &UserService{repo: repo, s3: s3, users: users}
+func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB) *UserService {
+	return &UserService{repo: repo, s3: s3, users: users, wiki: wiki, db: db}
+}
+
+// patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so we can
+// reuse the same Wiki-batch summary builder the global handlers use.
+type patchSummaryFinder struct{ db *gorm.DB }
+
+func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []patchModel.Patch
+	err := p.db.Select("id", "vndb_id").Where("id IN ?", ids).Find(&rows).Error
+	return rows, err
+}
+
+// attachPatchSummaries stamps the `Patch` field on each resource and each
+// comment in one Wiki batch call (name + banner come from the Wiki Service).
+// Either slice may be nil.
+func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
+	if len(comments) == 0 && len(resources) == 0 {
+		return
+	}
+	idSet := make(map[int]struct{}, len(comments)+len(resources))
+	for _, c := range comments {
+		idSet[c.GalgameID] = struct{}{}
+	}
+	for _, r := range resources {
+		idSet[r.GalgameID] = struct{}{}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+
+	summaries := enricher.BuildPatchSummaryMap(ctx, s.wiki, patchSummaryFinder{db: s.db}, ids)
+	for i := range comments {
+		if sum, ok := summaries[comments[i].GalgameID]; ok {
+			cp := sum
+			comments[i].Patch = &cp
+		}
+	}
+	for i := range resources {
+		if sum, ok := summaries[resources[i].GalgameID]; ok {
+			cp := sum
+			resources[i].Patch = &cp
+		}
+	}
 }
 
 // GetUserInfo composes the public user profile: site-local row (moemoepoint,
@@ -177,7 +231,10 @@ func (s *UserService) GetUserPatches(uid, page, limit int) ([]patchModel.Patch, 
 	return s.repo.GetUserPatches(uid, (page-1)*limit, limit)
 }
 
-// GetUserResources retrieves the user's resource list.
+// GetUserResources retrieves the user's resource list with each resource
+// enriched with its owning patch's Wiki summary (name + banner) so the
+// /user/:uid/resource page can render the game thumbnail + title without an
+// extra round-trip per row.
 func (s *UserService) GetUserResources(ctx context.Context, uid, page, limit int) ([]patchModel.PatchResource, int64, error) {
 	rs, total, err := s.repo.GetUserResources(uid, (page-1)*limit, limit)
 	if err != nil {
@@ -185,6 +242,7 @@ func (s *UserService) GetUserResources(ctx context.Context, uid, page, limit int
 	}
 	patchModel.RenderResourceNotes(rs)
 	s.attachResourceUsers(ctx, rs)
+	s.attachPatchSummaries(ctx, nil, rs)
 	return rs, total, nil
 }
 
@@ -193,13 +251,16 @@ func (s *UserService) GetUserFavorites(uid, page, limit int) ([]patchModel.Patch
 	return s.repo.GetUserFavorites(uid, (page-1)*limit, limit)
 }
 
-// GetUserComments retrieves the user's comment list.
+// GetUserComments retrieves the user's comment list with each comment
+// enriched with its owning patch's Wiki summary (name only — banner is not
+// needed for the "评论在 <game>" link on the user-comments page).
 func (s *UserService) GetUserComments(ctx context.Context, uid, page, limit int) ([]patchModel.PatchComment, int64, error) {
 	cs, total, err := s.repo.GetUserComments(uid, (page-1)*limit, limit)
 	if err != nil {
 		return cs, total, err
 	}
 	s.attachCommentUsers(ctx, cs)
+	s.attachPatchSummaries(ctx, cs, nil)
 	return cs, total, nil
 }
 

@@ -19,35 +19,40 @@ interface UserInfo {
   is_followed: boolean
 }
 
+// PatchSummary mirrors apps/api/internal/patch/model.PatchSummary -- the
+// nested {id, vndb_id, banner, name: KunLanguage} object filled by the
+// backend enricher via Wiki /galgame/batch.
+interface PatchSummary {
+  id: number
+  vndb_id: string
+  banner: string
+  name: KunLanguage
+}
+
+// User's own resource row: a PatchResource plus the owning patch's Wiki
+// summary (so the user-profile resource list can render the game name +
+// banner without an extra request per row).
 interface UserResourceItem {
   id: number
   galgame_id: number
-  patch_name: KunLanguage
-  patch_banner: string
   size: string
   type: string[]
   language: string[]
   platform: string[]
   created: string
-}
-
-interface UserContribute {
-  id: number
-  galgame_id: number
-  patch_name: KunLanguage
-  created: string
+  // Filled by user/service.attachPatchSummaries from Wiki; may be missing if
+  // the underlying galgame is no longer in Wiki.
+  patch?: PatchSummary
 }
 
 interface UserComment {
   id: number
   content: string
-  like: number
+  like_count: number
   user_id: number
   galgame_id: number
-  patch_name: KunLanguage
   created: string
-  quoted_user_uid?: number | null
-  quoted_username?: string | null
+  patch?: PatchSummary
 }
 
 interface UserFavoriteItem extends GalgameCard {}

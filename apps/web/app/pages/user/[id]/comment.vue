@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// /user/:uid/comment returns paginated PatchComments with the owning patch
+// summary attached (see user/service.attachPatchSummaries). The row carries
+// the local `like_count` and `galgame_id`; backend does not currently fill
+// content_html for this list since the user-profile view shows plain content.
 const route = useRoute()
 const api = useApi()
 const userId = computed(() => Number(route.params.id))
@@ -18,6 +22,9 @@ const { data, pending } = await useAsyncData<ListResponse>(
   },
   { default: () => ({ items: [], total: 0 }) }
 )
+
+const patchName = (c: UserComment) =>
+  c.patch?.name ? getPreferredLanguageText(c.patch.name) : `补丁 #${c.galgame_id}`
 </script>
 
 <template>
@@ -32,15 +39,13 @@ const { data, pending } = await useAsyncData<ListResponse>(
       >
         <div class="text-default-500 mb-1 text-sm">
           评论在
-          <span class="text-primary">
-            {{ getPreferredLanguageText(c.patch_name) }}
-          </span>
+          <span class="text-primary">{{ patchName(c) }}</span>
         </div>
         <p class="whitespace-pre-wrap line-clamp-3">{{ c.content }}</p>
         <div class="text-default-500 mt-2 flex items-center gap-4 text-xs">
           <div class="flex items-center gap-1">
             <KunIcon name="lucide:thumbs-up" class="size-3.5" />
-            {{ c.like }}
+            {{ c.like_count }}
           </div>
           <span>{{ formatDistanceToNow(c.created) }}</span>
         </div>
