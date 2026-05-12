@@ -36,6 +36,36 @@ const currentTab = computed(() =>
   route.path.split('/').filter(Boolean).pop() ?? 'resource'
 )
 
+// 发消息: resolves or creates the private chat room between the current
+// user and the profile owner, then navigates to its transcript. Backend
+// endpoint is POST /chat/room/private (link format "<minUID>-<maxUID>"
+// converges both directions).
+const startingChat = ref(false)
+const handleStartPrivateChat = async () => {
+  if (!userStore.user.uid) {
+    useKunMessage('请先登录', 'warn')
+    return
+  }
+  if (!user.value) return
+  if (user.value.id === userStore.user.uid) {
+    useKunMessage('不能给自己发消息', 'warn')
+    return
+  }
+  startingChat.value = true
+  try {
+    const res = await api.post<{ link: string }>('/chat/room/private', {
+      peer_uid: user.value.id
+    })
+    if (res.code === 0 && res.data?.link) {
+      await navigateTo(`/message/chat/${res.data.link}`)
+    } else {
+      useKunMessage(res.message || '打开私聊失败', 'error')
+    }
+  } finally {
+    startingChat.value = false
+  }
+}
+
 const followLoading = ref(false)
 const toggleFollow = async () => {
   if (!userStore.user.uid) {
@@ -118,7 +148,14 @@ const toggleFollow = async () => {
               >
                 {{ user.is_followed ? '已关注' : '关注' }}
               </KunButton>
-              <KunButton color="primary" variant="bordered" full-width>
+              <KunButton
+                color="primary"
+                variant="bordered"
+                full-width
+                :loading="startingChat"
+                :disabled="startingChat"
+                @click="handleStartPrivateChat"
+              >
                 <KunIcon name="lucide:message-circle" class="size-4" />
                 发消息
               </KunButton>

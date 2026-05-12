@@ -1,8 +1,6 @@
 package app
 
 import (
-	"time"
-
 	"kun-galgame-patch-api/internal/middleware"
 )
 
@@ -18,8 +16,13 @@ func (a *App) RegisterRoutes() {
 	moderatorAuth := middleware.RequireRole("admin", "moderator")
 	adminAuth := middleware.RequireRole("admin")
 
-	// Rate limits (Redis-backed per-user/per-IP rolling window)
-	checkInRL := middleware.RateLimit(a.RDB, "checkin", 1, 24*time.Hour)
+	// NOTE: We do NOT rate-limit /user/check-in via Redis.
+	// "Once per day" is enforced by user.daily_check_in plus the daily cron
+	// reset at 00:00 (see internal/infrastructure/cron/cron.go). A separate
+	// rolling-24h Redis limiter would create a dead window every day after
+	// midnight when the DB flag is already cleared but the Redis key has
+	// not yet expired, causing spurious 429s. The DB flag is the single
+	// source of truth -- the service rejects with "already checked in today".
 
 	// ===== Auth Routes =====
 	authRoutes := api.Group("/auth")
@@ -72,7 +75,7 @@ func (a *App) RegisterRoutes() {
 	userRoutes := api.Group("/user")
 
 	userRoutes.Post("/image", auth, a.UserHandler.UploadImage)
-	userRoutes.Post("/check-in", auth, checkInRL, a.UserHandler.CheckIn)
+	userRoutes.Post("/check-in", auth, a.UserHandler.CheckIn)
 	userRoutes.Get("/search", auth, a.UserHandler.SearchUsers)
 
 	// Public user profiles
@@ -154,6 +157,7 @@ func (a *App) RegisterRoutes() {
 	chatRoutes.Get("/room", a.ChatHandler.ListRooms)
 	chatRoutes.Post("/room", a.ChatHandler.CreateRoom)
 	chatRoutes.Post("/room/join", a.ChatHandler.JoinRoom)
+	chatRoutes.Post("/room/private", a.ChatHandler.StartPrivate)
 	chatRoutes.Get("/room/:link", a.ChatHandler.GetRoomDetail)
 	chatRoutes.Get("/room/:link/message", a.ChatHandler.ListMessages)
 	chatRoutes.Post("/room/:link/message", a.ChatHandler.CreateMessage)

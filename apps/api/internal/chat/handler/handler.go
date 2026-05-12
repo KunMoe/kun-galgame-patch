@@ -132,6 +132,27 @@ func (h *ChatHandler) JoinRoom(c *fiber.Ctx) error {
 	return response.OK(c, room)
 }
 
+// StartPrivate POST /api/chat/room/private
+//
+// Returns the (created or existing) private chat room between the caller
+// and req.PeerUID. Front-end clicks "发消息" on a user profile, posts here
+// with peer_uid, then navigates to /message/chat/<room.link>.
+func (h *ChatHandler) StartPrivate(c *fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	var req dto.StartPrivateChatRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	if req.PeerUID == user.UID {
+		return response.Error(c, errors.ErrBadRequest("不能给自己发消息"))
+	}
+	room, err := h.svc.StartPrivateChat(user.UID, req.PeerUID)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	return response.OK(c, room)
+}
+
 // ─── Messages ───────────────────────────────────────
 
 // ListMessages GET /api/chat/room/:link/message?after=&limit=

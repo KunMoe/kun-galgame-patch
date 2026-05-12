@@ -77,6 +77,59 @@ func (r *ChatRepository) AddMember(uid, roomID int) error {
 	}).Error
 }
 
+// FindOrCreatePrivateRoom returns the unique private chat room between two
+// users, creating it (with both members) if it does not yet exist.
+//
+// The room link is "<low>-<high>" with low < high so the two directions
+// (A→B and B→A) always converge to the same row. The natural unique index
+// on chat_room.link prevents duplicate rooms even under concurrent first
+// invocations.
+func (r *ChatRepository) FindOrCreatePrivateRoom(uid, peerUID int) (*model.ChatRoom, error) {
+	if uid == peerUID {
+		return nil, fmt.Errorf("cannot start a private chat with yourself")
+	}
+	low, high := uid, peerUID
+	if low > high {
+		low, high = high, low
+	}
+	link := fmt.Sprintf("%d-%d", low, high)
+
+	var room model.ChatRoom
+	if err := r.db.Where("link = ?", link).First(&room).Error; err == nil {
+		// Defensive: re-affirm membership in case some old row is missing one
+		// side (e.g. a legacy chat_member row was deleted by a script).
+		_ = r.AddMember(uid, room.ID)
+		_ = r.AddMember(peerUID, room.ID)
+		return &room, nil
+	} else if err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	room = model.ChatRoom{Link: link, Type: "PRIVATE"}
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		// Race: if two concurrent callers reach here, the unique index on
+		// link makes the second one fail; that path falls through to a
+		// follow-up lookup below.
+		if err := tx.Create(&room).Error; err != nil {
+			return err
+		}
+		members := []model.ChatMember{
+			{UserID: low, ChatRoomID: room.ID, Role: "MEMBER"},
+			{UserID: high, ChatRoomID: room.ID, Role: "MEMBER"},
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&members).Error
+	})
+	if err != nil {
+		// Race fallback: someone else inserted the same row first.
+		var existing model.ChatRoom
+		if e := r.db.Where("link = ?", link).First(&existing).Error; e == nil {
+			return &existing, nil
+		}
+		return nil, err
+	}
+	return &room, nil
+}
+
 // ─── Message ────────────────────────────────────────
 
 // ListMessages fetches new messages with id > after, capped by limit, newest-first

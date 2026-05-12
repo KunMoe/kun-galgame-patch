@@ -1,10 +1,14 @@
 package dto
 
-// GetMessageRequest is the request for fetching messages
+// GetMessageRequest is the request for fetching messages.
+//
+// max=50 to match the frontend (notice / follow / mention / etc. pages all
+// fetch with limit=50). The legacy max=30 cap caused every /message GET to
+// 400 on validation.
 type GetMessageRequest struct {
 	Type  string `query:"type"`
 	Page  int    `query:"page" validate:"required,min=1"`
-	Limit int    `query:"limit" validate:"required,min=1,max=30"`
+	Limit int    `query:"limit" validate:"required,min=1,max=50"`
 }
 
 // CreateMessageRequest is the request for creating a message

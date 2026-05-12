@@ -50,6 +50,13 @@ func (s *ChatService) JoinRoomByLink(uid int, link string) (*model.ChatRoom, err
 	return room, nil
 }
 
+// StartPrivateChat returns the private chat room between the current user
+// and peerUID, creating it on first call. The caller then navigates to
+// /message/chat/<room.link>.
+func (s *ChatService) StartPrivateChat(uid, peerUID int) (*model.ChatRoom, error) {
+	return s.repo.FindOrCreatePrivateRoom(uid, peerUID)
+}
+
 // RoomDetail is the shape returned by GET /api/v1/chat/room/:link:
 // room metadata plus the full member list with each user's profile.
 type RoomDetail struct {

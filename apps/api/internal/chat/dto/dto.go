@@ -13,6 +13,15 @@ type JoinRoomRequest struct {
 	Link string `json:"link" validate:"required,min=1,max=17"`
 }
 
+// StartPrivateChatRequest is the body of POST /api/v1/chat/room/private.
+// peer_uid is the OTHER user the caller wants to chat with; the server
+// resolves "current user + peer" to a private room (creating it on first
+// call). The returned room's link follows the format "<minUID>-<maxUID>"
+// so both directions converge to the same row.
+type StartPrivateChatRequest struct {
+	PeerUID int `json:"peer_uid" validate:"required,min=1"`
+}
+
 // ─── Messages ───────────────────────────────────────
 
 // ListMessagesQuery polls for new messages.
