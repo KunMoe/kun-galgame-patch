@@ -32,9 +32,7 @@ func (r *AdminRepository) GetComments(search string, offset, limit int) ([]patch
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&comments).Error
+		Find(&comments).Error
 	return comments, total, err
 }
 
@@ -60,9 +58,7 @@ func (r *AdminRepository) GetResources(search string, offset, limit int) ([]patc
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&resources).Error
+		Find(&resources).Error
 	return resources, total, err
 }
 
@@ -107,9 +103,7 @@ func (r *AdminRepository) GetLogs(offset, limit int) ([]adminModel.AdminLog, int
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&logs).Error
+		Find(&logs).Error
 	return logs, total, err
 }
 
@@ -140,9 +134,7 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&patches).Error
+		Find(&patches).Error
 	return patches, total, err
 }
 
@@ -162,9 +154,7 @@ func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patc
 	query.Count(&total)
 	err := query.Order("resource_count DESC, comment_count DESC, favorite_count DESC, id ASC").
 		Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&patches).Error
+		Find(&patches).Error
 	return patches, total, err
 }
 

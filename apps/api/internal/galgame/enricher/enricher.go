@@ -24,6 +24,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/userclient"
 )
 
 // KunLanguage mirrors the frontend KunLanguage (4 languages).
@@ -67,15 +68,24 @@ type GalgameCard struct {
 // EnrichPatches enriches a batch of local patches with Wiki data into GalgameCards the frontend can render directly.
 //
 // A single /galgame/batch call covers all galgame_ids. If Wiki fails, only local fields are available (name is empty strings).
-func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, patches []patchModel.Patch) []GalgameCard {
+//
+// If users is non-nil, publisher briefs are also batch-fetched from OAuth
+// /users/batch and attached to each card's User field. Pass nil from callers
+// that have no userclient handy or do not need publisher info.
+func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, patches []patchModel.Patch) []GalgameCard {
 	cards := make([]GalgameCard, len(patches))
 	for i := range patches {
 		cards[i] = baseCard(&patches[i])
 	}
-	if wiki == nil || len(patches) == 0 {
+	if len(patches) == 0 {
 		return cards
 	}
 
+	attachUsersToCards(ctx, users, patches, cards)
+
+	if wiki == nil {
+		return cards
+	}
 	ids := collectGalgameIDs(patches)
 	if len(ids) == 0 {
 		return cards
@@ -97,6 +107,29 @@ func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, patches []pa
 		}
 	}
 	return cards
+}
+
+// attachUsersToCards batch-fetches publisher briefs from OAuth and stamps the
+// User field on each card. Best-effort -- on error the User field stays nil
+// and the frontend renders the anonymous-fallback path.
+func attachUsersToCards(ctx context.Context, users *userclient.Client, patches []patchModel.Patch, cards []GalgameCard) {
+	if users == nil {
+		return
+	}
+	uids := make([]int, 0, len(patches))
+	for _, p := range patches {
+		uids = append(uids, p.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, users, uids)
+	for i := range cards {
+		if b := briefs[patches[i].UserID]; b != nil {
+			cards[i].User = &patchModel.PatchUser{
+				ID:     int(b.ID),
+				Name:   b.Name,
+				Avatar: b.Avatar,
+			}
+		}
+	}
 }
 
 // BuildPatchSummaryMap fetches Wiki briefs for the given patch IDs and returns
@@ -158,11 +191,21 @@ type PatchSummaryDB interface {
 }
 
 // EnrichPatch enriches a single patch (for the header card; no intro/tag/official).
-func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, p *patchModel.Patch) GalgameCard {
+// If users is non-nil, the publisher brief is also fetched and attached.
+func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch) GalgameCard {
 	if p == nil {
 		return GalgameCard{}
 	}
 	card := baseCard(p)
+	if users != nil && p.UserID > 0 {
+		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
+			card.User = &patchModel.PatchUser{
+				ID:     int(b.ID),
+				Name:   b.Name,
+				Avatar: b.Avatar,
+			}
+		}
+	}
 	if wiki == nil || p.ID <= 0 {
 		return card
 	}
@@ -213,13 +256,23 @@ type PatchDetailCard struct {
 }
 
 // EnrichPatchDetail enriches the detail page: one extra /galgame/:gid call on top of EnrichPatch to get intro/associated IDs.
-func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, p *patchModel.Patch) PatchDetailCard {
+func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch) PatchDetailCard {
 	base := PatchDetailCard{}
 	if p == nil {
 		return base
 	}
 	base.GalgameCard = baseCard(p)
 	base.Updated = p.Updated
+
+	if users != nil && p.UserID > 0 {
+		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
+			base.User = &patchModel.PatchUser{
+				ID:     int(b.ID),
+				Name:   b.Name,
+				Avatar: b.Avatar,
+			}
+		}
+	}
 
 	if wiki == nil || p.ID <= 0 {
 		return base
@@ -317,7 +370,9 @@ func baseCard(p *patchModel.Patch) GalgameCard {
 			Resource:     p.ResourceCount,
 			Comment:      p.CommentCount,
 		},
-		User: p.User,
+		// User is filled by EnrichPatches/EnrichPatch via attachUsersToCards
+		// (or stays nil when no userclient is provided). p.User is never
+		// populated by GORM after the OAuth migration.
 	}
 }
 

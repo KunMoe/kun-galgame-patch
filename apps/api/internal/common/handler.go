@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -9,6 +10,7 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,12 +18,49 @@ import (
 )
 
 type CommonHandler struct {
-	db   *gorm.DB
-	wiki *galgameClient.Client
+	db    *gorm.DB
+	wiki  *galgameClient.Client
+	users *userclient.Client
 }
 
-func NewHandler(db *gorm.DB, wiki *galgameClient.Client) *CommonHandler {
-	return &CommonHandler{db: db, wiki: wiki}
+func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client) *CommonHandler {
+	return &CommonHandler{db: db, wiki: wiki, users: users}
+}
+
+// attachResourceUsers / attachCommentUsers do the same id-collect → batch →
+// stamp dance for the various list endpoints below. Best-effort: on OAuth
+// error rows are returned with User=nil and the frontend falls back to the
+// anonymous-avatar path.
+func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
+	if len(rs) == 0 {
+		return
+	}
+	uids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		uids = append(uids, r.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range rs {
+		if b := briefs[rs[i].UserID]; b != nil {
+			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (h *CommonHandler) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
+	if len(cs) == 0 {
+		return
+	}
+	uids := make([]int, 0, len(cs))
+	for _, c := range cs {
+		uids = append(uids, c.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range cs {
+		if b := briefs[cs[i].UserID]; b != nil {
+			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
 }
 
 // patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so the
@@ -57,29 +96,20 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var comments []patchModel.PatchComment
 
-	h.db.Model(&patchModel.Patch{}).Order("created DESC").Limit(12).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&patches)
-
-	h.db.Model(&patchModel.PatchResource{}).Order("created DESC").Limit(6).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&resources)
-
-	h.db.Model(&patchModel.PatchComment{}).Order("created DESC").Limit(6).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&comments)
+	h.db.Model(&patchModel.Patch{}).Order("created DESC").Limit(12).Find(&patches)
+	h.db.Model(&patchModel.PatchResource{}).Order("created DESC").Limit(6).Find(&resources)
+	h.db.Model(&patchModel.PatchComment{}).Order("created DESC").Limit(6).Find(&comments)
 
 	patchModel.RenderResourceNotes(resources)
 	for i := range comments {
 		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
 	}
+	h.attachResourceUsers(c.Context(), resources)
+	h.attachCommentUsers(c.Context(), comments)
 	h.attachPatchSummaries(c, comments, resources)
 
 	return response.OK(c, homeResponse{
-		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, patches),
+		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches),
 		Resources: resources,
 		Comments:  comments,
 	})
@@ -117,15 +147,13 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	var patches []patchModel.Patch
 	err := query.Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&patches).Error
+		Find(&patches).Error
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
 	return response.OK(c, map[string]any{
-		"galgames": enricher.EnrichPatches(c.Context(), h.wiki, patches),
+		"galgames": enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches),
 		"total":    total,
 	})
 }
@@ -154,9 +182,7 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 
 	err := query.Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&comments).Error
+		Find(&comments).Error
 
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
@@ -165,6 +191,7 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	for i := range comments {
 		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
 	}
+	h.attachCommentUsers(c.Context(), comments)
 	h.attachPatchSummaries(c, comments, nil)
 	return response.Paginated(c, comments, total)
 }
@@ -238,14 +265,13 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 
 	err := query.Order(fmt.Sprintf("patch_resource.%s %s", sortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&resources).Error
+		Find(&resources).Error
 
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	patchModel.RenderResourceNotes(resources)
+	h.attachResourceUsers(c.Context(), resources)
 	h.attachPatchSummaries(c, nil, resources)
 	return response.Paginated(c, resources, total)
 }
@@ -258,9 +284,7 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	resourceID := c.Params("id")
 	var resource patchModel.PatchResource
-	if dbErr := h.db.Preload("User", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id", "name", "avatar")
-	}).First(&resource, resourceID).Error; dbErr != nil {
+	if dbErr := h.db.First(&resource, resourceID).Error; dbErr != nil {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
 
@@ -268,10 +292,8 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	// name / banner / vndb_id without making a separate call.
 	var patch patchModel.Patch
 	var patchCard *enricher.GalgameCard
-	if err := h.db.Preload("User", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id", "name", "avatar")
-	}).First(&patch, resource.GalgameID).Error; err == nil {
-		card := enricher.EnrichPatch(c.Context(), h.wiki, &patch)
+	if err := h.db.First(&patch, resource.GalgameID).Error; err == nil {
+		card := enricher.EnrichPatch(c.Context(), h.wiki, h.users, &patch)
 		patchCard = &card
 	}
 
@@ -282,6 +304,12 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 	patchModel.RenderResourceNotes(recs)
+
+	// Attach publisher briefs to the main resource and the recommendations.
+	one := []patchModel.PatchResource{resource}
+	h.attachResourceUsers(c.Context(), one)
+	resource = one[0]
+	h.attachResourceUsers(c.Context(), recs)
 
 	return response.OK(c, map[string]any{
 		"resource":        resource,
@@ -352,17 +380,17 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 	sortBy := c.Query("sort_by", c.Query("sortBy", "moemoepoint"))
 
 	const limit = 60
+	// row holds only the local-side aggregates; name/avatar are filled later
+	// from OAuth /users/batch since they are no longer in the local user table.
 	type row struct {
 		ID            int    `gorm:"column:id"`
-		Name          string `gorm:"column:name"`
-		Avatar        string `gorm:"column:avatar"`
 		Moemoepoint   int    `gorm:"column:moemoepoint"`
 		PatchCount    int64  `gorm:"column:patch_count"`
 		ResourceCount int64  `gorm:"column:resource_count"`
 		CommentCount  int64  `gorm:"column:comment_count"`
 	}
 
-	orderBy := "moemoepoint DESC"
+	orderBy := "u.moemoepoint DESC"
 	switch sortBy {
 	case "patch", "patch_count":
 		orderBy = "patch_count DESC, u.moemoepoint DESC"
@@ -370,17 +398,14 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 		orderBy = "resource_count DESC, u.moemoepoint DESC"
 	case "comment", "comment_count":
 		orderBy = "comment_count DESC, u.moemoepoint DESC"
-	default:
-		orderBy = "u.moemoepoint DESC"
 	}
 
 	var rows []row
 	err := h.db.Table(`"user" u`).
-		Select(`u.id, u.name, u.avatar, u.moemoepoint,
+		Select(`u.id, u.moemoepoint,
 			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
 			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count,
 			COALESCE((SELECT COUNT(*) FROM patch_comment pc WHERE pc.user_id = u.id), 0) AS comment_count`).
-		Where("u.status = 0").
 		Order(orderBy).
 		Limit(limit).
 		Find(&rows).Error
@@ -388,9 +413,31 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
-	out := make([]rankingUser, len(rows))
-	for i, r := range rows {
-		out[i] = rankingUser(r)
+	uids := make([]int, 0, len(rows))
+	for _, r := range rows {
+		uids = append(uids, r.ID)
+	}
+	briefs := userclient.BriefMapByInt(c.Context(), h.users, uids)
+
+	out := make([]rankingUser, 0, len(rows))
+	for _, r := range rows {
+		ru := rankingUser{
+			ID:            r.ID,
+			Moemoepoint:   r.Moemoepoint,
+			PatchCount:    r.PatchCount,
+			ResourceCount: r.ResourceCount,
+			CommentCount:  r.CommentCount,
+		}
+		if b := briefs[r.ID]; b != nil {
+			// Skip banned users (status != 0); the local "u.status = 0" filter
+			// has been removed since status now lives on OAuth.
+			if b.Status != 0 {
+				continue
+			}
+			ru.Name = b.Name
+			ru.Avatar = b.Avatar
+		}
+		out = append(out, ru)
 	}
 	return response.OK(c, out)
 }
@@ -416,13 +463,11 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 		Where("status = 0").
 		Order(fmt.Sprintf("%s DESC", column)).
 		Limit(60).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&patches).Error
+		Find(&patches).Error
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, patches))
+	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches))
 }
 
 // GetMoyuHasPatch GET /api/moyu/patch/has-patch

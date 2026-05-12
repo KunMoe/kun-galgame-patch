@@ -1,15 +1,19 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 
+	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/dto"
 	"kun-galgame-patch-api/internal/admin/service"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,10 +22,53 @@ import (
 type AdminHandler struct {
 	service *service.AdminService
 	wiki    *galgameClient.Client
+	users   *userclient.Client
 }
 
-func New(svc *service.AdminService, wiki *galgameClient.Client) *AdminHandler {
-	return &AdminHandler{service: svc, wiki: wiki}
+func New(svc *service.AdminService, wiki *galgameClient.Client, users *userclient.Client) *AdminHandler {
+	return &AdminHandler{service: svc, wiki: wiki, users: users}
+}
+
+// attachUserBriefs is a tiny helper used by every admin list endpoint that
+// previously relied on Preload("User") -- fetches publisher briefs from OAuth
+// /users/batch in one call and stamps the User field on each row.
+func (h *AdminHandler) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
+	uids := make([]int, 0, len(cs))
+	for _, c := range cs {
+		uids = append(uids, c.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range cs {
+		if b := briefs[cs[i].UserID]; b != nil {
+			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (h *AdminHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
+	uids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		uids = append(uids, r.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range rs {
+		if b := briefs[rs[i].UserID]; b != nil {
+			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (h *AdminHandler) attachLogUsers(ctx context.Context, ls []adminModel.AdminLog) {
+	uids := make([]int, 0, len(ls))
+	for _, l := range ls {
+		uids = append(uids, l.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range ls {
+		if b := briefs[ls[i].UserID]; b != nil {
+			ls[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
 }
 
 func getIDParam(c *fiber.Ctx, name string) (int, error) {
@@ -45,6 +92,7 @@ func (h *AdminHandler) GetComments(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	h.attachCommentUsers(c.Context(), comments)
 	return response.Paginated(c, comments, total)
 }
 
@@ -94,6 +142,7 @@ func (h *AdminHandler) GetResources(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	h.attachResourceUsers(c.Context(), resources)
 	return response.Paginated(c, resources, total)
 }
 
@@ -149,7 +198,7 @@ func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	cards := enricher.EnrichPatches(c.Context(), h.wiki, patches)
+	cards := enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches)
 	return response.Paginated(c, cards, total)
 }
 
@@ -214,6 +263,7 @@ func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	h.attachLogUsers(c.Context(), logs)
 	return response.Paginated(c, logs, total)
 }
 

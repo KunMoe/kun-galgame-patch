@@ -10,10 +10,20 @@ const props = withDefaults(defineProps<KunAvatarProps>(), {
   floatingPosition: 'top'
 })
 
+// During the OAuth migration some response paths can transiently produce a
+// missing user (e.g. comment.user not yet enriched via userclient, message
+// sender that was a deleted user). Treat undefined / null user as an
+// "anonymous" placeholder rather than crashing the whole page.
+const safeUser = computed(() => ({
+  id: props.user?.id ?? 0,
+  name: props.user?.name ?? '',
+  avatar: props.user?.avatar ?? ''
+}))
+
 const handleClickAvatar = async (event: MouseEvent) => {
   event.preventDefault()
-  if (props.isNavigation) {
-    await navigateTo(`/user/${props.user.id}/info`)
+  if (props.isNavigation && safeUser.value.id > 0) {
+    await navigateTo(`/user/${safeUser.value.id}/info`)
   }
 }
 
@@ -41,13 +51,13 @@ const sizeClasses = computed(() => {
 })
 
 const userAvatarSrc = computed(() => {
-  if (props.user.avatar) {
+  const u = safeUser.value
+  if (u.avatar) {
     return props.size === 'original' || props.size === 'original-sm'
-      ? props.user.avatar
-      : props.user.avatar.replace(/\.webp$/, '-100.webp')
-  } else {
-    return getRandomSticker(props.user.name).value
+      ? u.avatar
+      : u.avatar.replace(/\.webp$/, '-100.webp')
   }
+  return getRandomSticker(u.name).value
 })
 </script>
 
@@ -74,7 +84,7 @@ const userAvatarSrc = computed(() => {
         cn('inline-block rounded-full', sizeClasses, props.imageClassName)
       "
       :src="userAvatarSrc"
-      :alt="user.name"
+      :alt="safeUser.name"
     />
     <!-- <span
           :style="{ height: size, width: size }"

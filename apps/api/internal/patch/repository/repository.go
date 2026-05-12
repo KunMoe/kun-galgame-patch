@@ -25,19 +25,13 @@ func (r *PatchRepository) CreatePatch(patch *model.Patch) error {
 
 func (r *PatchRepository) GetPatchByID(id int) (*model.Patch, error) {
 	var patch model.Patch
-	err := r.db.Preload("User", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id", "name", "avatar")
-	}).First(&patch, id).Error
+	err := r.db.First(&patch, id).Error
 	return &patch, err
 }
 
 func (r *PatchRepository) GetPatchDetail(id int) (*model.Patch, error) {
 	var patch model.Patch
-	err := r.db.
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).
-		First(&patch, id).Error
+	err := r.db.First(&patch, id).Error
 	return &patch, err
 }
 
@@ -78,13 +72,8 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 	query.Count(&total)
 
 	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).
 		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created ASC").Preload("User", func(db *gorm.DB) *gorm.DB {
-				return db.Select("id", "name", "avatar")
-			})
+			return db.Order("created ASC")
 		}).
 		Find(&comments).Error
 
@@ -144,9 +133,6 @@ func (r *PatchRepository) DeleteCommentLike(id int) error {
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
 	err := r.db.Where("galgame_id = ?", patchID).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).
 		Order("created DESC").
 		Find(&resources).Error
 	return resources, err
@@ -220,14 +206,16 @@ func (r *PatchRepository) DeleteFavorite(id int) error {
 
 // ===== Contributors =====
 
-func (r *PatchRepository) GetContributors(patchID int) ([]model.PatchUser, error) {
-	var users []model.PatchUser
-	err := r.db.Table("user").
-		Joins("JOIN user_patch_contribute_relation ON user_patch_contribute_relation.user_id = \"user\".id").
-		Where("user_patch_contribute_relation.galgame_id = ?", patchID).
-		Select("\"user\".id, \"user\".name, \"user\".avatar").
-		Find(&users).Error
-	return users, err
+// GetContributorIDs returns the user_ids of every contributor on a patch.
+// The handler layer batches these via OAuth /users/batch (pkg/userclient)
+// to assemble the wire shape; we no longer SELECT name/avatar from the local
+// user table because those columns are owned by OAuth (migration 005).
+func (r *PatchRepository) GetContributorIDs(patchID int) ([]int, error) {
+	var ids []int
+	err := r.db.Table("user_patch_contribute_relation").
+		Where("galgame_id = ?", patchID).
+		Pluck("user_id", &ids).Error
+	return ids, err
 }
 
 func (r *PatchRepository) EnsureContributor(userID, patchID int) error {

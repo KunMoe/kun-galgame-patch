@@ -84,17 +84,17 @@ func New(cfg *config.Config) *App {
 	// Auth module
 	authRepository := authRepo.New(db)
 	authSvc := authService.New(authRepository, rdb, cfg.OAuth)
-	authHdl := authHandler.New(authSvc, rdb, db)
+	authHdl := authHandler.New(authSvc, rdb, db, usrCli)
 
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, rdb, db, s3, wiki)
-	patchHdl := patchHandler.New(patchSvc, wiki)
+	patchSvc := patchService.New(patchRepository, rdb, db, s3, wiki, usrCli)
+	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, s3)
-	userHdl := userHandler.New(userSvc, wiki)
+	userSvc := userService.New(userRepository, s3, usrCli)
+	userHdl := userHandler.New(userSvc, wiki, usrCli)
 
 	// Message module
 	messageRepository := messageRepo.New(db)
@@ -104,10 +104,10 @@ func New(cfg *config.Config) *App {
 	// Admin module
 	adminRepository := adminRepo.New(db)
 	adminSvc := adminService.New(adminRepository, rdb)
-	adminHdl := adminHandler.New(adminSvc, wiki)
+	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
 	// Common handler (direct DB access for simple aggregation endpoints)
-	commonHdl := common.NewHandler(db, wiki)
+	commonHdl := common.NewHandler(db, wiki, usrCli)
 
 	// Upload module (D10: minio-go presigned URL direct upload)
 	uploadSvc := uploadPkg.New(s3, db)
@@ -116,7 +116,7 @@ func New(cfg *config.Config) *App {
 	// Chat module (D9: REST only, no WebSocket)
 	chatRepository := chatRepo.New(db)
 	chatSvc := chatService.New(chatRepository)
-	chatHdl := chatHandler.New(chatSvc)
+	chatHdl := chatHandler.New(chatSvc, usrCli)
 
 	// Search module (D11: delegate to Galgame Wiki Service)
 	searchHdl := searchPkg.New(db, wiki)

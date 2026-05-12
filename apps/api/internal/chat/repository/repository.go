@@ -88,16 +88,15 @@ func (r *ChatRepository) ListMessages(roomID, after, limit int) ([]model.ChatMes
 		Where("chat_room_id = ? AND id > ?", roomID, after).
 		Order("id ASC").
 		Limit(limit).
-		Preload("Sender").
 		Find(&msgs).Error
 	return msgs, err
 }
 
-// ListMembers returns all members of a room with their user profile preloaded.
+// ListMembers returns all members of a room. The handler layer attaches the
+// user briefs from OAuth /users/batch.
 func (r *ChatRepository) ListMembers(roomID int) ([]model.ChatMember, error) {
 	var members []model.ChatMember
 	err := r.db.Where("chat_room_id = ?", roomID).
-		Preload("User").
 		Order("created ASC").
 		Find(&members).Error
 	return members, err

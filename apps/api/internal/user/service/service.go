@@ -14,6 +14,7 @@ import (
 	"kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/internal/user/repository"
 	"kun-galgame-patch-api/pkg/imageutil"
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
@@ -22,16 +23,21 @@ import (
 const DailyImageLimit = 20
 
 type UserService struct {
-	repo *repository.UserRepository
-	s3   *storage.S3Client
+	repo  *repository.UserRepository
+	s3    *storage.S3Client
+	users *userclient.Client
 }
 
-func New(repo *repository.UserRepository, s3 *storage.S3Client) *UserService {
-	return &UserService{repo: repo, s3: s3}
+func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client) *UserService {
+	return &UserService{repo: repo, s3: s3, users: users}
 }
 
-// GetUserInfo retrieves public user info
-func (s *UserService) GetUserInfo(uid, currentUID int) (*dto.UserInfoResponse, error) {
+// GetUserInfo composes the public user profile: site-local row (moemoepoint,
+// follower/following counts, content counts) + OAuth brief (name/avatar/bio).
+//
+// On OAuth lookup failure name/avatar/bio come back empty -- the page still
+// renders, just without display fields.
+func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dto.UserInfoResponse, error) {
 	user, err := s.repo.FindByID(uid)
 	if err != nil {
 		return nil, fmt.Errorf("user not found")
@@ -39,18 +45,22 @@ func (s *UserService) GetUserInfo(uid, currentUID int) (*dto.UserInfoResponse, e
 
 	resp := &dto.UserInfoResponse{
 		ID:             user.ID,
-		Name:           user.Name,
-		Avatar:         user.Avatar,
-		Bio:            user.Bio,
 		Moemoepoint:    user.Moemoepoint,
-		Role:           user.Role,
 		FollowerCount:  user.FollowerCount,
 		FollowingCount: user.FollowingCount,
-		RegisterTime:   user.RegisterTime.Format(time.RFC3339),
+		RegisterTime:   user.Created.Format(time.RFC3339),
 		PatchCount:     s.repo.CountUserPatches(uid),
 		ResourceCount:  s.repo.CountUserResources(uid),
 		CommentCount:   s.repo.CountUserComments(uid),
 		FavoriteCount:  s.repo.CountUserFavorites(uid),
+	}
+
+	if s.users != nil {
+		if b, _ := s.users.User(ctx, uint(uid)); b != nil {
+			resp.Name = b.Name
+			resp.Avatar = b.Avatar
+			resp.Bio = b.Bio
+		}
 	}
 
 	if currentUID > 0 && currentUID != uid {
@@ -61,15 +71,12 @@ func (s *UserService) GetUserInfo(uid, currentUID int) (*dto.UserInfoResponse, e
 	return resp, nil
 }
 
-// GetUserFloating retrieves floating card info
-func (s *UserService) GetUserFloating(uid int) (*dto.UserInfoResponse, error) {
-	return s.GetUserInfo(uid, 0)
+// GetUserFloating retrieves the floating-card view of a user.
+func (s *UserService) GetUserFloating(ctx context.Context, uid int) (*dto.UserInfoResponse, error) {
+	return s.GetUserInfo(ctx, uid, 0)
 }
 
-// Profile mutations (UpdateUsername / UpdateBio / UpdatePassword / UpdateEmail
-// / UpdateAvatar) live on OAuth and were removed from this site.
-
-// Follow follows a user
+// Follow creates a follow relation and bumps the denormalized counts.
 func (s *UserService) Follow(followerID, followingID int) error {
 	if followerID == followingID {
 		return fmt.Errorf("cannot follow yourself")
@@ -88,7 +95,7 @@ func (s *UserService) Follow(followerID, followingID int) error {
 	return s.repo.UpdateFollowCounts(followerID, followingID, 1)
 }
 
-// Unfollow unfollows a user
+// Unfollow removes a follow relation and decrements counts.
 func (s *UserService) Unfollow(followerID, followingID int) error {
 	if err := s.repo.DeleteFollow(followerID, followingID); err != nil {
 		return fmt.Errorf("not following this user")
@@ -96,17 +103,59 @@ func (s *UserService) Unfollow(followerID, followingID int) error {
 	return s.repo.UpdateFollowCounts(followerID, followingID, -1)
 }
 
-// GetFollowers retrieves the followers list
-func (s *UserService) GetFollowers(uid, page, limit int) ([]model.UserBasic, int64, error) {
-	return s.repo.GetFollowers(uid, (page-1)*limit, limit)
+// GetFollowers returns follower user briefs, batch-resolved from OAuth.
+func (s *UserService) GetFollowers(ctx context.Context, uid, page, limit int) ([]model.UserBasic, int64, error) {
+	ids, total, err := s.repo.GetFollowerIDs(uid, (page-1)*limit, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.briefsToUserBasic(ctx, ids), total, nil
 }
 
-// GetFollowing retrieves the following list
-func (s *UserService) GetFollowing(uid, page, limit int) ([]model.UserBasic, int64, error) {
-	return s.repo.GetFollowing(uid, (page-1)*limit, limit)
+// GetFollowing returns followee user briefs, batch-resolved from OAuth.
+func (s *UserService) GetFollowing(ctx context.Context, uid, page, limit int) ([]model.UserBasic, int64, error) {
+	ids, total, err := s.repo.GetFollowingIDs(uid, (page-1)*limit, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.briefsToUserBasic(ctx, ids), total, nil
 }
 
-// CheckIn performs daily check-in
+// SearchUsers proxies OAuth /users/search and returns the slim wire shape.
+//
+// limit is capped server-side at 50 (the OAuth API's max).
+func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) ([]model.UserBasic, error) {
+	if s.users == nil {
+		return []model.UserBasic{}, nil
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	briefs, err := s.users.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.UserBasic, 0, len(briefs))
+	for _, b := range briefs {
+		out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar})
+	}
+	return out, nil
+}
+
+// briefsToUserBasic batches an id list through OAuth and returns the wire
+// shape. IDs missing on OAuth are silently dropped from the result.
+func (s *UserService) briefsToUserBasic(ctx context.Context, ids []int) []model.UserBasic {
+	briefs := userclient.BriefMapByInt(ctx, s.users, ids)
+	out := make([]model.UserBasic, 0, len(ids))
+	for _, id := range ids {
+		if b := briefs[id]; b != nil {
+			out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar})
+		}
+	}
+	return out
+}
+
+// CheckIn performs daily check-in.
 func (s *UserService) CheckIn(userID int) (int, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
@@ -123,46 +172,73 @@ func (s *UserService) CheckIn(userID int) (int, error) {
 	return points, nil
 }
 
-// SearchUsers searches users (for @mentions)
-func (s *UserService) SearchUsers(query string) ([]model.UserBasic, error) {
-	return s.repo.SearchUsers(query, 50)
-}
-
-// GetUserPatches retrieves the user's patch list
+// GetUserPatches retrieves the user's patch list.
 func (s *UserService) GetUserPatches(uid, page, limit int) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetUserPatches(uid, (page-1)*limit, limit)
 }
 
-// GetUserResources retrieves the user's resource list
-func (s *UserService) GetUserResources(uid, page, limit int) (any, int64, error) {
-	return s.repo.GetUserResources(uid, (page-1)*limit, limit)
+// GetUserResources retrieves the user's resource list.
+func (s *UserService) GetUserResources(ctx context.Context, uid, page, limit int) ([]patchModel.PatchResource, int64, error) {
+	rs, total, err := s.repo.GetUserResources(uid, (page-1)*limit, limit)
+	if err != nil {
+		return rs, total, err
+	}
+	patchModel.RenderResourceNotes(rs)
+	s.attachResourceUsers(ctx, rs)
+	return rs, total, nil
 }
 
-// GetUserFavorites retrieves the user's favorite list
+// GetUserFavorites retrieves the user's favorite list.
 func (s *UserService) GetUserFavorites(uid, page, limit int) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetUserFavorites(uid, (page-1)*limit, limit)
 }
 
-// GetUserComments retrieves the user's comment list
-func (s *UserService) GetUserComments(uid, page, limit int) (any, int64, error) {
-	return s.repo.GetUserComments(uid, (page-1)*limit, limit)
+// GetUserComments retrieves the user's comment list.
+func (s *UserService) GetUserComments(ctx context.Context, uid, page, limit int) ([]patchModel.PatchComment, int64, error) {
+	cs, total, err := s.repo.GetUserComments(uid, (page-1)*limit, limit)
+	if err != nil {
+		return cs, total, err
+	}
+	s.attachCommentUsers(ctx, cs)
+	return cs, total, nil
 }
 
-// GetUserContributions retrieves the user's contribution list
+// GetUserContributions retrieves the user's contribution list.
 func (s *UserService) GetUserContributions(uid, page, limit int) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetUserContributions(uid, (page-1)*limit, limit)
 }
 
-// UpdateLastLoginTime updates the last login time
-func (s *UserService) UpdateLastLoginTime(userID int) {
-	s.repo.UpdateFields(userID, map[string]any{
-		"last_login_time": time.Now().Format(time.RFC3339),
-	})
-}
-
-// GetUserByID retrieves a user (for internal use)
+// GetUserByID retrieves the local user row (site-local fields only).
 func (s *UserService) GetUserByID(uid int) (*authModel.User, error) {
 	return s.repo.FindByID(uid)
+}
+
+// attachResourceUsers / attachCommentUsers stamp the User field on rows
+// returned to the user-profile pages.
+func (s *UserService) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
+	uids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		uids = append(uids, r.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
+	for i := range rs {
+		if b := briefs[rs[i].UserID]; b != nil {
+			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (s *UserService) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
+	uids := make([]int, 0, len(cs))
+	for _, c := range cs {
+		uids = append(uids, c.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
+	for i := range cs {
+		if b := briefs[cs[i].UserID]; b != nil {
+			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
 }
 
 // ─── User image uploads ──────────────────────────────
@@ -188,7 +264,6 @@ func (s *UserService) UploadUserImage(ctx context.Context, uid int, raw []byte) 
 		return "", err
 	}
 
-	// Decrement daily_image_count
 	if err := s.repo.UpdateFields(uid, map[string]any{
 		"daily_image_count": gorm.Expr("daily_image_count + 1"),
 	}); err != nil {

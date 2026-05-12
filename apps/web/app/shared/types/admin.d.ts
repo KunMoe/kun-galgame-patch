@@ -15,35 +15,10 @@ interface OverviewData {
   new_comment: number
 }
 
-// GET /api/v1/admin/user — per admin/repository AdminUserView.
-interface AdminUser {
-  id: number
-  name: string
-  email: string
-  bio: string
-  avatar: string
-  role: number
-  status: number
-  moemoepoint: number
-  daily_image_count: number
-  daily_check_in: number
-  daily_upload_size: number
-  follower_count: number
-  following_count: number
-  patch_count: number
-  resource_count: number
-  created: Date | string
-}
-
-// GET /api/v1/admin/creator — per admin/repository CreatorApplicationItem.
-interface AdminCreator {
-  id: number
-  content: string
-  status: number
-  sender: KunUser | null
-  resource_count: number
-  created: Date | string
-}
+// AdminUser and AdminCreator types were removed alongside their endpoints
+// when identity moved to OAuth and the creator role was retired:
+//   - User management (bans / role grants) → OAuth admin console
+//   - Creator-application approvals → no longer applicable
 
 // NOTE: AdminGalgame and the corresponding /admin/galgame page are deprecated per D12.
 // Patch management is handled via /admin/orphans and /admin/resource.

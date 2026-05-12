@@ -37,7 +37,8 @@ type ChatMember struct {
 	Created    time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated    time.Time `gorm:"autoUpdateTime" json:"updated"`
 
-	User *patchModel.PatchUser `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
+	// Filled by the chat handler from OAuth /users/batch (pkg/userclient).
+	User *patchModel.PatchUser `gorm:"-" json:"user,omitempty"`
 }
 
 func (ChatMember) TableName() string { return "chat_member" }
@@ -56,7 +57,8 @@ type ChatMessage struct {
 	Created     time.Time  `gorm:"autoCreateTime" json:"created"`
 	Updated     time.Time  `gorm:"autoUpdateTime" json:"updated"`
 
-	Sender *patchModel.PatchUser `gorm:"foreignKey:SenderID;references:ID" json:"sender,omitempty"`
+	// Filled by the chat handler from OAuth /users/batch (pkg/userclient).
+	Sender *patchModel.PatchUser `gorm:"-" json:"sender,omitempty"`
 }
 
 func (ChatMessage) TableName() string { return "chat_message" }

@@ -61,6 +61,7 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/database"
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/logger"
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/joho/godotenv"
 	"gorm.io/gorm"
@@ -83,11 +84,14 @@ const offset int64 = 1_000_000_000
 
 // patchRow carries everything we read from the patch table — the lookup keys
 // plus enough context for the orphan report (publisher, counts, created).
+//
+// publisher_name used to come from a JOIN to "user".name, but after migration
+// 005 (user-table slim) name lives on OAuth, not locally. The orphan report
+// now batch-resolves names via pkg/userclient at write time.
 type patchRow struct {
 	ID              int
 	VndbID          string
 	UserID          int
-	UserName        string // joined from "user".name for the orphan report
 	ResourceCount   int
 	CommentCount    int
 	FavoriteCount   int
@@ -125,18 +129,45 @@ func main() {
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	users := userclient.New(userclient.Config{
+		BaseURL:      cfg.OAuth.ServerURL,
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+	})
 
 	ctx := context.Background()
 
-	// ── Step 1: read every patch row + the publisher's name ──
-	// LEFT JOIN so a patch with a deleted/missing user still appears (rare,
-	// but we still want it in the orphan report).
+	// ── Step 0: idempotency check ─────────────────────────
+	// If a previous successful run already renamed child.patch_id → galgame_id
+	// (and dropped patch.galgame_id), this script has nothing to do. Bail out
+	// cleanly instead of letting pass 1 crash with "column patch_id does not exist".
+	state, err := schemaState(db)
+	if err != nil {
+		slog.Error("schema state check failed", "error", err)
+		os.Exit(1)
+	}
+	switch state {
+	case schemaDone:
+		fmt.Println("✅ patch.id == galgame.id alignment already complete (child.galgame_id present, no patch_id). Nothing to do.")
+		return
+	case schemaMixed:
+		slog.Error("schema is in a mixed state (some child tables have patch_id, others galgame_id); refuse to proceed",
+			"hint", "restore from a backup taken before the previous run, or fix manually")
+		os.Exit(1)
+	case schemaUnknown:
+		slog.Error("could not determine schema state (expected child tables not found)")
+		os.Exit(1)
+	}
+	// state == schemaPending → proceed.
+
+	// ── Step 1: read every patch row ──
+	// publisher_name is no longer JOINed in — after migration 005 it lives on
+	// OAuth. The orphan report enriches it via userclient at write time.
 	var rows []patchRow
 	if err := db.Table("patch AS p").
-		Select(`p.id, p.vndb_id, p.user_id, COALESCE(u.name, '') AS user_name,
+		Select(`p.id, p.vndb_id, p.user_id,
 			p.resource_count, p.comment_count, p.favorite_count, p.contribute_count,
 			p.view, p.download, p.created`).
-		Joins(`LEFT JOIN "user" u ON u.id = p.user_id`).
 		Order("p.id ASC").Scan(&rows).Error; err != nil {
 		slog.Error("读取 patch 列表失败", "error", err)
 		os.Exit(1)
@@ -204,7 +235,7 @@ func main() {
 
 		// Persist the full list to a TSV file for offline triage.
 		if *orphansOut != "" {
-			if err := writeOrphansFile(*orphansOut, skipped); err != nil {
+			if err := writeOrphansFile(ctx, *orphansOut, skipped, users); err != nil {
 				slog.Error("写 orphan 报告失败", "path", *orphansOut, "error", err)
 			} else {
 				fmt.Printf("📝 orphan 报告已写入 %s（%d 条）\n\n", *orphansOut, len(skipped))
@@ -397,17 +428,76 @@ func runRemap(db *gorm.DB, mappings []mapping) error {
 	})
 }
 
-// writeOrphansFile dumps every skipped patch to a TSV file. Game names are
-// not stored locally (D12 — they live on Wiki, and these rows by definition
-// have no Wiki match), so the most useful identifying signals are: the
-// publisher's name + the row counts + creation time. The admin can use the
-// "open" column (a direct moyu URL) to inspect the patch in the browser.
-func writeOrphansFile(path string, skipped []skip) error {
+// schemaPhase classifies the current state of the patch / child-table schema
+// so the script can decide whether to run, exit clean, or refuse.
+type schemaPhase int
+
+const (
+	// schemaPending: child tables still have patch_id; safe to run.
+	schemaPending schemaPhase = iota
+	// schemaDone: every child table already has galgame_id and no patch_id;
+	// a previous run completed. Nothing to do.
+	schemaDone
+	// schemaMixed: some child tables migrated, others not. Bail.
+	schemaMixed
+	// schemaUnknown: at least one expected child table has neither column.
+	schemaUnknown
+)
+
+// schemaState inspects every child table and returns the aggregate phase.
+func schemaState(db *gorm.DB) (schemaPhase, error) {
+	pendingCount, doneCount := 0, 0
+	for _, t := range childTables {
+		var hasPatchID, hasGalgameID bool
+		if err := db.Raw(`SELECT EXISTS(
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = ? AND column_name = 'patch_id')`, t).
+			Scan(&hasPatchID).Error; err != nil {
+			return schemaUnknown, err
+		}
+		if err := db.Raw(`SELECT EXISTS(
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = ? AND column_name = 'galgame_id')`, t).
+			Scan(&hasGalgameID).Error; err != nil {
+			return schemaUnknown, err
+		}
+		switch {
+		case hasPatchID && !hasGalgameID:
+			pendingCount++
+		case !hasPatchID && hasGalgameID:
+			doneCount++
+		case hasPatchID && hasGalgameID:
+			return schemaMixed, fmt.Errorf("table %q has BOTH patch_id and galgame_id columns", t)
+		default:
+			return schemaUnknown, fmt.Errorf("table %q has neither patch_id nor galgame_id column", t)
+		}
+	}
+	if pendingCount == len(childTables) {
+		return schemaPending, nil
+	}
+	if doneCount == len(childTables) {
+		return schemaDone, nil
+	}
+	return schemaMixed, fmt.Errorf("split state: %d pending, %d done", pendingCount, doneCount)
+}
+
+// writeOrphansFile dumps every skipped patch to a TSV file. Game names live
+// on Wiki and these rows by definition have no Wiki match, so the most useful
+// identifying signals are: the publisher's name + the row counts + creation
+// time. The admin can use the "open" column (a direct moyu URL) to inspect
+// the patch in the browser.
+//
+// Publisher names are resolved in one batch call to OAuth /users/batch (via
+// userclient). If OAuth is unreachable we still write the file with empty
+// names — the publisher_uid alone is enough to look up manually.
+func writeOrphansFile(ctx context.Context, path string, skipped []skip, users *userclient.Client) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+
+	names := resolveOrphanPublisherNames(ctx, skipped, users)
 
 	header := strings.Join([]string{
 		"id", "vndb_id", "reason",
@@ -430,7 +520,7 @@ func writeOrphansFile(path string, skipped []skip) error {
 			fmt.Sprint(s.Row.View),
 			fmt.Sprint(s.Row.Download),
 			fmt.Sprint(s.Row.UserID),
-			s.Row.UserName,
+			names[uint(s.Row.UserID)],
 			s.Row.Created.Format(time.RFC3339),
 			fmt.Sprintf("/patch/%d/introduction", s.Row.ID),
 		}
@@ -439,4 +529,35 @@ func writeOrphansFile(path string, skipped []skip) error {
 		}
 	}
 	return nil
+}
+
+// resolveOrphanPublisherNames batch-fetches user names from OAuth /users/batch
+// for every distinct publisher across the skipped rows. On error it returns
+// an empty map: the orphan report still has publisher_uid, which is enough.
+func resolveOrphanPublisherNames(ctx context.Context, skipped []skip, users *userclient.Client) map[uint]string {
+	idSet := make(map[uint]struct{}, len(skipped))
+	for _, s := range skipped {
+		if s.Row.UserID > 0 {
+			idSet[uint(s.Row.UserID)] = struct{}{}
+		}
+	}
+	if len(idSet) == 0 {
+		return map[uint]string{}
+	}
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	briefs, err := users.Users(ctx, ids)
+	if err != nil {
+		slog.Warn("OAuth /users/batch failed; orphan report will lack publisher_name", "error", err)
+		return map[uint]string{}
+	}
+	out := make(map[uint]string, len(briefs))
+	for id, b := range briefs {
+		if b != nil {
+			out[id] = b.Name
+		}
+	}
+	return out
 }

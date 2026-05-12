@@ -97,20 +97,22 @@ type Patch struct {
 	Created            time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated            time.Time `gorm:"autoUpdateTime" json:"updated"`
 
-	// Relations (Preload only, not real columns)
-	User *PatchUser `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// User is the publisher's brief, attached by the handler/service layer
+	// from OAuth /users/batch (pkg/userclient). NOT a GORM relation -- after
+	// the OAuth migration display fields live on the OAuth server, not the
+	// local user table.
+	User *PatchUser `gorm:"-" json:"user,omitempty"`
 }
 
 func (Patch) TableName() string { return "patch" }
 
-// PatchUser contains brief user info (used for association queries)
+// PatchUser is the wire shape of a user brief embedded in patch responses.
+// Filled at request time from OAuth /users/batch via pkg/userclient.
 type PatchUser struct {
-	ID     int    `gorm:"primaryKey" json:"id"`
+	ID     int    `json:"id"`
 	Name   string `json:"name"`
 	Avatar string `json:"avatar"`
 }
-
-func (PatchUser) TableName() string { return "user" }
 
 // RenderResourceNotes fills note_html for every resource in the slice.
 // Idempotent: re-rendering an already-rendered slice is a no-op rerender.
@@ -155,7 +157,8 @@ type PatchResource struct {
 	Created               time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated               time.Time `gorm:"autoUpdateTime" json:"updated"`
 
-	User *PatchUser `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// Filled by the handler/service layer from OAuth /users/batch.
+	User *PatchUser `gorm:"-" json:"user,omitempty"`
 
 	// NoteHTML is the rendered Note via the markdown package.
 	// Filled by the service layer before serialization; not a DB column.
@@ -181,7 +184,8 @@ type PatchComment struct {
 	Created   time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
 
-	User    *PatchUser     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// Filled by the handler/service layer from OAuth /users/batch.
+	User    *PatchUser     `gorm:"-" json:"user,omitempty"`
 	Replies []PatchComment `gorm:"foreignKey:ParentID" json:"reply"`
 
 	// IsLiked is populated per-request from the current user's like relation.

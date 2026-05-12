@@ -11,6 +11,7 @@ import (
 	"kun-galgame-patch-api/internal/user/service"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -36,10 +37,11 @@ func readImageFormFile(c *fiber.Ctx, field string) ([]byte, error) {
 type UserHandler struct {
 	service *service.UserService
 	wiki    *galgameClient.Client
+	users   *userclient.Client
 }
 
-func New(svc *service.UserService, wiki *galgameClient.Client) *UserHandler {
-	return &UserHandler{service: svc, wiki: wiki}
+func New(svc *service.UserService, wiki *galgameClient.Client, users *userclient.Client) *UserHandler {
+	return &UserHandler{service: svc, wiki: wiki, users: users}
 }
 
 func getUID(c *fiber.Ctx) (int, error) {
@@ -58,7 +60,7 @@ func (h *UserHandler) GetUserInfo(c *fiber.Ctx) error {
 	}
 
 	currentUID := middleware.GetUID(c)
-	info, err := h.service.GetUserInfo(uid, currentUID)
+	info, err := h.service.GetUserInfo(c.Context(), uid, currentUID)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
@@ -73,7 +75,7 @@ func (h *UserHandler) GetUserFloating(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	info, err := h.service.GetUserFloating(uid)
+	info, err := h.service.GetUserFloating(c.Context(), uid)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
@@ -103,7 +105,7 @@ func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
 }
 
 // GetUserResources GET /api/user/:uid/resource
@@ -124,7 +126,7 @@ func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	data, total, err := h.service.GetUserResources(uid, req.Page, req.Limit)
+	data, total, err := h.service.GetUserResources(c.Context(), uid, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -153,7 +155,7 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
 }
 
 // GetUserComments GET /api/user/:uid/comment
@@ -174,7 +176,7 @@ func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	data, total, err := h.service.GetUserComments(uid, req.Page, req.Limit)
+	data, total, err := h.service.GetUserComments(c.Context(), uid, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -203,7 +205,7 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
 }
 
 // Profile mutations (username / bio / password / email / avatar) live on
@@ -258,7 +260,7 @@ func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowers(uid, req.Page, req.Limit)
+	users, total, err := h.service.GetFollowers(c.Context(), uid, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -283,7 +285,7 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowing(uid, req.Page, req.Limit)
+	users, total, err := h.service.GetFollowing(c.Context(), uid, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -308,7 +310,7 @@ func (h *UserHandler) SearchUsers(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	users, err := h.service.SearchUsers(req.Query)
+	users, err := h.service.SearchUsers(c.Context(), req.Query, 50)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}

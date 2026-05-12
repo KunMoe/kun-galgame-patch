@@ -12,13 +12,19 @@ type SearchUserRequest struct {
 	Query string `query:"query" validate:"required,min=1,max=20"`
 }
 
+// UserInfoResponse composes site-local fields (moemoepoint, follower/following
+// counts, content counts) with display fields (name/avatar/bio) batch-resolved
+// from OAuth /users/batch.
+//
+// Role is no longer present -- per-site roles were retired in the OAuth
+// migration. Frontend should read roles from the JWT roles claim returned by
+// /auth/me when it needs to render role badges.
 type UserInfoResponse struct {
 	ID             int    `json:"id"`
 	Name           string `json:"name"`
 	Avatar         string `json:"avatar"`
 	Bio            string `json:"bio"`
 	Moemoepoint    int    `json:"moemoepoint"`
-	Role           int    `json:"role"`
 	FollowerCount  int    `json:"follower_count"`
 	FollowingCount int    `json:"following_count"`
 	RegisterTime   string `json:"register_time"`

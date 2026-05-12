@@ -24,12 +24,6 @@ func (r *UserRepository) FindByID(id int) (*authModel.User, error) {
 	return &user, err
 }
 
-func (r *UserRepository) FindByName(name string) (*authModel.User, error) {
-	var user authModel.User
-	err := r.db.Where("LOWER(name) = LOWER(?)", name).First(&user).Error
-	return &user, err
-}
-
 func (r *UserRepository) UpdateFields(userID int, fields map[string]any) error {
 	return r.db.Model(&authModel.User{}).Where("id = ?", userID).Updates(fields).Error
 }
@@ -74,10 +68,7 @@ func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchMod
 	var total int64
 	query := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID)
 	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "name", "avatar")
-		}).Find(&resources).Error
+	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&resources).Error
 	return resources, total, err
 }
 
@@ -138,36 +129,25 @@ func (r *UserRepository) UpdateFollowCounts(followerID, followingID, delta int) 
 	})
 }
 
-func (r *UserRepository) GetFollowers(userID, offset, limit int) ([]model.UserBasic, int64, error) {
-	var users []model.UserBasic
+// GetFollowerIDs / GetFollowingIDs return only the user_ids; the handler layer
+// resolves them to display briefs via OAuth /users/batch (pkg/userclient).
+
+func (r *UserRepository) GetFollowerIDs(userID, offset, limit int) ([]int, int64, error) {
+	var ids []int
 	var total int64
-	subQuery := r.db.Table("user_follow_relation").Where("following_id = ?", userID).Select("follower_id")
-	query := r.db.Table("user").Where("id IN (?)", subQuery)
+	query := r.db.Table("user_follow_relation").Where("following_id = ?", userID)
 	query.Count(&total)
-	err := query.Select("id", "name", "avatar").Offset(offset).Limit(limit).Find(&users).Error
-	return users, total, err
+	err := query.Select("follower_id").Offset(offset).Limit(limit).Pluck("follower_id", &ids).Error
+	return ids, total, err
 }
 
-func (r *UserRepository) GetFollowing(userID, offset, limit int) ([]model.UserBasic, int64, error) {
-	var users []model.UserBasic
+func (r *UserRepository) GetFollowingIDs(userID, offset, limit int) ([]int, int64, error) {
+	var ids []int
 	var total int64
-	subQuery := r.db.Table("user_follow_relation").Where("follower_id = ?", userID).Select("following_id")
-	query := r.db.Table("user").Where("id IN (?)", subQuery)
+	query := r.db.Table("user_follow_relation").Where("follower_id = ?", userID)
 	query.Count(&total)
-	err := query.Select("id", "name", "avatar").Offset(offset).Limit(limit).Find(&users).Error
-	return users, total, err
-}
-
-// ===== Search =====
-
-func (r *UserRepository) SearchUsers(query string, limit int) ([]model.UserBasic, error) {
-	var users []model.UserBasic
-	err := r.db.Table("user").
-		Where("name ILIKE ?", "%"+query+"%").
-		Select("id", "name", "avatar").
-		Limit(limit).
-		Find(&users).Error
-	return users, err
+	err := query.Select("following_id").Offset(offset).Limit(limit).Pluck("following_id", &ids).Error
+	return ids, total, err
 }
 
 // ===== Daily =====

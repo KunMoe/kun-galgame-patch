@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/internal/admin/dto"
+	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/repository"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
@@ -129,7 +130,7 @@ func (s *AdminService) GetStatsSum() *dto.AdminStatsSumResponse {
 
 // ===== Logs =====
 
-func (s *AdminService) GetLogs(page, limit int) (any, int64, error) {
+func (s *AdminService) GetLogs(page, limit int) ([]adminModel.AdminLog, int64, error) {
 	return s.repo.GetLogs((page-1)*limit, limit)
 }
 

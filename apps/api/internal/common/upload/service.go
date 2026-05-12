@@ -85,7 +85,11 @@ func buildPatchResourceKey(patchID int, fileName string) (string, error) {
 // ─── Validation (business rules beyond auth) ─────────
 
 // validatePreUpload pre-checks at init time: extension, size cap, daily quota (based on declared size).
-func (s *Service) validatePreUpload(uid int, fileName string, declaredSize int64) error {
+//
+// privileged grants the higher daily quota (admins / moderators); resolved by
+// the handler from OAuth roles claim. The local user table no longer stores
+// role since the OAuth migration.
+func (s *Service) validatePreUpload(uid int, fileName string, declaredSize int64, privileged bool) error {
 	if declaredSize <= 0 || declaredSize > constants.MaxLargeFileSize {
 		return fmt.Errorf("文件大小超过 1GB 上限")
 	}
@@ -96,19 +100,19 @@ func (s *Service) validatePreUpload(uid int, fileName string, declaredSize int64
 	}
 
 	var user authModel.User
-	if err := s.db.Select("role", "daily_upload_size").First(&user, uid).Error; err != nil {
+	if err := s.db.Select("daily_upload_size").First(&user, uid).Error; err != nil {
 		return fmt.Errorf("获取用户信息失败")
 	}
 
-	limit := s.dailyLimit(user.Role)
+	limit := s.dailyLimit(privileged)
 	if int64(user.DailyUploadSize)+declaredSize > limit {
 		return fmt.Errorf("超过今日上传限额 (%d MB)", limit/1024/1024)
 	}
 	return nil
 }
 
-func (s *Service) dailyLimit(role int) int64 {
-	if role >= 2 {
+func (s *Service) dailyLimit(privileged bool) int64 {
+	if privileged {
 		return constants.CreatorDailyUploadLimit
 	}
 	return constants.UserDailyUploadLimit
@@ -118,7 +122,7 @@ func (s *Service) dailyLimit(role int) int64 {
 //  1. HeadObject confirms the object really exists
 //  2. Compare actual size with declared size (mismatch -> delete + error)
 //  3. Increment daily_upload_size (atomic UPDATE)
-func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, declared int64) (int64, error) {
+func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, declared int64, privileged bool) (int64, error) {
 	info, err := s.s3.StatObject(ctx, s3Key)
 	if err != nil {
 		return 0, fmt.Errorf("HeadObject 失败: %w", err)
@@ -135,10 +139,10 @@ func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, 
 	}
 
 	var user authModel.User
-	if err := s.db.Select("role", "daily_upload_size").First(&user, uid).Error; err != nil {
+	if err := s.db.Select("daily_upload_size").First(&user, uid).Error; err != nil {
 		return 0, fmt.Errorf("获取用户信息失败")
 	}
-	if int64(user.DailyUploadSize)+actual > s.dailyLimit(user.Role) {
+	if int64(user.DailyUploadSize)+actual > s.dailyLimit(privileged) {
 		_ = s.s3.DeleteObject(ctx, s3Key)
 		return 0, fmt.Errorf("超过今日上传限额，已删除")
 	}
@@ -154,11 +158,11 @@ func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, 
 // ─── Public actions ──────────────────────────────────
 
 // InitSmall initializes a small-file upload: generate s3_key and a presigned PUT URL.
-func (s *Service) InitSmall(ctx context.Context, uid int, req SmallInitRequest) (*SmallInitResponse, error) {
+func (s *Service) InitSmall(ctx context.Context, uid int, privileged bool, req SmallInitRequest) (*SmallInitResponse, error) {
 	if req.FileSize > constants.MaxSmallFileSize {
 		return nil, fmt.Errorf("小文件上限 200MB，请走 multipart")
 	}
-	if err := s.validatePreUpload(uid, req.FileName, req.FileSize); err != nil {
+	if err := s.validatePreUpload(uid, req.FileName, req.FileSize, privileged); err != nil {
 		return nil, err
 	}
 
@@ -174,8 +178,8 @@ func (s *Service) InitSmall(ctx context.Context, uid int, req SmallInitRequest) 
 }
 
 // CompleteSmall completes a small-file upload: HeadObject + quota deduction.
-func (s *Service) CompleteSmall(ctx context.Context, uid int, req SmallCompleteRequest) (*CompleteResponse, error) {
-	size, err := s.verifyAndFinalize(ctx, uid, req.S3Key, req.DeclaredSize)
+func (s *Service) CompleteSmall(ctx context.Context, uid int, privileged bool, req SmallCompleteRequest) (*CompleteResponse, error) {
+	size, err := s.verifyAndFinalize(ctx, uid, req.S3Key, req.DeclaredSize, privileged)
 	if err != nil {
 		return nil, err
 	}
@@ -183,11 +187,11 @@ func (s *Service) CompleteSmall(ctx context.Context, uid int, req SmallCompleteR
 }
 
 // InitMultipart initializes a large-file upload: CreateMultipartUpload + presign a URL for every part.
-func (s *Service) InitMultipart(ctx context.Context, uid int, req MultipartInitRequest) (*MultipartInitResponse, error) {
+func (s *Service) InitMultipart(ctx context.Context, uid int, privileged bool, req MultipartInitRequest) (*MultipartInitResponse, error) {
 	if req.FileSize <= constants.MaxSmallFileSize {
 		return nil, fmt.Errorf("≤ 200MB 请走 /upload/small")
 	}
-	if err := s.validatePreUpload(uid, req.FileName, req.FileSize); err != nil {
+	if err := s.validatePreUpload(uid, req.FileName, req.FileSize, privileged); err != nil {
 		return nil, err
 	}
 
@@ -216,7 +220,7 @@ func (s *Service) InitMultipart(ctx context.Context, uid int, req MultipartInitR
 }
 
 // CompleteMultipart completes a large-file upload: CompleteMultipartUpload + HeadObject + quota deduction.
-func (s *Service) CompleteMultipart(ctx context.Context, uid int, req MultipartCompleteRequest) (*CompleteResponse, error) {
+func (s *Service) CompleteMultipart(ctx context.Context, uid int, privileged bool, req MultipartCompleteRequest) (*CompleteResponse, error) {
 	parts := make([]storage.CompletedPart, 0, len(req.Parts))
 	for _, p := range req.Parts {
 		parts = append(parts, storage.CompletedPart{PartNumber: p.PartNumber, ETag: p.ETag})
@@ -226,7 +230,7 @@ func (s *Service) CompleteMultipart(ctx context.Context, uid int, req MultipartC
 		return nil, err
 	}
 
-	size, err := s.verifyAndFinalize(ctx, uid, req.S3Key, req.DeclaredSize)
+	size, err := s.verifyAndFinalize(ctx, uid, req.S3Key, req.DeclaredSize, privileged)
 	if err != nil {
 		return nil, err
 	}

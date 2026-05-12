@@ -4,24 +4,66 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 
+	chatModel "kun-galgame-patch-api/internal/chat/model"
 	"kun-galgame-patch-api/internal/chat/dto"
 	"kun-galgame-patch-api/internal/chat/service"
 	"kun-galgame-patch-api/internal/middleware"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type ChatHandler struct {
-	svc *service.ChatService
+	svc   *service.ChatService
+	users *userclient.Client
 }
 
-func New(svc *service.ChatService) *ChatHandler {
-	return &ChatHandler{svc: svc}
+func New(svc *service.ChatService, users *userclient.Client) *ChatHandler {
+	return &ChatHandler{svc: svc, users: users}
+}
+
+// attach helpers stamp the embedded user/sender field on rows after they
+// come back from the repository (Preload was removed in Phase 6e).
+func (h *ChatHandler) attachMessageSenders(ctx context.Context, msgs []chatModel.ChatMessage) {
+	uids := make([]int, 0, len(msgs))
+	for _, m := range msgs {
+		uids = append(uids, m.SenderID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range msgs {
+		if b := briefs[msgs[i].SenderID]; b != nil {
+			msgs[i].Sender = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (h *ChatHandler) attachMemberUsers(ctx context.Context, ms []chatModel.ChatMember) {
+	uids := make([]int, 0, len(ms))
+	for _, m := range ms {
+		uids = append(uids, m.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
+	for i := range ms {
+		if b := briefs[ms[i].UserID]; b != nil {
+			ms[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+	}
+}
+
+func (h *ChatHandler) attachOneSender(ctx context.Context, msg *chatModel.ChatMessage) {
+	if msg == nil || msg.SenderID == 0 {
+		return
+	}
+	if b, _ := h.users.User(ctx, uint(msg.SenderID)); b != nil {
+		msg.Sender = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+	}
 }
 
 func getMessageIDParam(c *fiber.Ctx) (int, error) {
@@ -72,6 +114,7 @@ func (h *ChatHandler) GetRoomDetail(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	h.attachMemberUsers(c.Context(), detail.Member)
 	return response.OK(c, detail)
 }
 
@@ -108,6 +151,7 @@ func (h *ChatHandler) ListMessages(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	h.attachMessageSenders(c.Context(), msgs)
 	return response.OK(c, msgs)
 }
 
@@ -125,6 +169,7 @@ func (h *ChatHandler) CreateMessage(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	h.attachOneSender(c.Context(), msg)
 	return response.OK(c, msg)
 }
 

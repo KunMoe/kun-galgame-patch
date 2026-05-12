@@ -10,11 +10,13 @@ import (
 	"log/slog"
 	"time"
 
+	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/auth/dto"
 	"kun-galgame-patch-api/internal/auth/service"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -26,10 +28,11 @@ type AuthHandler struct {
 	service *service.AuthService
 	rdb     *redis.Client
 	db      *gorm.DB
+	users   *userclient.Client
 }
 
-func New(svc *service.AuthService, rdb *redis.Client, db *gorm.DB) *AuthHandler {
-	return &AuthHandler{service: svc, rdb: rdb, db: db}
+func New(svc *service.AuthService, rdb *redis.Client, db *gorm.DB, users *userclient.Client) *AuthHandler {
+	return &AuthHandler{service: svc, rdb: rdb, db: db, users: users}
 }
 
 // OAuthCallback POST /api/v1/auth/oauth/callback
@@ -59,7 +62,8 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("invalid user info"))
 	}
 
-	if _, err := h.service.FindOrCreateUserByID(userInfo.ID); err != nil {
+	localUser, err := h.service.FindOrCreateUserByID(userInfo.ID)
+	if err != nil {
 		slog.Error("Failed to provision local user row", "uid", userInfo.ID, "error", err)
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -87,11 +91,7 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
-	return response.OK(c, dto.MeResponse{
-		UID:   userInfo.ID,
-		Sub:   userInfo.Sub,
-		Roles: userInfo.Roles,
-	})
+	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles))
 }
 
 // Logout POST /api/v1/auth/logout
@@ -112,18 +112,49 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 
 // Me GET /api/v1/auth/me
 //
-// Returns the bare-minimum identity for the current session: uid + sub +
-// roles (decoded from the OAuth access_token JWT, no signature verify needed
-// since the token was placed in the session by us). Front-end should call
-// /oauth/userinfo or /users/batch?ids=<uid> for display fields (name, avatar,
-// bio); Phase 5-6 will fold local-only fields (moemoepoint, daily counters,
-// follow counts) into a single composed payload returned by this endpoint.
+// Composes identity (uid/sub/roles from session+JWT), display fields
+// (name/avatar/bio from OAuth /users/batch), and site-local state
+// (moemoepoint, daily counters, follow counts) into a single response so
+// the frontend can render the whole profile without extra round-trips.
 func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	roles := middleware.GetRoles(c)
-	return response.OK(c, dto.MeResponse{
-		UID:   user.UID,
-		Sub:   user.Sub,
-		Roles: roles,
-	})
+
+	var local authModel.User
+	if err := h.db.First(&local, user.UID).Error; err != nil {
+		return response.Error(c, errors.ErrNotFound("user not found"))
+	}
+
+	return response.OK(c, h.composeMe(c, &local, user.Sub, roles))
+}
+
+// composeMe merges the local user row with the OAuth brief (name/avatar/bio)
+// into a MeResponse. If the OAuth /users/batch call fails we still return
+// the local fields -- name/avatar will simply be empty rather than crashing
+// the page.
+func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
+	resp := dto.MeResponse{
+		UID:             local.ID,
+		Sub:             sub,
+		Roles:           roles,
+		Moemoepoint:     local.Moemoepoint,
+		DailyCheckIn:    local.DailyCheckIn,
+		DailyImageCount: local.DailyImageCount,
+		DailyUploadSize: local.DailyUploadSize,
+		FollowerCount:   local.FollowerCount,
+		FollowingCount:  local.FollowingCount,
+	}
+
+	brief, err := h.users.User(c.Context(), uint(local.ID))
+	if err != nil {
+		slog.Warn("OAuth /users/batch lookup failed in composeMe; returning empty display fields",
+			"uid", local.ID, "error", err)
+		return resp
+	}
+	if brief != nil {
+		resp.Name = brief.Name
+		resp.Avatar = brief.Avatar
+		resp.Bio = brief.Bio
+	}
+	return resp
 }

@@ -12,6 +12,7 @@ import (
 	"kun-galgame-patch-api/internal/patch/service"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,10 +24,11 @@ var vndbIDRegex = regexp.MustCompile(`^v\d+$`)
 type PatchHandler struct {
 	service *service.PatchService
 	wiki    *galgameClient.Client
+	users   *userclient.Client
 }
 
-func New(svc *service.PatchService, wiki *galgameClient.Client) *PatchHandler {
-	return &PatchHandler{service: svc, wiki: wiki}
+func New(svc *service.PatchService, wiki *galgameClient.Client, users *userclient.Client) *PatchHandler {
+	return &PatchHandler{service: svc, wiki: wiki, users: users}
 }
 
 func getIDParam(c *fiber.Ctx, name string) (int, error) {
@@ -86,7 +88,7 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
-	card := headerCard{GalgameCard: enricher.EnrichPatch(c.Context(), h.wiki, patch)}
+	card := headerCard{GalgameCard: enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch)}
 	if user := middleware.GetUser(c); user != nil {
 		card.IsFavorite = h.service.IsFavorited(user.UID, id)
 	}
@@ -106,7 +108,7 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
-	return response.OK(c, enricher.EnrichPatchDetail(c.Context(), h.wiki, patch))
+	return response.OK(c, enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch))
 }
 
 // UpdatePatch PUT /api/patch/:id
@@ -191,7 +193,7 @@ func (h *PatchHandler) GetComments(c *fiber.Ctx) error {
 	}
 
 	currentUID := middleware.GetUID(c)
-	comments, total, err := h.service.GetComments(id, currentUID, req.Page, req.Limit)
+	comments, total, err := h.service.GetComments(c.Context(), id, currentUID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -303,7 +305,7 @@ func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	resources, err := h.service.GetResources(id)
+	resources, err := h.service.GetResources(c.Context(), id)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -464,18 +466,28 @@ func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
 // ===== Contributors =====
 
 // GetContributors GET /api/patch/:id/contributor
+//
+// Returns publisher briefs (id/name/avatar) batch-resolved from OAuth
+// /users/batch. The local DB only stores the contributor user_ids.
 func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	contributors, err := h.service.GetContributors(id)
+	ids, err := h.service.GetContributorIDs(id)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
-	return response.OK(c, contributors)
+	briefs := userclient.BriefMapByInt(c.Context(), h.users, ids)
+	out := make([]model.PatchUser, 0, len(ids))
+	for _, uid := range ids {
+		if b := briefs[uid]; b != nil {
+			out = append(out, model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar})
+		}
+	}
+	return response.OK(c, out)
 }
 
 // GetRandomPatch GET /api/home/random

@@ -10,21 +10,23 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type PatchService struct {
-	repo *repository.PatchRepository
-	rdb  *redis.Client
-	db   *gorm.DB
-	s3   *storage.S3Client
-	wiki *galgameClient.Client
+	repo  *repository.PatchRepository
+	rdb   *redis.Client
+	db    *gorm.DB
+	s3    *storage.S3Client
+	wiki  *galgameClient.Client
+	users *userclient.Client
 }
 
-func New(repo *repository.PatchRepository, rdb *redis.Client, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client) *PatchService {
-	return &PatchService{repo: repo, rdb: rdb, db: db, s3: s3, wiki: wiki}
+func New(repo *repository.PatchRepository, rdb *redis.Client, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client) *PatchService {
+	return &PatchService{repo: repo, rdb: rdb, db: db, s3: s3, wiki: wiki, users: users}
 }
 
 // ===== Patch =====
@@ -168,9 +170,9 @@ func (s *PatchService) GetRandomPatchID() (int, error) {
 // ===== Comments =====
 
 // GetComments returns a page of top-level comments (plus their replies),
-// renders content_html, and marks is_liked for the given currentUID
-// (0 = anonymous, no like marks applied).
-func (s *PatchService) GetComments(patchID, currentUID, page, limit int) ([]model.PatchComment, int64, error) {
+// renders content_html, attaches publisher briefs from OAuth /users/batch,
+// and marks is_liked for the given currentUID (0 = anonymous, no like marks).
+func (s *PatchService) GetComments(ctx context.Context, patchID, currentUID, page, limit int) ([]model.PatchComment, int64, error) {
 	offset := (page - 1) * limit
 	comments, total, err := s.repo.GetComments(patchID, offset, limit)
 	if err != nil {
@@ -186,11 +188,27 @@ func (s *PatchService) GetComments(patchID, currentUID, page, limit int) ([]mode
 		}
 	}
 
+	// Batch-fetch publisher briefs for top-level + replies in one OAuth call.
+	uids := make([]int, 0, len(comments)*2)
+	for i := range comments {
+		uids = append(uids, comments[i].UserID)
+		for j := range comments[i].Replies {
+			uids = append(uids, comments[i].Replies[j].UserID)
+		}
+	}
+	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
+	for i := range comments {
+		comments[i].User = briefToPatchUser(briefs[comments[i].UserID])
+		for j := range comments[i].Replies {
+			comments[i].Replies[j].User = briefToPatchUser(briefs[comments[i].Replies[j].UserID])
+		}
+	}
+
 	if currentUID == 0 || len(comments) == 0 {
 		return comments, total, nil
 	}
 
-	// Collect all comment IDs (top-level + replies) in one pass.
+	// Collect all comment IDs (top-level + replies) for the like-marking query.
 	ids := make([]int, 0, len(comments))
 	for i := range comments {
 		ids = append(ids, comments[i].ID)
@@ -213,6 +231,15 @@ func (s *PatchService) GetComments(patchID, currentUID, page, limit int) ([]mode
 		}
 	}
 	return comments, total, nil
+}
+
+// briefToPatchUser is the small adapter from OAuth /users/batch shape to the
+// embedded PatchUser wire shape ({id, name, avatar}).
+func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
+	if b == nil {
+		return nil
+	}
+	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
 }
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {
@@ -310,12 +337,30 @@ func (s *PatchService) GetCommentMarkdown(commentID int) (string, error) {
 
 // ===== Resources =====
 
-func (s *PatchService) GetResources(patchID int) ([]model.PatchResource, error) {
+func (s *PatchService) GetResources(ctx context.Context, patchID int) ([]model.PatchResource, error) {
 	resources, err := s.repo.GetResources(patchID)
-	if err == nil {
-		model.RenderResourceNotes(resources)
+	if err != nil {
+		return resources, err
 	}
-	return resources, err
+	model.RenderResourceNotes(resources)
+	attachUsersToResources(ctx, s.users, resources)
+	return resources, nil
+}
+
+// attachUsersToResources batch-fetches publisher briefs from OAuth and
+// stamps the User field on each resource row.
+func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []model.PatchResource) {
+	if users == nil || len(rs) == 0 {
+		return
+	}
+	uids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		uids = append(uids, r.UserID)
+	}
+	briefs := userclient.BriefMapByInt(ctx, users, uids)
+	for i := range rs {
+		rs[i].User = briefToPatchUser(briefs[rs[i].UserID])
+	}
 }
 
 func (s *PatchService) CreateResource(resource *model.PatchResource, userID int) error {
@@ -478,8 +523,10 @@ func (s *PatchService) IsFavorited(userID, patchID int) bool {
 
 // ===== Contributors =====
 
-func (s *PatchService) GetContributors(patchID int) ([]model.PatchUser, error) {
-	return s.repo.GetContributors(patchID)
+// GetContributorIDs returns the user_ids of every contributor on a patch.
+// Handler enriches them via OAuth /users/batch (pkg/userclient).
+func (s *PatchService) GetContributorIDs(patchID int) ([]int, error) {
+	return s.repo.GetContributorIDs(patchID)
 }
 
 // ===== Mention detection =====
