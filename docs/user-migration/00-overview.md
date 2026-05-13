@@ -27,7 +27,7 @@
 - **OAuth `users` 表**：integer id + uuid，是身份的权威定义
 - **kungal/moyu `user` 表**：保留，但 `user.id` 与 OAuth 完全相同；字段瘦身只剩站点特有计数器
 - **所有 FK 列**：69 个 `*_user_id` 列已对齐到新 ID
-- **chat_room.name**（kungal 私聊"uid1-uid2"格式）：已重算
+- **chat_room** 私聊房间的 uid pair link 已重算（kungal 的 `chat_room.name` + moyu 的 `chat_room.link`，都是 `"uid1-uid2"` 格式）
 - **patch_comment.content**（moyu mention URL）：已重写
 - **password / kungal_password / moyu_password**：用户首次登录时自动从旧 hash 透明迁移到新 hash
 

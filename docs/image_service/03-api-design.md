@@ -118,6 +118,36 @@ V1 **仅接受** `multipart/form-data`，不支持 raw body + `Content-Type: ima
   - `preset=topic` → `{}`（空对象）
 - `deduplicated` — 是否命中已存在图（调用方可用于统计；本次 preset 所需的变体如缺失，仍会补生成）
 
+#### Go 类型定义（权威）
+
+`apps/api/pkg/imageclient/client.go` 中的 `UploadResult` 是字段名权威来源，调用方直接 import 用：
+
+```go
+type UploadResult struct {
+    Hash         string            `json:"hash"`
+    URL          string            `json:"url"`
+    VariantURLs  map[string]string `json:"variant_urls"`
+    Width        int               `json:"width"`
+    Height       int               `json:"height"`
+    SizeBytes    int64             `json:"size_bytes"`
+    Deduplicated bool              `json:"deduplicated"`
+}
+
+type ReferencePingResult struct {
+    Updated  int64    `json:"updated"`
+    NotFound []string `json:"not_found"`
+}
+
+// Sentinel errors
+var (
+    ErrQuotaExceeded      = errors.New("imageclient: quota exceeded")
+    ErrModerationRejected = errors.New("imageclient: rejected by moderation")
+    ErrUnauthorized       = errors.New("imageclient: unauthorized")
+)
+```
+
+注意 `URL` / `VariantURLs` / `SizeBytes` 是 Go 命名（首字母大写驼峰）；JSON 字段是 snake_case（见 tag）。
+
 **去重 + 补变体场景**：
 
 假设同一个 hash 先被 A 站以 `preset=topic` 上传（只有主图），之后 B 站以 `preset=avatar` 再次上传：

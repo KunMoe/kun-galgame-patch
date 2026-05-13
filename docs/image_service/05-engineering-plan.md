@@ -255,23 +255,37 @@ apps/api/
 
 ### 工程任务
 
-- 编写 `cmd/migrate-images/` 脚本
-- `migration_progress` 表 migration
-- **topic 图床不迁移**，老桶永久只读保留
-- 各站点调用方代码改造（每站 3–4 个 PR 起步，1–2 个月）
+> **平台侧不写迁移脚本**。迁移的本质是"翻转业务库外键"，只有调用方知道哪个老 URL 属于哪个 entity；image_service 提供的标准 `Upload` API + sha256 内容寻址 + dedup 已经足够覆盖。
+>
+> **大部分字段不需要迁移**。kungal / moyu 的所有图片（avatar + topic）已经是合理压缩 WebP / AVIF，二次压缩没收益，老桶永久保留。只有 galgame wiki 的 `galgame.banner` 因为需要 `_mini` 460×259 变体真要迁移。
+
+- **kungal / moyu**：只做**新上传写新表**的代码切换，不写迁移脚本
+- **galgame wiki**：在自己仓库（即本仓库）写 `cmd/migrate-galgame-banners-to-image-service`，跑一次离线迁移
+- 各站点新上传逻辑改造 + 前端 fallback 链路（每站 3–4 个 PR）
 
 ### 验收标准（每站点独立）
 
-- [ ] 新上传（包括 topic）全部走新服务
-- [ ] 旧 avatar / banner 批量迁移完成，新路径可访问，业务库外键更新
-- [ ] 前端读取优先新 URL，回退老 URL 兜底逻辑稳定
-- [ ] 旧 URL 访问量 < 1%（topic 历史 URL 不计入此指标）
+- [ ] 新上传全部走新服务
+- [ ] kungal / moyu：新注册 / 改头像后 `users.avatar_image_hash` 覆盖率 > 99%（老用户保持 NULL 是正常的）
+- [ ] galgame wiki：`galgame.banner_image_hash` 离线迁移后覆盖率 > 99%
+- [ ] 前端读取优先新 hash → fallback `*_url_legacy` → 默认占位
+- [ ] 老桶访问量稳定（**不必下降到 0**，老用户头像和 topic markdown 永远走老 URL）
 
 ### 灰度顺序建议
 
 **galgame wiki（数据最少）→ moyu → kungal**
 
 galgame wiki 数据量最小、用户基数小、可接受短暂小问题，是理想的先行者。
+
+#### ⚠️ Preset 级别的灰度独立性
+
+galgame wiki 跑通 = `preset=galgame_banner` 通路被验证（fit 460×259 + `_mini` 变体生成等）。这**不能推断** `preset=avatar`（256×256 cover + `_100` + `_256` 双变体）也 OK，因为：
+
+- 不同 preset 走的变体生成代码路径不同
+- `cover` vs `inside` fit 模式是不同的 libvips/draw 调用
+- 主图的 fit 1920×1080 行为对 banner 影响不大（banner 本来就小），但 avatar 输入可能很大
+
+**结论**：每个 preset 在第一次接入时都要小灰度（先 100 张试跑、抽样下载验证视觉质量、确认 P99 延迟），不因为别的 preset 跑通就跳过。
 
 ---
 

@@ -191,22 +191,66 @@ oauth_account.user_id
 
 同样审核过 `prisma/moyu/*.prisma`，**100% 覆盖**。
 
-## 7. 特殊处理 1：chat_room.name（kungal）
+## 7. 特殊处理 1：chat_room 私聊房间的 uid pair link
 
-kungal 的私聊房间用一种特殊的 `name` 命名约定：`"<uid_min>-<uid_max>"`（升序）。比如 user 5 跟 user 30 的私聊房间 name = `"5-30"`。
+kungal 和 moyu **都**用 `"<uid_min>-<uid_max>"`（升序）这种字符串格式编码私聊房间的两个参与者。脚本里都被处理。具体落在哪个字段在两边略有不同：
 
-user_id 重映射后这串必须重算：
+| 库 | 表 | 字段 | type 判别 |
+|----|----|----|----------|
+| kungal | `chat_room` | `name` | `type = 'private'`（字符串列） |
+| moyu | `chat_room` | `link` | `type = 'PRIVATE'`（enum） |
 
-```sql
-UPDATE chat_room SET name =
-  LEAST(m1.new_id, m2.new_id) || '-' || GREATEST(m1.new_id, m2.new_id)
-FROM _id_map m1, _id_map m2
-WHERE SPLIT_PART(name, '-', 1)::int = m1.old_id + 100000000
-  AND SPLIT_PART(name, '-', 2)::int = m2.old_id + 100000000
-  AND type = 'private';
+> 比如 user 5 跟 user 30 的私聊房间，name/link = `"5-30"`。user_id 重映射后这串必须重算。
+
+### 7.1 算法：DROP UNIQUE → 批量 UPDATE → 重建 UNIQUE
+
+两边的字段都有 `@unique` 约束。**单遍直接 UPDATE 会撞 unique 约束**当出现 ID 互换循环时：
+
+```
+mapping: {1: 2, 2: 1, 3: 4, 4: 3}
+Room A: {1, 3}, link "1-3" → 新 link "2-4"
+Room B: {2, 4}, link "2-4" → 新 link "1-3"
+
+如果先 UPDATE Room A → 它要改成 "2-4"，但 Room B 当前是 "2-4" → 撞唯一约束失败
+如果先 UPDATE Room B → 它要改成 "1-3"，但 Room A 当前是 "1-3" → 同样撞
 ```
 
-只动 `type='private'` 房间。群聊房间名格式不一样，不参与。
+脚本采用的解法（`remapChatRoomPairLink` 函数）：
+
+```
+在事务内：
+1. 内省 pg_constraint 找到该列的 UNIQUE 约束名（不靠 Prisma 命名约定）
+2. ALTER TABLE DROP CONSTRAINT — 解除约束
+3. 批量 UPDATE 所有 PRIVATE 房间的字段
+4. ALTER TABLE ADD CONSTRAINT — 重建约束
+   ↑ 这一步如果数据真有冲突（post-remap 两个房间撞同一个 link），
+     CREATE UNIQUE 失败 → 整个事务回滚 → 源库还原
+```
+
+### 7.2 为什么在 VARCHAR(17) 的 `chat_room.link` 上不能用 +100M offset
+
+moyu 的 `chat_room.link` 是 `@db.VarChar(17)`。如果像 FK 列那样先把所有 ID 加 100_000_000：
+
+```
+"100000005-100000030"  ← 19 字符，超过 VARCHAR(17)，写入失败
+```
+
+所以 moyu 这一列**必须**用 DROP CONSTRAINT 的方式（不能走 offset）。kungal 的 `chat_room.name` 没有长度限制，理论上 offset 也能用，但脚本统一走 DROP CONSTRAINT 路径，代码更简洁、也避免了 kungal 老版本里 skip-on-error 留脏数据的隐患。
+
+### 7.3 跳过的行
+
+每个 PRIVATE 房间的 link 解析过程，可能命中以下情况：
+
+| 情况 | 处理 | 计数 |
+|------|------|------|
+| 字符串不是 "X-Y" 格式 | 跳过、不动 | `malformed` |
+| 解析出的某个 uid 不在 mapping 里 | 跳过、不动 | `unmapped` |
+| 解析正常、新值与旧值相同 | 跳过、不需要 UPDATE | （不计数） |
+| 正常重写 | UPDATE | `updated` |
+
+脚本结尾打 `slog.Info` 输出 `updated / malformed / unmapped / total_private` 四个数。校验时关注 `malformed` 和 `unmapped` 是否为 0。
+
+## 8. 特殊处理 2：patch_comment.content 里的 mention URL（moyu）
 
 ## 8. 特殊处理 2：patch_comment.content 里的 mention URL（moyu）
 

@@ -97,29 +97,45 @@ LIMIT 5;
 
 如果 join 不上，说明那一列没被 step 7 覆盖（应该列在 [03-id-unification.md](./03-id-unification.md) 里检查 / 或脚本漏了）。
 
-## 5. 私聊房间名重写（kungal）
+## 5. 私聊房间 uid pair link 重写
+
+kungal 和 moyu **都**对私聊房间用 `"uid1-uid2"`（升序）格式编码参与者，落在不同字段。
+
+### 5.1 kungal `chat_room.name`
 
 ```sql
 -- kungal 端
 SELECT id, name FROM chat_room WHERE type = 'private' LIMIT 10;
 ```
 
-每行的 `name` 应该是 `"<a>-<b>"` 格式（其中 a < b），且 a、b 都是新 ID。
+每行的 `name` 应该是 `"<a>-<b>"` 格式（a < b），且 a、b 都是新（OAuth 对齐后的）ID。
+
+### 5.2 moyu `chat_room.link`
 
 ```sql
--- 抽验：解析房间名两端 id，看是否在 OAuth users 里
+-- moyu 端
+SELECT id, link FROM chat_room WHERE type = 'PRIVATE' LIMIT 10;
+```
+
+注意：moyu 的 `type` 是 enum（大写 `'PRIVATE'`），字段是 **link** 不是 name；`name` 是显示名是另一回事。
+
+### 5.3 抽样验证（任一端）
+
+```sql
+-- 解析 uid pair，看两端是否都在 OAuth users 里能找到
 WITH parsed AS (
   SELECT id,
-         SPLIT_PART(name, '-', 1)::int AS uid1,
-         SPLIT_PART(name, '-', 2)::int AS uid2
+         SPLIT_PART(<col>, '-', 1)::int AS uid1,
+         SPLIT_PART(<col>, '-', 2)::int AS uid2
   FROM chat_room
-  WHERE type = 'private'
+  WHERE type = <type_value>
 )
 SELECT p.id, p.uid1, p.uid2,
-       (SELECT name FROM dblink('...', 'SELECT id, name FROM users') AS u(id INT, name TEXT) WHERE u.id = p.uid1) AS u1,
-       (SELECT name FROM dblink('...', 'SELECT id, name FROM users') AS u(id INT, name TEXT) WHERE u.id = p.uid2) AS u2
+       (SELECT name FROM dblink('host=oauth ...', 'SELECT id, name FROM users') AS u(id INT, name TEXT) WHERE u.id = p.uid1) AS u1,
+       (SELECT name FROM dblink('host=oauth ...', 'SELECT id, name FROM users') AS u(id INT, name TEXT) WHERE u.id = p.uid2) AS u2
 FROM parsed p
 LIMIT 5;
+-- 用 (col=name, type='private') 跑 kungal；用 (col=link, type='PRIVATE') 跑 moyu
 ```
 
 `u1`、`u2` 都该有值（不是 NULL）。
