@@ -11,6 +11,10 @@
 | 20003 | 无效的 VNDB ID | 格式不匹配 `v\d+` |
 | 20004 | 该 VNDB ID 的 Galgame 已存在 | VNDB ID 重复 |
 | 20005 | 无权操作此 Galgame | 非创建者且非 admin |
+| 20006 | 草稿不可认领 | claim 时目标 status ≠ 2 |
+| 20007 | 仅提交者可编辑 | PATCH/DELETE 时不是 user_id 本人 |
+| 20008 | 草稿仅可在待审/已拒状态编辑 | PATCH 时 status ∉ {3,4} |
+| 20009 | 今日投稿配额已用尽 | submit 超出每日 5 条 |
 
 ### 通用
 
@@ -49,9 +53,14 @@
 | | PUT | `/engine` | admin/mod | 1 |
 | **Series** | GET | `/series`, `/series/search`, `/series/:id` | 公开 | 3 |
 | | POST/PUT/DELETE | `/series`, `/series/modal`, `/series/:id` | Bearer/admin | 4 |
-| **Admin** | GET | `/admin/stats`, `/admin/galgame`, `/admin/galgame/:gid` | Bearer | 3 |
-| | PUT | `/admin/galgame/:gid/status` | Bearer | 1 |
-| | | | **总计** | **54** |
+| **Admin** | GET | `/admin/stats`, `/admin/galgame`, `/admin/galgame/:gid`, `/admin/galgame/messages` | Bearer + admin | 4 |
+| | PUT | `/admin/galgame/:gid/status` | Bearer + admin | 1 |
+| **Submission** | POST | `/galgame/submit`, `/galgame/:gid/claim` | Bearer | 2 |
+| | PATCH/DELETE | `/galgame/:gid` (草稿) | Bearer | 2 |
+| | GET | `/galgame/mine` | Bearer | 1 |
+| **Messages** | GET | `/galgame/messages/mine` | Bearer | 1 |
+| | GET | `/galgame/messages/feed` | Basic Auth | 1 |
+| | | | **总计** | **65** |
 
 > **标注 (MS) = Meilisearch 驱动**；其余 search 端点（如 `/series/search`）仍基于 Postgres。
 

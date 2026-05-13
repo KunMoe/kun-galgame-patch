@@ -83,13 +83,25 @@ Wiki 管理统计接口，返回各实体的总量和每日新增计数。
 
 ### PUT /admin/galgame/:gid/status
 
-修改 galgame 状态（发布 / 封禁 / 撤回草稿）。**需要认证**。
+修改 galgame 状态（发布 / 封禁 / 拒绝）。**需要认证**（admin/moderator）。
 
 **请求体**：
 
 ```json
-{ "status": 0 }   // 0 已发布 | 1 封禁 | 2 草稿
+{ "status": 0, "reason": "可选审核备注" }
 ```
+
+| 目标 status | 含义 | 副作用 |
+|---|---|---|
+| `0` | 已发布 | 若源 status=3 → 写 message(type='approved', target=submitter)；同时一条 revision |
+| `1` | 封禁 | 写 message(type='banned', target=NULL) |
+| `4` | 审核拒绝 | 仅源 status=3 时允许；写 message(type='declined', target=submitter, payload.reason) |
+
+`status=2` / `status=3` **不允许**作为目标 —— 2 是 sync-vndb 专属域，3 是用户提交产生的。
+
+**响应**：`{ "code": 0, "data": { "id": <gid>, "status": <new> } }`
+
+完整审核流程见 [07 — 投稿](./07-submission.md)。
 
 ---
 

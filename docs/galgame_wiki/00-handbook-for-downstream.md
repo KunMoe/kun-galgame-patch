@@ -1,0 +1,607 @@
+# Galgame 创建与 Wiki 联动 — 下游接入手册（kungal / moyu）
+
+> 此文档面向 **kungal / moyu 团队**，把"用户在站点发布一个 galgame"的端到端流程、wiki 提供的能力、下游需要实现的工作量、所有商议决策一次性梳理清楚。
+>
+> 设计文档：[docs/galgame_wiki/06-submission-and-review-design.md](../../galgame_wiki/06-submission-and-review-design.md)
+> 调用方 API：[07-submission.md](./07-submission.md) · [08-messages.md](./08-messages.md) · [01-galgame.md](./01-galgame.md) · [05-search.md](./05-search.md)
+
+---
+
+## 1. 总体目标与角色
+
+**Wiki 是 galgame 元数据的唯一可信源（SoT）**。kungal / moyu 不再独立维护 galgame 主表，所有 galgame 的"身份"由 wiki 颁发整数 `id`，所有展示字段（name / banner / intro / tag / official 等）每次渲染从 wiki 拉取。
+
+| 角色 | 数据所有 | 接口角色 |
+|---|---|---|
+| **Wiki**（`:9280`） | galgame、tag、official、engine、series、revision、PR、**galgame_message** | 服务端 |
+| **kungal / moyu**（各自后端） | 本地交互数据：`galgame_stats`、`galgame_like`、`galgame_comment`、`galgame_resource`、`galgame_rating` | 上游消费者 |
+| **OAuth**（`:9277`） | users、roles、oauth_client | 身份提供方 |
+
+**三库 user_id 已全局对齐**（migrate-users 完成），不需要 ID 映射；移交过来的 user_id 直接是 OAuth 全局 user_id。
+
+---
+
+## 2. status 状态机（5 档）
+
+| status | 含义 | 谁能在 wiki 看 | 触发来源 |
+|---|---|---|---|
+| 0 | 已发布 | 所有人 | admin 直接 POST、claim 草稿、approved 审核 |
+| 1 | 封禁 | admin | admin `PUT /admin/galgame/:gid/status` |
+| 2 | VNDB 草稿（系统建） | admin + 任何用户走 claim 入口 | `sync-vndb` 每日 cron |
+| **3** | **用户提交，待审核** | admin + 提交者本人 | `POST /galgame/submit` |
+| **4** | **审核拒绝** | admin + 提交者本人 | admin decline 审核结果 |
+
+完整转换表见 [06-submission-and-review-design.md §3](../../galgame_wiki/06-submission-and-review-design.md#3-status-状态机扩展)。
+
+---
+
+## 3. 五个已敲定的决策
+
+实施前请通读，避免实现时再回头讨论。
+
+### 决策 1 — 萌萌点时机：**推迟到通过审核**
+
+| 路径 | 萌萌点 |
+|---|---|
+| 用户调 `POST /galgame/submit` | **0**（提交不奖励） |
+| 用户调 `POST /galgame/:gid/claim` | **+3**（claim 直接 published） |
+| moyu cron 收到 `approved` 消息 | **+3**（在 cron 事务里写一行 user.moemoepoint += 3） |
+| `declined` / `delete draft` | **不退**（一开始就没给） |
+
+**理由**：submit 即时 +3 会激励刷垃圾投稿；只奖励"通过审核"才是正确的质量信号。
+
+**Cron 频率**：approved/declined/banned/unbanned 同步建议 **5–15 分钟一次**（不是每日），否则用户等"被通过"的萌萌点会延迟一整天，体验差。增量拉取（带 `since_id`），单次成本极低。
+
+### 决策 2 — 本地 `wiki_status_snapshot` 列：**不加**
+
+`galgame_stats` 保持纯计数器表，**不加 status 影子列**。理由链：
+
+- 公开列表：wiki batch 匿名只返 status=0，**天然过滤**，本地不需要再过滤一层
+- "我的提交"页：直接代理 `GET /galgame/mine`，本地不查
+- 被封禁后清理：cron 收到 `banned` 消息 → `DELETE FROM galgame_stats WHERE galgame_id = ?`
+
+**galgame_stats 何时 INSERT**：**懒加载**——只在首次互动（点赞、评分、评论、加资源）时 `INSERT ... ON CONFLICT DO UPDATE`。**提交时不 INSERT**，直到用户在本站对该作品产生第一次实际交互。
+
+### 决策 3 — Basic Auth 凭据：**复用现有 OAuth Client 凭证**
+
+Wiki 的 `oauth_client` 表跟 OAuth 服务**共享同一张表**（在 `kun_oauth_admin` 库里，wiki 只读连进去）。
+
+moyu 现有调 `OAuth /users/batch` 的 `client_id / client_secret`，**直接拿来调 wiki `/galgame/messages/feed`**——零新配置。
+
+### 决策 4 — 何时带 Bearer
+
+| 场景 | 是否带 Bearer | 原因 |
+|---|---|---|
+| 首页 / 默认列表 / 默认搜索 | **不带** | 用户期望首页是"公共已发布"视图，不要混入自己的 pending |
+| "发布 galgame" 向导的搜索框 | **带 + `?include_pending=true`** | 帮用户发现"你已提过这个" |
+| `/user/:uid/galgames`（任意人作品页） | **不带** | 只看 status=0 |
+| "我的提交"页 | **不调 search/batch**，直接代理 `GET /galgame/mine` | 一条 RPC 拿齐 |
+| 详情页 | **不带**（详情端点对任意 status 开放，owner 也能看） | wiki 详情逻辑已处理 |
+
+### 决策 5 — `POST /galgame` 已锁到 admin/moderator
+
+普通用户**只能**走 `POST /galgame/submit`（创建 status=3，进入审核队列）。`POST /galgame` 返回 403。
+
+moyu 的"发布 galgame" 路径**只暴露 submit**。如果之前后端有调 `POST /galgame` 的代码，删掉或改 submit。
+
+---
+
+## 4. 四种发布场景的完整数据流
+
+### 场景 A：用户搜索时命中**已发布**条目
+
+```
+moyu 用户输入"Fate"
+  ↓
+moyu 前端 → moyu 后端 /api/galgame/search-for-publish?q=Fate
+  ↓ (带用户 access_token)
+moyu 后端 → wiki GET /galgame/search?q=Fate&include_pending=true
+  ↓ (Authorization: Bearer <access_token>)
+wiki 返回 { items: [...status=0], pending: [...自己的 3/4] }
+  ↓
+用户在"已发布"列表里点选《Fate/stay night》(id=8329)
+  ↓
+moyu 后端 → 跳详情页 /galgame/8329
+  ↓
+moyu 详情页加载 → 调 wiki /galgame/batch?ids=8329 拿展示字段 + 调本地 galgame_stats(8329)
+  ↓
+首次互动时（如点赞）→ INSERT galgame_stats(galgame_id=8329, like_count=1)
+```
+
+**关键点**：
+- moyu 后端不在 wiki 触发任何写操作
+- 不 INSERT galgame_stats（懒加载）
+- 不奖励萌萌点（用户没"创建"任何东西）
+
+### 场景 B：用户搜索时命中 **VNDB 草稿**（status=2）
+
+```
+moyu 用户输入"v17"
+  ↓
+moyu 前端 → moyu 后端 → wiki search
+  ↓
+wiki 返回 status=2 草稿（VNDB 同步过来的 Fate/stay night）
+  ↓
+前端在"VNDB 草稿（一键认领发布）"区块显示
+  ↓
+用户点击「认领并发布」
+  ↓
+moyu 后端 → wiki POST /galgame/8329/claim (透传 access_token)
+  ↓
+wiki 事务:
+  - status 2 → 0
+  - user_id = 用户的 uid
+  - 加 contributor (uid)
+  - 写 revision (action='claimed')
+  - 写 message (type='claimed', target=NULL)  ← admin 知道有人认领了
+  ↓
+返回 status=0 的 galgame 对象
+  ↓
+moyu 后端事务:
+  - INSERT galgame_stats(galgame_id=8329, all zeros) ← 这里需要 INSERT，因为 claim 即发布
+  - UPDATE user.moemoepoint += 3 (决策 1：claim 即时奖励)
+  ↓
+跳详情页
+```
+
+**关键点**：
+- claim 即时奖励 +3（claim 流程没有"审核"环节）
+- INSERT galgame_stats（用户首次在本站"拥有"此 galgame）
+- 不需要等 cron——同步在 RPC 返回时就处理本地副作用
+
+### 场景 C：用户搜索时命中**自己的 pending**（status=3 或 4）
+
+```
+moyu 用户输入"我的新作"
+  ↓
+moyu 后端 → wiki search?include_pending=true (带 Bearer)
+  ↓
+wiki 返回 { items: [...], pending: [{id: 10000, status: 3, user_id=<我>, ...}] }
+  ↓
+前端在"等待审核中"区块显示
+  ↓
+用户点击 → 跳到 moyu 的"我的提交"页 /me/submissions
+  ↓
+moyu 后端 → wiki GET /galgame/mine (带 Bearer)
+  ↓
+wiki 返回 { items: [{id: 10000, status: 3, ...}, {id: 9999, status: 4, decline_reason: "..."}] }
+  ↓
+前端展示，用户看到 pending + 被拒原因
+  ↓
+如果状态是 4，用户点"编辑后重新提交"
+  ↓
+moyu 后端 → wiki PATCH /galgame/9999 (带 Bearer + body)
+  ↓
+wiki 事务:
+  - UPDATE galgame fields
+  - status 4 → 3 (自动翻回)
+  - revision (action='edited_pending')
+  - message (type='edited_pending', target=NULL)
+  ↓
+返回 status=3 的 galgame
+  ↓
+moyu 后端不需要做本地 update（galgame_stats 行可能根本不存在）
+```
+
+**关键点**：
+- 编辑 declined 草稿自动翻回 pending
+- moyu 完全代理 `/galgame/mine`，不在本地维护"我的提交"列表
+
+### 场景 D：用户搜索时**完全没命中**（要新建）
+
+```
+moyu 用户搜不到 → 点击"提交新作"
+  ↓
+弹出表单（name 4 语言、intro、tag、official、可选 vndb_id、banner 文件）
+  ↓
+moyu 后端 → wiki POST /galgame/submit (带 Bearer，支持 multipart)
+  ↓
+wiki 事务:
+  - 检查每日配额（默认 5/天，超出返回 20009）
+  - vndb_id 不空时检查唯一性
+  - INSERT galgame status=3 user_id=uid
+  - INSERT aliases / tag / official / engine relations
+  - INSERT contributor (uid)
+  - INSERT VNDB link (if vndb_id present)
+  - INSERT revision 1 (action='created')
+  - INSERT message (type='submitted', actor=uid, target=NULL) ← 进 admin 队列
+  ↓
+返回 status=3 的 galgame { id: 10000, ... }
+  ↓
+moyu 后端**不做**本地 INSERT 任何东西（决策 2：懒加载，提交时不建 stats）
+  ↓
+moyu 后端返回响应给前端
+  ↓
+前端跳转到 /galgame/10000 详情页（或 /me/submissions"等待审核"提示）
+```
+
+**审核分支**（异步发生）：
+
+```
+admin 在 wiki 后台审核队列看到这条
+  ├── 通过 → PUT /admin/galgame/10000/status {status: 0, reason: "可选备注"}
+  │   ↓
+  │   wiki 事务:
+  │     - status 3 → 0
+  │     - revision (action='approved')
+  │     - message (type='approved', actor=admin_uid, target=submitter_uid)
+  │   ↓
+  │   moyu cron 每 5-15 分钟拉一次 /galgame/messages/feed
+  │   ↓
+  │   收到 type='approved'：
+  │     - UPDATE user.moemoepoint += 3 (决策 1：approved 才奖励)
+  │     - 发本地消息通知"您提交的《X》已通过审核"
+  │     - 不需要建 galgame_stats（懒加载）
+  │
+  └── 拒绝 → PUT /admin/galgame/10000/status {status: 4, reason: "VNDB ID 错"}
+      ↓
+      wiki 事务:
+        - status 3 → 4
+        - revision (action='declined')
+        - message (type='declined', actor=admin_uid, target=submitter_uid, payload.reason)
+      ↓
+      moyu cron 收到 type='declined'：
+        - 不扣萌萌点（一开始没给）
+        - 发本地消息通知"您提交的《X》被拒，原因：..."
+      ↓
+      用户去"我的提交"页看到，可编辑重新提交（回到场景 C 的 PATCH 分支）
+```
+
+---
+
+## 5. moyu 后端 SDK 方法清单
+
+参考 `docs/integration/galgame_wiki/07-submission.md` 的 SDK 草案。建议在 moyu 后端实现一个 `internal/galgame/wiki/client.go`，包含：
+
+### 5.1 用户身份方法（透传 access_token）
+
+| 方法 | 调用 | 用途 |
+|---|---|---|
+| `Submit(ctx, token, req)` | POST `/galgame/submit` | 用户提交新作 |
+| `Claim(ctx, token, gid)` | POST `/galgame/:gid/claim` | 用户认领 VNDB 草稿 |
+| `PatchDraft(ctx, token, gid, req)` | PATCH `/galgame/:gid` | 用户编辑自己的 pending/declined |
+| `DeleteDraft(ctx, token, gid)` | DELETE `/galgame/:gid` | 用户撤回自己的草稿 |
+| `ListMine(ctx, token, req)` | GET `/galgame/mine` | "我的提交"页（带 decline_reason） |
+| `SearchWithPending(ctx, token, q)` | GET `/galgame/search?include_pending=true` | 发布向导搜索（含自己的 pending） |
+| `SearchPublic(ctx, q)` | GET `/galgame/search` | 公开搜索（不带 Bearer） |
+| `Batch(ctx, token?, ids)` | GET `/galgame/batch` | 列表渲染拉 brief；带 Bearer 时含自己 pending |
+| `GetDetail(ctx, gid)` | GET `/galgame/:gid` | 详情页元数据 |
+| `MyNotifications(ctx, token, sinceID)` | GET `/galgame/messages/mine` | 消息中心 wiki 消息流 |
+
+### 5.2 服务到服务方法（Basic Auth）
+
+| 方法 | 调用 | 用途 |
+|---|---|---|
+| `MessageFeed(ctx, sinceID, limit)` | GET `/galgame/messages/feed` | cron 拉新消息（approved/declined/banned/unbanned） |
+
+### 5.3 调用样板
+
+```go
+// 用户身份调用
+type WikiClient struct {
+    baseURL    string  // e.g. https://galgame.kungal.com/api
+    httpClient *http.Client
+    // basic auth credentials (只给 MessageFeed 用)
+    clientID, clientSecret string
+}
+
+func (c *WikiClient) Submit(ctx context.Context, token string, req SubmitRequest) (*Galgame, error) {
+    httpReq, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/galgame/submit", toJSON(req))
+    httpReq.Header.Set("Authorization", "Bearer "+token)
+    httpReq.Header.Set("Content-Type", "application/json")
+    return c.do(httpReq)
+}
+
+// 服务身份调用
+func (c *WikiClient) MessageFeed(ctx context.Context, sinceID int64, limit int) ([]Message, bool, error) {
+    url := fmt.Sprintf("%s/galgame/messages/feed?since_id=%d&limit=%d", c.baseURL, sinceID, limit)
+    httpReq, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+    creds := base64.StdEncoding.EncodeToString([]byte(c.clientID + ":" + c.clientSecret))
+    httpReq.Header.Set("Authorization", "Basic "+creds)
+    // ...
+    return items, hasMore, nil
+}
+```
+
+---
+
+## 6. moyu 数据库 migration
+
+只有一项：**不需要任何 ALTER 给 galgame_stats**（决策 2：不加 snapshot 列）。
+
+需要：
+
+```sql
+-- 1. 加一张 cron 游标表（如果还没有的话，给所有 cron 共享）
+CREATE TABLE IF NOT EXISTS cron_state (
+    name        VARCHAR(64) PRIMARY KEY,
+    last_id     BIGINT NOT NULL DEFAULT 0,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. wiki 消息已读状态（前端"未读数"用，可选）
+CREATE TABLE IF NOT EXISTS wiki_message_read_state (
+    user_id              INT PRIMARY KEY,
+    last_read_message_id BIGINT NOT NULL DEFAULT 0,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+`galgame_stats` 保持现状（如果还没建，仍按 `08-galgame-service-architecture.md` 的 schema 建，但不加 wiki_status_snapshot 列）。
+
+---
+
+## 7. cron 实现
+
+每 **5–15 分钟**跑一次（不是每日）。
+
+```go
+// internal/galgame/cron/wiki_sync.go
+func (c *WikiSyncCron) Run(ctx context.Context) error {
+    // 1. 读上次游标
+    var sinceID int64
+    db.Raw("SELECT last_id FROM cron_state WHERE name = 'wiki_msg_sync'").Scan(&sinceID)
+
+    for {
+        // 2. 拉增量
+        msgs, hasMore, err := c.wiki.MessageFeed(ctx, sinceID, 1000)
+        if err != nil {
+            return err
+        }
+        if len(msgs) == 0 {
+            break
+        }
+
+        // 3. 在一个事务里处理这批
+        err = db.Transaction(func(tx *gorm.DB) error {
+            for _, m := range msgs {
+                if m.Galgame == nil {
+                    // 幽灵消息——作品被删了
+                    tx.Exec(`DELETE FROM galgame_stats WHERE galgame_id = ?`, m.GalgameID)
+                    continue
+                }
+                switch m.Type {
+                case "approved", "unbanned":
+                    // 萌萌点 +3 给提交者（仅 approved；unbanned 不奖励）
+                    if m.Type == "approved" && m.TargetUserID != nil {
+                        tx.Exec(`UPDATE "user" SET moemoepoint = moemoepoint + 3 WHERE id = ?`, *m.TargetUserID)
+                    }
+                    // 发本地消息通知用户
+                    writeLocalNotification(tx, m.TargetUserID, "approved",
+                        fmt.Sprintf("您提交的《%s》已通过审核", displayName(m.Galgame)))
+                case "declined":
+                    reason := payloadString(m.Payload, "reason")
+                    writeLocalNotification(tx, m.TargetUserID, "declined",
+                        fmt.Sprintf("您提交的《%s》被拒：%s", displayName(m.Galgame), reason))
+                case "banned":
+                    // 作品被封 → 清掉本地 stats（避免列表里点进去 404）
+                    tx.Exec(`DELETE FROM galgame_stats WHERE galgame_id = ?`, m.GalgameID)
+                    writeLocalNotification(tx, m.TargetUserID, "banned",
+                        fmt.Sprintf("您的作品《%s》已被封禁", displayName(m.Galgame)))
+                }
+                sinceID = m.ID
+            }
+            // 4. 更新游标
+            return tx.Exec(`
+                INSERT INTO cron_state(name, last_id) VALUES ('wiki_msg_sync', ?)
+                ON CONFLICT (name) DO UPDATE SET last_id = EXCLUDED.last_id, updated_at = NOW()
+            `, sinceID).Error
+        })
+        if err != nil {
+            return err
+        }
+
+        if !hasMore {
+            break
+        }
+    }
+    return nil
+}
+```
+
+**关键不变量**：
+- 整个批次在**一个事务**里。萌萌点累加、本地通知写入、游标推进必须原子
+- 出错时事务回滚 → 游标不前进 → 下次 cron 重新处理这批（消息处理必须**幂等**——萌萌点 idempotent 不容易，下面 §8 讲）
+
+---
+
+## 8. 萌萌点幂等性（important）
+
+cron 可能重跑同一批消息（崩溃恢复、人为重启）。如果 cron 直接 `moemoepoint += 3`，重跑就会重复奖励。
+
+**解法 A（推荐，简单）**：用 `wiki_message_id` 做处理日志
+
+```sql
+CREATE TABLE wiki_message_processed (
+    message_id BIGINT PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+每条消息处理前 `INSERT ... ON CONFLICT DO NOTHING RETURNING message_id`——成功插入才往下走奖励/通知逻辑，重复 message_id 跳过。
+
+```go
+result := tx.Exec(`INSERT INTO wiki_message_processed(message_id) VALUES (?) ON CONFLICT DO NOTHING`, m.ID)
+if result.RowsAffected == 0 {
+    continue  // 已经处理过
+}
+// safely award moemoepoint, write notification, etc.
+```
+
+**解法 B（更轻量但更难做对）**：游标 `last_id` 当成唯一去重器，cron 必须保证"游标推进"和"业务副作用"在同一事务内。前面 §7 的事务代码就是这种思路——但要小心**事务超时**和"批处理一半失败，部分消息已被业务消费但游标没推"的边界情况。
+
+推荐 **A + B 一起用**：A 是绝对的幂等护甲，B 是常态推进。
+
+---
+
+## 9. 用户操作时的本地副作用速查
+
+cron 处理 admin 触发的事件；**用户自己触发**的事件不依赖 cron，moyu 后端在 RPC 返回时同步处理：
+
+| 用户操作 | wiki 端结果 | moyu 后端在响应回来时做的事 |
+|---|---|---|
+| Submit | 创建 status=3 galgame | **不做事**（galgame_stats 懒加载） |
+| Claim | status 2→0 | INSERT galgame_stats(zeros) + moemoepoint += 3 |
+| PatchDraft | 改字段 + 4→3 翻转 | **不做事** |
+| DeleteDraft | 硬删 galgame + relations | DELETE galgame_stats(galgame_id) — 如果有的话 |
+| 首次互动（like/comment） | (与 wiki 无关) | `INSERT ... ON CONFLICT DO UPDATE` galgame_stats |
+
+---
+
+## 10. 前端 UX 流程
+
+### 10.1 发布 galgame 向导（3 步）
+
+```
+Step 1: 输入名字搜索
+  ├── 命中已发布 → "选择此条目并直接发布"
+  ├── 命中 VNDB 草稿 → "认领并发布"
+  ├── 命中自己 pending → "查看审核状态"
+  └── 都没命中 → "都不是？提交新作"
+
+Step 2: 提交新作表单
+  - name 4 语言（建议至少填 1 个）
+  - intro 4 语言（可选）
+  - banner（image_service 上传，可选；不传 fallback default）
+  - tag / official / engine（多选）
+  - aliases（逗号分隔）
+  - vndb_id（可选）
+
+Step 3: 提交后
+  - 成功 → 跳到详情页或"我的提交"页
+  - 显示"等待审核中"状态
+```
+
+### 10.2 "我的提交"页
+
+```typescript
+// pages/me/submissions.vue
+const data = await $fetch('/api/wiki/galgame/mine?status=3,4')
+// 直接代理 wiki /galgame/mine
+// data.items 形如：
+// [
+//   { id: 10000, status: 3, name_zh_cn: "...", banner_image_hash: "..." },
+//   { id: 9999,  status: 4, decline_reason: "VNDB ID 错", ... }
+// ]
+```
+
+每条:
+- status=3 → "审核中" 灰底
+- status=4 → "已拒绝" 红底 + 显示 `decline_reason` + "重新编辑" 按钮（调 PATCH 端点）
+
+### 10.3 消息中心
+
+合并两个源：
+```typescript
+const [localMsgs, wikiMsgs] = await Promise.all([
+  $fetch('/api/message'),                 // moyu 本地（reply/like/PR 等）
+  $fetch('/api/wiki/messages/mine')       // moyu 后端透传到 wiki
+])
+const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
+```
+
+未读数：本地用 `wiki_message_read_state.last_read_message_id` 做基线，count wiki messages 中 `id > last_read_id` 的数量。
+
+### 10.4 详情页
+
+按 wiki id 渲染，**不区分 status**——但要处理 batch 返回为空的情况：
+- batch 返回有 → 渲染
+- batch 返回空（galgame 不存在 / 被 ban / 不是 owner 的 pending）→ 404 页
+
+---
+
+## 11. 错误处理速查
+
+| HTTP | code | 含义 | 前端建议 |
+|---|---|---|---|
+| 400 | 20003 | vndb_id 格式错 | 表单校验提示 |
+| 400 | 20004 | vndb_id 已存在 | 提示"该 VNDB 作品已有人提交"，引导走搜索 |
+| 400 | 20006 | 草稿不可认领 | 提示"该草稿已被他人认领" → 刷新搜索 |
+| 400 | 20008 | 草稿状态不对 | 内部错误（不该发生） |
+| 403 | 20005 | 无权操作 | "你不是创建者 / 非 admin" |
+| 403 | 20007 | 仅提交者可编辑 | "你不是这条草稿的提交者" |
+| 429 | 20009 | 配额耗尽 | "您今日投稿已达上限（5 条），明日再来" |
+
+完整列表见 [99-appendix.md](./99-appendix.md)。
+
+---
+
+## 12. 工作量估算
+
+| 阶段 | 内容 | 人天 |
+|---|---|---|
+| 1. DB migration | `cron_state` + `wiki_message_read_state` 两张表 | 0.5 |
+| 2. SDK client | WikiClient 11 个方法 | 2 |
+| 3. cron 实现 | MessageFeed 拉取 + 幂等表 + 萌萌点 + 本地通知 | 1 |
+| 4. 后端 API 代理 | 5 个用户操作端点 + 1 个 messages/mine 代理 + 1 个 search-for-publish + 1 个 /me/submissions | 1.5 |
+| 5. 前端发布向导 | 3 步搜索-选择-提交流程 + multipart banner | 3 |
+| 6. 前端"我的提交"页 | 列表 + 编辑/撤回操作 | 2 |
+| 7. 前端消息中心融合 | wiki 消息流 + 已读状态 | 1 |
+| 8. 联调 + 灰度 | 内部账号试跑、灰度 1% 流量、监控 | 2 |
+| **合计** | | **13 人天 / 约 3 周** |
+
+可以分两期上：
+- **期一**：场景 A + B（已发布选用 + VNDB 草稿认领）—— 8 人天
+- **期二**：场景 D（新建提交 + 审核）+ 我的提交页 + cron —— 5 人天
+
+---
+
+## 13. 上线 checklist
+
+### 后端
+- [ ] WikiClient 完成，所有 11 个方法各写一个单元测试
+- [ ] cron 跑通：dev 环境模拟一条 approved 消息 → 验证萌萌点 +3 + 本地通知写入 + 游标推进
+- [ ] 幂等性测试：同一条 message_id 两次进 cron，萌萌点只 +3 一次
+- [ ] 5 个用户操作端点透传 access_token 正确（不要"自己解 JWT 改 user_id"）
+- [ ] 错误码透传：wiki 返回 20009（配额）→ 前端能看到 429 + 友好文案
+
+### 前端
+- [ ] 发布向导覆盖 4 种命中分支
+- [ ] "我的提交"页正确显示 decline_reason
+- [ ] 消息中心合并 wiki + 本地两个源
+- [ ] 列表/首页/详情**不带 Bearer** 调 batch（避免泄露自己的 pending 给其他人）
+- [ ] 发布向导的搜索框**带 Bearer + include_pending=true**
+
+### 联调
+- [ ] 用 curl 模拟 cron 拉 feed，确认 Basic Auth 用现有 client_id/secret 通过
+- [ ] 提交 → admin 在 wiki 后台 approve → 等下一个 cron tick → 验证 moyu 用户萌萌点真的 +3
+- [ ] 提交 → admin decline + reason → 用户在 /me/submissions 看到 reason → 编辑后重新提交 → admin 看队列里又出现
+
+### 灰度
+- [ ] 1% 流量 24h 观察提交成功率、cron 失败率
+- [ ] 监控 wiki 端 `/messages/feed` 调用频次（每 5–15 min × 站点数 × N batch）
+- [ ] 监控 moyu cron 的 `wiki_message_processed` 表增长（应等于 feed 拉到的 message 数）
+
+---
+
+## 14. 参考文档
+
+| 文档 | 用途 |
+|---|---|
+| [06-submission-and-review-design.md](../../galgame_wiki/06-submission-and-review-design.md) | wiki 侧主设计：status 状态机、schema、可见性矩阵 |
+| [07-submission.md](./07-submission.md) | submit/claim/patch/delete/mine 端点详细说明 |
+| [08-messages.md](./08-messages.md) | /messages/mine、/messages/feed、admin queue 端点 |
+| [01-galgame.md](./01-galgame.md) | batch/detail 等公共端点；含 multipart banner 上传 |
+| [05-search.md](./05-search.md) | 搜索端点 + `include_pending=true` |
+| [99-appendix.md](./99-appendix.md) | 错误码、端点总览、Meilisearch 运维 |
+
+---
+
+## 15. 不在范围内
+
+显式说明，避免重复确认：
+
+- ❌ **VNDB 同步**：wiki 自己每日跑 `sync-vndb` cron 维护 status=2 草稿库存。moyu 不参与
+- ❌ **galgame 元数据修改的 PR 流程**：用户对已发布 galgame 的修订走 wiki 自身的 PR 系统（`POST /galgame/:gid/prs`），moyu 不代理也不奖励（PR 合并奖励在 wiki 端做或留到未来）
+- ❌ **同步用户提交的"评分/评论/资源"**：这些是 moyu 本地数据，跟 wiki 完全无关
+- ❌ **kungal/moyu 之间任何直接通信**：两站不互相调用，都通过 wiki + OAuth 间接联动
+- ❌ **wiki admin UI**：wiki 自己的 web 端有审核队列页面（`apps/wiki/app/pages/review/`），moyu 不需要做 admin 后台
+- ❌ **跨站合并重复提交**：admin 在 wiki 后台手动 ban 或 decline，不做自动 dedupe
+
+---
+
+## 联系人
+
+- wiki API 变更：通知此文档对应 owner
+- 接入过程问题：参考 [docs/integration/galgame_wiki/](.) 完整目录
+- 集成 bug：直接提 issue 到 wiki repo

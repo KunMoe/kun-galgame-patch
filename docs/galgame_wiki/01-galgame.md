@@ -74,7 +74,9 @@
       "name_zh_cn": "标题",
       "name_zh_tw": "標題",
       "banner": "https://image.kungal.com/...",
+      "banner_image_hash": "abcd...ef",
       "content_limit": "sfw",
+      "status": 0,
       "user_id": 1,
       "resource_update_time": "2026-01-01T00:00:00Z",
       "original_language": "ja-jp",
@@ -84,7 +86,14 @@
 }
 ```
 
-不存在或已封禁的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
+| 字段 | 备注 |
+|---|---|
+| `status` | `0` 已发布；`3` / `4` 仅当请求带 Bearer 且调用者是该条 galgame 的 submitter 时才会返回（pending / declined 草稿）。匿名 / 非 owner 调用看不到非 0 条目 |
+| `banner_image_hash` | image_service 哈希；前端 resolveBannerUrl 优先用此字段拼新 CDN URL，缺失时 fallback 到 `banner` 老 URL |
+
+不存在或对调用者不可见的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
+
+**带 Bearer 的语义**：与 OAuth 终端用户 access_token 一起调用，wiki 解 JWT 得 `uid`，返回结果中额外包含调用者的 status=3/4 条目（参见 [07-submission.md GET /galgame/batch 增量行为](./07-submission.md#get-galgamebatch-增量行为)）。无 Bearer 时只返 status=0。
 
 ---
 
@@ -239,7 +248,13 @@ return r2.data.galgame
 
 ### POST /galgame
 
-创建 Galgame。**需要认证**。
+创建 Galgame。**需要认证 + admin/moderator 角色**。
+
+> ⚠️ **此端点已锁到 admin/moderator**。它是 admin 直接发布的旁路：创建 `status=0` 条目，跳过审核队列。
+>
+> **普通用户必须走 [POST /galgame/submit](./07-submission.md#post-galgamesubmit)**——创建 `status=3` 待审稿，无需 VNDB ID，进入审核队列。
+>
+> 非 admin/moderator 调此端点返回 403。kungal/moyu 的发布 UI 应仅暴露 `/submit`。
 
 创建时自动：创建 revision 1、添加创建者为贡献者、添加 VNDB 链接。
 
