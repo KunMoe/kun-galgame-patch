@@ -73,6 +73,10 @@ func New(cfg *config.Config) *App {
 	rdb := cache.NewRedis(cfg.Redis)
 	s3 := storage.NewS3(cfg.S3)
 	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	// Wiki's /galgame/messages/feed uses OAuth Client Basic Auth (same
+	// client_id/secret as /users/batch). The wiki-sync cron is the sole
+	// consumer; user-facing endpoints continue to use Bearer transparently.
+	wiki.SetBasicAuth(cfg.OAuth.ClientID, cfg.OAuth.ClientSecret)
 
 	// OAuth user-brief client (Phase 5-6 will inject this into renderers).
 	usrCli := userclient.New(userclient.Config{
@@ -137,8 +141,8 @@ func New(cfg *config.Config) *App {
 	app.Use(recover.New())
 	app.Use(middleware.CORS(cfg.CORS))
 
-	// Start cron jobs
-	cronStop := cronJobs.Start(db, s3)
+	// Start cron jobs (wiki-sync registered only when wiki client is available)
+	cronStop := cronJobs.Start(db, s3, wiki)
 
 	slog.Info("Application initialized")
 

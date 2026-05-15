@@ -617,3 +617,290 @@ func writeWikiResult(c *fiber.Ctx, data json.RawMessage, err error) error {
 	}
 	return c.JSON(response.Response{Code: 0, Message: "OK", Data: data})
 }
+
+// ===== Wiki submission proxies (docs/galgame_wiki/07-submission.md) =====
+//
+// Each endpoint is a thin pass-through to Wiki: extract the user's
+// access_token from the session, forward verbatim, surface Wiki's business
+// errors as-is. The site backend does not re-implement authorization —
+// Wiki decodes the JWT and enforces submitter / status rules itself.
+
+// SubmitGalgame POST /api/v1/galgame/submit
+//
+// Two content types accepted (same shape as UpdateGalgame):
+//   - application/json
+//   - multipart/form-data with `data` + optional `file` for banner upload
+func (h *PatchHandler) SubmitGalgame(c *fiber.Ctx) error {
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	ctype := string(c.Request().Header.ContentType())
+	if strings.HasPrefix(ctype, "multipart/form-data") {
+		return h.submitGalgameMultipart(c, accessToken)
+	}
+	return h.submitGalgameJSON(c, accessToken)
+}
+
+func (h *PatchHandler) submitGalgameJSON(c *fiber.Ctx, accessToken string) error {
+	var req galgameClient.SubmitGalgameRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
+	}
+	data, err := h.wiki.SubmitGalgame(c.Context(), accessToken, &req)
+	return writeWikiResult(c, data, err)
+}
+
+func (h *PatchHandler) submitGalgameMultipart(c *fiber.Ctx, accessToken string) error {
+	req, fileName, fileBytes, fileMime, err := parseGalgameMultipart(c)
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	if len(fileBytes) == 0 {
+		data, callErr := h.wiki.SubmitGalgame(c.Context(), accessToken, &req)
+		return writeWikiResult(c, data, callErr)
+	}
+	data, callErr := h.wiki.SubmitGalgameMultipart(
+		c.Context(), accessToken, &req, fileName, fileBytes, fileMime,
+	)
+	return writeWikiResult(c, data, callErr)
+}
+
+// ClaimGalgame POST /api/v1/galgame/:gid/claim
+//
+// Flip a VNDB draft (status=2) to published (status=0) and award the caller
+// ownership. Wiki returns the published galgame.
+func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
+	gid, idErr := getIDParam(c, "gid")
+	if idErr != nil {
+		return response.Error(c, idErr.(*errors.AppError))
+	}
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	data, err := h.wiki.ClaimGalgame(c.Context(), accessToken, gid)
+	if err == nil {
+		// Wiki returned status=0; reward the claimer immediately (decision §1
+		// in docs/galgame_wiki/00-handbook-for-downstream.md). Best-effort —
+		// failure here must NOT roll back the wiki-side change.
+		uid := middleware.MustGetUser(c).UID
+		_ = h.service.GrantClaimReward(uid)
+	}
+	return writeWikiResult(c, data, err)
+}
+
+// PatchGalgameDraft PATCH /api/v1/galgame/:gid
+//
+// Edit one's own pending/declined draft. Wiki auto-flips status=4 back to 3.
+// Same dual-content-type as Submit/Update.
+func (h *PatchHandler) PatchGalgameDraft(c *fiber.Ctx) error {
+	gid, idErr := getIDParam(c, "gid")
+	if idErr != nil {
+		return response.Error(c, idErr.(*errors.AppError))
+	}
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	ctype := string(c.Request().Header.ContentType())
+	if strings.HasPrefix(ctype, "multipart/form-data") {
+		req, fileName, fileBytes, fileMime, err := parseGalgameMultipart(c)
+		if err != nil {
+			return response.Error(c, err.(*errors.AppError))
+		}
+		if len(fileBytes) == 0 {
+			data, callErr := h.wiki.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
+			return writeWikiResult(c, data, callErr)
+		}
+		data, callErr := h.wiki.PatchGalgameDraftMultipart(
+			c.Context(), accessToken, gid, &req, fileName, fileBytes, fileMime,
+		)
+		return writeWikiResult(c, data, callErr)
+	}
+	var req galgameClient.SubmitGalgameRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
+	}
+	data, err := h.wiki.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
+	return writeWikiResult(c, data, err)
+}
+
+// DeleteGalgameDraft DELETE /api/v1/galgame/:gid (draft)
+//
+// Hard-delete one's own pending/declined draft (Wiki enforces status ∈ {3,4}
+// + submitter check). NOTE: this conflicts at the path level with the local
+// patch DELETE /api/v1/patch/:id; we expose it under /galgame/:gid which is
+// what Wiki uses, so the verb is unambiguous.
+func (h *PatchHandler) DeleteGalgameDraft(c *fiber.Ctx) error {
+	gid, idErr := getIDParam(c, "gid")
+	if idErr != nil {
+		return response.Error(c, idErr.(*errors.AppError))
+	}
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	if err := h.wiki.DeleteGalgameDraft(c.Context(), accessToken, gid); err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+	return response.OKMessage(c, "OK")
+}
+
+// ListMyGalgames GET /api/v1/galgame/mine
+func (h *PatchHandler) ListMyGalgames(c *fiber.Ctx) error {
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	status := c.Query("status", "")
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit < 1 || limit > 50 {
+		limit = 20
+	}
+	if page < 1 {
+		page = 1
+	}
+	out, err := h.wiki.ListMyGalgames(c.Context(), accessToken, status, page, limit)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+	return response.OK(c, out)
+}
+
+// SearchGalgameForPublish GET /api/v1/galgame/search/publish
+//
+// Used by the publish wizard. Forwards the user's Bearer + include_pending=true
+// so the response surfaces both public results and the caller's own
+// pending/declined drafts.
+func (h *PatchHandler) SearchGalgameForPublish(c *fiber.Ctx) error {
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	q := c.Query("q", "")
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	if limit < 1 || limit > 24 {
+		limit = 10
+	}
+	out, err := h.wiki.SearchGalgameForPublish(c.Context(), accessToken, q, limit)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+	return response.OK(c, out)
+}
+
+// GetWikiMessagesReadState GET /api/v1/galgame/messages/read-state
+//
+// Returns the caller's last-read marker for wiki notifications. Used by the
+// notification-center to compute the unread badge (count of wiki messages
+// with id > last_read_message_id). State lives locally — wiki doesn't
+// maintain per-user read flags (see docs/galgame_wiki/08-messages.md §已读状态).
+func (h *PatchHandler) GetWikiMessagesReadState(c *fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	var lastRead int64
+	row := h.service.DB().Raw(
+		`SELECT last_read_message_id FROM wiki_message_read_state WHERE user_id = ?`,
+		user.UID,
+	).Row()
+	_ = row.Scan(&lastRead)
+	return response.OK(c, map[string]any{"last_read_message_id": lastRead})
+}
+
+// UpdateWikiMessagesReadState PUT /api/v1/galgame/messages/read-state
+//
+// Body: { "last_read_message_id": int64 }. We only move forward — submitting
+// a smaller id is a no-op.
+func (h *PatchHandler) UpdateWikiMessagesReadState(c *fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	var body struct {
+		LastReadMessageID int64 `json:"last_read_message_id"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
+	}
+	if body.LastReadMessageID < 0 {
+		return response.Error(c, errors.ErrBadRequest("last_read_message_id 不能为负"))
+	}
+	if err := h.service.DB().Exec(`
+		INSERT INTO wiki_message_read_state(user_id, last_read_message_id, updated_at)
+		VALUES (?, ?, NOW())
+		ON CONFLICT(user_id) DO UPDATE
+		SET last_read_message_id = GREATEST(wiki_message_read_state.last_read_message_id, EXCLUDED.last_read_message_id),
+		    updated_at = NOW()
+	`, user.UID, body.LastReadMessageID).Error; err != nil {
+		return response.Error(c, errors.ErrInternal("保存已读状态失败"))
+	}
+	return response.OKMessage(c, "OK")
+}
+
+// GetMyWikiMessages GET /api/v1/galgame/messages/mine
+func (h *PatchHandler) GetMyWikiMessages(c *fiber.Ctx) error {
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	sinceID, _ := strconv.ParseInt(c.Query("since_id", "0"), 10, 64)
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	out, err := h.wiki.GetMyWikiMessages(c.Context(), accessToken, sinceID, limit)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+	return response.OK(c, out)
+}
+
+// parseGalgameMultipart is shared between SubmitGalgame and PatchGalgameDraft.
+// Returns the JSON body, the file name / bytes / mime if present, or an
+// AppError describing what failed.
+func parseGalgameMultipart(c *fiber.Ctx) (galgameClient.SubmitGalgameRequest, string, []byte, string, error) {
+	var req galgameClient.SubmitGalgameRequest
+	form, err := c.MultipartForm()
+	if err != nil {
+		return req, "", nil, "", errors.ErrBadRequest("multipart 表单解析失败")
+	}
+	dataStrs := form.Value["data"]
+	if len(dataStrs) == 0 {
+		return req, "", nil, "", errors.ErrBadRequest("缺少 data 字段")
+	}
+	if err := json.Unmarshal([]byte(dataStrs[0]), &req); err != nil {
+		return req, "", nil, "", errors.ErrBadRequest("data 字段不是合法 JSON")
+	}
+	fileHeaders := form.File["file"]
+	if len(fileHeaders) == 0 {
+		return req, "", nil, "", nil
+	}
+	fh := fileHeaders[0]
+	if fh.Size > 10*1024*1024 {
+		return req, "", nil, "", errors.ErrBadRequest("banner 超过 10MB 上限")
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return req, "", nil, "", errors.ErrBadRequest("无法读取上传文件")
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return req, "", nil, "", errors.ErrBadRequest("读取上传文件失败")
+	}
+	mime := fh.Header.Get("Content-Type")
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	return req, fh.Filename, raw, mime, nil
+}

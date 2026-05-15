@@ -67,6 +67,26 @@ func (a *App) RegisterRoutes() {
 	// admin authorization itself — we just forward the user's access_token.
 	api.Put("/galgame/:gid", auth, a.PatchHandler.UpdateGalgame)
 
+	// ===== Wiki submission proxies (docs/galgame_wiki/07-submission.md) =====
+	//
+	// User-facing endpoints for the new publish-galgame flow. Each one
+	// forwards the user's OAuth access_token to Wiki and surfaces Wiki's
+	// business errors (20003 / 20004 / 20006 / 20007 / 20008 / 20009) verbatim.
+	//
+	// IMPORTANT: order matters here. /galgame/mine, /galgame/submit,
+	// /galgame/search/publish, /galgame/messages/* must be registered BEFORE
+	// the parameterized /galgame/:gid routes below so Fiber doesn't match
+	// "mine"/"submit"/etc. as a :gid value.
+	api.Get("/galgame/mine", auth, a.PatchHandler.ListMyGalgames)
+	api.Get("/galgame/search/publish", auth, a.PatchHandler.SearchGalgameForPublish)
+	api.Get("/galgame/messages/mine", auth, a.PatchHandler.GetMyWikiMessages)
+	api.Get("/galgame/messages/read-state", auth, a.PatchHandler.GetWikiMessagesReadState)
+	api.Put("/galgame/messages/read-state", auth, a.PatchHandler.UpdateWikiMessagesReadState)
+	api.Post("/galgame/submit", auth, a.PatchHandler.SubmitGalgame)
+	api.Post("/galgame/:gid/claim", auth, a.PatchHandler.ClaimGalgame)
+	api.Patch("/galgame/:gid", auth, a.PatchHandler.PatchGalgameDraft)
+	api.Delete("/galgame/:gid", auth, a.PatchHandler.DeleteGalgameDraft)
+
 	// ===== User Routes =====
 	//
 	// Profile mutations (username/bio/password/email/avatar) live on OAuth and

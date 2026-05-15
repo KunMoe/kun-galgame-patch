@@ -121,6 +121,22 @@ func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
 	return s.repo.GetPatchDetail(id)
 }
 
+// GrantClaimReward awards the +3 moemoepoint a user gets for claiming a VNDB
+// draft into published state. Used by the wiki-claim proxy handler.
+//
+// Per docs/galgame_wiki/00-handbook-for-downstream.md §决策1: claim is
+// rewarded immediately (unlike submit, which only rewards after admin
+// approval — that path runs via the wiki-sync cron, not here).
+func (s *PatchService) GrantClaimReward(userID int) error {
+	return s.repo.UpdateMoemoepoint(userID, 3)
+}
+
+// DB exposes the underlying *gorm.DB so a few thin "no-business-logic" handler
+// endpoints (the wiki messages read-state shims) can do single-table reads /
+// upserts without round-tripping through a dedicated repo + service layer.
+// Anything with real business logic should still live in a service method.
+func (s *PatchService) DB() *gorm.DB { return s.db }
+
 // UpdatePatch: after D13, patch.id IS the Wiki galgame_id, so changing vndb_id
 // to one that resolves to a different galgame_id would require remapping
 // patch.id (and every FK in child tables) — that is the job of the

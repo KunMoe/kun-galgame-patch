@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/internal/constants"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 
 	"github.com/robfig/cron/v3"
@@ -18,7 +19,9 @@ import (
 // Job list:
 //  1. Daily 00:00: reset daily_image_count / daily_check_in / daily_upload_size on the user table
 //  2. Every 6 hours: clean up S3 multipart uploads still unfinished after 24h (D10 plan B)
-func Start(db *gorm.DB, s3 *storage.S3Client) func() {
+//  3. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
+//     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
+func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client) func() {
 	c := cron.New()
 
 	// ── Daily 00:00: reset quota fields ───────────────
@@ -44,6 +47,26 @@ func Start(db *gorm.DB, s3 *storage.S3Client) func() {
 		cleanupAbortedMultiparts(s3)
 	}); err != nil {
 		slog.Error("注册 multipart 清理任务失败", "error", err)
+	}
+
+	// ── Every 10 minutes: sync Wiki message feed ─────────
+	// Only registered when wiki is configured; tests / cmd helpers that build
+	// the app without a wiki client (e.g. cmd/remap-patch-ids) won't run this.
+	if wiki != nil {
+		if _, err := c.AddFunc(wikiSyncSchedule, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			applied, cursor, err := RunWikiMessageSync(ctx, db, wiki)
+			if err != nil {
+				slog.Error("Wiki 消息同步失败", "error", err, "applied", applied, "cursor", cursor)
+				return
+			}
+			if applied > 0 {
+				slog.Info("Wiki 消息同步完成", "applied", applied, "cursor", cursor)
+			}
+		}); err != nil {
+			slog.Error("注册 Wiki 消息同步任务失败", "error", err)
+		}
 	}
 
 	c.Start()

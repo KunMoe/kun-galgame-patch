@@ -40,8 +40,9 @@ func (e *WikiError) Error() string {
 
 // Client is a thin wrapper around calls to the Wiki Service.
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL         string
+	http            *http.Client
+	basicAuthHeader string // set via SetBasicAuth; required by GetWikiMessageFeed
 }
 
 // New constructs a Client. baseURL looks like http://127.0.0.1:9280/api
