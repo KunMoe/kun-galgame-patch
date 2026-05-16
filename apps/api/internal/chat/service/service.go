@@ -82,12 +82,17 @@ func (s *ChatService) GetRoomDetail(uid int, link string) (*RoomDetail, error) {
 // GetMessages polls for new messages.
 //
 // Resolves the room by link and checks membership first, then fetches by after/limit.
-func (s *ChatService) GetMessages(uid int, link string, after, limit int) ([]model.ChatMessage, error) {
+func (s *ChatService) GetMessages(uid int, link string, after, before, limit int) ([]model.ChatMessage, error) {
 	room, err := s.resolveRoomForMember(uid, link)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListMessages(room.ID, after, limit)
+	return s.repo.ListMessages(room.ID, after, before, limit)
+}
+
+// LatestMessagePerRoom passthrough for room-list last-message previews.
+func (s *ChatService) LatestMessagePerRoom(roomIDs []int) (map[int]model.ChatMessage, error) {
+	return s.repo.LatestMessagePerRoom(roomIDs)
 }
 
 // CreateMessage sends a message and updates the room's last_message_time.
@@ -174,6 +179,17 @@ func (s *ChatService) resolveRoomForMember(uid int, link string) (*model.ChatRoo
 		return nil, fmt.Errorf("您不是该房间的成员")
 	}
 	return room, nil
+}
+
+// ReactionsByMessageIDs / MessagesByIDs are thin passthroughs the handler
+// uses to enrich a message page with reactions + reply quotes in two extra
+// batched queries (no N+1).
+func (s *ChatService) ReactionsByMessageIDs(ids []int) ([]model.ChatMessageReaction, error) {
+	return s.repo.ListReactionsByMessageIDs(ids)
+}
+
+func (s *ChatService) MessagesByIDs(ids []int) ([]model.ChatMessage, error) {
+	return s.repo.GetMessagesByIDs(ids)
 }
 
 // IsNotFound exposes an ErrRecordNotFound check for callers to distinguish business errors.

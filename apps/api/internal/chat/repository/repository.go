@@ -27,12 +27,25 @@ func (r *ChatRepository) FindRoomByLink(link string) (*model.ChatRoom, error) {
 	return &room, err
 }
 
-// ListRoomsByUser lists all rooms a user has joined, ordered by last message time desc.
+// ListRoomsByUser lists rooms a user has joined that contain at least one
+// live (non-deleted) message, ordered by last message time desc.
+//
+// Empty rooms are filtered out: ChatRoom.LastMessageTime has
+// gorm:"autoCreateTime" so a freshly-created room without any message still
+// carries a non-null timestamp — it can't be detected by a null check on the
+// frontend. The authoritative "is this room empty" signal is the existence
+// of a chat_message row, so we gate on it here (single EXISTS subquery, no
+// N+1).
 func (r *ChatRepository) ListRoomsByUser(uid int) ([]model.ChatRoom, error) {
 	var rooms []model.ChatRoom
 	err := r.db.
 		Joins("JOIN chat_member ON chat_member.chat_room_id = chat_room.id").
 		Where("chat_member.user_id = ?", uid).
+		Where(`EXISTS (
+			SELECT 1 FROM chat_message
+			WHERE chat_message.chat_room_id = chat_room.id
+			  AND chat_message.deleted_at IS NULL
+		)`).
 		Order("chat_room.last_message_time DESC").
 		Find(&rooms).Error
 	return rooms, err
@@ -132,17 +145,71 @@ func (r *ChatRepository) FindOrCreatePrivateRoom(uid, peerUID int) (*model.ChatR
 
 // ─── Message ────────────────────────────────────────
 
-// ListMessages fetches new messages with id > after, capped by limit, newest-first
-// but returned in ascending order so the frontend can append to the bottom of the
-// transcript directly.
-func (r *ChatRepository) ListMessages(roomID, after, limit int) ([]model.ChatMessage, error) {
+// ListMessages returns a page of messages, always in ascending id order so
+// the frontend can append/prepend a contiguous block:
+//
+//   - before > 0 : the `limit` newest messages with id < before (history page
+//                  for scroll-up). Fetched DESC then reversed.
+//   - after  > 0 : messages with id > after, oldest-first (the forward poll).
+//   - neither    : the `limit` most recent messages (initial load / reload).
+//                  Fetched DESC then reversed.
+//
+// before takes precedence over after when both are supplied.
+func (r *ChatRepository) ListMessages(roomID, after, before, limit int) ([]model.ChatMessage, error) {
+	var msgs []model.ChatMessage
+
+	if before > 0 {
+		err := r.db.
+			Where("chat_room_id = ? AND id < ?", roomID, before).
+			Order("id DESC").Limit(limit).Find(&msgs).Error
+		reverseMessages(msgs)
+		return msgs, err
+	}
+
+	if after > 0 {
+		err := r.db.
+			Where("chat_room_id = ? AND id > ?", roomID, after).
+			Order("id ASC").Limit(limit).Find(&msgs).Error
+		return msgs, err
+	}
+
+	// Latest page.
+	err := r.db.
+		Where("chat_room_id = ?", roomID).
+		Order("id DESC").Limit(limit).Find(&msgs).Error
+	reverseMessages(msgs)
+	return msgs, err
+}
+
+func reverseMessages(m []model.ChatMessage) {
+	for i, j := 0, len(m)-1; i < j; i, j = i+1, j-1 {
+		m[i], m[j] = m[j], m[i]
+	}
+}
+
+// LatestMessagePerRoom returns the most recent message of each given room,
+// keyed by chat_room_id. One query (id IN max-per-room subquery) — no N+1.
+// Used to render the last-message preview in the room list.
+func (r *ChatRepository) LatestMessagePerRoom(roomIDs []int) (map[int]model.ChatMessage, error) {
+	out := map[int]model.ChatMessage{}
+	if len(roomIDs) == 0 {
+		return out, nil
+	}
 	var msgs []model.ChatMessage
 	err := r.db.
-		Where("chat_room_id = ? AND id > ?", roomID, after).
-		Order("id ASC").
-		Limit(limit).
+		Where(`id IN (
+			SELECT MAX(id) FROM chat_message
+			WHERE chat_room_id IN ?
+			GROUP BY chat_room_id
+		)`, roomIDs).
 		Find(&msgs).Error
-	return msgs, err
+	if err != nil {
+		return out, err
+	}
+	for i := range msgs {
+		out[msgs[i].ChatRoomID] = msgs[i]
+	}
+	return out, nil
 }
 
 // ListMembers returns all members of a room. The handler layer attaches the
@@ -218,6 +285,28 @@ func (r *ChatRepository) ToggleReaction(messageID, uid int, emoji string) (added
 		UserID:        uid,
 		Emoji:         emoji,
 	}).Error
+}
+
+// ListReactionsByMessageIDs returns all reactions for the given message ids,
+// ordered by id so reaction chips render stably. The handler attaches the
+// reacting user briefs from OAuth /users/batch.
+func (r *ChatRepository) ListReactionsByMessageIDs(ids []int) ([]model.ChatMessageReaction, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rs []model.ChatMessageReaction
+	err := r.db.Where("chat_message_id IN ?", ids).Order("id ASC").Find(&rs).Error
+	return rs, err
+}
+
+// GetMessagesByIDs loads bare messages by id (used to build reply quotes).
+func (r *ChatRepository) GetMessagesByIDs(ids []int) ([]model.ChatMessage, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var msgs []model.ChatMessage
+	err := r.db.Where("id IN ?", ids).Find(&msgs).Error
+	return msgs, err
 }
 
 // ─── Seen ───────────────────────────────────────────

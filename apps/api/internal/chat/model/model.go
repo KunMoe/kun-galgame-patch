@@ -28,6 +28,22 @@ type ChatRoom struct {
 
 func (ChatRoom) TableName() string { return "chat_room" }
 
+// RoomSummaryView is the room-list row. For PRIVATE rooms Name/Avatar are
+// overridden with the *peer's* identity (the stored room has no name/avatar);
+// LastMessage is a short text preview of the most recent message so the list
+// shows real context instead of a placeholder.
+type RoomSummaryView struct {
+	ID              int       `json:"id"`
+	Link            string    `json:"link"`
+	Type            string    `json:"type"`
+	Name            string    `json:"name"`
+	Avatar          string    `json:"avatar"`
+	LastMessage     string    `json:"last_message"`
+	LastMessageTime time.Time `json:"last_message_time"`
+	Created         time.Time `json:"created"`
+	Updated         time.Time `json:"updated"`
+}
+
 // ChatMember is a chat room member.
 type ChatMember struct {
 	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -59,9 +75,38 @@ type ChatMessage struct {
 
 	// Filled by the chat handler from OAuth /users/batch (pkg/userclient).
 	Sender *patchModel.PatchUser `gorm:"-" json:"sender,omitempty"`
+
+	// Enrichment fields (all gorm:"-") filled by the handler before
+	// serialization so the frontend can render markdown, reactions and the
+	// replied-to quote without extra round-trips.
+	//
+	//   - ContentHTML: Content rendered through the markdown pipeline +
+	//     sanitized. Content itself stays raw markdown (the edit modal needs it).
+	//   - Reaction:    flat list of this message's reactions, each with the
+	//     reacting user's brief.
+	//   - QuoteMessage: the message this one replies to (sender name + HTML),
+	//     nil when ReplyToID is nil or the target is gone.
+	ContentHTML  string                `gorm:"-" json:"content_html"`
+	Reaction     []ChatReactionView    `gorm:"-" json:"reaction"`
+	QuoteMessage *ChatQuoteView        `gorm:"-" json:"quote_message,omitempty"`
 }
 
 func (ChatMessage) TableName() string { return "chat_message" }
+
+// ChatReactionView is one reaction enriched with the reacting user's brief,
+// matching the frontend's `message.reaction[]` shape.
+type ChatReactionView struct {
+	ID    int                   `json:"id"`
+	Emoji string                `json:"emoji"`
+	User  *patchModel.PatchUser `json:"user"`
+}
+
+// ChatQuoteView is the compact preview of a replied-to message.
+type ChatQuoteView struct {
+	ID         int    `json:"id"`
+	SenderName string `json:"sender_name"`
+	Content    string `json:"content"` // rendered HTML (or "该消息已删除")
+}
 
 // ChatMessageSeen is the seen state of a message (a given user has read a given message).
 type ChatMessageSeen struct {

@@ -24,10 +24,18 @@ type StartPrivateChatRequest struct {
 
 // ─── Messages ───────────────────────────────────────
 
-// ListMessagesQuery polls for new messages.
+// ListMessagesQuery drives the three message-fetch modes:
+//
+//   - before > 0  → older page: messages with id < before (scroll-up history)
+//   - after  > 0  → new messages: id > after (the 5s forward poll)
+//   - neither     → latest page: the most recent `limit` messages
+//                   (initial load + post-action reload)
+//
+// before and after are mutually exclusive; before wins if both are set.
 type ListMessagesQuery struct {
-	After int `query:"after" validate:"min=0"`        // max message id from the previous poll, 0 = first request
-	Limit int `query:"limit" validate:"min=1,max=100"` // maximum messages per request
+	After  int `query:"after" validate:"min=0"`
+	Before int `query:"before" validate:"min=0"`
+	Limit  int `query:"limit" validate:"min=1,max=100"`
 }
 
 // CreateMessageRequest sends a message. FileURL is optional (attachment).

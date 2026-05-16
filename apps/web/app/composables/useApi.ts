@@ -30,6 +30,18 @@ export const useApi = () => {
   const config = useRuntimeConfig()
   const baseUrl = config.public.apiBase || 'http://127.0.0.1:5214/api/v1'
 
+  // `credentials: 'include'` only attaches the session cookie in the BROWSER.
+  // During SSR (Nuxt server) there is no cookie jar, so an auth-gated
+  // useAsyncData fetch would 401 and the page would hydrate from an empty
+  // payload — making logged-in content (messages, chat rooms, ...) render
+  // then "disappear" on refresh. Capture the incoming request's Cookie
+  // header at setup time and forward it on server-side requests so SSR and
+  // CSR agree. Must be read here (composable/setup scope), not inside the
+  // async closure.
+  const ssrCookie = import.meta.server
+    ? useRequestHeaders(['cookie']).cookie
+    : undefined
+
   const request = async <T>(
     endpoint: string,
     options: ApiOptions = {}
@@ -42,6 +54,7 @@ export const useApi = () => {
         body: body ? JSON.stringify(body) : undefined,
         headers: {
           'Content-Type': 'application/json',
+          ...(ssrCookie ? { cookie: ssrCookie } : {}),
           ...headers
         },
         credentials: 'include'

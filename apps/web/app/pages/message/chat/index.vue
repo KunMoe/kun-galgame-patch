@@ -51,7 +51,9 @@ const { data: rooms, pending } = await useAsyncData<ChatRoomSummary[]>(
             />
             <span class="font-medium truncate">{{ room.name }}</span>
           </div>
-          <p class="text-default-500 text-xs truncate">最近聊天室</p>
+          <p class="text-default-500 text-xs truncate">
+            {{ room.last_message || '暂无消息' }}
+          </p>
         </div>
         <span
           v-if="room.last_message_time"
