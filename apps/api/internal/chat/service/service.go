@@ -95,6 +95,17 @@ func (s *ChatService) LatestMessagePerRoom(roomIDs []int) (map[int]model.ChatMes
 	return s.repo.LatestMessagePerRoom(roomIDs)
 }
 
+// GetMessagesByIDsInRoom returns the given messages, scoped to the room (and
+// verifying caller membership) so a member can only refresh messages from a
+// room they belong to. Used for the in-place post-mutation refresh.
+func (s *ChatService) GetMessagesByIDsInRoom(uid int, link string, ids []int) ([]model.ChatMessage, error) {
+	room, err := s.resolveRoomForMember(uid, link)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListMessagesByIDsInRoom(room.ID, ids)
+}
+
 // CreateMessage sends a message and updates the room's last_message_time.
 func (s *ChatService) CreateMessage(uid int, link string, content, fileURL string, replyToID *int) (*model.ChatMessage, error) {
 	room, err := s.resolveRoomForMember(uid, link)

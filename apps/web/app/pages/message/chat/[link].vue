@@ -57,7 +57,18 @@ const firstId = computed(() =>
 
 const scrollToBottom = async () => {
   await nextTick()
-  if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
+  const pin = () => {
+    const el = scrollArea.value
+    if (el) el.scrollTop = el.scrollHeight
+  }
+  pin()
+  // Avatars / stickers / markdown images finish loading AFTER the first
+  // layout and grow the transcript, leaving the view stuck near the top.
+  // Re-pin across a few frames so the initial load actually lands on the
+  // newest message. Cheap and bounded — no permanent listeners.
+  requestAnimationFrame(pin)
+  setTimeout(pin, 120)
+  setTimeout(pin, 360)
 }
 
 const atBottom = () =>
@@ -72,6 +83,7 @@ const atBottom = () =>
 const loadLatest = async (silent = false) => {
   if (!room.value) return
   if (!silent) loading.value = true
+  let ok = false
   try {
     const res = await api.get<ChatMessageItem[]>(
       `/chat/room/${link.value}/message?limit=${PAGE}`
@@ -79,11 +91,15 @@ const loadLatest = async (silent = false) => {
     if (res.code === 0) {
       messages.value = res.data ?? []
       hasMoreOlder.value = (res.data?.length ?? 0) >= PAGE
-      await scrollToBottom()
+      ok = true
     }
   } finally {
     if (!silent) loading.value = false
   }
+  // Scroll only AFTER `loading` is cleared: while it's true the template
+  // shows <KunLoading> and the message list isn't in the DOM yet, so a
+  // scroll here would target the placeholder and leave us at the top.
+  if (ok) await scrollToBottom()
 }
 
 // Older page (scroll-up). Prepends and keeps the viewport anchored on the
@@ -142,6 +158,21 @@ const onScroll = () => {
   if (scrollArea.value && scrollArea.value.scrollTop < 60) loadOlder()
 }
 
+// In-place refresh after an edit / delete / reaction. Re-fetches ONLY the
+// currently-loaded message ids and patches them back into the same slots —
+// no re-paging, no array reorder, and crucially no scroll, so the view stays
+// exactly where the user was instead of jumping to the newest message.
+const refreshLoaded = async () => {
+  if (!room.value || !messages.value.length) return
+  const ids = messages.value.map((m) => m.id)
+  const res = await api.get<ChatMessageItem[]>(
+    `/chat/room/${link.value}/message?ids=${ids.join(',')}&limit=100`
+  )
+  if (res.code !== 0) return
+  const byId = new Map((res.data ?? []).map((m) => [m.id, m]))
+  messages.value = messages.value.map((m) => byId.get(m.id) ?? m)
+}
+
 // ─── Reply ────────────────────────────────────────────
 const replyTo = ref<ChatMessageItem | null>(null)
 const startReply = (m: ChatMessageItem) => {
@@ -150,12 +181,26 @@ const startReply = (m: ChatMessageItem) => {
 }
 const cancelReply = () => (replyTo.value = null)
 
-const jumpTo = (id: number) => {
-  const el = document.getElementById(`chat-msg-${id}`)
-  if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  el.classList.add('ring-2', 'ring-secondary')
-  setTimeout(() => el.classList.remove('ring-2', 'ring-secondary'), 1500)
+// Quotes whose target message isn't in the loaded window: clicking them
+// can't scroll anywhere, so instead expand the quote in-place to show the
+// full quoted content (it's already fully present in quote_message.content,
+// the template just visually clamps it). Keyed by the *replying* message id.
+const expandedQuotes = reactive(new Set<number>())
+
+// Click handler for a reply quote. If the referenced message is loaded,
+// scroll+highlight it; otherwise expand this quote to reveal it in full.
+const onQuoteClick = (m: ChatMessageItem) => {
+  if (!m.reply_to_id) return
+  const el = document.getElementById(`chat-msg-${m.reply_to_id}`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-secondary')
+    setTimeout(() => el.classList.remove('ring-2', 'ring-secondary'), 1500)
+    return
+  }
+  // Not loaded → toggle full quoted content inline.
+  if (expandedQuotes.has(m.id)) expandedQuotes.delete(m.id)
+  else expandedQuotes.add(m.id)
 }
 
 // ─── Send ─────────────────────────────────────────────
@@ -242,7 +287,7 @@ const toggleReaction = async (m: ChatMessageItem, emoji: string) => {
     `/chat/message/${m.id}/reaction`,
     { emoji }
   )
-  if (res.code === 0) await loadLatest(true)
+  if (res.code === 0) await refreshLoaded()
   else useKunMessage(res.message || '操作失败', 'error')
 }
 
@@ -258,7 +303,7 @@ const saveEdit = async (content: string) => {
   const res = await api.put(`/chat/message/${editTarget.value.id}`, { content })
   if (res.code === 0) {
     editOpen.value = false
-    await loadLatest(true)
+    await refreshLoaded()
   } else {
     useKunMessage(res.message || '编辑失败', 'error')
   }
@@ -275,7 +320,7 @@ const confirmDelete = async () => {
   if (!deleteTarget.value) return
   const res = await api.delete(`/chat/message/${deleteTarget.value.id}`)
   deleteOpen.value = false
-  if (res.code === 0) await loadLatest(true)
+  if (res.code === 0) await refreshLoaded()
   else useKunMessage(res.message || '删除失败', 'error')
 }
 
@@ -400,13 +445,14 @@ onBeforeUnmount(() => pause())
                   <div
                     v-if="m.quote_message"
                     class="border-secondary bg-secondary/10 my-1 cursor-pointer overflow-hidden rounded-lg border-l-3 px-2 py-1"
-                    @click="m.reply_to_id && jumpTo(m.reply_to_id)"
+                    @click="onQuoteClick(m)"
                   >
                     <span class="text-secondary text-xs">
                       {{ m.quote_message.sender_name }}
                     </span>
                     <div
-                      class="kun-prose line-clamp-2 text-xs opacity-80"
+                      class="kun-prose text-xs opacity-80"
+                      :class="{ 'line-clamp-2': !expandedQuotes.has(m.id) }"
                       v-html="sanitize(m.quote_message.content)"
                     />
                   </div>

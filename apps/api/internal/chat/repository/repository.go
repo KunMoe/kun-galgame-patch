@@ -187,6 +187,19 @@ func reverseMessages(m []model.ChatMessage) {
 	}
 }
 
+// ListMessagesByIDsInRoom returns the given messages that belong to roomID,
+// ascending by id. Room-scoped so a member can't fetch arbitrary messages.
+func (r *ChatRepository) ListMessagesByIDsInRoom(roomID int, ids []int) ([]model.ChatMessage, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var msgs []model.ChatMessage
+	err := r.db.
+		Where("chat_room_id = ? AND id IN ?", roomID, ids).
+		Order("id ASC").Find(&msgs).Error
+	return msgs, err
+}
+
 // LatestMessagePerRoom returns the most recent message of each given room,
 // keyed by chat_room_id. One query (id IN max-per-room subquery) — no N+1.
 // Used to render the last-message preview in the room list.

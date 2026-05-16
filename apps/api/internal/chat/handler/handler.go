@@ -339,13 +339,41 @@ func (h *ChatHandler) ListMessages(c *fiber.Ctx) error {
 		q.Limit = 30
 	}
 
-	msgs, err := h.svc.GetMessages(user.UID, link, q.After, q.Before, q.Limit)
+	var msgs []chatModel.ChatMessage
+	var err error
+	if ids := parseCSVInts(q.IDs); len(ids) > 0 {
+		// In-place refresh of an exact set (post edit/delete/reaction). The
+		// frontend patches these into its existing list without re-paging or
+		// scrolling, so it never yanks the view to the bottom.
+		msgs, err = h.svc.GetMessagesByIDsInRoom(user.UID, link, ids)
+	} else {
+		msgs, err = h.svc.GetMessages(user.UID, link, q.After, q.Before, q.Limit)
+	}
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	h.attachMessageSenders(c.Context(), msgs)
 	h.enrichMessages(c.Context(), msgs)
 	return response.OK(c, msgs)
+}
+
+// parseCSVInts parses "1,2,3" → [1,2,3], skipping blanks/non-numeric, capped
+// at 200 to bound the query.
+func parseCSVInts(s string) []int {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		if n, e := strconv.Atoi(strings.TrimSpace(p)); e == nil && n > 0 {
+			out = append(out, n)
+			if len(out) >= 200 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 // CreateMessage POST /api/chat/room/:link/message
