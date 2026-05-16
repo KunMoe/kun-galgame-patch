@@ -51,9 +51,15 @@ type SessionData struct {
 }
 
 const (
-	SessionCookieName     = "kun_session"
+	// SessionCookieName / SessionPrefix MUST be distinct from kungal's
+	// (kun-galgame-nuxt4) values. In local dev both sites run on
+	// 127.0.0.1 — cookies are domain-scoped, NOT port-scoped — and share
+	// one Redis. A shared cookie name + key prefix made kungal and moyu
+	// read/refresh/delete each other's sessions, producing cross-site
+	// logout (client_id_mismatch on the OAuth server). Keep site-unique.
+	SessionCookieName     = "moyu_session"
 	SessionTTL            = 7 * 24 * time.Hour
-	SessionPrefix         = "session:"
+	SessionPrefix         = "moyu:session:"
 	userContextKey        = "user"
 	rolesContextKey       = "oauth_roles"
 	accessTokenContextKey = "oauth_access_token"

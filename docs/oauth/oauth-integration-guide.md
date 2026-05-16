@@ -292,11 +292,35 @@ OAuth 服务端 2026 升级之后对 refresh 加了多道校验。**任何一条
 | 4. 请求里的 `client_id` 必须等于**当初签发 refresh_token 时的同一个 client_id** | 401 / 10002 `ErrAuthInvalidToken` | 检查 `client_id` env 在多环境间没乱用 |
 | 5. refresh_token 没过期（默认 90 天，按 client 配置） | 401 / 10003 `ErrAuthTokenExpired` | 用户重新登录 |
 
-外加一种情况：
+外加两种情况：
 
 - **存量 session（升级前创建的）`client_id` 列为空**，跟条件 4 永远比不上。**这批 session 一次性必须重新登录**，登录后新 session 带正确 client_id，refresh 才正常。可以用一条 SQL 把存量清掉提前触发：
   ```sql
   DELETE FROM sessions WHERE client_id = '';
+  ```
+
+- **限流把整站打爆（2026-05 修复前的典型现象）**。`/oauth/token` 曾经挂了一个
+  `10 次/分钟、按 IP+path` 的限流器，外加一个全局 `100 次/分钟、按纯 IP` 的限流器。
+  confidential SSR 客户端（kungal/moyu）在服务端代理**全站所有用户**的 token
+  交换 + refresh，全部来自**同一个后端 IP** —— 于是 `/oauth/token` 被限死
+  10 次/分钟/整站。活跃用户稍多就 `429`，下游把它当 refresh 失败 → 踢用户重登
+  → 重登又是一次 `/oauth/token` → 雪崩。**症状**：用户登录后约 15 分钟（access_token
+  TTL）被踢，间歇性、与活跃度相关、`sessions` 表同一用户堆大量未过期 session。
+
+  **此问题已在 2026-05 修复**：`/oauth/token` 改为按 `client_id` 限流且额度放宽
+  （6000/min/client，纯防失控客户端死循环，不是反爆破）；全局限流器对带
+  `Authorization` 头的已认证请求放行（per-IP 限流只留给匿名流量）。
+  接入方**无需改代码**；如果你在旧版本上遇到此现象，升级 OAuth 服务端即可。
+  自查 SQL：
+
+  ```sql
+  -- 同一用户是否堆了大量未过期 session（refresh 一直失败的指纹）
+  SELECT user_id, client_id, count(*) AS n,
+         count(*) FILTER (WHERE expires_at > now()) AS still_valid
+  FROM sessions
+  GROUP BY user_id, client_id
+  HAVING count(*) > 3
+  ORDER BY n DESC;
   ```
 
 ### 4.2 调试 refresh 401 的最小 SQL
@@ -323,6 +347,69 @@ WHERE id = 'your_client_id';
 ```
 
 或者重跑 OAuth 端的 `go run ./cmd/migrate` —— 它包含自动 backfill。
+
+### 4.3 多站本地共用 Redis / 同域导致跨站 session 串台
+
+> **2026-05 实战定位的真实事故。** 现象与"refresh 失败被踢"完全一样，但
+> 根因不在 OAuth 端 —— OAuth 的拒绝是**正确**的。接入方（尤其本地 dev
+> 同时跑两个站点）必看。
+
+**现象**：用户登录后过一会被踢回登录页，间歇性，且**在一个站点的操作会把
+另一个站点也登出**。OAuth 端日志可见：
+
+```
+WARN oauth refresh reject stage=client_id_mismatch
+  request_client_id=<站点 A 的 client>
+  session_client_id=<站点 B 的 client>
+```
+
+**根因**：两个下游站点（如 kungal + moyu）满足以下**全部**条件时，
+session 在它们之间串台：
+
+| 维度 | 串台条件 |
+|------|---------|
+| Host | 都在 `127.0.0.1`（本地 dev）。**Cookie 按域名隔离，不区分端口** —— `127.0.0.1:2333` 设的 cookie 会发给 `127.0.0.1:5214` |
+| Cookie 名 | 两站都用同一个名字（如 `kun_session`） |
+| Redis | 共用同一实例 + 同一 DB |
+| Redis key 前缀 | 两站都用同一前缀（如 `session:`） |
+
+链路：站点 B 登录 → 浏览器存 `kun_session=X`（host=127.0.0.1，全端口共享）
+→ 用户访问站点 A → 浏览器把同一个 cookie 发给 A → A 读共享 Redis 的
+`session:X`（实际是 B 的 session，refresh_token 由 B 的 client 签发）
+→ A 用**自己的 client_id** 去刷 **B 签发的 refresh_token**
+→ OAuth 正确拒绝 `client_id_mismatch`(10002)
+→ A 判定 token 死亡，从**共享 Redis 删掉** `session:X`（连带把 B 也登出）
+→ 用户被踢。
+
+> 生产环境 `kungal.com` 与 `moyu.moe` 是不同注册域，cookie 不串；但
+> **共用 Redis + 同 key 前缀**在生产若共用 Redis 仍是隐患。
+
+**自查**：在共享 Redis 上看是否多站的 session 落在同一 keyspace：
+
+```bash
+redis-cli --scan --pattern 'session:*' | head        # 同前缀 = 危险信号
+```
+
+确认 OAuth 端 `sessions` 表里同一用户是否堆了大量未过期 session
+（refresh 一直失败的指纹）：
+
+```sql
+SELECT user_id, client_id, count(*) AS n
+FROM sessions
+GROUP BY user_id, client_id
+HAVING count(*) > 3
+ORDER BY n DESC;
+```
+
+**修复（在下游站点，不在 OAuth）—— 让两站 session 命名空间互不相交**：
+
+1. **Cookie 名按站点唯一**（必须，根治）：`kungal_session` / `moyu_session`
+2. **Redis key 前缀按站点唯一**（建议，纵深防御）：`kungal:session:` /
+   `moyu:session:`；或用不同 `REDIS_DB`
+
+把 cookie 名 / key 前缀收敛成常量后集中改值，避免漏掉硬编码调用点。改完
+重启下游服务；存量用户需**重新登录一次**（旧 cookie 不再被读取），旧
+`session:*` 孤儿 key 按 TTL 自然过期。
 
 ---
 
