@@ -7,8 +7,10 @@ interface Props {
 
 const props = defineProps<Props>()
 
+// The API field is snake_case `text_count` (see shared/types/about.d.ts);
+// reading `textCount` yielded undefined → NaN 分钟阅读.
 const readMinutes = computed(() =>
-  Math.max(1, Math.round(props.post.textCount / 500))
+  Math.max(1, Math.round((props.post.text_count ?? 0) / 500))
 )
 </script>
 

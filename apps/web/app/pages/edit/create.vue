@@ -151,9 +151,14 @@ const goToMine = async () => {
 }
 
 // ─── Scenario D: submit a new galgame ─────────────────
+//
+// No vndb_id field by design: Galgame Wiki's daily `sync-vndb` cron already
+// maintains EVERY VNDB entry as a claimable status=2 draft. So anything that
+// fell through the search to this form is, by definition, not in VNDB —
+// asking for a VNDB ID here is logically impossible (and would only ever
+// collide → 20004). VNDB games are reached via the "认领并发布" (claim) path.
 
 interface SubmitForm {
-  vndb_id: string
   name_zh_cn: string
   name_zh_tw: string
   name_ja_jp: string
@@ -165,7 +170,6 @@ interface SubmitForm {
   original_language: string
 }
 const submitForm = reactive<SubmitForm>({
-  vndb_id: '',
   name_zh_cn: '',
   name_zh_tw: '',
   name_ja_jp: '',
@@ -209,8 +213,6 @@ const startSubmit = () => {
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
 
-const VNDBRegex = /^v\d+$/
-
 const handleSubmit = async () => {
   submitError.value = null
   const hasName =
@@ -222,19 +224,13 @@ const handleSubmit = async () => {
     submitError.value = '至少填写一个语言的名称'
     return
   }
-  const vndb = submitForm.vndb_id.trim().toLowerCase()
-  if (vndb && !VNDBRegex.test(vndb)) {
-    submitError.value = 'VNDB ID 格式应为 v + 数字（留空表示无 VNDB 编号）'
-    return
-  }
 
-  // Only include non-empty fields in the payload so omitempty on the wiki side
-  // can keep defaults for what we didn't set.
+  // No vndb_id sent — see the SubmitForm comment above. Only include non-empty
+  // fields so omitempty on the wiki side keeps defaults for what we didn't set.
   const payload: Record<string, unknown> = {
     content_limit: submitForm.content_limit,
     age_limit: submitForm.age_limit
   }
-  if (vndb) payload.vndb_id = vndb
   if (submitForm.name_zh_cn.trim()) payload.name_zh_cn = submitForm.name_zh_cn.trim()
   if (submitForm.name_zh_tw.trim()) payload.name_zh_tw = submitForm.name_zh_tw.trim()
   if (submitForm.name_ja_jp.trim()) payload.name_ja_jp = submitForm.name_ja_jp.trim()
@@ -274,15 +270,11 @@ const handleSubmit = async () => {
       await navigateTo('/me/submissions')
       return
     }
-    // Wiki business errors per docs/galgame_wiki/99-appendix.md §20xxx:
-    //   20003 vndb_id 格式错  20004 vndb_id 已存在  20009 配额已用尽
+    // Wiki business errors per docs/galgame_wiki/99-appendix.md §20xxx.
+    // We never send a vndb_id so 20003/20004 shouldn't occur; keep only the
+    // quota case + a generic fallback.
     if (res.code === 20009) {
       submitError.value = '今日投稿配额已用尽（默认 5 条），明日再来。'
-    } else if (res.code === 20004) {
-      submitError.value =
-        '该 VNDB ID 已被收录，请回到搜索步骤选择已存在的条目。'
-    } else if (res.code === 20003) {
-      submitError.value = 'VNDB ID 格式无效（应为 v + 数字）'
     } else {
       submitError.value = res.message || '提交失败'
     }
@@ -464,13 +456,11 @@ const handleSubmit = async () => {
           </label>
         </section>
 
-        <section class="space-y-2">
-          <h3 class="font-semibold">VNDB ID（可选）</h3>
-          <KunInput v-model="submitForm.vndb_id" placeholder="例如 v17（无 VNDB 编号留空）" />
-          <p class="text-default-500 text-xs">
-            原创 / 独立作品没有 VNDB 编号时可留空。
-          </p>
-        </section>
+        <div class="border-default/20 bg-default-50 rounded-lg border p-3 text-xs text-default-600">
+          提示：VNDB 收录的游戏已由 Wiki 自动同步，可在上一步「搜索」中
+          直接「认领并发布」。此处提交的是 <strong>VNDB 没有</strong> 的作品，
+          因此无需填写 VNDB ID。
+        </div>
 
         <section class="space-y-2">
           <h3 class="font-semibold">简介（简体中文）</h3>

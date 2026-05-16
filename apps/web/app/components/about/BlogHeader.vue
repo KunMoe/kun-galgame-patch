@@ -29,12 +29,12 @@ const props = defineProps<Props>()
 
     <div class="text-default-500 flex items-center gap-3 text-sm">
       <img
-        v-if="props.frontmatter.authorAvatar"
-        :src="props.frontmatter.authorAvatar"
-        :alt="props.frontmatter.authorName"
+        v-if="props.frontmatter.author_avatar"
+        :src="props.frontmatter.author_avatar"
+        :alt="props.frontmatter.author_name"
         class="size-8 rounded-full"
       />
-      <span>{{ props.frontmatter.authorName }}</span>
+      <span>{{ props.frontmatter.author_name }}</span>
       <span v-if="props.frontmatter.date">
         · {{ formatDate(props.frontmatter.date, { isShowYear: true }) }}
       </span>

@@ -72,8 +72,10 @@ const { data: detail, pending } = await useAsyncData<WikiGalgame | null>(
   }
 )
 
+// No vndb_id field: a draft is, by construction, a game VNDB doesn't have
+// (VNDB titles are auto-synced by Wiki and reached via the claim path, not
+// submit). Same rationale as the submit form in create.vue.
 interface FormState {
-  vndb_id: string
   name_zh_cn: string
   name_zh_tw: string
   name_ja_jp: string
@@ -85,7 +87,6 @@ interface FormState {
   aliases: string
 }
 const form = reactive<FormState>({
-  vndb_id: '',
   name_zh_cn: '',
   name_zh_tw: '',
   name_ja_jp: '',
@@ -101,7 +102,6 @@ watch(
   detail,
   (d) => {
     if (!d) return
-    form.vndb_id = d.vndb_id ?? ''
     form.name_zh_cn = d.name_zh_cn ?? ''
     form.name_zh_tw = d.name_zh_tw ?? ''
     form.name_ja_jp = d.name_ja_jp ?? ''
@@ -131,24 +131,16 @@ onBeforeUnmount(() => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
 
-const VNDBRegex = /^v\d+$/
-
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
 
 const handleSubmit = async () => {
   submitError.value = null
-  const vndb = form.vndb_id.trim().toLowerCase()
-  if (vndb && !VNDBRegex.test(vndb)) {
-    submitError.value = 'VNDB ID 格式应为 v + 数字（留空表示无 VNDB 编号）'
-    return
-  }
 
-  // Wiki PATCH accepts any subset; send only what differs (or always send,
-  // wiki is fine either way). For aliases we always send so the user can
+  // Wiki PATCH accepts any subset; vndb_id intentionally omitted (drafts are
+  // non-VNDB submissions). For aliases we always send so the user can
   // explicitly clear them by emptying the input.
   const payload: Record<string, unknown> = {
-    vndb_id: vndb || '',
     name_zh_cn: form.name_zh_cn.trim(),
     name_zh_tw: form.name_zh_tw.trim(),
     name_ja_jp: form.name_ja_jp.trim(),
@@ -225,11 +217,6 @@ const handleSubmit = async () => {
             <span class="text-default-700 text-sm">English</span>
             <KunInput v-model="form.name_en_us" placeholder="English title" />
           </label>
-        </section>
-
-        <section class="space-y-2">
-          <h3 class="font-semibold">VNDB ID</h3>
-          <KunInput v-model="form.vndb_id" placeholder="例如 v17（可留空）" />
         </section>
 
         <section class="space-y-2">
