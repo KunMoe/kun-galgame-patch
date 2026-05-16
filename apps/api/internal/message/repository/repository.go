@@ -14,18 +14,30 @@ func New(db *gorm.DB) *MessageRepository {
 	return &MessageRepository{db: db}
 }
 
-// GetMessages retrieves messages for a user, optionally filtered by type
+// GetMessages retrieves messages for a user, optionally filtered by type.
+//
+// NOTE: Count and Find MUST run on independent statements. gorm v2 mutates
+// the shared *gorm.DB in place once a chain has been cloned, and Count leaves
+// `SELECT count(*)` on the statement. Reusing the same builder for the
+// subsequent Find produced `SELECT count(*) ... LIMIT n`, scanning one count
+// row into []UserMessage — i.e. an always-empty message list while `total`
+// still looked correct. `.Session(&gorm.Session{})` forks a fresh statement
+// for each finisher so they can't pollute each other.
 func (r *MessageRepository) GetMessages(recipientID int, msgType string, offset, limit int) ([]model.UserMessage, int64, error) {
 	var messages []model.UserMessage
 	var total int64
 
-	query := r.db.Model(&model.UserMessage{}).Where("recipient_id = ?", recipientID)
+	base := r.db.Model(&model.UserMessage{}).Where("recipient_id = ?", recipientID)
 	if msgType != "" {
-		query = query.Where("type = ?", msgType)
+		base = base.Where("type = ?", msgType)
 	}
-	query.Count(&total)
 
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&messages).Error
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).
+		Order("created DESC").Offset(offset).Limit(limit).
+		Find(&messages).Error
 	return messages, total, err
 }
 

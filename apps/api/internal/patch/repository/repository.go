@@ -68,10 +68,13 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 	var comments []model.PatchComment
 	var total int64
 
-	query := r.db.Model(&model.PatchComment{}).Where("galgame_id = ? AND parent_id IS NULL", patchID)
-	query.Count(&total)
-
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
+	// Independent statements for Count vs Find — see gorm v2 reuse footgun
+	// in message/repository.go GetMessages.
+	base := r.db.Model(&model.PatchComment{}).Where("galgame_id = ? AND parent_id IS NULL", patchID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
 		Preload("Replies", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created ASC")
 		}).

@@ -1,11 +1,16 @@
 package handler
 
 import (
+	"context"
+
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/message/dto"
 	"kun-galgame-patch-api/internal/message/service"
 	"kun-galgame-patch-api/internal/middleware"
+	userModel "kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,10 +18,48 @@ import (
 
 type MessageHandler struct {
 	service *service.MessageService
+	users   *userclient.Client
 }
 
-func New(svc *service.MessageService) *MessageHandler {
-	return &MessageHandler{service: svc}
+func New(svc *service.MessageService, users *userclient.Client) *MessageHandler {
+	return &MessageHandler{service: svc, users: users}
+}
+
+// attachSenders batch-resolves sender briefs from OAuth /users/batch and
+// stamps msg.Sender. Without this every message serialized with sender=nil,
+// and the frontend's message/Card.vue rendered "系统" for all of them.
+//
+// Best-effort: messages whose sender_id is NULL (true system messages) or
+// whose brief can't be resolved keep Sender=nil and correctly fall back to
+// the "系统" placeholder on the frontend.
+func (h *MessageHandler) attachSenders(ctx context.Context, msgs []userModel.UserMessage) {
+	if h.users == nil || len(msgs) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(msgs))
+	for i := range msgs {
+		if msgs[i].SenderID != nil && *msgs[i].SenderID > 0 {
+			ids = append(ids, *msgs[i].SenderID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	briefs := userclient.BriefMapByInt(ctx, h.users, ids)
+	for i := range msgs {
+		if msgs[i].SenderID == nil {
+			continue
+		}
+		if b := briefs[*msgs[i].SenderID]; b != nil {
+			msgs[i].Sender = &patchModel.PatchUser{
+				ID:              int(b.ID),
+				Name:            b.Name,
+				Avatar:          b.Avatar,
+				AvatarImageHash: b.AvatarImageHash,
+				Roles:           b.Roles,
+			}
+		}
+	}
 }
 
 // GetMessages GET /api/message
@@ -32,6 +75,7 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
+	h.attachSenders(c.Context(), messages)
 	return response.Paginated(c, messages, total)
 }
 
@@ -51,6 +95,7 @@ func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
+	h.attachSenders(c.Context(), messages)
 	return response.Paginated(c, messages, total)
 }
 

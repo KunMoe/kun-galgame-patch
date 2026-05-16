@@ -54,21 +54,31 @@ func (r *UserRepository) CountUserFavorites(userID int) int64 {
 
 // ===== User Profile Lists =====
 
+// All list helpers below split Count and Find onto independent statements via
+// .Session(&gorm.Session{}). Reusing one chained *gorm.DB across Count then
+// Find is the gorm v2 footgun that broke /message: Count leaves SELECT
+// count(*) on the shared statement, so the follow-up Find returns the count
+// row instead of the rows. See message/repository.go GetMessages.
+
 func (r *UserRepository) GetUserPatches(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
-	query := r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID)
-	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	base := r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
 func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchModel.PatchResource, int64, error) {
 	var resources []patchModel.PatchResource
 	var total int64
-	query := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID)
-	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&resources).Error
+	base := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&resources).Error
 	return resources, total, err
 }
 
@@ -76,18 +86,22 @@ func (r *UserRepository) GetUserFavorites(userID, offset, limit int) ([]patchMod
 	var patches []patchModel.Patch
 	var total int64
 	subQuery := r.db.Table("user_patch_favorite_relation").Where("user_id = ?", userID).Select("galgame_id")
-	query := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
-	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	base := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
 func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchModel.PatchComment, int64, error) {
 	var comments []patchModel.PatchComment
 	var total int64
-	query := r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID)
-	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&comments).Error
+	base := r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&comments).Error
 	return comments, total, err
 }
 
@@ -95,9 +109,11 @@ func (r *UserRepository) GetUserContributions(userID, offset, limit int) ([]patc
 	var patches []patchModel.Patch
 	var total int64
 	subQuery := r.db.Table("user_patch_contribute_relation").Where("user_id = ?", userID).Select("galgame_id")
-	query := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
-	query.Count(&total)
-	err := query.Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	base := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
@@ -135,18 +151,22 @@ func (r *UserRepository) UpdateFollowCounts(followerID, followingID, delta int) 
 func (r *UserRepository) GetFollowerIDs(userID, offset, limit int) ([]int, int64, error) {
 	var ids []int
 	var total int64
-	query := r.db.Table("user_follow_relation").Where("following_id = ?", userID)
-	query.Count(&total)
-	err := query.Select("follower_id").Offset(offset).Limit(limit).Pluck("follower_id", &ids).Error
+	base := r.db.Table("user_follow_relation").Where("following_id = ?", userID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Select("follower_id").Offset(offset).Limit(limit).Pluck("follower_id", &ids).Error
 	return ids, total, err
 }
 
 func (r *UserRepository) GetFollowingIDs(userID, offset, limit int) ([]int, int64, error) {
 	var ids []int
 	var total int64
-	query := r.db.Table("user_follow_relation").Where("follower_id = ?", userID)
-	query.Count(&total)
-	err := query.Select("following_id").Offset(offset).Limit(limit).Pluck("following_id", &ids).Error
+	base := r.db.Table("user_follow_relation").Where("follower_id = ?", userID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Select("following_id").Offset(offset).Limit(limit).Pluck("following_id", &ids).Error
 	return ids, total, err
 }
 

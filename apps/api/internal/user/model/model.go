@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	patchModel "kun-galgame-patch-api/internal/patch/model"
+)
 
 // UserFollowRelation represents a follow relationship
 type UserFollowRelation struct {
@@ -22,6 +26,14 @@ type UserMessage struct {
 	RecipientID *int      `json:"recipient_id"`
 	Created     time.Time `gorm:"autoCreateTime" json:"created"`
 	Updated     time.Time `gorm:"autoUpdateTime" json:"updated"`
+
+	// Sender is the resolved sender brief, batch-filled by the message
+	// handler from OAuth /users/batch (pkg/userclient). NOT a GORM column —
+	// after the OAuth migration display fields live on OAuth, the local
+	// user_message row only carries sender_id. nil for system messages
+	// (sender_id NULL) or when the OAuth lookup misses; the frontend then
+	// renders the "系统" placeholder.
+	Sender *patchModel.PatchUser `gorm:"-" json:"sender,omitempty"`
 }
 
 func (UserMessage) TableName() string { return "user_message" }

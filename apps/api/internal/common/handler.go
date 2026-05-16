@@ -136,16 +136,18 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	query := h.db.Model(&patchModel.Patch{})
+	// Independent statements for Count vs Find — see gorm v2 reuse footgun
+	// documented in message/repository.go GetMessages.
+	base := h.db.Model(&patchModel.Patch{})
 	if req.SelectedType != "all" {
-		query = query.Where("type @> ?", fmt.Sprintf(`["%s"]`, req.SelectedType))
+		base = base.Where("type @> ?", fmt.Sprintf(`["%s"]`, req.SelectedType))
 	}
 
 	var total int64
-	query.Count(&total)
+	base.Session(&gorm.Session{}).Count(&total)
 
 	var patches []patchModel.Patch
-	err := query.Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&patches).Error
 	if err != nil {
@@ -177,10 +179,10 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	var comments []patchModel.PatchComment
 	var total int64
 
-	query := h.db.Model(&patchModel.PatchComment{})
-	query.Count(&total)
+	base := h.db.Model(&patchModel.PatchComment{})
+	base.Session(&gorm.Session{}).Count(&total)
 
-	err := query.Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&comments).Error
 
@@ -255,15 +257,15 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var total int64
 
-	query := h.db.Model(&patchModel.PatchResource{})
-	query.Count(&total)
+	base := h.db.Model(&patchModel.PatchResource{})
+	base.Session(&gorm.Session{}).Count(&total)
 
 	sortField := req.SortField
 	if sortField == "like" {
 		sortField = "like_count"
 	}
 
-	err := query.Order(fmt.Sprintf("patch_resource.%s %s", sortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("patch_resource.%s %s", sortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&resources).Error
 

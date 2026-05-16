@@ -25,13 +25,16 @@ func (r *AdminRepository) GetComments(search string, offset, limit int) ([]patch
 	var comments []patchModel.PatchComment
 	var total int64
 
-	query := r.db.Model(&patchModel.PatchComment{})
+	// Independent statements for Count vs Find — see gorm v2 reuse footgun
+	// documented in message/repository.go GetMessages.
+	base := r.db.Model(&patchModel.PatchComment{})
 	if search != "" {
-		query = query.Where("content ILIKE ?", "%"+search+"%")
+		base = base.Where("content ILIKE ?", "%"+search+"%")
 	}
-	query.Count(&total)
-
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
 		Find(&comments).Error
 	return comments, total, err
 }
@@ -51,13 +54,14 @@ func (r *AdminRepository) GetResources(search string, offset, limit int) ([]patc
 	var resources []patchModel.PatchResource
 	var total int64
 
-	query := r.db.Model(&patchModel.PatchResource{})
+	base := r.db.Model(&patchModel.PatchResource{})
 	if search != "" {
-		query = query.Where("name ILIKE ? OR content ILIKE ?", "%"+search+"%", "%"+search+"%")
+		base = base.Where("name ILIKE ? OR content ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
-	query.Count(&total)
-
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
 		Find(&resources).Error
 	return resources, total, err
 }
@@ -99,10 +103,11 @@ func (r *AdminRepository) GetLogs(offset, limit int) ([]adminModel.AdminLog, int
 	var logs []adminModel.AdminLog
 	var total int64
 
-	query := r.db.Model(&adminModel.AdminLog{})
-	query.Count(&total)
-
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
+	base := r.db.Model(&adminModel.AdminLog{})
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
 		Find(&logs).Error
 	return logs, total, err
 }
@@ -127,13 +132,14 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 	var patches []patchModel.Patch
 	var total int64
 
-	query := r.db.Model(&patchModel.Patch{})
+	base := r.db.Model(&patchModel.Patch{})
 	if search != "" {
-		query = query.Where("vndb_id ILIKE ?", "%"+search+"%")
+		base = base.Where("vndb_id ILIKE ?", "%"+search+"%")
 	}
-	query.Count(&total)
-
-	err := query.Order("created DESC").Offset(offset).Limit(limit).
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
 		Find(&patches).Error
 	return patches, total, err
 }
@@ -150,9 +156,12 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
-	query := r.db.Model(&patchModel.Patch{}).Where("galgame_id = 0")
-	query.Count(&total)
-	err := query.Order("resource_count DESC, comment_count DESC, favorite_count DESC, id ASC").
+	base := r.db.Model(&patchModel.Patch{}).Where("galgame_id = 0")
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).
+		Order("resource_count DESC, comment_count DESC, favorite_count DESC, id ASC").
 		Offset(offset).Limit(limit).
 		Find(&patches).Error
 	return patches, total, err

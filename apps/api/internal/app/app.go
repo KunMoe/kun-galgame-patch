@@ -103,7 +103,7 @@ func New(cfg *config.Config) *App {
 	// Message module
 	messageRepository := messageRepo.New(db)
 	messageSvc := messageService.New(messageRepository)
-	messageHdl := messageHandler.New(messageSvc)
+	messageHdl := messageHandler.New(messageSvc, usrCli)
 
 	// Admin module
 	adminRepository := adminRepo.New(db)
