@@ -45,105 +45,117 @@ const tabs = computed(() => [
 </script>
 
 <template>
-  <div v-if="patch" class="w-full space-y-6">
-    <div class="relative mx-auto w-full max-w-7xl">
-      <div
-        v-if="patch.banner"
-        class="bg-default-100 pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 overflow-hidden"
-      >
+  <div v-if="patch" class="mx-auto w-full max-w-7xl space-y-6 px-3 py-4">
+    <!-- ── Hero ───────────────────────────────────────── -->
+    <div
+      class="border-default/20 relative overflow-hidden rounded-3xl border"
+    >
+      <div class="absolute inset-0">
         <img
+          v-if="patch.banner"
           :src="patch.banner"
           :alt="displayName"
-          class="h-full w-full object-cover blur-2xl brightness-75 opacity-60"
+          class="size-full scale-110 object-cover blur-2xl"
+        />
+        <div
+          class="from-background via-background/85 to-background/55 absolute inset-0 bg-gradient-to-t"
         />
       </div>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div class="relative flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
         <div
-          class="bg-default-100 aspect-video overflow-hidden rounded-2xl md:col-span-1"
+          class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
         >
           <img
             :src="patch.banner || '/kungalgame-trans.webp'"
             :alt="displayName"
-            class="h-full w-full object-cover"
+            class="size-full object-cover transition-transform duration-300 hover:scale-[1.03]"
           />
         </div>
 
-        <div class="flex flex-col gap-3 md:col-span-2 md:px-6">
-          <div class="flex flex-wrap items-center gap-2">
-            <h1 class="text-2xl leading-tight font-bold sm:text-3xl">
-              {{ displayName }}
-            </h1>
-            <KunTooltip
-              :text="GALGAME_AGE_LIMIT_DETAIL[patch.content_limit]"
-              position="right"
-            >
-              <KunBadge
-                :color="patch.content_limit === 'sfw' ? 'success' : 'danger'"
-                variant="flat"
+        <div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <h1
+                class="text-2xl leading-tight font-bold break-words sm:text-3xl"
               >
-                {{ GALGAME_AGE_LIMIT_MAP[patch.content_limit] }}
-              </KunBadge>
-            </KunTooltip>
+                {{ displayName }}
+              </h1>
+              <KunTooltip
+                :text="GALGAME_AGE_LIMIT_DETAIL[patch.content_limit]"
+                position="right"
+              >
+                <KunBadge
+                  :color="patch.content_limit === 'sfw' ? 'success' : 'danger'"
+                  variant="flat"
+                >
+                  {{ GALGAME_AGE_LIMIT_MAP[patch.content_limit] }}
+                </KunBadge>
+              </KunTooltip>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <template v-for="(value, key) in patch.name" :key="key">
+                <span
+                  v-if="value && value !== displayName"
+                  class="text-default-500 text-xs"
+                >
+                  {{ value }}
+                </span>
+              </template>
+            </div>
+
+            <KunPatchAttribute
+              :types="patch.type"
+              :languages="patch.language"
+              :platforms="patch.platform"
+              size="sm"
+            />
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <span
-              v-for="(value, key) in patch.name"
-              :key="key"
-              class="text-default-500 text-xs"
+          <div class="space-y-4">
+            <div
+              class="border-default/20 flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center"
             >
-              <template v-if="value && value !== displayName">{{ value }}</template>
-            </span>
+              <KunUser
+                :user="patch.user"
+                :description="`资源更新于 ${formatDistanceToNow(patch.resource_update_time)}`"
+              />
+              <KunCardStats
+                :patch="{ ...patch, created: patch.created }"
+                :disable-tooltip="false"
+                :is-mobile="false"
+              />
+            </div>
+
+            <PatchHeaderActions :patch="patch" />
           </div>
-
-          <KunPatchAttribute
-            :types="patch.type"
-            :languages="patch.language"
-            :platforms="patch.platform"
-            size="sm"
-          />
-
-          <KunDivider color="default" />
-
-          <div
-            class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"
-          >
-            <KunUser
-              :user="patch.user"
-              :description="`资源更新于 ${formatDistanceToNow(patch.resource_update_time)}`"
-            />
-            <KunCardStats
-              :patch="{ ...patch, created: patch.created }"
-              :disable-tooltip="false"
-              :is-mobile="false"
-            />
-          </div>
-
-          <PatchHeaderActions :patch="patch" />
         </div>
       </div>
-
-      <nav class="border-default/20 mt-6 flex gap-4 border-b">
-        <NuxtLink
-          v-for="t in tabs"
-          :key="t.key"
-          :to="t.href"
-          :class="
-            cn(
-              'px-3 py-3 text-sm transition-colors',
-              currentTab === t.key
-                ? 'text-primary border-primary -mb-px border-b-2 font-medium'
-                : 'text-default-600 hover:text-foreground'
-            )
-          "
-        >
-          {{ t.title }}
-        </NuxtLink>
-      </nav>
     </div>
 
-    <div class="mx-auto max-w-7xl px-3">
+    <!-- ── Tabs ───────────────────────────────────────── -->
+    <nav
+      class="border-default/20 bg-background/60 flex gap-1 rounded-2xl border p-1"
+    >
+      <NuxtLink
+        v-for="t in tabs"
+        :key="t.key"
+        :to="t.href"
+        :class="
+          cn(
+            'flex-1 rounded-xl px-3 py-2.5 text-center text-sm transition-colors',
+            currentTab === t.key
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-default-600 hover:bg-default-100 hover:text-foreground'
+          )
+        "
+      >
+        {{ t.title }}
+      </NuxtLink>
+    </nav>
+
+    <div>
       <NuxtPage />
     </div>
   </div>

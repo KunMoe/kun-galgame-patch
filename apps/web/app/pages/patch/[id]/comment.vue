@@ -92,58 +92,69 @@ const toggleLike = async (c: PatchPageComment) => {
 
 <template>
   <div class="space-y-6">
-    <div v-if="userStore.user.uid" class="space-y-2">
-      <textarea
-        v-model="content"
-        placeholder="写下你的评论..."
-        rows="3"
-        class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
-      />
-      <div class="flex justify-end">
-        <KunButton
-          color="primary"
-          :loading="submitting"
-          :disabled="submitting"
-          @click="submit"
-        >
-          发布评论
-        </KunButton>
+    <!-- composer -->
+    <div
+      v-if="userStore.user.uid"
+      class="border-default/20 bg-background flex gap-3 rounded-2xl border p-4"
+    >
+      <KunAvatar :user="userStore.user" size="sm" :is-navigation="false" />
+      <div class="min-w-0 flex-1 space-y-3">
+        <textarea
+          v-model="content"
+          placeholder="写下你的评论..."
+          rows="3"
+          class="border-default/20 bg-default-50 focus:border-primary w-full rounded-xl border p-3 text-sm transition-colors outline-none"
+        />
+        <div class="flex justify-end">
+          <KunButton
+            color="primary"
+            rounded="full"
+            :loading="submitting"
+            :disabled="submitting"
+            @click="submit"
+          >
+            <KunIcon name="lucide:send-horizontal" class="size-4" />
+            发布评论
+          </KunButton>
+        </div>
       </div>
     </div>
     <div
       v-else
-      class="border-default/20 rounded-lg border p-4 text-center text-sm"
+      class="border-default/20 bg-default-50 rounded-2xl border p-5 text-center text-sm"
     >
       请
-      <NuxtLink to="/login" class="text-primary hover:underline">登录</NuxtLink>
+      <NuxtLink to="/login" class="text-primary font-medium hover:underline">
+        登录
+      </NuxtLink>
       后发表评论
     </div>
 
     <KunLoading v-if="pending" description="加载评论中..." />
-    <div v-else-if="comments && comments.length" class="space-y-3">
+    <div v-else-if="comments && comments.length" class="space-y-4">
       <div
         v-for="c in comments"
         :key="c.id"
-        class="border-default/20 space-y-2 rounded-lg border p-4"
+        class="border-default/20 bg-background hover:border-primary/30 rounded-2xl border p-5 transition-colors"
       >
         <div class="flex items-start gap-3">
           <KunAvatar :user="c.user" size="sm" />
-          <div class="flex-1 space-y-1">
+          <div class="min-w-0 flex-1 space-y-2">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-semibold">{{ c.user.name }}</span>
-              <span class="text-default-500 text-xs">
+              <span class="text-default-400 text-xs">
                 {{ formatDate(c.created, { isPrecise: true, isShowYear: true }) }}
               </span>
             </div>
-            <div class="kun-prose" v-html="sanitize(c.content_html)" />
+            <div class="kun-prose text-sm" v-html="sanitize(c.content_html)" />
             <button
               type="button"
               :class="
                 cn(
-                  'flex items-center gap-1 text-xs transition-colors',
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors',
                   c.is_liked
-                    ? 'text-danger-500'
-                    : 'text-default-500 hover:text-danger-500'
+                    ? 'bg-danger/10 text-danger'
+                    : 'text-default-500 hover:bg-danger/10 hover:text-danger'
                 )
               "
               :aria-label="c.is_liked ? '取消点赞' : '点赞'"
@@ -155,30 +166,34 @@ const toggleLike = async (c: PatchPageComment) => {
               />
               {{ c.like_count }}
             </button>
-            <div v-if="c.reply?.length" class="mt-3 space-y-2 border-l-2 border-default/20 pl-3">
+
+            <div
+              v-if="c.reply?.length"
+              class="border-default/20 mt-3 space-y-3 border-l-2 pl-4"
+            >
               <div
                 v-for="r in c.reply"
                 :key="r.id"
-                class="bg-default-50 rounded p-2 text-sm"
+                class="bg-default-50 rounded-xl p-3 text-sm"
               >
                 <div class="flex items-center gap-2">
                   <KunAvatar :user="r.user" size="xs" />
                   <span class="font-semibold">{{ r.user.name }}</span>
-                  <span class="text-default-500 text-xs">
+                  <span class="text-default-400 text-xs">
                     {{
                       formatDate(r.created, { isPrecise: true, isShowYear: true })
                     }}
                   </span>
                 </div>
-                <div class="kun-prose mt-1" v-html="sanitize(r.content_html)" />
+                <div class="kun-prose mt-1.5" v-html="sanitize(r.content_html)" />
                 <button
                   type="button"
                   :class="
                     cn(
-                      'mt-1 flex items-center gap-1 text-xs transition-colors',
+                      'mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors',
                       r.is_liked
-                        ? 'text-danger-500'
-                        : 'text-default-500 hover:text-danger-500'
+                        ? 'bg-danger/10 text-danger'
+                        : 'text-default-500 hover:bg-danger/10 hover:text-danger'
                     )
                   "
                   :aria-label="r.is_liked ? '取消点赞' : '点赞'"

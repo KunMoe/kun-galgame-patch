@@ -46,23 +46,33 @@ const toggleLike = async (r: PatchResource) => {
 <template>
   <div class="space-y-4">
     <KunLoading v-if="pending" description="正在获取补丁资源..." />
-    <div v-else-if="resources && resources.length" class="space-y-3">
+    <div v-else-if="resources && resources.length" class="space-y-4">
       <div
         v-for="r in resources"
         :key="r.id"
-        class="border-default/20 space-y-3 rounded-lg border p-4"
+        class="border-default/20 bg-background hover:border-primary/40 space-y-4 rounded-2xl border p-5 transition-colors"
       >
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
             <h3 class="text-lg font-semibold line-clamp-2">
               {{ r.name || '补丁资源' }}
             </h3>
-            <div class="text-default-500 text-xs">
-              由 {{ r.user.name }} 发布于
-              {{ formatDate(r.created, { isShowYear: true, isPrecise: true }) }}
+            <div class="text-default-500 mt-1 flex items-center gap-2 text-xs">
+              <KunAvatar :user="r.user" size="xs" />
+              <span>
+                由 <span class="text-foreground font-medium">{{
+                  r.user.name
+                }}</span> 发布于
+                {{
+                  formatDate(r.created, { isShowYear: true, isPrecise: true })
+                }}
+              </span>
             </div>
           </div>
-          <KunBadge size="sm" variant="flat">{{ r.size }}</KunBadge>
+          <KunBadge color="warning" size="sm" variant="flat">
+            <KunIcon name="lucide:database" class="size-3.5" />
+            {{ r.size }}
+          </KunBadge>
         </div>
 
         <KunPatchAttribute
@@ -76,40 +86,59 @@ const toggleLike = async (r: PatchResource) => {
 
         <div
           v-if="r.note_html"
-          class="kun-prose text-default-500 text-sm"
+          class="kun-prose border-default/15 bg-default-50 rounded-xl border p-3 text-sm"
           v-html="sanitize(r.note_html)"
         />
 
-        <div
-          v-if="r.code || r.password"
-          class="text-default-500 flex flex-wrap gap-4 text-sm"
-        >
-          <span v-if="r.code">提取码: {{ r.code }}</span>
-          <span v-if="r.password">解压密码: {{ r.password }}</span>
+        <div v-if="r.code || r.password" class="flex flex-wrap gap-2">
+          <KunCopy
+            v-if="r.code"
+            :text="r.code"
+            :name="`提取码: ${r.code}`"
+            color="secondary"
+            variant="flat"
+            size="sm"
+          />
+          <KunCopy
+            v-if="r.password"
+            :text="r.password"
+            :name="`解压密码: ${r.password}`"
+            color="secondary"
+            variant="flat"
+            size="sm"
+          />
         </div>
 
-        <div v-if="r.blake3" class="text-default-400 break-all text-xs">
-          Hash: {{ r.blake3 }}
+        <div
+          v-if="r.blake3"
+          class="text-default-400 flex flex-wrap items-center gap-2 text-xs"
+        >
+          <span class="shrink-0">BLAKE3</span>
+          <code
+            class="bg-default-100 max-w-full truncate rounded-lg px-2 py-1"
+          >
+            {{ r.blake3 }}
+          </code>
           <NuxtLink
             :to="`/check-hash?hash=${r.blake3}&content=${encodeURIComponent(r.content || '')}`"
-            class="text-primary ml-2 hover:underline"
+            class="text-primary hover:underline"
           >
             校验文件
           </NuxtLink>
         </div>
 
         <div
-          class="text-default-500 flex flex-wrap items-center justify-between gap-2 pt-2 text-sm"
+          class="border-default/15 flex flex-wrap items-center justify-between gap-2 border-t pt-3"
         >
-          <div class="flex items-center gap-4">
+          <div class="text-default-500 flex items-center gap-4 text-sm">
             <button
               type="button"
               :class="
                 cn(
-                  'flex items-center gap-1 transition-colors',
+                  'flex items-center gap-1.5 transition-colors',
                   r.is_liked
-                    ? 'text-danger-500'
-                    : 'text-default-500 hover:text-danger-500'
+                    ? 'text-danger'
+                    : 'text-default-500 hover:text-danger'
                 )
               "
               :aria-label="r.is_liked ? '取消点赞' : '点赞'"
@@ -121,15 +150,15 @@ const toggleLike = async (r: PatchResource) => {
               />
               {{ r.like_count }}
             </button>
-            <div class="flex items-center gap-1">
+            <span class="flex items-center gap-1.5">
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
-            </div>
+            </span>
           </div>
           <NuxtLink :to="`/resource/${r.id}`">
-            <KunButton color="primary" size="sm">
+            <KunButton color="primary" size="sm" rounded="full">
               <KunIcon name="lucide:download" class="size-4" />
-              下载
+              前往下载
             </KunButton>
           </NuxtLink>
         </div>
