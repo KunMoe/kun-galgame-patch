@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import DOMPurify from 'isomorphic-dompurify'
+import {
+  SUPPORTED_RESOURCE_LINK_MAP,
+  SUPPORTED_TYPE_MAP,
+  SUPPORTED_LANGUAGE_MAP,
+  SUPPORTED_PLATFORM_MAP
+} from '~/constants/resource'
 
 const route = useRoute()
 const api = useApi()
+const userStore = useUserStore()
 
 const resourceId = computed(() => Number(route.params.id))
 
@@ -16,136 +23,439 @@ const { data: detail, pending } = await useAsyncData<PatchResourceDetail | null>
   }
 )
 
-const noteHtml = computed(() => {
-  if (!detail.value?.resource.note_html) return ''
-  // Allow `data-uid` so mention links rendered server-side keep the attribute.
-  return DOMPurify.sanitize(detail.value.resource.note_html, {
-    ADD_ATTR: ['data-uid']
-  })
-})
+const resource = computed(() => detail.value?.resource ?? null)
 
-// The `patch` field may be null if the owning patch has been deleted mid-flight.
+const noteHtml = computed(() =>
+  resource.value?.note_html
+    ? DOMPurify.sanitize(resource.value.note_html, { ADD_ATTR: ['data-uid'] })
+    : ''
+)
+
 const patchName = computed(() =>
   detail.value?.patch ? getPreferredLanguageText(detail.value.patch.name) : ''
 )
 
+const bannerSrc = computed(() => {
+  const b = detail.value?.patch?.banner
+  return b ? b.replace(/\.avif$/, '-mini.avif') : ''
+})
+
+// Composed title:
+//   {gameName}{platforms}{languages}{modelName}{types}资源下载
+// e.g. ヴァンパイアクルセイダーズWindows简体中文claude-opus-4.7AI 翻译补丁资源下载
+const mapJoin = (arr: string[] | undefined, m: Record<string, string>) =>
+  (arr ?? []).map((k) => m[k] ?? k).join('')
+
+const composedTitle = computed(() => {
+  const r = resource.value
+  if (!r) return '资源下载'
+  return (
+    (patchName.value || r.name || '') +
+    mapJoin(r.platform, SUPPORTED_PLATFORM_MAP) +
+    mapJoin(r.language, SUPPORTED_LANGUAGE_MAP) +
+    (r.model_name || '') +
+    mapJoin(r.type, SUPPORTED_TYPE_MAP) +
+    '资源下载'
+  )
+})
+
+const storageLabel = computed(() =>
+  resource.value
+    ? (SUPPORTED_RESOURCE_LINK_MAP[resource.value.storage] ??
+      resource.value.storage)
+    : ''
+)
+const storageIcon = computed(() =>
+  resource.value?.storage === 's3' ? 'lucide:cloud' : 'lucide:link'
+)
+
+const downloadLinks = computed(() =>
+  (resource.value?.content ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+)
+
+// ─── Download (fire-and-forget counter bump) ──────────
+const onDownload = () => {
+  if (!resource.value) return
+  api.put(`/patch/resource/${resource.value.id}/download`).catch(() => {})
+  if (detail.value) detail.value.resource.download += 1
+}
+
+// ─── Like (resource) ──────────────────────────────────
+const liking = ref(false)
+const toggleLike = async () => {
+  if (!resource.value) return
+  if (!userStore.user.uid) {
+    useKunMessage('请先登录后再点赞', 'warn')
+    return
+  }
+  liking.value = true
+  try {
+    const res = await api.put<{ liked: boolean }>(
+      `/patch/resource/${resource.value.id}/like`
+    )
+    if (res.code === 0) {
+      const liked = res.data.liked
+      const prev = resource.value.is_liked ?? false
+      resource.value.is_liked = liked
+      resource.value.like_count = Math.max(
+        0,
+        resource.value.like_count + (liked === prev ? 0 : liked ? 1 : -1)
+      )
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  } finally {
+    liking.value = false
+  }
+}
+
+// ─── Favorite (the owning galgame/patch) ──────────────
+const favorited = ref(false)
+watch(
+  detail,
+  (d) => {
+    favorited.value = !!d?.patch_is_favorite
+  },
+  { immediate: true }
+)
+const favoriting = ref(false)
+const toggleFavorite = async () => {
+  if (!detail.value?.patch) return
+  if (!userStore.user.uid) {
+    useKunMessage('请先登录后再收藏', 'warn')
+    return
+  }
+  favoriting.value = true
+  try {
+    const res = await api.put<{ favorited: boolean }>(
+      `/patch/${detail.value.patch.id}/favorite`
+    )
+    if (res.code === 0) favorited.value = res.data.favorited
+    else useKunMessage(res.message || '操作失败', 'error')
+  } finally {
+    favoriting.value = false
+  }
+}
+
+// ─── Recommendations preview helper ───────────────────
+const recName = (r: PatchResource) =>
+  r.name || (r.patch ? getPreferredLanguageText(r.patch.name) : '补丁资源')
+
 useKunSeoMeta({
-  title: patchName.value ? `${patchName.value} - 资源下载` : '资源详情',
-  description: detail.value?.resource.name ?? ''
+  title: composedTitle.value,
+  description: resource.value?.name ?? ''
 })
 </script>
 
 <template>
-  <div class="container mx-auto my-4 space-y-6">
+  <div class="container mx-auto my-4 px-4">
     <KunLoading v-if="pending" description="加载资源中..." />
 
-    <template v-else-if="detail">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div class="md:col-span-2">
-          <KunCard :bordered="true">
-            <h1 class="mb-2 text-2xl font-bold">
-              {{ detail.resource.name || '补丁资源' }}
-            </h1>
-            <div v-if="detail.patch" class="text-default-500 mb-4 text-sm">
-              来自:
-              <NuxtLink
-                :to="`/patch/${detail.patch.id}/introduction`"
-                class="text-primary hover:underline"
-              >
-                {{ patchName }}
-              </NuxtLink>
-            </div>
+    <template v-else-if="detail && resource">
+      <!-- ── Hero ─────────────────────────────────────── -->
+      <div
+        class="border-default/20 relative mb-6 overflow-hidden rounded-3xl border"
+      >
+        <div class="absolute inset-0">
+          <img
+            v-if="bannerSrc"
+            :src="bannerSrc"
+            :alt="patchName"
+            class="size-full scale-110 object-cover blur-2xl"
+          />
+          <div
+            class="from-background via-background/85 to-background/60 absolute inset-0 bg-gradient-to-t"
+          />
+        </div>
 
-            <KunPatchAttribute
-              :types="detail.resource.type"
-              :languages="detail.resource.language"
-              :platforms="detail.resource.platform"
-              :model-name="detail.resource.model_name"
-              :storage="detail.resource.storage"
-              :storage-size="detail.resource.size"
+        <div class="relative flex flex-col gap-4 p-6 sm:flex-row sm:p-8">
+          <NuxtLink
+            v-if="detail.patch"
+            :to="`/patch/${detail.patch.id}/introduction`"
+            class="group shrink-0"
+          >
+            <img
+              v-if="bannerSrc"
+              :src="bannerSrc"
+              :alt="patchName"
+              class="border-default/20 bg-default-100 aspect-video w-full rounded-2xl border object-cover shadow-lg transition-transform duration-300 group-hover:scale-[1.02] sm:w-64"
             />
+          </NuxtLink>
 
-            <div v-if="noteHtml" class="kun-prose mt-4" v-html="noteHtml" />
-            <p
-              v-else-if="detail.resource.note"
-              class="mt-4 text-sm whitespace-pre-wrap"
+          <div class="flex min-w-0 flex-1 flex-col justify-end gap-3">
+            <NuxtLink
+              v-if="detail.patch"
+              :to="`/patch/${detail.patch.id}/introduction`"
+              class="text-default-500 hover:text-primary inline-flex w-fit items-center gap-1 text-sm transition-colors"
             >
-              {{ detail.resource.note }}
-            </p>
+              <KunIcon name="lucide:corner-up-left" class="size-4" />
+              {{ patchName }}
+            </NuxtLink>
 
-            <div class="text-default-500 mt-6 space-y-2 text-sm">
-              <div v-if="detail.resource.code">
-                提取码: <code>{{ detail.resource.code }}</code>
-              </div>
-              <div v-if="detail.resource.password">
-                解压密码: <code>{{ detail.resource.password }}</code>
-              </div>
-              <div v-if="detail.resource.blake3" class="break-all">
-                Hash: {{ detail.resource.blake3 }}
+            <h1
+              class="text-2xl font-bold break-words sm:text-3xl lg:text-[2rem] lg:leading-tight"
+            >
+              {{ composedTitle }}
+            </h1>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <KunBadge color="secondary" variant="flat" size="sm">
+                <KunIcon :name="storageIcon" class="size-3.5" />
+                {{ storageLabel }}
+              </KunBadge>
+              <KunBadge color="warning" variant="flat" size="sm">
+                <KunIcon name="lucide:database" class="size-3.5" />
+                {{ resource.size }}
+              </KunBadge>
+            </div>
+
+            <!-- publisher: avatar + name, clickable → user profile -->
+            <div class="flex items-center gap-2">
+              <KunAvatar :user="resource.user" size="sm" />
+              <div class="text-sm leading-tight">
                 <NuxtLink
-                  :to="`/check-hash?hash=${detail.resource.blake3}&content=${encodeURIComponent(detail.resource.content || '')}`"
-                  class="text-primary ml-2 hover:underline"
+                  v-if="resource.user?.id"
+                  :to="`/user/${resource.user.id}/resource`"
+                  class="hover:text-primary font-medium transition-colors"
                 >
-                  校验文件
+                  {{ resource.user?.name ?? '已注销用户' }}
                 </NuxtLink>
+                <span v-else class="font-medium">已注销用户</span>
+                <div class="text-default-500 text-xs">
+                  发布于
+                  {{
+                    formatDate(resource.created, {
+                      isShowYear: true,
+                      isPrecise: true
+                    })
+                  }}
+                </div>
               </div>
             </div>
 
-            <div class="mt-6 flex flex-wrap items-center gap-3">
-              <KunButton color="primary" size="lg">
-                <KunIcon name="lucide:download" class="size-5" />
-                下载资源
-              </KunButton>
-              <div class="text-default-500 flex items-center gap-4 text-sm">
-                <div class="flex items-center gap-1">
-                  <KunIcon name="lucide:heart" class="size-4" />
-                  {{ detail.resource.like_count }}
-                </div>
-                <div class="flex items-center gap-1">
-                  <KunIcon name="lucide:download" class="size-4" />
-                  {{ detail.resource.download }}
-                </div>
-              </div>
+            <!-- like + favorite, integrated into the hero -->
+            <div class="mt-1 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="border-default/30 bg-background/70 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium backdrop-blur transition-colors"
+                :class="
+                  resource.is_liked
+                    ? 'text-danger border-danger/40'
+                    : 'text-default-600 hover:text-danger'
+                "
+                :disabled="liking"
+                @click="toggleLike"
+              >
+                <KunIcon
+                  name="lucide:heart"
+                  :class="['size-4', resource.is_liked ? 'fill-current' : '']"
+                />
+                点赞
+                <span class="text-default-400">{{ resource.like_count }}</span>
+              </button>
+
+              <button
+                v-if="detail.patch"
+                type="button"
+                class="border-default/30 bg-background/70 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium backdrop-blur transition-colors"
+                :class="
+                  favorited
+                    ? 'text-warning border-warning/40'
+                    : 'text-default-600 hover:text-warning'
+                "
+                :disabled="favoriting"
+                @click="toggleFavorite"
+              >
+                <KunIcon
+                  name="lucide:star"
+                  :class="['size-4', favorited ? 'fill-current' : '']"
+                />
+                {{ favorited ? '已收藏' : '收藏游戏' }}
+              </button>
+
+              <span
+                class="text-default-500 inline-flex items-center gap-1 text-sm"
+              >
+                <KunIcon name="lucide:download" class="size-4" />
+                {{ formatNumber(resource.download) }} 次下载
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Body grid ────────────────────────────────── -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <!-- main column -->
+        <div class="space-y-6 lg:col-span-2">
+          <KunCard :bordered="true" class-name="rounded-2xl">
+            <div class="space-y-4 p-2">
+              <KunPatchAttribute
+                :types="resource.type"
+                :languages="resource.language"
+                :platforms="resource.platform"
+                :model-name="resource.model_name"
+                :storage="resource.storage"
+                :storage-size="resource.size"
+              />
+
+              <div
+                v-if="noteHtml"
+                class="kun-prose border-default/20 border-t pt-4 text-sm"
+                v-html="noteHtml"
+              />
+              <p
+                v-else-if="resource.note"
+                class="border-default/20 border-t pt-4 text-sm whitespace-pre-wrap"
+              >
+                {{ resource.note }}
+              </p>
             </div>
           </KunCard>
 
-          <div v-if="detail.recommendations?.length" class="mt-6">
-            <h2 class="mb-3 text-xl font-bold">推荐资源</h2>
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ResourceCard
-                v-for="r in detail.recommendations"
-                :key="r.id"
-                :resource="r"
+          <!-- Download card -->
+          <div
+            class="border-success/40 bg-success/10 space-y-4 rounded-2xl border p-5"
+          >
+            <div class="flex items-center gap-2">
+              <KunIcon
+                name="lucide:download-cloud"
+                class="text-success size-5"
               />
+              <h2 class="text-lg font-semibold">资源下载</h2>
+            </div>
+
+            <p class="text-default-500 text-sm">
+              点击下方链接下载（共 {{ downloadLinks.length }} 个）
+            </p>
+
+            <div class="space-y-2">
+              <div
+                v-for="(lnk, i) in downloadLinks"
+                :key="i"
+                class="border-success/40 bg-background hover:border-success focus-within:border-success flex items-center gap-3 rounded-xl border p-3 transition-colors"
+              >
+                <a
+                  :href="lnk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="hover:text-success group flex min-w-0 flex-1 items-center gap-3 transition-colors"
+                  @click="onDownload"
+                >
+                  <span
+                    class="bg-success/15 text-success flex size-9 shrink-0 items-center justify-center rounded-lg"
+                  >
+                    <KunIcon name="lucide:download" class="size-5" />
+                  </span>
+                  <span class="min-w-0 flex-1 truncate text-sm">{{ lnk }}</span>
+                  <KunIcon
+                    name="lucide:external-link"
+                    class="text-default-400 group-hover:text-success size-4 shrink-0"
+                  />
+                </a>
+                <button
+                  type="button"
+                  class="text-default-400 hover:text-success hover:bg-success/10 shrink-0 rounded-lg p-2 transition-colors"
+                  aria-label="复制下载链接"
+                  title="复制下载链接"
+                  @click="useKunCopy(lnk)"
+                >
+                  <KunIcon name="lucide:copy" class="size-4" />
+                </button>
+              </div>
+              <p
+                v-if="!downloadLinks.length"
+                class="text-default-500 text-sm"
+              >
+                暂无可用下载链接
+              </p>
+            </div>
+
+            <div
+              v-if="resource.code || resource.password"
+              class="flex flex-wrap gap-2"
+            >
+              <KunCopy
+                v-if="resource.code"
+                :text="resource.code"
+                :name="`提取码: ${resource.code}`"
+                color="secondary"
+                variant="flat"
+                size="sm"
+              />
+              <KunCopy
+                v-if="resource.password"
+                :text="resource.password"
+                :name="`解压密码: ${resource.password}`"
+                color="secondary"
+                variant="flat"
+                size="sm"
+              />
+            </div>
+
+            <div
+              v-if="resource.blake3 && resource.storage !== 'user'"
+              class="border-success/30 space-y-2 border-t pt-3"
+            >
+              <p class="text-default-500 text-xs">
+                BLAKE3 校验码，可校验下载文件完整性
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <code
+                  class="bg-background/60 max-w-full truncate rounded-lg px-2 py-1 text-xs"
+                >
+                  {{ resource.blake3 }}
+                </code>
+                <KunCopy
+                  :text="resource.blake3"
+                  name="复制"
+                  size="sm"
+                  variant="flat"
+                />
+                <NuxtLink
+                  :to="`/check-hash?hash=${resource.blake3}&content=${encodeURIComponent(resource.content || '')}`"
+                  class="text-primary text-xs hover:underline"
+                >
+                  前往校验页面
+                </NuxtLink>
+              </div>
             </div>
           </div>
         </div>
 
-        <div v-if="detail.patch">
-          <KunCard :bordered="true">
-            <h3 class="mb-3 text-lg font-bold">Galgame 信息</h3>
-            <NuxtLink
-              :to="`/patch/${detail.patch.id}/introduction`"
-              class="block"
+        <!-- sidebar: patch resource recommendations (no wrapper / heading) -->
+        <aside class="space-y-3 lg:sticky lg:top-20 lg:self-start">
+          <NuxtLink
+            v-for="r in detail.recommendations"
+            :key="r.id"
+            :to="`/resource/${r.id}`"
+            class="border-default/20 bg-background hover:border-primary hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
+          >
+            <p class="font-semibold line-clamp-2">{{ recName(r) }}</p>
+            <p v-if="r.note" class="text-default-500 line-clamp-2 text-sm">
+              {{ markdownToText(r.note) }}
+            </p>
+            <p class="text-default-400 text-xs">
+              {{ formatDistanceToNow(r.created) }} · 由
+              {{ r.user?.name ?? '已注销用户' }} 发布
+            </p>
+            <div
+              class="text-default-500 flex items-center justify-end gap-1 text-xs"
             >
-              <img
-                v-if="detail.patch.banner"
-                :src="detail.patch.banner.replace(/\.avif$/, '-mini.avif')"
-                :alt="patchName"
-                class="bg-default-100 mb-3 aspect-video w-full rounded object-cover"
-              />
-              <div class="hover:text-primary-500 font-semibold">
-                {{ patchName }}
-              </div>
-            </NuxtLink>
-            <div class="text-default-500 mt-3 space-y-1 text-sm">
-              <div>浏览: {{ formatNumber(detail.patch.view) }}</div>
-              <div>下载: {{ formatNumber(detail.patch.download) }}</div>
-              <div>收藏: {{ detail.patch.count.favorite_by }}</div>
-              <div>资源数: {{ detail.patch.count.resource }}</div>
+              <span>{{ r.download }} 次下载</span>
+              ·
+              <span>{{ r.like_count }} 个点赞</span>
             </div>
-          </KunCard>
-        </div>
+          </NuxtLink>
+
+          <KunNull
+            v-if="!detail.recommendations?.length"
+            description="暂无推荐资源"
+          />
+        </aside>
       </div>
     </template>
 

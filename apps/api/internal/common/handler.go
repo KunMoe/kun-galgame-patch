@@ -3,10 +3,12 @@ package common
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
+	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -299,10 +301,40 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 		patchCard = &card
 	}
 
-	// Get up to 5 recommendations from the same patch
+	// Recommendations — mirrors next-web /resource/detail:
+	//   1. up to 5 other resources of the SAME patch (status=0, by download)
+	//   2. if fewer than 5, top up with random popular resources from OTHER
+	//      patches (status=0, download > 500), shuffled.
+	const recTarget = 5
 	var recs []patchModel.PatchResource
-	h.db.Where("galgame_id = ? AND id != ?", resource.GalgameID, resource.ID).
-		Limit(5).Order("like_count DESC").Find(&recs)
+	h.db.Where("galgame_id = ? AND id != ? AND status = 0", resource.GalgameID, resource.ID).
+		Order("download DESC").Limit(recTarget).Find(&recs)
+
+	if len(recs) < recTarget {
+		var pool []patchModel.PatchResource
+		h.db.Where("id != ? AND galgame_id != ? AND status = 0 AND download > ?",
+			resource.ID, resource.GalgameID, 500).
+			Limit(20).Find(&pool)
+		seen := make(map[int]bool, len(recs))
+		for _, r := range recs {
+			seen[r.ID] = true
+		}
+		extras := pool[:0]
+		for _, r := range pool {
+			if !seen[r.ID] {
+				extras = append(extras, r)
+			}
+		}
+		rand.Shuffle(len(extras), func(i, j int) {
+			extras[i], extras[j] = extras[j], extras[i]
+		})
+		if need := recTarget - len(recs); need > 0 && len(extras) > 0 {
+			if need > len(extras) {
+				need = len(extras)
+			}
+			recs = append(recs, extras[:need]...)
+		}
+	}
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 	patchModel.RenderResourceNotes(recs)
@@ -313,10 +345,41 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	resource = one[0]
 	h.attachResourceUsers(c.Context(), recs)
 
+	// Viewer-specific state (if logged in): is_liked on the main resource +
+	// recommendations, and is_favorite on the owning patch — so the
+	// redesigned hero renders the like/favorite buttons in their real state.
+	patchFavorited := false
+	if u := middleware.GetUser(c); u != nil && u.UID > 0 {
+		ids := make([]int, 0, len(recs)+1)
+		ids = append(ids, resource.ID)
+		for i := range recs {
+			ids = append(ids, recs[i].ID)
+		}
+		var likedIDs []int
+		h.db.Model(&patchModel.UserPatchResourceLikeRelation{}).
+			Where("user_id = ? AND resource_id IN ?", u.UID, ids).
+			Pluck("resource_id", &likedIDs)
+		likedSet := make(map[int]bool, len(likedIDs))
+		for _, id := range likedIDs {
+			likedSet[id] = true
+		}
+		resource.IsLiked = likedSet[resource.ID]
+		for i := range recs {
+			recs[i].IsLiked = likedSet[recs[i].ID]
+		}
+
+		var favCount int64
+		h.db.Model(&patchModel.UserPatchFavoriteRelation{}).
+			Where("user_id = ? AND galgame_id = ?", u.UID, resource.GalgameID).
+			Count(&favCount)
+		patchFavorited = favCount > 0
+	}
+
 	return response.OK(c, map[string]any{
-		"resource":        resource,
-		"patch":           patchCard,
-		"recommendations": recs,
+		"resource":          resource,
+		"patch":             patchCard,
+		"recommendations":   recs,
+		"patch_is_favorite": patchFavorited,
 	})
 }
 

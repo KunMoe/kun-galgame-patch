@@ -166,7 +166,8 @@ func (a *App) RegisterRoutes() {
 	api.Get("/galgame", a.CommonHandler.GetGalgameList)
 	api.Get("/comment", a.CommonHandler.GetGlobalComments)
 	api.Get("/resource", a.CommonHandler.GetGlobalResources)
-	api.Get("/resource/:id", a.CommonHandler.GetResourceDetail)
+	// optionalAuth so the detail page can reflect the viewer's like state.
+	api.Get("/resource/:id", optionalAuth, a.CommonHandler.GetResourceDetail)
 
 	// Rankings (public).
 	api.Get("/ranking/user", a.CommonHandler.GetUserRanking)

@@ -93,7 +93,7 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	patch, err := h.service.GetPatch(id)
+	patch, err := h.service.GetPatch(c.Context(), id)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
@@ -114,7 +114,7 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	patch, err := h.service.GetPatchDetail(id)
+	patch, err := h.service.GetPatchDetail(c.Context(), id)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}

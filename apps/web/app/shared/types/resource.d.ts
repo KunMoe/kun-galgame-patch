@@ -39,5 +39,9 @@ interface HomeResource extends PatchResource {}
 interface PatchResourceDetail {
   resource: PatchResourceHtml
   patch: GalgameCard | null
+  // Other resources of the same patch; topped up with random popular ones
+  // from other patches when the same patch has < 5 (mirrors next-web).
   recommendations: PatchResource[]
+  // Whether the viewer has favorited the owning galgame (false when anon).
+  patch_is_favorite?: boolean
 }

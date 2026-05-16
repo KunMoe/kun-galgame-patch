@@ -15,6 +15,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrWikiGalgameMissing is returned by CreatePatch when the supplied
@@ -113,11 +114,80 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 	return patchID, nil
 }
 
-func (s *PatchService) GetPatch(id int) (*model.Patch, error) {
-	return s.repo.GetPatchByID(id)
+// GetPatch returns the header row, lazily materializing it the same way as
+// GetPatchDetail (the patch layout page hits /patch/:id in parallel with
+// /patch/:id/detail; both must trigger materialization or the header 404s
+// and the page shows "not found" even though detail would have created it).
+func (s *PatchService) GetPatch(ctx context.Context, id int) (*model.Patch, error) {
+	return s.ensureLocalPatch(ctx, id)
 }
 
-func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
+// GetPatchDetail returns the local patch row, lazily materializing it the
+// first time a moyu user opens a galgame that is globally published on Wiki
+// (e.g. created/claimed on kungal) but has no moyu row yet.
+//
+// Design: docs/galgame_wiki/00-handbook-for-downstream.md §7.1.4a — the
+// consumer INSERTs its local stats row when a user selects an already
+// published galgame. moyu's `patch` table is that stats row (D13:
+// patch.id == galgame_id).
+//
+// Behaviour decisions (confirmed):
+//   - Visibility/existence check uses anonymous Wiki /galgame/batch, which
+//     only returns status=0 rows — so a hit means "publicly published";
+//     a miss means "doesn't exist / banned / someone's private draft" and
+//     we keep the genuine 404.
+//   - The row is a PURE STATS row: no +3 moemoepoint, no contributor, no
+//     contribute_count bump (the publish/claim reward was already granted on
+//     the originating side; moyu must not double-count).
+//   - patch.user_id = the Wiki galgame's creator/claimer (brief.UserID); ids
+//     are OAuth-aligned globally so it resolves on moyu too.
+func (s *PatchService) GetPatchDetail(ctx context.Context, id int) (*model.Patch, error) {
+	return s.ensureLocalPatch(ctx, id)
+}
+
+// ensureLocalPatch is the shared "read, else lazily materialize" logic used
+// by both the header (/patch/:id) and detail (/patch/:id/detail) endpoints.
+func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Patch, error) {
+	patch, err := s.repo.GetPatchDetail(id)
+	if err == nil {
+		return patch, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// No local row. Ask Wiki (anonymously → status=0 only) whether this is a
+	// publicly published galgame and grab its vndb_id + creator.
+	briefs, bErr := s.wiki.GalgameBatch(ctx, []int{id})
+	if bErr != nil {
+		return nil, err // surface as not-found; Wiki transient failure
+	}
+	var brief *galgameClient.GalgameBrief
+	for i := range briefs {
+		if briefs[i].ID == id {
+			brief = &briefs[i]
+			break
+		}
+	}
+	if brief == nil {
+		return nil, err // not publicly visible → real 404
+	}
+
+	vndb := brief.VndbID
+	if vndb == "" {
+		// vndb_id is uniqueIndex/NOT NULL; original works have none. id is
+		// already unique, so a deterministic placeholder keeps the index sane.
+		vndb = fmt.Sprintf("wiki-%d", id)
+	}
+
+	// Pure stats row. ON CONFLICT DO NOTHING makes concurrent first-opens
+	// idempotent; we always re-read the canonical row afterwards.
+	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID}
+	if cErr := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(row).Error; cErr != nil {
+		return nil, cErr
+	}
 	return s.repo.GetPatchDetail(id)
 }
 
