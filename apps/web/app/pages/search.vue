@@ -14,14 +14,61 @@ const query = ref(String(route.query.q ?? ''))
 const page = ref(Number(route.query.page ?? 1))
 const limit = 24
 
-const searchInAlias = ref(true)
+// `include_intro` is the only search-scope toggle the wiki-delegated /search
+// endpoint actually supports (D11). Alias/tag are always searchable in
+// Meilisearch's index, so the old per-scope checkboxes are gone.
 const searchInIntroduction = ref(false)
-const searchInTag = ref(false)
 
 const results = ref<GalgameCard[]>([])
 const total = ref(0)
 const loading = ref(false)
 const hasSearched = ref(false)
+
+// Backend /search delegates to Wiki and returns SearchHit items: the flat
+// GalgameHit fields (name_zh_cn, ...) + has_patch + optional local patch row.
+// GalgameCard.vue expects the enriched shape (name: KunLanguage, count, ...),
+// so map every hit into that shape with safe zero defaults.
+interface SearchHit {
+  id: number
+  vndb_id: string
+  name_en_us: string
+  name_ja_jp: string
+  name_zh_cn: string
+  name_zh_tw: string
+  banner: string
+  content_limit: string
+  has_patch: boolean
+  patch?: {
+    id: number
+    view?: number
+    download?: number
+    created?: string
+  } | null
+}
+
+const mapHit = (h: SearchHit): GalgameCard =>
+  ({
+    id: h.id,
+    vndb_id: h.vndb_id,
+    bid: null,
+    name: {
+      'en-us': h.name_en_us ?? '',
+      'ja-jp': h.name_ja_jp ?? '',
+      'zh-cn': h.name_zh_cn ?? '',
+      'zh-tw': h.name_zh_tw ?? ''
+    },
+    banner: h.banner ?? '',
+    view: h.patch?.view ?? 0,
+    download: h.patch?.download ?? 0,
+    type: [],
+    language: [],
+    platform: [],
+    content_limit: (h.content_limit as KunContentLimit) || 'sfw',
+    status: 0,
+    created: h.patch?.created ?? new Date().toISOString(),
+    resource_update_time: h.patch?.created ?? new Date().toISOString(),
+    count: { favorite_by: 0, contribute_by: 0, resource: 0, comment: 0 }
+  }) as GalgameCard
 
 const doSearch = async () => {
   if (!query.value.trim()) {
@@ -32,24 +79,27 @@ const doSearch = async () => {
   }
   loading.value = true
   try {
-    const res = await api.post<{ galgames: GalgameCard[]; total: number }>(
+    // Wire shape matches backend SearchRequest: `q` string, flat filters,
+    // required page/limit. Response is response.Paginated → data.{items,total}.
+    const res = await api.post<{ items: SearchHit[]; total: number }>(
       '/search',
       {
-        query: query.value.split(' ').filter((t) => t.length > 0),
+        q: query.value.trim(),
         page: page.value,
         limit,
-        searchOption: {
-          searchInAlias: searchInAlias.value,
-          searchInIntroduction: searchInIntroduction.value,
-          searchInTag: searchInTag.value
-        }
+        include_intro: searchInIntroduction.value
       }
     )
     if (res.code === 0) {
-      results.value = res.data.galgames
-      total.value = res.data.total
+      results.value = (res.data?.items ?? []).map(mapHit)
+      total.value = res.data?.total ?? 0
       hasSearched.value = true
       router.replace({ query: { q: query.value, page: page.value } })
+    } else {
+      results.value = []
+      total.value = 0
+      hasSearched.value = true
+      useKunMessage(res.message || '搜索失败', 'error')
     }
   } finally {
     loading.value = false
@@ -61,12 +111,9 @@ const debouncedSearch = useDebounceFn(() => {
   doSearch()
 }, 500)
 
-watch(
-  [query, searchInAlias, searchInIntroduction, searchInTag],
-  () => {
-    debouncedSearch()
-  }
-)
+watch([query, searchInIntroduction], () => {
+  debouncedSearch()
+})
 
 onMounted(() => {
   if (query.value) doSearch()
@@ -96,9 +143,7 @@ const onChangePage = (v: number) => {
     </KunInput>
 
     <div class="flex flex-wrap gap-4">
-      <KunCheckBox v-model="searchInAlias" label="搜索别名" />
-      <KunCheckBox v-model="searchInIntroduction" label="搜索简介" />
-      <KunCheckBox v-model="searchInTag" label="搜索标签" />
+      <KunCheckBox v-model="searchInIntroduction" label="搜索简介内容" />
     </div>
 
     <KunLoading v-if="loading" description="正在搜索..." />

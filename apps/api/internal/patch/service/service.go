@@ -121,14 +121,57 @@ func (s *PatchService) GetPatchDetail(id int) (*model.Patch, error) {
 	return s.repo.GetPatchDetail(id)
 }
 
-// GrantClaimReward awards the +3 moemoepoint a user gets for claiming a VNDB
-// draft into published state. Used by the wiki-claim proxy handler.
+// RegisterClaimedGalgame creates the local patch row for a galgame the user
+// just claimed on Wiki (status 2 → 0), awarding +3 moemoepoint and
+// registering the contributor — all in one transaction.
 //
-// Per docs/galgame_wiki/00-handbook-for-downstream.md §决策1: claim is
-// rewarded immediately (unlike submit, which only rewards after admin
-// approval — that path runs via the wiki-sync cron, not here).
-func (s *PatchService) GrantClaimReward(userID int) error {
-	return s.repo.UpdateMoemoepoint(userID, 3)
+// Per docs/galgame_wiki/00-handbook-for-downstream.md §9 the local
+// side-effects for "Claim" are exactly: INSERT patch(zeros) + moemoepoint+=3.
+// We deliberately do NOT call Wiki /galgame/check here (the caller just
+// claimed it, so it exists and is published).
+//
+// Idempotent: if the patch row already exists (the galgame was interacted
+// with before, or a double-submit), we return its id without re-rewarding.
+// This is the single source of the claim reward — the handler must NOT also
+// call a separate reward path (that was the prior double-+3 bug).
+func (s *PatchService) RegisterClaimedGalgame(uid, galgameID int, vndbID string) (int, error) {
+	if galgameID <= 0 {
+		return 0, fmt.Errorf("invalid galgame id")
+	}
+	if existing, _ := s.repo.GetPatchByID(galgameID); existing != nil && existing.ID != 0 {
+		// Already registered — no reward, just hand back the id so the
+		// frontend can navigate. (Covers re-claim races / retries.)
+		return existing.ID, nil
+	}
+
+	var patchID int
+	txErr := s.db.Transaction(func(tx *gorm.DB) error {
+		p := &model.Patch{ID: galgameID, VndbID: vndbID, UserID: uid}
+		if err := tx.Create(p).Error; err != nil {
+			return fmt.Errorf("创建 patch 失败: %w", err)
+		}
+		patchID = p.ID
+
+		if err := tx.Table("user").Where("id = ?", uid).
+			UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + 3")).Error; err != nil {
+			return fmt.Errorf("更新用户积分失败: %w", err)
+		}
+
+		if err := tx.Create(&model.UserPatchContributeRelation{
+			UserID: uid, GalgameID: p.ID,
+		}).Error; err != nil {
+			return fmt.Errorf("登记 contributor 失败: %w", err)
+		}
+		if err := tx.Model(&model.Patch{}).Where("id = ?", p.ID).
+			UpdateColumn("contribute_count", gorm.Expr("contribute_count + 1")).Error; err != nil {
+			return fmt.Errorf("更新 contribute_count 失败: %w", err)
+		}
+		return nil
+	})
+	if txErr != nil {
+		return 0, txErr
+	}
+	return patchID, nil
 }
 
 // DB exposes the underlying *gorm.DB so a few thin "no-business-logic" handler

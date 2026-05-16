@@ -239,6 +239,9 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 	if env.Code != 0 {
 		return nil, &WikiError{Code: env.Code, Message: env.Message}
 	}
+	if env.Data.Items == nil {
+		env.Data.Items = []MineItem{}
+	}
 	return &env.Data, nil
 }
 
@@ -281,6 +284,14 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	}
 	if env.Code != 0 {
 		return nil, &WikiError{Code: env.Code, Message: env.Message}
+	}
+	// Normalize: a nil slice marshals back to JSON `null`, which crashes
+	// frontend code doing `results.pending.length`. Guarantee `[]`.
+	if env.Data.Items == nil {
+		env.Data.Items = []GalgameHit{}
+	}
+	if env.Data.Pending == nil {
+		env.Data.Pending = []GalgameHit{}
 	}
 	return &env.Data, nil
 }

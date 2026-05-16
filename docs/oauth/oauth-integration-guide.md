@@ -411,6 +411,51 @@ ORDER BY n DESC;
 重启下游服务；存量用户需**重新登录一次**（旧 cookie 不再被读取），旧
 `session:*` 孤儿 key 按 TTL 自然过期。
 
+### 4.4 SSR 并发刷新：锁失败者必须"等赢家"，不能当失败踢人
+
+> **2026-05 实战定位。** 现象同样是"登录后过一会被踢"，但根因既不在
+> OAuth 端、也不是 §4.3 的串台 —— 是下游自己的刷新单飞锁实现，把
+> "锁竞争"误判成"刷新失败"。
+
+**现象**：站点 A（如 kungal）正常，结构几乎相同的站点 B（如 moyu）一直被
+踢；且**间歇、与活跃度相关**，访问越频繁越容易中。OAuth 端日志**干净**
+（refresh 都 200），下游日志大量 `refresh failed; rejecting request`。
+
+**根因**：下游用 `SETNX lock:refresh:<sid>` 做"同一 session 同一时刻只刷
+一次"的单飞锁。SSR 站点一个页面会扇出 N 个并发 API 请求，access_token
+在第 15 分钟硬过期那一刻，N 个请求同时进 auth 中间件、同时判定需要刷新：
+
+```
+N 个并发请求
+  ├─ 1 个 SETNX 抢到锁 → 调 /oauth/token 刷新成功 → 写回 session
+  └─ N-1 个 SETNX 失败（锁被占）
+        ↓ 错误实现：把"锁竞争"当成刷新失败
+        → clearSessionCookie + 返回 205/401
+        → 浏览器收到 N-1 个删 cookie 响应 → cookie 没了 → 重新登录
+```
+
+赢家其实刷成功了，但用户的浏览器已经被 N-1 个响应清掉了 session cookie。
+
+**正确做法（锁失败者要"等赢家"，对齐另一个能用的站点）**：
+
+1. 刷新函数对**锁竞争**返回一个**可识别的 sentinel error**（别和真失败
+   混在一个匿名 error 里）。
+2. 调用方拿到该 sentinel → **不要清 cookie / 不要踢**，转而**轮询 Redis**
+   （上限 ~3s、间隔 ~100ms）等赢家把新 session 写回（用
+   `OAuthExpiresAt` 是否前进判断），刷好就拿新 token 正常放行。
+3. 等待超时或赢家把 session 删了（= OAuth 永久拒绝）才失败：
+   - **永久**（Redis session key 已被删）→ 清 cookie + 让用户重登
+   - **瞬时 / 等待超时**（key 还在）→ **保留 cookie**，返回可重试错误，
+     下次请求自动重试（赢家几乎都 sub-second 完成）
+
+> 反模式自查：搜下游 auth 中间件，凡是 `SETNX` / `SetNX` 失败分支后面
+> 直接 `clearCookie` + `return 401/205` 的，就是这个 bug。对照那个"正常
+> 的站点"的锁失败者分支——它应该是个 poll-wait 循环，不是立即失败。
+
+> 这也顺带消除"OAuth 网络抖动/5xx 也把人踢了"的次级问题：只在
+> **确知永久失败**（Redis session 已不存在）时才清 cookie，其余一律保留
+> 留给下次重试。
+
 ---
 
 ## 5. 令牌吊销（登出）

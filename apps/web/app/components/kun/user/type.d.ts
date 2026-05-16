@@ -1,7 +1,11 @@
 import type { KunAvatarSize } from '../avatar/type'
 
 export interface KunUserProps {
-  user: KunUser
+  // Nullable: post user-migration, name/avatar live on OAuth and are
+  // resolved via /users/batch. An unresolved id (batch miss, deleted/
+  // banned user, OAuth unreachable) yields no brief — the component must
+  // degrade gracefully, never crash the page. Matches KunAvatarProps.user.
+  user: KunUser | null | undefined
   size?: KunAvatarSize
   description?: string
   className?: string

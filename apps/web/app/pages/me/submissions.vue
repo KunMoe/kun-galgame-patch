@@ -45,7 +45,11 @@ const { data, pending, refresh } = await useAsyncData<MineResp>(
   'me-submissions',
   async () => {
     const res = await api.get<MineResp>('/galgame/mine?status=3,4&limit=50')
-    return res.code === 0 ? res.data : { items: [], total: 0 }
+    if (res.code !== 0) return { items: [], total: 0 }
+    return {
+      items: res.data?.items ?? [],
+      total: res.data?.total ?? 0
+    }
   },
   { default: () => ({ items: [], total: 0 }) }
 )

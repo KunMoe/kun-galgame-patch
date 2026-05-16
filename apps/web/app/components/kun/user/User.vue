@@ -20,7 +20,11 @@ const props = withDefaults(defineProps<KunUserProps>(), {
     />
 
     <div class="flex flex-col text-sm">
-      <span>{{ user.name }}</span>
+      <!-- user may be null/undefined when the OAuth /users/batch brief
+           couldn't be resolved. Degrade to a placeholder instead of
+           throwing "Cannot read properties of undefined (reading 'name')"
+           and 500-ing the whole page. KunAvatar already handles null. -->
+      <span>{{ user?.name || '未知用户' }}</span>
       <span v-if="description" class="text-default-500">
         {{ description }}
       </span>

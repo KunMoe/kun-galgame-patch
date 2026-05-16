@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -97,10 +98,27 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 		now := time.Now().Unix()
 		if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt {
 			if err := refreshOAuthToken(ctx, rdb, oauthCfg, sessionID, &session); err != nil {
-				slog.Warn("OAuth access token expired and refresh failed; rejecting request",
-					"sessionPrefix", sessionID[:min(8, len(sessionID))], "error", err)
-				clearSessionCookie(c)
-				return response.Error(c, errors.ErrAuthExpired())
+				// Lock contention: another concurrent request is refreshing
+				// this very session right now (the SSR fan-out norm). Wait
+				// for it to publish the fresh tokens instead of clearing the
+				// cookie and kicking the user.
+				if stderrors.Is(err, errRefreshLockContended) &&
+					waitForRefreshedSession(ctx, rdb, sessionID, &session) {
+					// fresh session loaded into `session`; fall through.
+				} else {
+					slog.Warn("OAuth access token expired and refresh failed; rejecting request",
+						"sessionPrefix", sessionID[:min(8, len(sessionID))], "error", err)
+					// Only destroy the cookie on a definitively-dead session.
+					// refreshOAuthToken already DELETEs the Redis session on a
+					// permanent OAuth reject; contention/transient leaves it,
+					// so a missing Redis key is our "permanent" signal. On a
+					// transient/contention-timeout we keep the cookie so the
+					// next request retries (matches kungal's behavior).
+					if exists, _ := rdb.Exists(ctx, SessionPrefix+sessionID).Result(); exists == 0 {
+						clearSessionCookie(c)
+					}
+					return response.Error(c, errors.ErrAuthExpired())
+				}
 			}
 		} else if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt-300 {
 			go func(s SessionData) {
@@ -141,8 +159,19 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 		now := time.Now().Unix()
 		if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt {
 			if err := refreshOAuthToken(ctx, rdb, oauthCfg, sessionID, &session); err != nil {
-				clearSessionCookie(c)
-				return c.Next()
+				if stderrors.Is(err, errRefreshLockContended) &&
+					waitForRefreshedSession(ctx, rdb, sessionID, &session) {
+					// fresh session loaded; fall through with user context.
+				} else {
+					// OptionalAuth contract is best-effort: only drop the
+					// cookie when the session is definitively dead (Redis
+					// key gone = permanent reject); otherwise just degrade
+					// to anonymous and keep the cookie for a later retry.
+					if exists, _ := rdb.Exists(ctx, SessionPrefix+sessionID).Result(); exists == 0 {
+						clearSessionCookie(c)
+					}
+					return c.Next()
+				}
 			}
 		} else if session.OAuthExpiresAt > 0 && now >= session.OAuthExpiresAt-300 {
 			go func(s SessionData) {
@@ -333,6 +362,51 @@ func decodeJWTRoles(token string) []string {
 // A per-session Redis lock (`lock:refresh:<sid>`, 30s TTL) prevents
 // concurrent refreshes; a lock miss returns a transient error so callers can
 // re-read the (possibly already-refreshed) session.
+// errRefreshLockContended means another in-flight request already holds the
+// per-session refresh lock and is doing the OAuth round-trip right now. This
+// is the NORMAL case under SSR concurrency (one page load fans out into many
+// parallel API calls that all hit hard-expiry together). It is NOT a refresh
+// failure — the caller must wait for the winner to publish the new session
+// and then proceed, NOT clear the cookie / kick the user. Treating contention
+// as a hard failure was the moyu-specific logout bug (kungal's middleware
+// already waits for the winner; moyu didn't).
+var errRefreshLockContended = stderrors.New("refresh lock contended")
+
+// waitForRefreshedSession is the lock-loser path. Another request holds the
+// per-session refresh lock and is doing the OAuth round-trip; we poll Redis
+// for it to publish the new session blob, then load it into *session and
+// return true so the caller can proceed with the fresh tokens.
+//
+// Returns false if: the session disappears (winner hit a permanent OAuth
+// reject and deleted it), or the deadline passes (winner still in flight /
+// died). The 3s deadline sits below the 30s lock TTL and the 10s OAuth HTTP
+// timeout's realistic p99 (refresh is normally <500ms), with a 100ms poll
+// for sub-second hand-off. Mirrors kungal's waitForRefresh.
+func waitForRefreshedSession(ctx context.Context, rdb *redis.Client, sessionID string, session *SessionData) bool {
+	prevExpiresAt := session.OAuthExpiresAt
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+
+		data, err := rdb.Get(ctx, SessionPrefix+sessionID).Result()
+		if err != nil {
+			// redis.Nil → winner deleted it (permanent reject). Any other
+			// error → can't tell; bail and let the caller fail closed.
+			return false
+		}
+		var fresh SessionData
+		if json.Unmarshal([]byte(data), &fresh) != nil {
+			continue
+		}
+		// Winner published when OAuthExpiresAt advanced past what we read.
+		if fresh.OAuthExpiresAt > prevExpiresAt {
+			*session = fresh
+			return true
+		}
+	}
+	return false
+}
+
 func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string, session *SessionData) error {
 	lockKey := "lock:refresh:" + sessionID
 	ok, err := rdb.SetArgs(ctx, lockKey, 1, redis.SetArgs{
@@ -340,7 +414,7 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 		Mode: "NX",
 	}).Result()
 	if err != nil || ok != "OK" {
-		return fmt.Errorf("refresh lock contended")
+		return errRefreshLockContended
 	}
 	defer rdb.Del(ctx, lockKey)
 

@@ -668,8 +668,12 @@ func (h *PatchHandler) submitGalgameMultipart(c *fiber.Ctx, accessToken string) 
 
 // ClaimGalgame POST /api/v1/galgame/:gid/claim
 //
-// Flip a VNDB draft (status=2) to published (status=0) and award the caller
-// ownership. Wiki returns the published galgame.
+// Flip a VNDB draft (status=2) to published (status=0) on Wiki, then register
+// the local patch row + award +3 moemoepoint atomically (handbook §9). The
+// frontend must NOT additionally POST /patch — that produced a double +3.
+//
+// Response payload: { "id": <local patch id == galgame id> } so the frontend
+// can navigate straight to /patch/:id without a second round-trip.
 func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
 	gid, idErr := getIDParam(c, "gid")
 	if idErr != nil {
@@ -679,15 +683,43 @@ func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
+
 	data, err := h.wiki.ClaimGalgame(c.Context(), accessToken, gid)
-	if err == nil {
-		// Wiki returned status=0; reward the claimer immediately (decision §1
-		// in docs/galgame_wiki/00-handbook-for-downstream.md). Best-effort —
-		// failure here must NOT roll back the wiki-side change.
-		uid := middleware.MustGetUser(c).UID
-		_ = h.service.GrantClaimReward(uid)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			// Forward Wiki business code/message verbatim (e.g. 20006 草稿不可
+			// 认领 when the Meilisearch row was stale). HTTP 400.
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 	}
-	return writeWikiResult(c, data, err)
+
+	// Wiki returned the published galgame (status=0). Pull the id/vndb_id so
+	// we can create the local patch row keyed by galgame_id (== patch.id, D13).
+	var claimed struct {
+		ID     int    `json:"id"`
+		VndbID string `json:"vndb_id"`
+	}
+	if jerr := json.Unmarshal(data, &claimed); jerr != nil || claimed.ID == 0 {
+		// Wiki succeeded but we couldn't parse — fall back to the path param.
+		claimed.ID = gid
+	}
+
+	uid := middleware.MustGetUser(c).UID
+	patchID, regErr := h.service.RegisterClaimedGalgame(uid, claimed.ID, claimed.VndbID)
+	if regErr != nil {
+		// The Wiki-side claim already succeeded and cannot be rolled back; the
+		// galgame is published and owned by the user. Surface a soft error so
+		// the user can retry the (idempotent) local registration via the
+		// detail page's first interaction, but don't pretend it failed wholesale.
+		return response.Error(c, errors.ErrInternal("认领成功，但本站登记失败，请稍后重试"))
+	}
+
+	return c.JSON(response.Response{
+		Code:    0,
+		Message: "OK",
+		Data:    fiber.Map{"id": patchID},
+	})
 }
 
 // PatchGalgameDraft PATCH /api/v1/galgame/:gid

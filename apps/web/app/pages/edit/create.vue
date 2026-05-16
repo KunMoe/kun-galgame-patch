@@ -65,7 +65,13 @@ const doSearch = async () => {
       `/galgame/search/publish?q=${encodeURIComponent(q)}&limit=12`
     )
     if (res.code === 0) {
-      results.value = res.data ?? { items: [], pending: [], total: 0 }
+      // Go serializes a nil slice as JSON `null`; normalize so the template's
+      // `.length` checks never hit null even if the backend regresses.
+      results.value = {
+        items: res.data?.items ?? [],
+        pending: res.data?.pending ?? [],
+        total: res.data?.total ?? 0
+      }
       searched.value = true
     } else {
       useKunMessage(res.message || '搜索失败', 'error')
@@ -107,24 +113,33 @@ const claimingFor = ref<number | null>(null)
 const claimAndPublish = async (hit: GalgameHit) => {
   claimingFor.value = hit.id
   try {
+    // The backend does the whole thing atomically: wiki claim (status 2→0)
+    // + local patch registration + single +3 moemoepoint, and returns the
+    // local patch id. No separate POST /patch (that double-rewarded).
     const claimRes = await api.post<{ id: number }>(
       `/galgame/${hit.id}/claim`,
       {}
     )
-    if (claimRes.code !== 0) {
-      useKunMessage(claimRes.message || '认领失败', 'error')
-      return
-    }
-    // claim succeeded; now create the local patch row so the user can add resources.
-    const patchRes = await api.post<{ id: number }>('/patch', {
-      vndb_id: hit.vndb_id
-    })
-    if (patchRes.code === 0 && patchRes.data?.id) {
+    if (claimRes.code === 0 && claimRes.data?.id) {
       useKunMessage('认领成功，+3 萌萌点已到账', 'success')
-      await navigateTo(`/patch/${patchRes.data.id}/introduction`)
+      await navigateTo(`/patch/${claimRes.data.id}/introduction`)
       return
     }
-    useKunMessage(patchRes.message || '本站登记失败', 'error')
+    // Wiki business codes (docs/galgame_wiki/99-appendix.md §20xxx). The
+    // common cause is a stale Meilisearch row: search says status=2 but the
+    // draft was already claimed/published — recover by re-searching.
+    if (claimRes.code === 20006 || claimRes.code === 20001) {
+      useKunMessage(
+        '该 VNDB 草稿已被他人认领或已不可用，正在为您刷新搜索结果',
+        'warn'
+      )
+      await doSearch()
+      return
+    }
+    useKunMessage(
+      `认领失败${claimRes.code ? `（${claimRes.code}）` : ''}：${claimRes.message || '未知错误'}`,
+      'error'
+    )
   } finally {
     claimingFor.value = null
   }
