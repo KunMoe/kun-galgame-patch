@@ -171,6 +171,7 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 // SearchGalgameParams are query parameters for /galgame/search.
 type SearchGalgameParams struct {
 	Q               string
+	Status          string // csv of statuses, e.g. "0" = published only; "" = no filter
 	ContentLimit    string // sfw / nsfw
 	AgeLimit        string // all / r18
 	OriginalLang    string // csv, e.g. "ja-jp,en-us"
@@ -191,6 +192,10 @@ func (c *Client) SearchGalgame(ctx context.Context, p SearchGalgameParams) (*Pag
 	q := url.Values{}
 	if p.Q != "" {
 		q.Set("q", p.Q)
+	}
+	if p.Status != "" {
+		// docs/galgame_wiki/05-search.md: status csv; omit = no filter.
+		q.Set("status", p.Status)
 	}
 	if p.ContentLimit != "" {
 		q.Set("content_limit", p.ContentLimit)

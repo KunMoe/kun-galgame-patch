@@ -68,7 +68,12 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 
 	// Call Wiki search
 	params := galgameClient.SearchGalgameParams{
-		Q:             req.Q,
+		Q: req.Q,
+		// Public search only surfaces published galgames. Unpublished states
+		// (1 banned / 2 VNDB draft / 3 pending / 4 declined) are excluded.
+		// The publish wizard uses a separate SearchGalgameForPublish call
+		// that intentionally includes the caller's own pending drafts.
+		Status:        "0",
 		ContentLimit:  contentLimit,
 		AgeLimit:      req.AgeLimit,
 		OriginalLang:  req.OriginalLang,
