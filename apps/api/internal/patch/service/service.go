@@ -631,6 +631,18 @@ func (s *PatchService) IncrementResourceDownload(resourceID int) error {
 	return s.repo.IncrementResourceDownload(resourceID, resource.GalgameID)
 }
 
+// GetResourceDownloadInfo backs the lightweight GET /patch/resource/:id/link.
+// The /resource/:id detail endpoint additionally Wiki-enriches the owning
+// patch and fetches 5 recommendations, which is wasteful when the caller
+// only wants the download links. This returns the bare resource row.
+func (s *PatchService) GetResourceDownloadInfo(resourceID int) (*model.PatchResource, error) {
+	r, err := s.repo.GetResourceByID(resourceID)
+	if err != nil {
+		return nil, fmt.Errorf("resource not found")
+	}
+	return r, nil
+}
+
 func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) {
 	resource, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {

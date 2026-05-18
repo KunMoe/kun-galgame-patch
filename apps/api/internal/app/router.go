@@ -57,6 +57,7 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/resource/:resourceId", auth, a.PatchHandler.UpdateResource)
 	patchRoutes.Delete("/resource/:resourceId", auth, a.PatchHandler.DeleteResource)
 	patchRoutes.Put("/resource/:resourceId/disable", auth, a.PatchHandler.ToggleResourceDisable)
+	patchRoutes.Get("/resource/:resourceId/link", a.PatchHandler.GetResourceDownloadInfo)
 	patchRoutes.Put("/resource/:resourceId/download", a.PatchHandler.IncrementResourceDownload)
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)

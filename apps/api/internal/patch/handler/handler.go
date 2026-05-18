@@ -427,6 +427,28 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 }
 
 // IncrementResourceDownload PUT /api/patch/resource/:resourceId/download
+// GetResourceDownloadInfo GET /api/patch/resource/:resourceId/link
+//
+// Minimal payload for the "获取资源链接" reveal on the patch resource list:
+// only the storage type + download links + secrets. No Wiki enrichment, no
+// recommendations, no blake3 (the card already shows the hash).
+func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
+	resourceID, err := getIDParam(c, "resourceId")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	r, gErr := h.service.GetResourceDownloadInfo(resourceID)
+	if gErr != nil {
+		return response.Error(c, errors.ErrNotFound("resource not found"))
+	}
+	return response.OK(c, fiber.Map{
+		"storage":  r.Storage,
+		"content":  r.Content,
+		"code":     r.Code,
+		"password": r.Password,
+	})
+}
+
 func (h *PatchHandler) IncrementResourceDownload(c *fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {

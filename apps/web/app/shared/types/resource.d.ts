@@ -22,7 +22,12 @@ interface PatchResource {
   user_id?: number
   galgame_id: number
   created: string
+  // `update_time` is the canonical 更改时间: creation time on insert, bumped
+  // to now() only on a real re-edit (matches next-api update_time: new Date()).
+  // `updated` is gorm autoUpdateTime — bumps on ANY row write (incl.
+  // download/like increments), so it is NOT a reliable edit timestamp.
   update_time?: Date | string
+  updated: string
   user: KunUser
   // Populated only by global resource lists (/api/v1/resource, /api/v1/home).
   patch?: PatchSummary | null

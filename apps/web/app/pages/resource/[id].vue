@@ -417,9 +417,16 @@ useKunSeoMeta({
                 />
                 <NuxtLink
                   :to="`/check-hash?hash=${resource.blake3}&content=${encodeURIComponent(resource.content || '')}`"
-                  class="text-primary text-xs hover:underline"
                 >
-                  前往校验页面
+                  <KunButton
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    rounded="full"
+                  >
+                    <KunIcon name="lucide:shield-check" class="size-3.5" />
+                    前往校验页面
+                  </KunButton>
                 </NuxtLink>
               </div>
             </div>
