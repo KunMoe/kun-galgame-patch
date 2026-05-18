@@ -1,5 +1,7 @@
 > [📖 文档索引](./README.md) · 上一节：[02 — 版本历史 + PR](./02-revisions-and-prs.md) · 下一节：[04 — 分类轴 (Tag/Official/Engine/Series)](./04-taxonomy.md)
 
+> 🔴 **下游强制范围**：本节的链接 / 别名 / 贡献者增删操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+
 ## 链接
 
 ### GET /galgame/:gid/links

@@ -32,11 +32,6 @@ const validId = computed(
   () => Number.isFinite(galgameId.value) && galgameId.value > 0
 )
 
-const config = useRuntimeConfig()
-const wikiOrigin =
-  ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-  'https://galgame.kungal.com'
-
 const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
   () => `edit-rewrite-${galgameId.value}`,
   async () => {
@@ -105,6 +100,17 @@ onBeforeUnmount(() => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
 
+// ─── Taxonomy (handbook §15: implemented in-site, no longer punted to Wiki) ──
+// /patch/:id/detail does not surface tag/official/engine ids, so the pickers
+// start empty. Edits are opt-in (a checkbox) because Wiki uses replace-all
+// semantics — submitting empty id arrays would otherwise WIPE existing
+// tags/officials/engines. series_id is edited the same way.
+const editTaxonomy = ref(false)
+const tagIds = ref<number[]>([])
+const officialIds = ref<number[]>([])
+const engineIds = ref<number[]>([])
+const seriesId = ref<number | null>(null)
+
 watch(
   detail,
   (d) => {
@@ -161,6 +167,15 @@ const buildPayload = () => {
   // aliases: only include when non-empty (Wiki replaces the alias set wholesale,
   // so sending "" would wipe out existing aliases).
   if (form.aliases.trim()) payload.aliases = form.aliases.trim()
+
+  // Taxonomy / series — opt-in replace-all (see editTaxonomy comment above).
+  if (editTaxonomy.value) {
+    payload.tag_ids = tagIds.value
+    payload.official_ids = officialIds.value
+    payload.engine_ids = engineIds.value
+    if (seriesId.value != null && seriesId.value > 0)
+      payload.series_id = seriesId.value
+  }
 
   payload.is_minor = form.is_minor
   return payload
@@ -390,20 +405,53 @@ const handleSubmit = async () => {
           </label>
         </section>
 
-        <div class="border-default/20 bg-default-50 rounded-lg border p-3 text-sm">
-          <p class="text-default-700">
-            如需修改 标签 / 会社 / 引擎 / 系列 等，请前往
-            <a
-              :href="`${wikiOrigin}/galgame/${galgameId}/edit`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-primary hover:underline"
-            >
-              Galgame Wiki 编辑页
-            </a>
-            操作（这些字段需要搜索/选择 UI，本站不重复实现）。
+        <section class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">标签 / 会社 / 引擎 / 系列</h3>
+            <label class="text-default-600 flex items-center gap-2 text-sm">
+              <input
+                v-model="editTaxonomy"
+                type="checkbox"
+                class="accent-primary"
+              />
+              修改这些字段
+            </label>
+          </div>
+          <p class="text-default-500 text-xs">
+            勾选后才会提交；提交时<strong>替换</strong>整个集合（Wiki 语义），
+            请把要保留的也一并选上。可直接「没有？新建」补 VNDB 缺失的条目。
+            需要重命名 / 删除已有分类？前往
+            <NuxtLink to="/galgame/taxonomy" class="text-primary hover:underline">
+              分类管理
+            </NuxtLink>
+            。
           </p>
-        </div>
+          <template v-if="editTaxonomy">
+            <GalgameEditTaxonomyPicker v-model="tagIds" kind="tag" />
+            <GalgameEditTaxonomyPicker v-model="officialIds" kind="official" />
+            <GalgameEditTaxonomyPicker v-model="engineIds" kind="engine" />
+            <label class="block">
+              <span class="text-default-700 text-sm">系列 ID（可选）</span>
+              <KunInput
+                :model-value="seriesId ?? ''"
+                type="number"
+                placeholder="留空表示不归属系列"
+                @update:model-value="
+                  seriesId = $event === '' ? null : Number($event)
+                "
+              />
+            </label>
+          </template>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-lg font-semibold">链接 / 别名 / 贡献者</h3>
+          <p class="text-default-500 text-xs">
+            这些子资源是即时生效的（每次操作在 Wiki 创建一个新版本快照），
+            不随上方「提交修改」按钮一起提交。
+          </p>
+          <GalgameEditRelations v-if="validId" :gid="galgameId" />
+        </section>
 
         <div class="flex justify-end gap-2">
           <KunButton variant="bordered" :disabled="submitting" @click="$router.back()">

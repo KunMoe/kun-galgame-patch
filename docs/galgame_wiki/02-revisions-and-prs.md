@@ -1,5 +1,7 @@
 > [📖 文档索引](./README.md) · 上一节：[01 — Galgame 核心 CRUD](./01-galgame.md) · 下一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md)
 
+> 🔴 **下游强制范围**：本节的修订历史与 PR 编辑操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐，不得只做子集）。已不再是「wiki-only，下游不做」。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+
 ## 版本历史 (Wiki)
 
 每次编辑（创建、更新、PR 合并、回滚）都会创建一个 revision，存储 galgame 的完整状态快照。

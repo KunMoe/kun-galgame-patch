@@ -19,6 +19,8 @@
 
 **三库 user_id 已全局对齐**（migrate-users 完成），不需要 ID 映射；移交过来的 user_id 直接是 OAuth 全局 user_id。
 
+> **接口角色补充（强制）**：kungal / moyu 不只是「投稿 + 渲染」的消费者，**还必须各自完整承载 galgame 的编辑面**（PR、修订历史、关系、分类轴的增删改），后端代理 + 前端 UI 一份不少。详见 [§15](#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。wiki 仍是数据 SoT 与服务端逻辑实现方，但「下游只读、编辑归 wiki」的旧定位已作废。
+
 ---
 
 ## 2. status 状态机（5 档）
@@ -267,6 +269,30 @@ admin 在 wiki 后台审核队列看到这条
 | `Batch(ctx, token?, ids)` | GET `/galgame/batch` | 列表渲染拉 brief；带 Bearer 时含自己 pending |
 | `GetDetail(ctx, gid)` | GET `/galgame/:gid` | 详情页元数据 |
 | `MyNotifications(ctx, token, sinceID)` | GET `/galgame/messages/mine` | 消息中心 wiki 消息流 |
+
+### 5.1b galgame 编辑面方法（强制，kungal 与 moyu 各实现一份 — 见 §15）
+
+写操作一律透传用户 `access_token`；读操作公开端点可不带（鉴权语义以 wiki 为准）。
+
+| 方法 | 调用 | 用途 |
+|---|---|---|
+| `UpdateGalgame(ctx, token, gid, req)` | PUT `/galgame/:gid` | 已发布条目直接编辑 |
+| `ListRevisions(ctx, gid, page, limit)` | GET `/galgame/:gid/revisions` | 修订历史列表 |
+| `GetRevision(ctx, gid, rev)` | GET `/galgame/:gid/revisions/:rev` | 单条修订快照 |
+| `GetRevisionDiff(ctx, gid, rev)` | GET `/galgame/:gid/revisions/:rev/diff` | 修订 diff |
+| `Revert(ctx, token, gid, req)` | POST `/galgame/:gid/revert` | 回滚到某修订 |
+| `SubmitPR(ctx, token, gid, req)` | POST `/galgame/:gid/prs` | 提交编辑请求（PR） |
+| `ListPRs(ctx, gid)` | GET `/galgame/:gid/prs` | PR 列表 |
+| `GetPR(ctx, gid, id)` | GET `/galgame/:gid/prs/:id` | PR 详情/diff |
+| `MergePR(ctx, token, gid, id)` | PUT `/galgame/:gid/prs/:id/merge` | 合并 PR |
+| `DeclinePR(ctx, token, gid, id, req)` | PUT `/galgame/:gid/prs/:id/decline` | 拒绝 PR |
+| `ListLinks/CreateLink/DeleteLink(ctx, [token,] gid, ...)` | GET/POST/DELETE `/galgame/:gid/links` | 链接增删查 |
+| `ListAliases/CreateAlias/DeleteAlias(ctx, [token,] gid, ...)` | GET/POST/DELETE `/galgame/:gid/aliases` | 别名增删查 |
+| `ListContributors(ctx, gid)` / `DeleteContributor(ctx, token, gid, uid)` | GET / DELETE `/galgame/:gid/contributors[/:uid]` | 贡献者查/删 |
+| `Tag{List,Search,Get,Create,Update,Delete}` | GET/POST/PUT/DELETE `/tag*` | tag 分类轴全 CRUD |
+| `Official{List,Search,Get,Create,Update,Delete}` | GET/POST/PUT/DELETE `/official*` | official 全 CRUD |
+| `Engine{List,Get,Create,Update,Delete}` | GET/POST/PUT/DELETE `/engine*` | engine 全 CRUD |
+| `Series{List,Search,Get,Create,Modal,Update,Delete}` | GET/POST/PUT/DELETE `/series*` | series 全 CRUD |
 
 ### 5.2 服务到服务方法（Basic Auth）
 
@@ -544,6 +570,8 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 - **期一**：场景 A + B（已发布选用 + VNDB 草稿认领）—— 8 人天
 - **期二**：场景 D（新建提交 + 审核）+ 我的提交页 + cron —— 5 人天
 
+> ⚠️ **上表仅覆盖投稿流，不含 §15 的编辑面**（PR / 修订历史 / 关系 / 分类轴增删改）。§15 是后追加的强制范围，需**额外**估算并排期——且 **kungal 与 moyu 各算一份**（两站不共享前端，后端代理也各写一份）。新增 `期三`：galgame 编辑面全量代理 + UI（两站各一套），按端点数量另行评估。
+
 ---
 
 ## 13. 上线 checklist
@@ -587,16 +615,56 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 
 ---
 
-## 15. 不在范围内
+## 15. kungal / moyu 必须各自完整实现的 galgame 编辑面（强制，全覆盖）
+
+> **方向变更（强制）**：galgame 的编辑类操作——PR 编辑、修订历史操作、关系（links/aliases/contributors）增删、分类轴（tag/official/engine/series）增删改——**不再是「wiki-only，下游不做」**。wiki 仍是数据唯一可信源（SoT）与服务端逻辑实现方，但**面向用户的完整功能必须在 kungal 和 moyu 各自落地一份**：每一站都要做后端代理（透传用户 access_token）+ 前端 UI，**功能与 wiki 端一一对齐，不得删减、不得只做子集**。kungal 一份、moyu 一份，二者覆盖范围相同。
+
+### 15.1 强制清单（每一项 kungal 与 moyu 都要各做一份）
+
+| 域 | wiki 端点 | 鉴权 | 下游必须做 |
+|---|---|---|---|
+| **已发布条目直接编辑** | `PUT /galgame/:gid` | Bearer（创建者/admin） | 后端代理 + 前端编辑表单 |
+| **修订历史 — 列表** | `GET /galgame/:gid/revisions` | 公开 | 后端代理 + 历史列表 UI |
+| **修订历史 — 单条** | `GET /galgame/:gid/revisions/:rev` | 公开 | 后端代理 + 快照查看 UI |
+| **修订历史 — diff** | `GET /galgame/:gid/revisions/:rev/diff` | 公开 | 后端代理 + diff 视图 |
+| **修订历史 — 回滚** | `POST /galgame/:gid/revert` | Bearer | 后端代理 + 回滚操作入口 |
+| **PR — 提交编辑请求** | `POST /galgame/:gid/prs` | Bearer | 后端代理 + PR 提交表单 |
+| **PR — 列表** | `GET /galgame/:gid/prs` | 公开 | 后端代理 + PR 列表 UI |
+| **PR — 详情** | `GET /galgame/:gid/prs/:id` | 公开 | 后端代理 + PR 详情/diff UI |
+| **PR — 合并** | `PUT /galgame/:gid/prs/:id/merge` | Bearer | 后端代理 + 合并操作 |
+| **PR — 拒绝** | `PUT /galgame/:gid/prs/:id/decline` | Bearer | 后端代理 + 拒绝操作 |
+| **关系 — 链接** | `GET/POST/DELETE /galgame/:gid/links` | 写需 Bearer | 后端代理 + 链接编辑 UI |
+| **关系 — 别名** | `GET/POST/DELETE /galgame/:gid/aliases` | 写需 Bearer | 后端代理 + 别名编辑 UI |
+| **关系 — 贡献者** | `GET /galgame/:gid/contributors`、`DELETE /galgame/:gid/contributors/:uid` | 写需 Bearer | 后端代理 + 贡献者管理 UI |
+| **分类轴 — tag** | `GET /tag*`、`POST /tag`、`PUT /tag`、`DELETE /tag/:id` | 创建=任意登录用户；改/删=admin/mod | 后端代理 + tag 选择/新建/编辑 UI |
+| **分类轴 — official** | `GET /official*`、`POST /official`、`PUT /official`、`DELETE /official/:id` | 同 tag | 后端代理 + UI |
+| **分类轴 — engine** | `GET /engine*`、`POST /engine`、`PUT /engine`、`DELETE /engine/:id` | 同 tag | 后端代理 + UI |
+| **分类轴 — series** | `GET /series*`、`POST /series`、`POST /series/modal`、`PUT /series/:id`、`DELETE /series/:id` | 创建=任意登录用户；删=admin/mod | 后端代理 + 系列管理 UI |
+
+> `POST /tag` `POST /official` `POST /engine` 为本次新增（详见 [04-taxonomy.md](./04-taxonomy.md)）：任意登录用户可为「VNDB 没有的原创/同人作品」新建尚不存在的 tag/会社/引擎；改/删仍限 admin/moderator（role > 1，普通用户 role=1 一律 403）。下游发布/编辑向导**必须**接入这套「选已有 + 没有就新建」的交互，kungal 与 moyu 各一份。
+>
+> `DELETE /tag|official|engine/:id` 为**安全两段式**（同 `DELETE /admin/image/:hash?force=true` 约定）：默认若仍被任意 galgame 引用则**拒绝**（返回引用数，避免静默把分类从 N 个作品上摘掉）；`?force=true` 才一键「清除全部引用 → 硬删」，返回 `{deleted,forced,purged_relations[,purged_aliases]}` 审计摘要。下游若做分类管理 UI，删除按钮需走「先尝试普通 DELETE → 命中拒绝则二次确认后带 `?force=true`」两步交互。
+
+### 15.2 落地要求
+
+- **后端**：每个端点都要在 kungal 与 moyu 各实现一个代理方法（用户态调用一律透传用户 `access_token`，**严禁**下游自行解 JWT 改 `user_id`）。SDK 方法清单见 §5，已扩充编辑面。
+- **前端**：每个操作都要有对应 UI，两站功能对齐；不允许「kungal 做了 PR、moyu 不做」这类不对称。
+- **一致性**：wiki 后续新增/变更任一编辑端点，kungal 与 moyu **都要**同步补齐，保持三处行为一致（wiki 服务端 + kungal 代理/UI + moyu 代理/UI）。
+- **鉴权语义**：以 wiki 端为准（创建者/admin、admin/moderator、任意登录用户），下游不得放宽或收紧。
+
+---
+
+## 16. 不在范围内
 
 显式说明，避免重复确认：
 
-- ❌ **VNDB 同步**：wiki 自己每日跑 `sync-vndb` cron 维护 status=2 草稿库存。moyu 不参与
-- ❌ **galgame 元数据修改的 PR 流程**：用户对已发布 galgame 的修订走 wiki 自身的 PR 系统（`POST /galgame/:gid/prs`），moyu 不代理也不奖励（PR 合并奖励在 wiki 端做或留到未来）
-- ❌ **同步用户提交的"评分/评论/资源"**：这些是 moyu 本地数据，跟 wiki 完全无关
+- ❌ **VNDB 同步**：wiki 自己每日跑 `sync-vndb` cron 维护 status=2 草稿库存。下游不参与
+- ❌ **同步用户提交的"评分/评论/资源"**：这些是 kungal/moyu 本地数据，跟 wiki 完全无关
 - ❌ **kungal/moyu 之间任何直接通信**：两站不互相调用，都通过 wiki + OAuth 间接联动
-- ❌ **wiki admin UI**：wiki 自己的 web 端有审核队列页面（`apps/wiki/app/pages/review/`），moyu 不需要做 admin 后台
+- ❌ **wiki 审核队列（admin moderation）UI**：投稿审核队列（approve/decline/ban，`apps/wiki/app/pages/review/`）是 admin 专属、wiki 自有页面，下游不做。**注意**：这指的是「审核队列」，不含 §15 列出的 PR/修订/关系/分类**编辑面**——后者下游必须各做一份
 - ❌ **跨站合并重复提交**：admin 在 wiki 后台手动 ban 或 decline，不做自动 dedupe
+
+> ⚠️ 历史版本曾把「PR 流程 / 修订 / 关系 / 分类编辑」列为下游不在范围内——**该结论已作废**，现按 §15 强制要求 kungal 与 moyu 各自完整实现。
 
 ---
 

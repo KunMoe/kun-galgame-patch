@@ -22,6 +22,8 @@
 | 08 | [messages.md](./08-messages.md) | 消息系统（投稿事件流，wiki 单一来源） |
 | 99 | [appendix.md](./99-appendix.md) | 错误码、端点总览、Meilisearch 运维 |
 
+> 🔴 **强制范围变更**：galgame 的编辑面（PR、修订历史、关系、分类轴增删改）**不再是 wiki-only**——kungal 与 moyu **各自必须完整实现一份**（后端代理 + 前端 UI，与 wiki 对齐）。权威清单见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+
 ---
 
 ## 响应格式

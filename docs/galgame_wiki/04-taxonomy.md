@@ -1,5 +1,7 @@
 > [📖 文档索引](./README.md) · 上一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md) · 下一节：[05 — 搜索](./05-search.md)
 
+> 🔴 **下游强制范围**：本节 tag / official / engine / series 的增删改查（含本次新增的 `POST /tag` `POST /official` `POST /engine` 与各 `DELETE`），**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端「选已有/没有就新建」UI，功能与 wiki 对齐，不得只做子集）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+
 ## 标签 (Tag)
 
 ### GET /tag
@@ -71,6 +73,45 @@
 
 事务内替换全部别名。
 
+### POST /tag
+
+新建标签。**需要认证（任意登录用户）** —— 这是为了让 kungal/moyu 用户给「VNDB 没有的原创 / 同人作品」补一个 wiki 里尚不存在的 tag（与 `POST /series` 同权限模型）。
+
+```json
+{
+  "name": "标签名",
+  "category": "content",
+  "description": "可选描述",
+  "alias": ["别名1", "别名2"]
+}
+```
+
+- `category` 必填，取值 `content` / `sexual` / `technical`。
+- 同名已存在 → `400`，`message` 提示「已存在同名 tag」（name 全局唯一）。前端遇此应改用 `GET /tag/search` 选用既有 tag。
+- 成功返回新建的 tag 实体（含 `id`），随后写入 Meilisearch。
+
+### DELETE /tag/:id
+
+删除标签。**需要 role > 1（admin/moderator；普通用户 role=1 一律 403）**。
+
+安全默认 + 强制清除两段式（同 `DELETE /admin/image/:hash?force=true` 约定）：
+
+- **默认（不带 `?force=true`）**：若该 tag 仍被任意 galgame 引用 → **拒绝**，返回
+  `code:7`，message 含被引用的 galgame 数。避免一删就静默把它从 N 个作品上摘掉。
+- **`?force=true`**：一键「清除全部引用 → 硬删」。事务内级联删除该 tag 的别名
+  （`galgame_tag_alias`）与全部 `galgame_tag_relation` 关联，再硬删 tag 行，并从
+  Meilisearch 移除，无悬挂引用。
+- 引用数为 0 时，带不带 `force` 都直接删（无引用可清）。
+
+成功响应：
+
+```json
+{ "deleted": true, "forced": true, "purged_relations": 2, "purged_aliases": 0 }
+```
+
+`forced` 表示本次是「带 force 且确实清理了引用」。`purged_relations` / `purged_aliases`
+为本次清掉的行数（审计用）。
+
 ---
 
 ## 开发商 (Official)
@@ -123,6 +164,30 @@
 }
 ```
 
+### POST /official
+
+新建开发商 / 会社。**需要认证（任意登录用户）**，同 `POST /tag` 的用途与权限模型。
+
+```json
+{
+  "name": "会社名",
+  "category": "company",
+  "original": "原文名（可选，日文等）",
+  "link": "https://...（可选）",
+  "lang": "ja（可选）",
+  "description": "可选描述",
+  "alias": ["别名1"]
+}
+```
+
+- `category` 必填，取值 `company` / `individual` / `amateur`。
+- 同名已存在 → `400`「已存在同名 official」（name 全局唯一）。
+- 成功返回新建实体，写入 Meilisearch。
+
+### DELETE /official/:id
+
+删除开发商。**需要 role > 1（admin/moderator）**。与 [`DELETE /tag/:id`](#delete-tagid) 完全同款两段式：默认被引用则**拒绝**（返回引用数），`?force=true` 才一键清除别名（`galgame_official_alias`）+ `galgame_official_relation` 后硬删并移出 Meilisearch；成功返回 `{deleted,forced,purged_relations,purged_aliases}`。
+
 ---
 
 ## 引擎 (Engine)
@@ -160,6 +225,26 @@
 ```
 
 引擎的 `alias` 以 JSONB 数组存储（与 tag/official 的关联表不同）。
+
+### POST /engine
+
+新建引擎。**需要认证（任意登录用户）**，同 `POST /tag` 的用途与权限模型。
+
+```json
+{
+  "name": "引擎名",
+  "description": "可选描述",
+  "alias": ["别名1"]
+}
+```
+
+- 同名已存在 → `400`「已存在同名 engine」（name 全局唯一）。
+- 引擎**不进 Meilisearch**（无 `/engine/search`），故无搜索写回。
+- 成功返回新建实体。
+
+### DELETE /engine/:id
+
+删除引擎。**需要 role > 1（admin/moderator）**。同款两段式：默认被引用则**拒绝**（返回引用数），`?force=true` 才一键清除 `galgame_engine_relation` 后硬删（引擎别名为行内 JSONB，随行删除；引擎不进 Meili，无索引移除）；成功返回 `{deleted,forced,purged_relations}`（无 `purged_aliases`，引擎无别名表）。
 
 ---
 

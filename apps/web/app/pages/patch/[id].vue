@@ -37,10 +37,15 @@ const currentTab = computed(() => {
   return last
 })
 
+// "编辑历史" / "编辑请求" tabs proxy the Wiki revision/PR surface that
+// handbook §15 makes mandatory for moyu (pages/patch/[id]/revisions.vue,
+// prs.vue).
 const tabs = computed(() => [
   { key: 'introduction', title: 'Galgame 信息', href: `/patch/${galgameId.value}/introduction` },
   { key: 'resource', title: '补丁资源下载', href: `/patch/${galgameId.value}/resource` },
-  { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` }
+  { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` },
+  { key: 'revisions', title: '编辑历史', href: `/patch/${galgameId.value}/revisions` },
+  { key: 'prs', title: '编辑请求', href: `/patch/${galgameId.value}/prs` }
 ])
 </script>
 

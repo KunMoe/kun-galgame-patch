@@ -88,6 +88,36 @@ func (a *App) RegisterRoutes() {
 	api.Patch("/galgame/:gid", auth, a.PatchHandler.PatchGalgameDraft)
 	api.Delete("/galgame/:gid", auth, a.PatchHandler.DeleteGalgameDraft)
 
+	// ===== Galgame editing surface (handbook §15, MANDATORY full proxy) =====
+	//
+	// docs/galgame_wiki/00-handbook-for-downstream.md §15 REVOKES the old
+	// "wiki-only, downstream doesn't implement editing" stance: moyu must now
+	// fully proxy Wiki's revision / PR / relation editing (back end + UI).
+	// Every route below is a verbatim pass-through (a.PatchHandler.WikiEditProxy
+	// / WikiPRSubmit) that mirrors the Wiki path 1:1. Reads use optionalAuth
+	// (token forwarded only if logged in); writes use auth so a Bearer exists.
+	// Wiki enforces creator/admin; we forward its code+message verbatim.
+	//
+	// Registered AFTER the literal /galgame/{mine,submit,search,messages,:gid}
+	// routes above so Fiber's order-based matching keeps them intact.
+	api.Get("/galgame/:gid/revisions", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/revisions/:rev", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/revisions/:rev/diff", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Post("/galgame/:gid/revert", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/prs", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/prs/:prid", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Post("/galgame/:gid/prs", auth, a.PatchHandler.WikiPRSubmit)
+	api.Put("/galgame/:gid/prs/:prid/merge", auth, a.PatchHandler.WikiEditProxy)
+	api.Put("/galgame/:gid/prs/:prid/decline", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/links", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Post("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/aliases", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Post("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/galgame/:gid/contributors", optionalAuth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/galgame/:gid/contributors/:uid", auth, a.PatchHandler.WikiEditProxy)
+
 	// ===== User Routes =====
 	//
 	// Profile mutations (username/bio/password/email/avatar) live on OAuth and
@@ -156,10 +186,45 @@ func (a *App) RegisterRoutes() {
 	// D12: "orphan patches" whose galgame is missing in Wiki, for admin manual handling
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
 
-	// NOTE: /tag/* and /company/* routes are deprecated per D11 (2026-04-21).
-	// tag / company metadata is fully owned by the Galgame Wiki Service;
-	// the frontend calls Wiki endpoints like /tag /tag/search /official /official/search directly.
-	// "Find patches by tag/company" is served via /api/search with tag_ids/official_ids params.
+	// ===== Galgame taxonomy proxy (handbook §15, MANDATORY full proxy) =====
+	//
+	// SUPERSEDES the old D11 note ("frontend calls Wiki /tag /official directly,
+	// downstream skips tag/company"): handbook §15 now REQUIRES moyu to fully
+	// proxy + build UI for tag / official / engine / series CRUD — including the
+	// new POST creators (any logged-in user may add a tag/official/engine for an
+	// original/doujin work VNDB lacks; same permission model as POST /series).
+	// Pure pass-through; Wiki enforces role (GET public; POST any logged-in
+	// user; PUT/DELETE admin/moderator) and we forward its code+message.
+	// Literal sub-paths are registered before :name/:id params so Fiber's
+	// order-based matcher resolves /tag/search before /tag/:name, etc.
+	api.Get("/tag", a.PatchHandler.WikiEditProxy)
+	api.Get("/tag/search", a.PatchHandler.WikiEditProxy)
+	api.Get("/tag/multi", a.PatchHandler.WikiEditProxy)
+	api.Post("/tag", auth, a.PatchHandler.WikiEditProxy)
+	api.Put("/tag", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/tag/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/tag/:name", a.PatchHandler.WikiEditProxy)
+
+	api.Get("/official", a.PatchHandler.WikiEditProxy)
+	api.Get("/official/search", a.PatchHandler.WikiEditProxy)
+	api.Post("/official", auth, a.PatchHandler.WikiEditProxy)
+	api.Put("/official", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/official/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/official/:name", a.PatchHandler.WikiEditProxy)
+
+	api.Get("/engine", a.PatchHandler.WikiEditProxy)
+	api.Post("/engine", auth, a.PatchHandler.WikiEditProxy)
+	api.Put("/engine", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/engine/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/engine/:name", a.PatchHandler.WikiEditProxy)
+
+	api.Get("/series", a.PatchHandler.WikiEditProxy)
+	api.Get("/series/search", a.PatchHandler.WikiEditProxy)
+	api.Post("/series/modal", auth, a.PatchHandler.WikiEditProxy)
+	api.Post("/series", auth, a.PatchHandler.WikiEditProxy)
+	api.Put("/series/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/series/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/series/:id", a.PatchHandler.WikiEditProxy)
 
 	// ===== Common Routes =====
 	api.Get("/home", a.CommonHandler.GetHome)
