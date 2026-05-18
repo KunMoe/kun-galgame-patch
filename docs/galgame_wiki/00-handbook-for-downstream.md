@@ -644,6 +644,14 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 > `POST /tag` `POST /official` `POST /engine` 为本次新增（详见 [04-taxonomy.md](./04-taxonomy.md)）：任意登录用户可为「VNDB 没有的原创/同人作品」新建尚不存在的 tag/会社/引擎；改/删仍限 admin/moderator（role > 1，普通用户 role=1 一律 403）。下游发布/编辑向导**必须**接入这套「选已有 + 没有就新建」的交互，kungal 与 moyu 各一份。
 >
 > `DELETE /tag|official|engine/:id` 为**安全两段式**（同 `DELETE /admin/image/:hash?force=true` 约定）：默认若仍被任意 galgame 引用则**拒绝**（返回引用数，避免静默把分类从 N 个作品上摘掉）；`?force=true` 才一键「清除全部引用 → 硬删」，返回 `{deleted,forced,purged_relations[,purged_aliases]}` 审计摘要。下游若做分类管理 UI，删除按钮需走「先尝试普通 DELETE → 命中拒绝则二次确认后带 `?force=true`」两步交互。
+>
+> 🔴 **编辑某个 galgame 的多值字段（`tag_ids/official_ids/engine_ids/aliases/links` + `released`）= 经 `PUT /galgame/:gid`，presence 全量替换语义（务必看懂，否则编辑不生效或误清空）**：
+> - 这些字段与标量字段一样进 revision/快照/PR-diff（集合语义，顺序无关），一次编辑 = **一条原子 revision**。
+> - **不传该字段** = 该集合**保持不变**（只改名字时不会动 tag/别名）。
+> - **传数组（含空 `[]`）** = **权威全量集合**，服务端"清空旧的 → 按此重建"；`[]` = 清空全部。
+> - 因此 kungal/moyu 的 galgame 编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增删后整体回传），**绝不能只传"新增/删除的那几个"**——会被当成"替换成只剩这几个"。这是之前"kungal 改 tag/engine/official 不生效"的根因（旧实现整段忽略；现已按 snapshot overlay 根治，详见 [docs/galgame_wiki/01-revision-system-design.md §1.5/§6.1/§6.2](../../galgame_wiki/01-revision-system-design.md)）。
+> - `aliases`/`links` 现已是本端点一等字段（推荐整表单一次性提交，单条原子 revision）；`/galgame/:gid/aliases|links` 增删端点保留为便捷糖。`released`（发售日期）现也可编辑。`bid`/Bangumi ID 为保留字段，sync 托管，暂不可编辑。
+> - 不变量：create/submit/update/patch/merge/revert **全部走同一个 ApplySnapshot 写入路径**，`Snapshot` 每个可编辑字段都能被编辑 API 改到（`bid` 是唯一保留例外），有单测护栏防回归。
 
 ### 15.2 落地要求
 

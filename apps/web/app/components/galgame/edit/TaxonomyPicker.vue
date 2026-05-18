@@ -47,13 +47,26 @@ const CATEGORIES: Record<Kind, { value: string; label: string }[]> = {
   engine: []
 }
 
-// Selected chips (id + name). Seed from `initial`; ids the parent doesn't have
-// names for show as "#id".
-const picked = ref<Picked[]>(
-  props.modelValue.map(
+// Selected chips (id + name). Seed from `initial`; ids the parent doesn't
+// have names for show as "#id" (backfilled later from search results).
+const seedFrom = (ids: number[]): Picked[] =>
+  ids.map(
     (id) =>
+      picked.value?.find((p) => p.id === id) ??
       props.initial?.find((p) => p.id === id) ?? { id, name: `#${id}` }
   )
+const picked = ref<Picked[]>([])
+picked.value = seedFrom(props.modelValue)
+
+// Re-seed if the parent sets modelValue AFTER mount (e.g. detail resolved on
+// client-side navigation). Guard against the echo from our own sync().
+watch(
+  () => props.modelValue,
+  (nv) => {
+    const cur = picked.value.map((p) => p.id)
+    if (nv.length === cur.length && nv.every((x) => cur.includes(x))) return
+    picked.value = seedFrom(nv)
+  }
 )
 
 const sync = () =>
@@ -118,6 +131,14 @@ const runSearch = async () => {
       results.value = kw
         ? all.filter((e) => e.name.toLowerCase().includes(kw))
         : all.slice(0, 30)
+    }
+    // Backfill real names onto prefilled chips that are still "#id"
+    // (notably engine, which has no `initial` source).
+    for (const p of picked.value) {
+      if (p.name.startsWith('#')) {
+        const hit = results.value.find((r) => r.id === p.id)
+        if (hit) p.name = hit.name
+      }
     }
   } finally {
     searching.value = false

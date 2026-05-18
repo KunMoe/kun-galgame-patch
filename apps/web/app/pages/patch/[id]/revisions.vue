@@ -11,6 +11,7 @@ import type {
   GalgameRevisionDetail,
   GalgameDiff
 } from '~/composables/useGalgameEdit'
+import type { KunUIColor } from '~/components/kun/ui/type'
 
 const route = useRoute()
 const gid = computed(() => Number(route.params.id))
@@ -42,14 +43,14 @@ const totalPage = computed(() =>
   Math.max(1, Math.ceil((data.value?.total ?? 0) / limit))
 )
 
-const ACTION_LABEL: Record<string, { text: string; color: string }> = {
+const ACTION_LABEL: Record<string, { text: string; color: KunUIColor }> = {
   created: { text: '创建', color: 'primary' },
   updated: { text: '更新', color: 'default' },
   merged: { text: 'PR 合并', color: 'success' },
   reverted: { text: '回滚', color: 'warning' },
   declined: { text: '拒绝', color: 'danger' }
 }
-const actionOf = (a: string) =>
+const actionOf = (a: string): { text: string; color: KunUIColor } =>
   ACTION_LABEL[a] ?? { text: a, color: 'default' }
 
 // ─── Snapshot / diff modal ────────────────────────────

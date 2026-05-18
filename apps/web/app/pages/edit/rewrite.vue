@@ -41,10 +41,9 @@ const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
   }
 )
 
-// Wiki accepts these literal values (see 01-galgame.md). For original_language
-// we mirror the four-language UI that lives elsewhere on the site.
-const CONTENT_LIMIT_OPTIONS = ['sfw', 'nsfw'] as const
-const AGE_LIMIT_OPTIONS = ['all', 'r18'] as const
+// content_limit / age_limit use literal radio inputs in the template; only
+// original_language needs an options list (mirrors the four-language UI used
+// elsewhere on the site). See docs/galgame_wiki/01-galgame.md.
 const ORIGINAL_LANG_OPTIONS = [
   { value: '', label: '保持不变' },
   { value: 'ja-jp', label: '日本語' },
@@ -100,16 +99,32 @@ onBeforeUnmount(() => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
 
-// ─── Taxonomy (handbook §15: implemented in-site, no longer punted to Wiki) ──
-// /patch/:id/detail does not surface tag/official/engine ids, so the pickers
-// start empty. Edits are opt-in (a checkbox) because Wiki uses replace-all
-// semantics — submitting empty id arrays would otherwise WIPE existing
-// tags/officials/engines. series_id is edited the same way.
-const editTaxonomy = ref(false)
+// ─── Taxonomy (handbook §15 / 01-galgame.md PUT presence semantics) ──────────
+// tag_ids/official_ids/engine_ids on PUT /galgame/:gid are PRESENCE-based
+// full-replace: omit = unchanged; send array = authoritative full set
+// (rebuilt server-side; [] = clear all). So the form is PREFILLED with the
+// galgame's CURRENT full set (from /patch/:id/detail, which the enricher
+// already surfaces as tags[]/officials[]/wiki_engine_ids[]); the user
+// add/removes on top, and buildPayload sends a field ONLY when its set
+// actually changed — never a partial list (would silently wipe the rest).
 const tagIds = ref<number[]>([])
 const officialIds = ref<number[]>([])
 const engineIds = ref<number[]>([])
 const seriesId = ref<number | null>(null)
+// Original sets captured from detail, for order-independent change detection.
+const origTagIds = ref<number[]>([])
+const origOfficialIds = ref<number[]>([])
+const origEngineIds = ref<number[]>([])
+// Resolved {id,name} so the picker chips show names, not "#id".
+const tagInitial = ref<{ id: number; name: string }[]>([])
+const officialInitial = ref<{ id: number; name: string }[]>([])
+
+// Order-independent set equality for the id arrays.
+const sameIdSet = (a: number[], b: number[]): boolean => {
+  if (a.length !== b.length) return false
+  const s = new Set(a)
+  return b.every((x) => s.has(x))
+}
 
 watch(
   detail,
@@ -134,6 +149,23 @@ watch(
     // edit it as a fresh value.
     form.aliases = ''
     form.is_minor = false
+
+    // Prefill the CURRENT full association sets (presence semantics: we must
+    // round-trip the whole set, never just the deltas).
+    const tIds = (d.tags ?? []).map((t) => t.id)
+    const oIds = (d.officials ?? []).map((o) => o.id)
+    const eIds = d.wiki_engine_ids ?? []
+    origTagIds.value = tIds
+    origOfficialIds.value = oIds
+    origEngineIds.value = eIds
+    tagIds.value = [...tIds]
+    officialIds.value = [...oIds]
+    engineIds.value = [...eIds]
+    tagInitial.value = (d.tags ?? []).map((t) => ({ id: t.id, name: t.name }))
+    officialInitial.value = (d.officials ?? []).map((o) => ({
+      id: o.id,
+      name: o.name
+    }))
   },
   { immediate: true }
 )
@@ -168,14 +200,20 @@ const buildPayload = () => {
   // so sending "" would wipe out existing aliases).
   if (form.aliases.trim()) payload.aliases = form.aliases.trim()
 
-  // Taxonomy / series — opt-in replace-all (see editTaxonomy comment above).
-  if (editTaxonomy.value) {
+  // Associations: send the WHOLE current set, but only when it actually
+  // changed vs the prefilled original (avoids spurious revisions; an
+  // unchanged field is omitted = "leave unchanged" per presence semantics).
+  // When changed we send the full array (incl. [] to clear) — never a delta.
+  if (!sameIdSet(tagIds.value, origTagIds.value))
     payload.tag_ids = tagIds.value
+  if (!sameIdSet(officialIds.value, origOfficialIds.value))
     payload.official_ids = officialIds.value
+  if (!sameIdSet(engineIds.value, origEngineIds.value))
     payload.engine_ids = engineIds.value
-    if (seriesId.value != null && seriesId.value > 0)
-      payload.series_id = seriesId.value
-  }
+  // series_id is a plain optional scalar (not part of the §presence note);
+  // only send when the user explicitly set a positive id.
+  if (seriesId.value != null && seriesId.value > 0)
+    payload.series_id = seriesId.value
 
   payload.is_minor = form.is_minor
   return payload
@@ -406,42 +444,38 @@ const handleSubmit = async () => {
         </section>
 
         <section class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold">标签 / 会社 / 引擎 / 系列</h3>
-            <label class="text-default-600 flex items-center gap-2 text-sm">
-              <input
-                v-model="editTaxonomy"
-                type="checkbox"
-                class="accent-primary"
-              />
-              修改这些字段
-            </label>
-          </div>
+          <h3 class="text-lg font-semibold">标签 / 会社 / 引擎 / 系列</h3>
           <p class="text-default-500 text-xs">
-            勾选后才会提交；提交时<strong>替换</strong>整个集合（Wiki 语义），
-            请把要保留的也一并选上。可直接「没有？新建」补 VNDB 缺失的条目。
-            需要重命名 / 删除已有分类？前往
+            下方已<strong>预填该作品当前的全部</strong>标签 / 会社 / 引擎，在此基础上
+            增删即可——提交时按整体集合替换（presence 语义），只有改动过的项才会提交。
+            没有的条目可直接「没有？新建」。需要重命名 / 删除已有分类？前往
             <NuxtLink to="/galgame/taxonomy" class="text-primary hover:underline">
               分类管理
             </NuxtLink>
             。
           </p>
-          <template v-if="editTaxonomy">
-            <GalgameEditTaxonomyPicker v-model="tagIds" kind="tag" />
-            <GalgameEditTaxonomyPicker v-model="officialIds" kind="official" />
-            <GalgameEditTaxonomyPicker v-model="engineIds" kind="engine" />
-            <label class="block">
-              <span class="text-default-700 text-sm">系列 ID（可选）</span>
-              <KunInput
-                :model-value="seriesId ?? ''"
-                type="number"
-                placeholder="留空表示不归属系列"
-                @update:model-value="
-                  seriesId = $event === '' ? null : Number($event)
-                "
-              />
-            </label>
-          </template>
+          <GalgameEditTaxonomyPicker
+            v-model="tagIds"
+            kind="tag"
+            :initial="tagInitial"
+          />
+          <GalgameEditTaxonomyPicker
+            v-model="officialIds"
+            kind="official"
+            :initial="officialInitial"
+          />
+          <GalgameEditTaxonomyPicker v-model="engineIds" kind="engine" />
+          <label class="block">
+            <span class="text-default-700 text-sm">系列 ID（可选）</span>
+            <KunInput
+              :model-value="seriesId ?? ''"
+              type="number"
+              placeholder="留空表示不修改系列归属"
+              @update:model-value="
+                seriesId = $event === '' ? null : Number($event)
+              "
+            />
+          </label>
         </section>
 
         <section class="space-y-3">

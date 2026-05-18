@@ -11,10 +11,12 @@ import type {
   GalgamePRDetail,
   GalgameEditFields
 } from '~/composables/useGalgameEdit'
+import type { KunUIColor } from '~/components/kun/ui/type'
 
 const route = useRoute()
 const gid = computed(() => Number(route.params.id))
 const ge = useGalgameEdit()
+const api = useApi()
 const userStore = useUserStore()
 
 const page = ref(1)
@@ -36,7 +38,7 @@ const totalPage = computed(() =>
   Math.max(1, Math.ceil((data.value?.total ?? 0) / limit))
 )
 
-const PR_STATUS: Record<number, { text: string; color: string }> = {
+const PR_STATUS: Record<number, { text: string; color: KunUIColor }> = {
   0: { text: '待处理', color: 'warning' },
   1: { text: '已合并', color: 'success' },
   2: { text: '已拒绝', color: 'danger' }
@@ -54,13 +56,59 @@ const form = reactive({
   aliasesText: '',
   note: ''
 })
+// Associations follow the SAME presence/replace-all semantics as
+// PUT /galgame/:gid (docs/galgame_wiki/02 §PR + 01 §presence note): a PR that
+// touches tag_ids must carry the WHOLE set, not a delta. So we prefill the
+// galgame's current full set (from /patch/:id/detail, surfaced by the
+// enricher) and only include a field in the PR when its set actually changed.
 const tagIds = ref<number[]>([])
 const officialIds = ref<number[]>([])
 const engineIds = ref<number[]>([])
+const origTagIds = ref<number[]>([])
+const origOfficialIds = ref<number[]>([])
+const origEngineIds = ref<number[]>([])
+const tagInitial = ref<{ id: number; name: string }[]>([])
+const officialInitial = ref<{ id: number; name: string }[]>([])
 const bannerFile = ref<File | null>(null)
 const onBanner = (e: Event) => {
   bannerFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
 }
+
+const sameIdSet = (a: number[], b: number[]): boolean => {
+  if (a.length !== b.length) return false
+  const s = new Set(a)
+  return b.every((x) => s.has(x))
+}
+
+const { data: galgameDetail } = await useAsyncData<PatchDetail | null>(
+  () => `pr-detail-${gid.value}`,
+  async () => {
+    const res = await api.get<PatchDetail>(`/patch/${gid.value}/detail`)
+    return res.code === 0 ? res.data : null
+  },
+  { default: () => null }
+)
+watch(
+  galgameDetail,
+  (d) => {
+    if (!d) return
+    const tIds = (d.tags ?? []).map((t) => t.id)
+    const oIds = (d.officials ?? []).map((o) => o.id)
+    const eIds = d.wiki_engine_ids ?? []
+    origTagIds.value = tIds
+    origOfficialIds.value = oIds
+    origEngineIds.value = eIds
+    tagIds.value = [...tIds]
+    officialIds.value = [...oIds]
+    engineIds.value = [...eIds]
+    tagInitial.value = (d.tags ?? []).map((t) => ({ id: t.id, name: t.name }))
+    officialInitial.value = (d.officials ?? []).map((o) => ({
+      id: o.id,
+      name: o.name
+    }))
+  },
+  { immediate: true }
+)
 
 const buildPayload = (): GalgameEditFields => {
   const p: GalgameEditFields = {}
@@ -74,9 +122,12 @@ const buildPayload = (): GalgameEditFields => {
       .split(/[,，]/)
       .map((s) => s.trim())
       .filter(Boolean)
-  if (tagIds.value.length) p.tag_ids = tagIds.value
-  if (officialIds.value.length) p.official_ids = officialIds.value
-  if (engineIds.value.length) p.engine_ids = engineIds.value
+  // Full set, only when changed (never a partial list — would wipe the rest).
+  if (!sameIdSet(tagIds.value, origTagIds.value)) p.tag_ids = tagIds.value
+  if (!sameIdSet(officialIds.value, origOfficialIds.value))
+    p.official_ids = officialIds.value
+  if (!sameIdSet(engineIds.value, origEngineIds.value))
+    p.engine_ids = engineIds.value
   if (form.note.trim()) p.note = form.note.trim()
   return p
 }
@@ -115,11 +166,11 @@ const modalLoading = ref(false)
 const detail = ref<GalgamePRDetail | null>(null)
 const acting = ref(false)
 
-const openPR = async (prid: number) => {
+const openPR = async (prId: number) => {
   modalOpen.value = true
   modalLoading.value = true
   detail.value = null
-  const res = await ge.getPR(gid.value, prid)
+  const res = await ge.getPR(gid.value, prId)
   modalLoading.value = false
   if (res.code === 0) detail.value = res.data
   else useKunMessage(res.message || '加载 PR 失败', 'error')
@@ -188,13 +239,19 @@ const doDecline = async () => {
           label="别名（逗号分隔，替换全部）"
           placeholder="别名1, 别名2"
         />
+        <p class="text-default-500 text-xs">
+          下方已预填该作品当前的全部标签 / 会社 / 引擎，请在此基础上增删
+          （PR 同样按整体集合替换，不能只提交新增项）。
+        </p>
         <GalgameEditTaxonomyPicker
           v-model="tagIds"
           kind="tag"
+          :initial="tagInitial"
         />
         <GalgameEditTaxonomyPicker
           v-model="officialIds"
           kind="official"
+          :initial="officialInitial"
         />
         <GalgameEditTaxonomyPicker
           v-model="engineIds"

@@ -323,9 +323,24 @@ return r2.data.galgame
   "name_zh_cn": "新标题",
   "banner_image_hash": "abcd1234...ef",
   "intro_zh_cn": "新简介",
+  "released": "2019-08-16",
+  "aliases": ["别名A", "别名B"],
+  "links": [{"name": "官网", "link": "https://example.com"}],
+  "tag_ids": [1, 2, 3],
+  "official_ids": [1],
+  "engine_ids": [],
   "is_minor": false
 }
 ```
+
+> ⚠️ **多值字段（`tag_ids` / `official_ids` / `engine_ids` / `aliases` / `links`）= presence 语义全量替换，必须看懂**：
+> - **不传该字段** → 该 galgame 的对应集合**保持不变**（只改名字时绝不会清空 tag/别名）。
+> - **传数组（含空 `[]`）** → 该字段是**权威全量集合**：服务端"清空旧的 → 按此重建"。`[]` = 显式清空全部。
+> - 因此下游（kungal/moyu）编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增/删后整体回传），**不要只回传"新增的"那几个**——会被当成"替换成只剩这几个"。
+> - 与标量字段一致：传了就改、不传就不动。整个编辑是**一次事务、一条 revision**（原子；集合语义、顺序无关，进 revision 快照与 PR diff）。
+> - `released`（发售日期，原创/同人作品可填；空→`"unknown"`）现也可经此端点编辑。
+>
+> `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。
 
 `is_minor` 为 `true` 时标记为小修改，在版本历史中可被过滤。
 
