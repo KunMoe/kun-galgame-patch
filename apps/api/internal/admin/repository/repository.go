@@ -34,7 +34,7 @@ func (r *AdminRepository) GetComments(search string, offset, limit int) ([]patch
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Find(&comments).Error
 	return comments, total, err
 }
@@ -61,7 +61,7 @@ func (r *AdminRepository) GetResources(search string, offset, limit int) ([]patc
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Find(&resources).Error
 	return resources, total, err
 }
@@ -107,7 +107,7 @@ func (r *AdminRepository) GetLogs(offset, limit int) ([]adminModel.AdminLog, int
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Find(&logs).Error
 	return logs, total, err
 }
@@ -139,7 +139,7 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Find(&patches).Error
 	return patches, total, err
 }

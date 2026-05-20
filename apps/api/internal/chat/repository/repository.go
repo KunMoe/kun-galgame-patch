@@ -46,7 +46,7 @@ func (r *ChatRepository) ListRoomsByUser(uid int) ([]model.ChatRoom, error) {
 			WHERE chat_message.chat_room_id = chat_room.id
 			  AND chat_message.deleted_at IS NULL
 		)`).
-		Order("chat_room.last_message_time DESC").
+		Order("chat_room.last_message_time DESC, chat_room.id DESC").
 		Find(&rooms).Error
 	return rooms, err
 }
@@ -230,7 +230,7 @@ func (r *ChatRepository) LatestMessagePerRoom(roomIDs []int) (map[int]model.Chat
 func (r *ChatRepository) ListMembers(roomID int) ([]model.ChatMember, error) {
 	var members []model.ChatMember
 	err := r.db.Where("chat_room_id = ?", roomID).
-		Order("created ASC").
+		Order("created ASC, id ASC").
 		Find(&members).Error
 	return members, err
 }

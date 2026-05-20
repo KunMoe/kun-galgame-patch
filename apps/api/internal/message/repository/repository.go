@@ -36,7 +36,7 @@ func (r *MessageRepository) GetMessages(recipientID int, msgType string, offset,
 		return nil, 0, err
 	}
 	err := base.Session(&gorm.Session{}).
-		Order("created DESC").Offset(offset).Limit(limit).
+		Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Find(&messages).Error
 	return messages, total, err
 }

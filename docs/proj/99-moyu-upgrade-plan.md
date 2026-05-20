@@ -24,7 +24,7 @@
 | # | 内容 | 状态结论 | 优先级 |
 |---|---|---|---|
 | **M1** | 列表排序 `SortField/SortOrder` SQL 注入面**安全核实** | 🟢 **已审计通过**（2026-05-18，§4.1.5） | ~~P0~~ → P3（防御性加强可选） |
-| **M2** | 列表分页恒加 `id DESC` 兜底，修翻页漂移 | ✅ 必做 | P1 |
+| **M2** | 列表分页恒加 `id DESC` 兜底，修翻页漂移 | 🟢 **已完成**（2026-05-18，MOYU-PR1，§4.2.4） | ~~P1~~ → 关闭 |
 | **M3** | `patch_resource` 追加式文件历史表 `patch_resource_file_history` | ✅ 必做 | P1 |
 | **M4** | `GalgameEditDiffView` 升级为字符级 LCS diff（含长 intro_* 体验） | ✅ 必做 | P2 |
 | **M5** | 上传 session 属主/单次/COMPLETED 不变量核实加固 | ✅ 必做 | P2 |
@@ -397,6 +397,29 @@ if !allowedSort[req.SortField] { req.SortField = "created" }
 
 ---
 
+#### 4.2.4 实施记录（2026-05-18，MOYU-PR1）
+
+最终落地 **16 个 Order 调用点 × 6 个文件**（实施时全项目复查发现初版 §4.2.2 表漏列的 5 处，已一并修复）：
+
+| 文件 | 修改点 | 处理 |
+|---|---|---|
+| `internal/admin/repository/repository.go` | 37, 64, 110, 142（4 处分页 `Order("created DESC")`）| `, id DESC` 兜底；164 已有 `, id ASC` 跳过 |
+| `internal/patch/repository/repository.go` | 77（评论分页）、79（回复 Preload 内）、139（资源全量）| 77/139 加 `, id DESC`；79 加 `, id ASC`；59 `RANDOM()` 跳过 |
+| `internal/user/repository/repository.go` | 70/81/93/104/116（5 处用户子页：patches/resources/favorites/comments/contributions）| 全部 `, id DESC` |
+| `internal/common/handler.go` | 101/102/103（home top-N）、152/187（galgame/comment 列表 Sprintf）、270（resource 列表带 `patch_resource.` 前缀）、311（推荐 top-N）、474（user ranking switch 内 4 个 orderBy 字面量统一加 `, u.id DESC`）、529（patch ranking）| 全部兜底，注释说明 |
+| `internal/message/repository/repository.go` | 39（用户通知分页）| `, id DESC` |
+| `internal/chat/repository/repository.go` | 49（chat 房间列表）、233（房间成员列表）| 49 加 `, chat_room.id DESC`；233 加 `, id ASC`；其余 5 处本就是 `Order("id ASC/DESC")` 已稳定，跳过 |
+
+**验证**：
+- `go build ./...` ✅
+- `go vet ./...` ✅
+- `go test ./...` ✅（无回归）
+- 最终 grep `'Order('` 排除 `id (ASC|DESC)|RANDOM|orderBy)` 结果为空 → 全项目 Order 调用均已 id 兜底或为合法跳过
+
+无单测（项目当前无 list-pagination 集成测试基础设施；改动机械、SQL 语义明确，通过 build+vet+静态扫描三重校验）。后续若需要可在 `internal/testutil` 上加 PG 容器搭配场景测试。
+
+---
+
 ### 4.3 M3：`patch_resource` 文件历史表（P1）
 
 #### 4.3.1 问题
@@ -660,7 +683,7 @@ WHERE (patch_resource.status = 'ready' OR patch_resource.user_id = current_uid)
 | PR | 范围 | 依赖 |
 |---|---|---|
 | ~~MOYU-PR0~~ | ~~M1 SQL 注入审计~~ | 🟢 已审计无风险（§4.1.4） |
-| **MOYU-PR1** | M2 列表分页 `id DESC` 兜底（全项目一次性） | 无 |
+| ~~MOYU-PR1~~ | ~~M2 列表分页 `id DESC` 兜底（全项目一次性）~~ | 🟢 **已完成 2026-05-18**（§4.2.4，16 处） |
 | **MOYU-PR2** | W1 `released` → `release_date` 全链路（与 Wiki PR1 同期发版） | Wiki PR1 |
 
 ### Phase 2（Wiki U2 发版后）

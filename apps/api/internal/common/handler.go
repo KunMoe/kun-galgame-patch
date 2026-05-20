@@ -98,9 +98,9 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var comments []patchModel.PatchComment
 
-	h.db.Model(&patchModel.Patch{}).Order("created DESC").Limit(12).Find(&patches)
-	h.db.Model(&patchModel.PatchResource{}).Order("created DESC").Limit(6).Find(&resources)
-	h.db.Model(&patchModel.PatchComment{}).Order("created DESC").Limit(6).Find(&comments)
+	h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12).Find(&patches)
+	h.db.Model(&patchModel.PatchResource{}).Order("created DESC, id DESC").Limit(6).Find(&resources)
+	h.db.Model(&patchModel.PatchComment{}).Order("created DESC, id DESC").Limit(6).Find(&comments)
 
 	patchModel.RenderResourceNotes(resources)
 	for i := range comments {
@@ -149,7 +149,7 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	base.Session(&gorm.Session{}).Count(&total)
 
 	var patches []patchModel.Patch
-	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&patches).Error
 	if err != nil {
@@ -184,7 +184,7 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	base := h.db.Model(&patchModel.PatchComment{})
 	base.Session(&gorm.Session{}).Count(&total)
 
-	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s", req.SortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&comments).Error
 
@@ -267,7 +267,7 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 		sortField = "like_count"
 	}
 
-	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("patch_resource.%s %s", sortField, req.SortOrder)).
+	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("patch_resource.%s %s, patch_resource.id DESC", sortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
 		Find(&resources).Error
 
@@ -308,7 +308,7 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	const recTarget = 5
 	var recs []patchModel.PatchResource
 	h.db.Where("galgame_id = ? AND id != ? AND status = 0", resource.GalgameID, resource.ID).
-		Order("download DESC").Limit(recTarget).Find(&recs)
+		Order("download DESC, id DESC").Limit(recTarget).Find(&recs)
 
 	if len(recs) < recTarget {
 		var pool []patchModel.PatchResource
@@ -455,14 +455,16 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 		CommentCount  int64  `gorm:"column:comment_count"`
 	}
 
-	orderBy := "u.moemoepoint DESC"
+	// id tiebreaker (u.id DESC) appended to every branch for stable ordering
+	// when two users share the primary sort key (moemoepoint / count).
+	orderBy := "u.moemoepoint DESC, u.id DESC"
 	switch sortBy {
 	case "patch", "patch_count":
-		orderBy = "patch_count DESC, u.moemoepoint DESC"
+		orderBy = "patch_count DESC, u.moemoepoint DESC, u.id DESC"
 	case "resource", "resource_count":
-		orderBy = "resource_count DESC, u.moemoepoint DESC"
+		orderBy = "resource_count DESC, u.moemoepoint DESC, u.id DESC"
 	case "comment", "comment_count":
-		orderBy = "comment_count DESC, u.moemoepoint DESC"
+		orderBy = "comment_count DESC, u.moemoepoint DESC, u.id DESC"
 	}
 
 	var rows []row
@@ -526,7 +528,7 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 	var patches []patchModel.Patch
 	err := h.db.Model(&patchModel.Patch{}).
 		Where("status = 0").
-		Order(fmt.Sprintf("%s DESC", column)).
+		Order(fmt.Sprintf("%s DESC, id DESC", column)).
 		Limit(60).
 		Find(&patches).Error
 	if err != nil {

@@ -74,9 +74,9 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created ASC")
+			return db.Order("created ASC, id ASC")
 		}).
 		Find(&comments).Error
 
@@ -136,7 +136,7 @@ func (r *PatchRepository) DeleteCommentLike(id int) error {
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
 	err := r.db.Where("galgame_id = ?", patchID).
-		Order("created DESC").
+		Order("created DESC, id DESC").
 		Find(&resources).Error
 	return resources, err
 }

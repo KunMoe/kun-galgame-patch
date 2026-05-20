@@ -67,7 +67,7 @@ func (r *UserRepository) GetUserPatches(userID, offset, limit int) ([]patchModel
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
@@ -78,7 +78,7 @@ func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchMod
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&resources).Error
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&resources).Error
 	return resources, total, err
 }
 
@@ -90,7 +90,7 @@ func (r *UserRepository) GetUserFavorites(userID, offset, limit int) ([]patchMod
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
@@ -101,7 +101,7 @@ func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchMode
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&comments).Error
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&comments).Error
 	return comments, total, err
 }
 
@@ -113,7 +113,7 @@ func (r *UserRepository) GetUserContributions(userID, offset, limit int) ([]patc
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := base.Session(&gorm.Session{}).Order("created DESC").Offset(offset).Limit(limit).Find(&patches).Error
+	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
 }
 
