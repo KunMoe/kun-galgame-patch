@@ -53,7 +53,7 @@ galgame 索引文档约 30 字段，其中 `intro_zh_cn` / `_ja_jp` / `_en_us` /
 列表页通常只需要 5–7 个字段，建议显式指定：
 
 ```
-GET /galgame/search?q=fate&fields=id,vndb_id,name_zh_cn,name_ja_jp,name_en_us,banner,banner_image_hash,view,released
+GET /galgame/search?q=fate&fields=id,vndb_id,name_zh_cn,name_ja_jp,name_en_us,banner,effective_banner_hash,view,release_date,release_date_tba
 ```
 
 详情页可以省略 `fields` 拿全字段；或者显式列出需要的：
@@ -62,7 +62,7 @@ GET /galgame/search?q=fate&fields=id,vndb_id,name_zh_cn,name_ja_jp,name_en_us,ba
 GET /galgame/search?q=fate&fields=id,name_zh_cn,intro_zh_cn,tag_names,official_names
 ```
 
-可投影的字段就是索引文档的 [Galgame schema 全部字段](./01-galgame.md#get-galgamegid)（`id`, `vndb_id`, `name_*`, `banner`, `banner_image_hash`, `intro_*`, `content_limit`, `age_limit`, `original_language`, `view`, `released`, `released_year`, `released_ts`, `tag_ids`, `tag_names`, `official_ids`, `official_names`, `engine_ids`, `engine_names`, `series_id`, `created_ts`, `updated_ts` 等）。
+可投影的字段就是索引文档的 [Galgame schema 全部字段](./01-galgame.md#get-galgamegid)（`id`, `vndb_id`, `name_*`, `banner`, `effective_banner_hash`, `intro_*`, `content_limit`, `age_limit`, `original_language`, `view`, `release_date`, `release_date_tba`, `released_year`, `released_ts`, `tag_ids`, `tag_names`, `official_ids`, `official_names`, `engine_ids`, `engine_names`, `series_id`, `created_ts`, `updated_ts` 等）。
 
 > 注：本字段只控制**返回**的 attributes，不影响搜索 / 过滤范围。比如 `fields=id` 仍然会按全文匹配（不会因为 `name_*` 没在 `fields` 里就跳过 name 匹配）。
 
@@ -85,7 +85,9 @@ GET /galgame/search?q=fate&fields=id,name_zh_cn,intro_zh_cn,tag_names,official_n
         "content_limit": "sfw",
         "age_limit": "r18",
         "original_language": "ja-jp",
-        "released": "2020-05",
+        "release_date": "2020-05-15",
+        "release_date_tba": false,
+        "effective_banner_hash": "abcd1234...ef",
         "tag_ids": [1, 2, 5],
         "official_ids": [7],
         "_formatted": {

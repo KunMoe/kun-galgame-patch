@@ -307,6 +307,92 @@
 
 ---
 
+## 修订与回滚（PR4 新增，4 实体同款）
+
+> 🟢 **ADDITIVE — taxonomy 编辑现已全量审计 + 可 revert**：
+> 每次 tag/official/engine/series 的 create / update / delete 都会写一条 `taxonomy_revision` 行（多态单表：`entity` 列区分）。下面 4 实体 × 3 端点 = 12 条新路由，shape **完全一致**。
+> 详见 [00-handbook §15 ADDITIVE 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖) + [`docs/galgame_wiki/01-revision-system-design.md §14`](../../galgame_wiki/01-revision-system-design.md)。
+
+### GET /{tag,official,engine,series}/:id/revisions
+
+列出该实体的修订历史（newest first，分页）。**公开（与 galgame `/revisions` 一致）**。
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| page | int | 1 | 页码 |
+| limit | int | 20 | 每页（max 50） |
+
+**响应**：
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "entity": "tag",
+      "target_id": 17,
+      "revision": 3,
+      "action": "updated",
+      "user_id": 9,
+      "user_role": 3,
+      "snapshot": { "name": "校园", "category": "content", "description": "...", "aliases": ["学园"] },
+      "changed_fields": ["description"],
+      "ref_count": 0,
+      "affected_galgame_ids": [],
+      "note": "",
+      "created": "2026-05-20T03:21:09Z"
+    }
+  ],
+  "total": 5
+}
+```
+
+字段说明：
+- `entity`：`tag` / `official` / `engine` / `series` 之一；与路径前缀一致
+- `revision`：per-(entity, target_id) 自增序号，从 1 开始
+- `action`：`created` / `updated` / `deleted` / `reverted`
+- `snapshot` 形态因 entity 而异（TagSnapshot / OfficialSnapshot / EngineSnapshot / SeriesSnapshot）
+- `changed_fields`：每次编辑改动的字段名列表
+  - `created` 列出 Snapshot 的全部字段名（如 tag 的 `["name","category","description","aliases"]`）
+  - `updated` 只列出实际 diff 的字段
+  - `deleted` 是空数组（整行消失，不是某些字段被改）
+  - `reverted` 列出与"当前状态" diff 的字段
+- `ref_count` + `affected_galgame_ids`：**仅 `deleted` 行有值**，被删除时该实体被多少 galgame 引用 + 受影响的 gid 列表
+- `user_role`：编辑时该用户的角色快照（admin=3 / moderator=2 / user=1 / 0），为将来字段级 RBAC 留位
+
+### GET /{tag,official,engine,series}/:id/revisions/:rev
+
+加载某一条特定修订记录。**公开**。响应同上单条。
+
+### POST /{tag,official,engine,series}/:id/revert
+
+回滚到目标修订。**需要 admin/moderator**。
+
+**请求体**（与 galgame revert 同 shape）：
+```json
+{ "revision": 3 }
+```
+
+**响应**：
+```json
+{ "reverted_to": 3 }
+```
+
+回滚行为：
+- 若实体行还存在 → 直接 `Apply*Snapshot` 把目标 snapshot 重放到 DB
+- 若实体行已被删除（最近 action='deleted') → INSERT 主行（用目标 snapshot 的 Name 等字段）+ 重建 aliases；产生一条 action='reverted' 的新 revision
+- **不**自动恢复 galgame_*_relation 关联（避免悄悄改 galgame 状态）。前端 UI 可以读 deleted revision 的 `affected_galgame_ids` 给 admin 列一份"建议恢复"，admin 勾选哪些就到对应 galgame 上手动加回 tag_ids/official_ids/engine_ids/series_id（每个对应一条 galgame_revision）
+
+### 跨实体编辑联动（重要）
+
+`taxonomy delete force-purge` 不只产生一条 taxonomy_revision，还会**为每个 affected galgame 写一条 `galgame_revision`**（changed_fields 标记 `['tag_ids' | 'official_ids' | 'engine_ids' | 'series_id']`），保证 galgame 修订历史里这个 tag/official/engine 的"消失"也可查询。详见 [02-revisions-and-prs.md](./02-revisions-and-prs.md)。
+
+### Series 的特殊性
+
+`PUT /series/:id` 既改 series 标量字段（Name/Description）又改 galgame_id 成员（`galgame_ids` 数组）。**这两类编辑产生不同的 revision**：
+- **改 Name/Description** → 一条 `taxonomy_revision (entity='series', action='updated')`
+- **改 galgame_ids（成员变更）** → **每个受影响 galgame 一条 `galgame_revision`**（changed_fields=`['series_id']`），**不**落 taxonomy_revision
+
+理由：membership 是 `galgame.series_id` 这个 FK 持有的，编辑这个 FK 是 galgame 行的编辑，不是 series 行的编辑。从 series 的修订历史看不到成员变化，从某 galgame 的修订历史能看到它何时加入/离开了什么 series。
 
 ---
 

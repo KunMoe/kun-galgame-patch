@@ -32,12 +32,16 @@
         "name_zh_cn": "标题",
         "name_zh_tw": "標題",
         "banner": "https://...",
-        "banner_image_hash": "abcd1234...ef",
+        "effective_banner_hash": "abcd1234...ef",
+        "release_date": "2019-08-16",
+        "release_date_tba": false,
         "content_limit": "sfw",
         "view": 100,
         "created": "2026-01-01T00:00:00Z",
         "tag": [...],
-        "official": [...]
+        "official": [...],
+        "cover": [...],
+        "screenshot": [...]
       }
     ],
     "total": 42
@@ -74,7 +78,7 @@
       "name_zh_cn": "标题",
       "name_zh_tw": "標題",
       "banner": "https://image.kungal.com/...",
-      "banner_image_hash": "abcd...ef",
+      "effective_banner_hash": "abcd...ef",
       "content_limit": "sfw",
       "status": 0,
       "user_id": 1,
@@ -89,7 +93,7 @@
 | 字段 | 备注 |
 |---|---|
 | `status` | `0` 已发布；`3` / `4` 仅当请求带 Bearer 且调用者是该条 galgame 的 submitter 时才会返回（pending / declined 草稿）。匿名 / 非 owner 调用看不到非 0 条目 |
-| `banner_image_hash` | image_service 哈希；前端 resolveBannerUrl 优先用此字段拼新 CDN URL，缺失时 fallback 到 `banner` 老 URL |
+| `effective_banner_hash` | image_service 哈希（= `covers[sort_order=0].image_hash`，PR5 退役 banner_image_hash 后唯一的 image_service banner 引用）；前端 `resolveBannerUrl` 优先用此字段拼 CDN URL，缺失时 fallback 到 `banner` 老 URL |
 
 不存在或对调用者不可见的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
 
@@ -273,7 +277,8 @@ return r2.data.galgame
   "name_zh_cn": "标题",
   "name_zh_tw": "標題",
   "banner": "https://...",
-  "banner_image_hash": "abcd1234...ef",
+  "release_date": "2019-08-16",
+  "release_date_tba": false,
   "intro_en_us": "...",
   "intro_ja_jp": "...",
   "intro_zh_cn": "...",
@@ -285,7 +290,11 @@ return r2.data.galgame
   "aliases": "别名1,别名2",
   "tag_ids": [1, 2, 3],
   "official_ids": [1],
-  "engine_ids": [1]
+  "engine_ids": [1],
+  "covers": [
+    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+  ],
+  "screenshots": []
 }
 ```
 
@@ -293,15 +302,18 @@ return r2.data.galgame
 |------|------|------|
 | vndb_id | 是 | 格式 `v\d+`，必须唯一 |
 | banner | 否 | 老的 URL 字符串字段；image_service 接入前的旧路径，迁移期保留作 fallback |
-| banner_image_hash | 否 | image_service 内容哈希；通常通过 multipart 模式由后端自动写入，也可由调用方手动指定 |
+| covers | 否 | image_service 哈希数组，PR2 起的新字段；`sort_order=0` 的那张是钉住封面（DB 强制每作品至多一张）。详见下面 PUT 端点说明 |
+| screenshots | 否 | image_service 哈希数组，与 covers 同 shape，无"钉住"约束 |
 | aliases | 否 | 逗号分隔的别名字符串 |
 | tag_ids | 否 | 标签 ID 数组 |
 | official_ids | 否 | 开发商 ID 数组 |
 | engine_ids | 否 | 引擎 ID 数组 |
 | content_limit | 否 | `sfw` (默认) 或 `nsfw` |
 | age_limit | 否 | `r18` (默认) 或 `all` |
+| release_date | 否 | `YYYY-MM-DD` 字符串；`""` 表示未知（PR1 取代旧 `released` 字符串） |
+| release_date_tba | 否 | bool；`true` 表示官方已宣布但日期未定（与 `release_date` 独立） |
 
-> **banner 字段优先级**：前端读取时优先 `banner_image_hash`（拼 image_service URL），缺失时回退 `banner` 老 URL。两个字段都可写，`banner_image_hash` 推荐用于新上传。
+> **banner 优先级**：前端读取时优先派生只读字段 `effective_banner_hash`（= `covers[sort_order=0].image_hash`，拼 image_service URL），缺失时回退 `banner` 老 URL。PR5 起不再有 `banner_image_hash` 字段，banner 由 `covers` 表达。multipart 上传见下方 Banner 上传段（hash 经 `PromoteCoverHash` 由服务合并进 covers）。
 
 ---
 
@@ -309,7 +321,7 @@ return r2.data.galgame
 
 更新 Galgame。**需要认证**。仅创建者或 admin 可操作。
 
-每次更新自动创建新 revision。**所有字段（含 `banner_image_hash`）的变化都会进入 revision 快照与 PR diff**。
+每次更新自动创建新 revision。**所有字段（含 `covers` / `screenshots`）的变化都会进入 revision 快照与 PR diff**（covers/screenshots 的 image_hash 集合按集合语义 diff，参见 `apps/api/internal/platform/galgame/model/galgame_revision.go` 中的 ChangedKeys）。
 
 **支持两种 Content-Type**：
 - `application/json` — 不修改 banner 或修改时只改 hash 字段
@@ -321,24 +333,40 @@ return r2.data.galgame
 ```json
 {
   "name_zh_cn": "新标题",
-  "banner_image_hash": "abcd1234...ef",
   "intro_zh_cn": "新简介",
-  "released": "2019-08-16",
+  "release_date": "2019-08-16",
+  "release_date_tba": false,
   "aliases": ["别名A", "别名B"],
   "links": [{"name": "官网", "link": "https://example.com"}],
   "tag_ids": [1, 2, 3],
   "official_ids": [1],
   "engine_ids": [],
+  "covers": [
+    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+  ],
+  "screenshots": [
+    {"image_hash": "fedcba98...12", "sort_order": 0, "caption": "CG 01", "sexual": 0, "violence": 0, "source": "", "source_key": ""}
+  ],
   "is_minor": false
 }
 ```
+
+> **PR5 BREAKING — `banner_image_hash` 字段已彻底移除。** Banner 现在唯一通过 `covers[sort_order=0]` 表达；详见
+> [00-handbook §15 PR5 BREAKING 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+
+`covers` / `screenshots` 字段说明：
+- 都按 `image_hash` 引用 image_service（先在 image_service 上传得 hash，再在本端点提交）。
+- `covers` 中 `sort_order=0` 的那张是**钉住的封面**（DB 强制每作品至多一张），管理员"换封面" = 同一请求里把旧的 `sort_order` 改成非 0、新的设为 0。
+- `screenshots` 没有"钉住"约束，`sort_order` 只是画廊展示顺序。
+- presence 语义同 `tag_ids`：不传 = 保持原集合不变；传 `[]` = 清空全部；传非空数组 = 权威全量替换（**必须回传该作当前全量**，不要只回传新增/删除的那几条）。
+- 响应里有派生字段 `effective_banner_hash`（= covers 里 `sort_order=0` 的那张的 `image_hash`；无则 null）。**前端封面展示通过 `resolveBannerUrl` helper，只看 `effective_banner_hash → banner` 两级。**
 
 > ⚠️ **多值字段（`tag_ids` / `official_ids` / `engine_ids` / `aliases` / `links`）= presence 语义全量替换，必须看懂**：
 > - **不传该字段** → 该 galgame 的对应集合**保持不变**（只改名字时绝不会清空 tag/别名）。
 > - **传数组（含空 `[]`）** → 该字段是**权威全量集合**：服务端"清空旧的 → 按此重建"。`[]` = 显式清空全部。
 > - 因此下游（kungal/moyu）编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增/删后整体回传），**不要只回传"新增的"那几个**——会被当成"替换成只剩这几个"。
 > - 与标量字段一致：传了就改、不传就不动。整个编辑是**一次事务、一条 revision**（原子；集合语义、顺序无关，进 revision 快照与 PR diff）。
-> - `released`（发售日期，原创/同人作品可填；空→`"unknown"`）现也可经此端点编辑。
+> - **`release_date` / `release_date_tba`**（取代旧 `released` 字符串）现可经此端点编辑，各自走 presence 语义：`release_date` 用 `*string`（`null`/省略 = 保持，`""` = 清空为未知，`"YYYY-MM-DD"` = 设置）；`release_date_tba` 用 `*bool`。两者独立——可同时给值表达"预计 X 年某月 + TBA"。详见 §00-handbook BREAKING 段。
 >
 > `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。
 
@@ -350,8 +378,9 @@ return r2.data.galgame
 
 **没有独立的"上传 banner"端点**。banner 文件作为可选 `file` 表单字段一并随
 `POST /galgame`、`PUT /galgame/:gid`、`POST /galgame/:gid/prs` 的 multipart 请求提交，
-后端会先把文件转给 image_service 拿到 hash，再把 hash 当作 `banner_image_hash` 字段，
-跟其他字段一起进入同一次 revision / PR diff。
+后端会先把文件转给 image_service 拿到 hash，再通过服务端瞬态字段 `PromoteCoverHash`
+把它合并进 `covers`（若同 hash 已存在则提升为 `sort_order=0`，否则插入为新的 pinned cover；
+原有的 `sort_order=0` 自动让位），跟其他字段一起进入同一次 revision / PR diff。
 
 > 设计动机：图片上传与 article 编辑在业务上是同一次动作，应当原子。
 > 不再有"上传成功但忘了点保存留下 orphan 文件"的情况——文件在浏览器内存里
@@ -365,7 +394,7 @@ return r2.data.galgame
 PUT /api/v1/galgame/:gid
 Content-Type: application/json
 
-{ ... fields including optional banner_image_hash ... }
+{ ... fields including optional covers/screenshots arrays ... }
 ```
 
 #### B. multipart/form-data — 需要上传 banner 文件时使用
@@ -389,7 +418,7 @@ Content-Type: image/png
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | data | 是 | JSON 字符串，等同于 JSON 模式下的 body |
-| file | 否 | 图片文件（image/jpeg / png / webp）；上传后后端把 hash 设为 `banner_image_hash` |
+| file | 否 | 图片文件（image/jpeg / png / webp）；上传后后端把 hash 作为 `PromoteCoverHash` 合并进 `covers`，提升为 `sort_order=0` 钉住封面（详见上方 covers 字段语义） |
 
 **错误码**（multipart 模式下额外可能出现的）：透传 image_service 的状态码与
 错误码（如 `80008` 配额超限、`80015` 上传暂未开放、`60002` 审核拒绝），调用方

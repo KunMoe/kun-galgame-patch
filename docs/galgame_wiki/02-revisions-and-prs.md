@@ -57,6 +57,8 @@
 
 `action` 取值：`created`, `updated`, `merged`, `reverted`, `declined`
 
+> **PR3/PR5 注意 — revision.note 可能由系统追写**：当 `reverted` 或 `merged` 应用的旧快照里有引用已不存在的 image_hash（image_service 端 TTL 清理掉了），后端会自动把这些 hash 从 covers/screenshots 里剔除并在 `note` 后追加 `\n[系统] reverted 时检测到 N 张图片在 image_service 已不可用，已自动从快照中剔除` 之类的说明。下游展示 revision/PR 详情时直接渲染 `note` 即可，不需要额外解析。
+
 ---
 
 ### GET /galgame/:gid/revisions/:rev
@@ -81,7 +83,15 @@
       "tag_ids": [1, 2],
       "official_ids": [1],
       "engine_ids": [],
-      "links": [{"name": "VNDB", "link": "https://vndb.org/v12345"}]
+      "links": [{"name": "VNDB", "link": "https://vndb.org/v12345"}],
+      "release_date": "2019-08-16",
+      "release_date_tba": false,
+      "covers": [
+        {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+      ],
+      "screenshots": [
+        {"image_hash": "fedcba98...12", "sort_order": 0, "caption": "CG 01", "sexual": 0, "violence": 0, "source": "", "source_key": ""}
+      ]
     },
     "created": "..."
   }
@@ -216,6 +226,10 @@ PR 详情，包含与 base revision 的差异。
 | official_ids | int[] | 开发商 ID 数组（替换全部） |
 | engine_ids | int[] | 引擎 ID 数组（替换全部） |
 | links | object[] | 链接数组 `[{name, link}]`（替换全部） |
+| covers | CoverInput[] | image_service hash 数组（替换全部），`sort_order=0` = 钉住封面（同 01-galgame.md PUT 端点说明） |
+| screenshots | ScreenshotInput[] | image_service hash 数组（替换全部），无"钉住"约束 |
+| release_date | string | `YYYY-MM-DD` 字符串或 `""`（未知） |
+| release_date_tba | bool | 是否官方已宣布日期未定 |
 | note | string | PR 说明 |
 
 ---
@@ -245,6 +259,14 @@ PR 详情，包含与 base revision 的差异。
 
 ---
 
+## 标签 / 厂商 / 引擎 / 系列 修订（PR4 新增）
+
+Galgame 的 4 种 taxonomy 实体（tag / official / engine / series）现也各自具备版本历史与回滚能力，端点形态与本节的 galgame 修订高度对齐：
+
+- 端点：`GET /tag/:id/revisions`、`GET /tag/:id/revisions/:rev`、`POST /tag/:id/revert`（official / engine / series 同形）
+- 修订表统一在 `taxonomy_revision`（polymorphic `entity` + `target_id`），与 `galgame_revision` 物理分离但语义对齐。
+- Series 的 `galgame_ids` 变更不进 `taxonomy_revision`，而是**为受影响的 galgame 各自写一条 `galgame_revision`**（owner 视角能看到自己作品被加入/移出 series）；Series 的 name/desc 仍走 taxonomy_revision。
+- 完整规约见 [04-taxonomy.md §修订与回滚](./04-taxonomy.md#修订与回滚-pr4-新增4-实体同款)。
 
 ---
 

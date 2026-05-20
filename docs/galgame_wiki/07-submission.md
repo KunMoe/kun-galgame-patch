@@ -50,7 +50,6 @@ kungal/moyu cron 每日
   "name_zh_cn": "标题",
   "name_zh_tw": "標題",
   "banner": "",
-  "banner_image_hash": "abcd...",
   "intro_zh_cn": "...",
   "content_limit": "sfw",
   "original_language": "ja-jp",
@@ -59,7 +58,13 @@ kungal/moyu cron 每日
   "aliases": "别名1,别名2",
   "tag_ids": [1, 2],
   "official_ids": [3],
-  "engine_ids": []
+  "engine_ids": [],
+  "release_date": "2019-08-16",
+  "release_date_tba": false,
+  "covers": [
+    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+  ],
+  "screenshots": []
 }
 ```
 
@@ -67,7 +72,9 @@ kungal/moyu cron 每日
 |---|---|---|
 | vndb_id | 否 | **可空**——原创 / 独立作品没有 VNDB 编号时留空。非空时格式 `v\d+`，且必须全局唯一 |
 | name_* | 否 | 至少填一个语言名（实践要求；后端不强制） |
-| banner / banner_image_hash | 否 | 二选一；优先用 image_service hash |
+| banner | 否 | 旧 URL fallback；新封面通过 `covers[sort_order=0]` 或 multipart `file` 表达（PR5 起 `banner_image_hash` 字段已退役） |
+| covers / screenshots | 否 | image_service hash 数组，见 [03-relations.md 封面/截图](./03-relations.md#封面--截图pr2-新增) |
+| release_date / release_date_tba | 否 | PR1 新字段；详见 [01-galgame.md](./01-galgame.md#put-galgamegid) |
 | 其他 | 否 | 同 [POST /galgame](./01-galgame.md#post-galgame) |
 
 支持 `multipart/form-data` 直接带 banner 文件（同 [POST /galgame 的 multipart 模式](./01-galgame.md#banner-上传通过-create--update--pr-端点的-multipart-模式)）。
@@ -204,7 +211,7 @@ admin status=1 (ban)。
         "name_en_us": "...",
         "name_zh_tw": "...",
         "banner": "",
-        "banner_image_hash": "abcd...",
+        "effective_banner_hash": "abcd...",
         "content_limit": "sfw",
         "vndb_id": "v17",
         "created": "2026-05-12T07:00:00Z",
