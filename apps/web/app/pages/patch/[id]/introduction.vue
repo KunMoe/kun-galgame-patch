@@ -47,6 +47,51 @@ const langOptions = [
   { value: 'en-us', label: 'English' }
 ]
 
+// ─── Tag display: color-by-category + manual spoiler / category filter ──
+// Mirrors the legacy nextjs project (apps/next-web/components/patch/intro
+// duction/section/Tag.tsx) — content=primary, sexual=danger, technical=
+// success, plus a "显示剧透" checkbox for spoiler_level>0 tags.
+// Removed the VNDB/Bangumi provider tab from the legacy impl: Wiki has no
+// provider concept (the old shape was bgm vs vndb pre-D8/D11; current Wiki
+// taxonomy is a single source).
+type TagCategory = 'content' | 'sexual' | 'technical'
+const CATEGORY_LABEL: Record<TagCategory, string> = {
+  content: '内容',
+  sexual: '性相关',
+  technical: '技术'
+}
+const tagColor = (cat: string): 'primary' | 'danger' | 'success' => {
+  if (cat === 'sexual') return 'danger'
+  if (cat === 'technical') return 'success'
+  return 'primary' // content + unknown fallback
+}
+
+const showSpoiler = ref(false)
+const visibleCategories = ref<Set<TagCategory>>(
+  new Set(['content', 'sexual', 'technical'])
+)
+const toggleCategory = (c: TagCategory) => {
+  if (visibleCategories.value.has(c)) visibleCategories.value.delete(c)
+  else visibleCategories.value.add(c)
+  // trigger reactivity by re-assigning the Set
+  visibleCategories.value = new Set(visibleCategories.value)
+}
+
+const filteredTags = computed(() => {
+  if (!detail.value?.tags) return []
+  return detail.value.tags.filter((t) => {
+    if (!showSpoiler.value && (t.spoiler_level ?? 0) > 0) return false
+    const cat = (t.category || 'content') as TagCategory
+    if (!visibleCategories.value.has(cat)) return false
+    return true
+  })
+})
+
+const hiddenByFilterCount = computed(() => {
+  if (!detail.value?.tags) return 0
+  return detail.value.tags.length - filteredTags.value.length
+})
+
 // Wiki frontend origin (used to link to the Wiki galgame detail page)
 const config = useRuntimeConfig()
 const wikiOrigin =
@@ -131,34 +176,76 @@ const wikiOrigin =
       </div>
     </section>
 
-    <!-- Tags & officials (developers/publishers) come pre-resolved from Wiki by the
-         backend enricher — see apps/api/internal/galgame/enricher/enricher.go. -->
+    <!-- Tags & officials (developers/publishers) come pre-resolved from Wiki
+         by the backend enricher — see apps/api/internal/galgame/enricher/
+         enricher.go. Links navigate to moyu's internal /tag/:id and
+         /official/:id detail pages. -->
     <section v-if="detail.tags?.length">
-      <div class="mb-4 flex items-center gap-3">
-        <div class="bg-primary h-6 w-1 rounded" />
-        <h2 class="text-2xl font-bold">标签</h2>
+      <div
+        class="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="flex items-center gap-3">
+          <div class="bg-primary h-6 w-1 rounded" />
+          <h2 class="text-2xl font-bold">标签</h2>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+          <label class="flex items-center gap-1">
+            <input
+              v-model="showSpoiler"
+              type="checkbox"
+              class="accent-primary"
+            />
+            <span>显示剧透</span>
+          </label>
+          <span class="text-default-300">|</span>
+          <label
+            v-for="c in (['content', 'sexual', 'technical'] as TagCategory[])"
+            :key="c"
+            class="flex items-center gap-1"
+          >
+            <input
+              type="checkbox"
+              :checked="visibleCategories.has(c)"
+              class="accent-primary"
+              @change="toggleCategory(c)"
+            />
+            <span :class="`text-${tagColor(c)}-600`">
+              {{ CATEGORY_LABEL[c] }}
+            </span>
+          </label>
+        </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a
-          v-for="t in detail.tags"
+        <NuxtLink
+          v-for="t in filteredTags"
           :key="t.id"
-          :href="`${wikiOrigin}/tag/${t.id}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          :to="`/tag/${t.id}`"
         >
           <KunBadge
-            :color="t.spoiler_level > 0 ? 'warning' : 'primary'"
+            :color="tagColor(t.category)"
             variant="flat"
             size="sm"
           >
             <KunIcon
               v-if="t.spoiler_level > 0"
               name="lucide:eye-off"
-              class="size-3.5"
+              class="mr-0.5 size-3.5"
             />
             {{ t.name }}
           </KunBadge>
-        </a>
+        </NuxtLink>
+        <span
+          v-if="!filteredTags.length"
+          class="text-default-400 text-sm italic"
+        >
+          (当前筛选条件下没有标签可显示)
+        </span>
+        <span
+          v-else-if="hiddenByFilterCount > 0"
+          class="text-default-400 self-center text-xs"
+        >
+          已隐藏 {{ hiddenByFilterCount }} 个
+        </span>
       </div>
     </section>
 
@@ -168,12 +255,10 @@ const wikiOrigin =
         <h2 class="text-2xl font-bold">会社</h2>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a
+        <NuxtLink
           v-for="o in detail.officials"
           :key="o.id"
-          :href="`${wikiOrigin}/official/${o.id}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          :to="`/official/${o.id}`"
         >
           <KunBadge color="success" variant="flat" size="sm">
             {{ o.name }}
@@ -181,7 +266,7 @@ const wikiOrigin =
               · {{ o.category }}
             </span>
           </KunBadge>
-        </a>
+        </NuxtLink>
       </div>
     </section>
 

@@ -443,6 +443,37 @@ export const useGalgameEdit = () => {
   const taxRevert = (kind: TaxKind, id: number, revision: number) =>
     api.post<{ reverted_to: number }>(`/${kind}/${id}/revert`, { revision })
 
+  // ─── Taxonomy detail pages (tag / official "view-by-id" pages) ─────────
+  // Wiki's `GET /<entity>/:name?<entity>_id=X` returns the entity itself +
+  // the associated galgame list (paginated, with optional sort + NSFW filter).
+  // `:name` is cosmetic per Wiki convention (Wikipedia-style URL beauty);
+  // the real filter is the *_id query param. We always pass "_" as the path
+  // segment to keep the URL short — moyu's standalone detail pages already
+  // own the human-readable URL on their side.
+  // docs/galgame_wiki/04-taxonomy.md §标签 (Tag) / 开发商 (Official).
+  interface TaxonomyListOpts {
+    page?: number
+    limit?: number
+    sort_field?: string
+    sort_order?: 'asc' | 'desc'
+    content_limit?: 'sfw' | 'nsfw'
+  }
+  const tagDetail = (id: number, opts?: TaxonomyListOpts) =>
+    api.get<{
+      tag?: WikiTag & { description?: string }
+      items?: unknown[]
+      galgames?: unknown[]
+      total?: number
+    }>(`/tag/_${qs({ tag_id: id, ...(opts as Q) })}`)
+
+  const officialDetail = (id: number, opts?: TaxonomyListOpts) =>
+    api.get<{
+      official?: WikiOfficial & { description?: string }
+      items?: unknown[]
+      galgames?: unknown[]
+      total?: number
+    }>(`/official/_${qs({ official_id: id, ...(opts as Q) })}`)
+
   return {
     listRevisions,
     getRevision,
@@ -484,6 +515,8 @@ export const useGalgameEdit = () => {
     deleteSeries,
     taxListRevisions,
     taxGetRevision,
-    taxRevert
+    taxRevert,
+    tagDetail,
+    officialDetail
   }
 }
