@@ -493,23 +493,23 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">分级</h3>
-          <div class="flex flex-wrap items-center gap-3 text-sm">
-            <KunSelect
+          <div class="flex flex-wrap items-center gap-6 text-sm">
+            <KunRadioGroup
               v-model="submitForm.content_limit"
+              orientation="horizontal"
               :options="[
                 { value: 'sfw', label: 'SFW' },
                 { value: 'nsfw', label: 'NSFW' }
               ]"
-              class-name="w-32"
             />
             <span class="text-default-300">|</span>
-            <KunSelect
+            <KunRadioGroup
               v-model="submitForm.age_limit"
+              orientation="horizontal"
               :options="[
                 { value: 'all', label: '全年龄' },
                 { value: 'r18', label: 'R18' }
               ]"
-              class-name="w-32"
             />
           </div>
         </section>

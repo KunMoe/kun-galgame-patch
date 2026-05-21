@@ -120,3 +120,17 @@ export const kunRingClasses: Record<KunUIColor, string> = {
   danger: 'focus-within:ring-danger/40 focus:ring-danger/40',
   info: 'focus-within:ring-info/40 focus:ring-info/40',
 }
+
+// Very light tint of the semantic color — used for "selected card"
+// backgrounds in RadioGroup (and any other component that needs a
+// "barely there" colored fill). Same JIT-safety constraint as the
+// other maps: keys are static string literals.
+export const kunSoftBgClasses: Record<KunUIColor, string> = {
+  default: 'bg-default/5',
+  primary: 'bg-primary/5',
+  secondary: 'bg-secondary/5',
+  success: 'bg-success/5',
+  warning: 'bg-warning/5',
+  danger: 'bg-danger/5',
+  info: 'bg-info/5',
+}

@@ -45,6 +45,11 @@ const { floatingStyles } = useFloating(triggerRef, popoverRef, {
   // Re-run computation on scroll / resize / element-size changes. Only
   // attached while open to avoid leaking listeners.
   whileElementsMounted: autoUpdate,
+  // Position via top/left instead of transform so Vue Transition's
+  // scale-95/scale-100 enter/leave classes don't fight floating-ui's
+  // translate3d on the same element. See
+  // floating-ui.com/docs/useFloating#transform.
+  transform: false,
   middleware: [
     offset(8),
     // autoPosition=false → respect the literal `position` prop;

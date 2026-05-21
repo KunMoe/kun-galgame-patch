@@ -1,4 +1,8 @@
-<script setup lang="ts">
+<script
+  setup
+  lang="ts"
+  generic="T extends KunSelectValue = KunSelectValue"
+>
 import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
@@ -9,10 +13,10 @@ import {
   shift,
   size,
 } from '@floating-ui/vue'
-import type { KunSelectProps } from './type'
+import type { KunSelectProps, KunSelectValue } from './type'
 import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 
-const props = withDefaults(defineProps<KunSelectProps>(), {
+const props = withDefaults(defineProps<KunSelectProps<T>>(), {
   placeholder: '',
   label: '',
   disabled: false,
@@ -26,14 +30,14 @@ const props = withDefaults(defineProps<KunSelectProps>(), {
 const rounded = useResolvedRounded(() => props.rounded)
 const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
-// `required: true` makes the model `Ref<string | number>` (without
-// `undefined`), so consumers' @update:model-value callbacks can type
-// the arg as `string | number` without TS rejecting it. Without
-// `required` Vue 3.5 infers `Ref<T | undefined>` by spec.
-const modelValue = defineModel<string | number>({ required: true })
+// `required: true` makes the model `Ref<T>` (without `undefined`), so
+// consumers' @update:model-value callbacks can type the arg as `T`
+// without TS rejecting it. Without `required` Vue 3.5 infers
+// `Ref<T | undefined>` by spec.
+const modelValue = defineModel<T>({ required: true })
 
 const emit = defineEmits<{
-  set: [value: string | number, index: number]
+  set: [value: T, index: number]
 }>()
 
 const kunUniqueId = useKunUniqueId('kun-select')
@@ -45,6 +49,14 @@ const { floatingStyles } = useFloating(buttonRef, dropdownRef, {
   placement: 'bottom-start',
   open: isOpen,
   whileElementsMounted: autoUpdate,
+  // Position via top/left instead of transform so Vue Transition's
+  // transform-based enter/leave classes (-translate-y-1, scale-95)
+  // don't fight floating-ui's translate3d. Layout-cost trade-off is
+  // negligible for click-open dropdowns. Width is set explicitly by
+  // the size() middleware below so the docs' "fixed width or
+  // max-content" requirement is already satisfied.
+  // See floating-ui.com/docs/useFloating#transform.
+  transform: false,
   middleware: [
     offset(4),
     flip(),
@@ -79,7 +91,7 @@ const toggle = () => {
   if (!props.disabled) isOpen.value = !isOpen.value
 }
 
-const selectOption = (value: string | number, index: number) => {
+const selectOption = (value: T, index: number) => {
   modelValue.value = value
   emit('set', value, index)
   isOpen.value = false

@@ -98,10 +98,36 @@ onMounted(() => {
   }
 })
 
+// Inserts text at the current caret position (or replaces the
+// selection) and moves the caret to the end of the inserted text.
+// Symmetrical with KunTextarea.insertAtCaret so chat-style components
+// can drive both element kinds uniformly.
+const insertAtCaret = (text: string) => {
+  const el = input.value
+  if (!el) {
+    return
+  }
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? el.value.length
+  const next = el.value.slice(0, start) + text + el.value.slice(end)
+  modelValue.value = next
+  nextTick(() => {
+    if (!input.value) {
+      return
+    }
+    const pos = start + text.length
+    input.value.setSelectionRange(pos, pos)
+    input.value.focus()
+  })
+}
+
 defineExpose({
   focus: () => input.value?.focus(),
   blur: () => input.value?.blur(),
-  select: () => input.value?.select()
+  select: () => input.value?.select(),
+  insertAtCaret,
+  // Escape hatch — prefer the named methods above when possible.
+  inputRef: input
 })
 </script>
 

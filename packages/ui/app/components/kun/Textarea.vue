@@ -95,6 +95,38 @@ onMounted(() => {
     textareaRef.value.focus()
   }
 })
+
+// Curated method surface for caret / focus operations (chat emoji
+// inserters etc). textareaRef is exposed as an escape hatch for IME
+// composition / selection-rect / scrollHeight kinds of advanced
+// scenarios where consumers genuinely need the raw element. Most
+// callers should reach for the named methods first.
+const insertAtCaret = (text: string) => {
+  const el = textareaRef.value
+  if (!el) {
+    return
+  }
+  const start = el.selectionStart ?? el.value.length
+  const end = el.selectionEnd ?? el.value.length
+  const next = el.value.slice(0, start) + text + el.value.slice(end)
+  modelValue.value = next
+  nextTick(() => {
+    if (!textareaRef.value) {
+      return
+    }
+    const pos = start + text.length
+    textareaRef.value.setSelectionRange(pos, pos)
+    textareaRef.value.focus()
+  })
+}
+
+defineExpose({
+  focus: () => textareaRef.value?.focus(),
+  blur: () => textareaRef.value?.blur(),
+  select: () => textareaRef.value?.select(),
+  insertAtCaret,
+  textareaRef
+})
 </script>
 
 <template>

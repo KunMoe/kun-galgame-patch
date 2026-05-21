@@ -44,13 +44,13 @@ const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
 // content_limit / age_limit use literal radio inputs in the template; only
 // original_language needs an options list (mirrors the four-language UI used
 // elsewhere on the site). See docs/galgame_wiki/01-galgame.md.
-const ORIGINAL_LANG_OPTIONS: { value: string; label: string }[] = [
+const ORIGINAL_LANG_OPTIONS = [
   { value: '', label: '保持不变' },
   { value: 'ja-jp', label: '日本語' },
   { value: 'zh-cn', label: '简体中文' },
   { value: 'zh-tw', label: '繁體中文' },
   { value: 'en-us', label: 'English' }
-]
+] as const
 
 interface FormState {
   name_en_us: string
@@ -400,25 +400,25 @@ const handleSubmit = async () => {
 
         <section class="space-y-3">
           <h3 class="text-lg font-semibold">内容分级</h3>
-          <KunSelect
+          <KunRadioGroup
             v-model="form.content_limit"
+            orientation="horizontal"
             :options="[
               { value: 'sfw', label: 'SFW (普通)' },
               { value: 'nsfw', label: 'NSFW (含成人向元素)' }
             ]"
-            class-name="w-64"
           />
         </section>
 
         <section class="space-y-3">
           <h3 class="text-lg font-semibold">年龄分级</h3>
-          <KunSelect
+          <KunRadioGroup
             v-model="form.age_limit"
+            orientation="horizontal"
             :options="[
               { value: 'all', label: '全年龄' },
               { value: 'r18', label: 'R18' }
             ]"
-            class-name="w-64"
           />
         </section>
 

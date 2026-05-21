@@ -435,4 +435,164 @@ grep -rn 'border-red\|text-red\|bg-white dark:bg-black' apps --include='*.vue'
 3. 第三 PR 修任何 sed 没覆盖的边角（Brand props、Tab variant、Card clickable/href 拆分这种语义判断）
 4. 最后一个 PR 跑烟雾测试 checklist，签收
 
+---
+
+## 10. v0.3.1 + v0.4.0 增量同步（2026-05-21）
+
+两个增量批次，**全部非破坏性**，下游零修改即可继续工作；想用新功能时按需采纳。详细背景见 `improvement-plan.md` §10 / §11。
+
+### 10.1 v0.3.1 hotfix — KunTab solid/light indicator 错位
+
+只需要同步**一个文件**：
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin   # 改成你本地路径
+cp $KUN_OAUTH/packages/ui/app/components/kun/tab/Tab.vue \
+   ./components/kun/tab/Tab.vue       # 改成你 KunUI 副本的对应位置
+```
+
+修复内容：`updateIndicator` 拆成 underlined（单轴 translate）vs panel（双轴 translate）两个分支，补偿 solid/light variant 容器 `p-1` 引入的 4px Y 偏移。
+
+**消费侧**：零修改。无 API 变化。
+
+### 10.2 v0.4.0 batch — Primitives + Ergonomics（4 项）
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+
+# 改造的 5 个文件（覆盖）
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue       ./components/kun/select/Select.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/type.d.ts        ./components/kun/select/type.d.ts
+cp $KUN_OAUTH/packages/ui/app/components/kun/Textarea.vue            ./components/kun/Textarea.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/Input.vue               ./components/kun/Input.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/ui/variants.ts          ./components/kun/ui/variants.ts
+
+# 新增的 3 个文件
+mkdir -p ./components/kun/radio-group
+cp $KUN_OAUTH/packages/ui/app/components/kun/radio-group/RadioGroup.vue ./components/kun/radio-group/
+cp $KUN_OAUTH/packages/ui/app/components/kun/radio-group/type.d.ts     ./components/kun/radio-group/
+cp $KUN_OAUTH/packages/ui/app/composables/useFilePicker.ts             ./composables/useFilePicker.ts
+```
+
+### 10.3 各项要点
+
+#### #1 KunSelect generic + readonly
+
+调用方零修改即可继续工作。**想要 union narrowing 时**：
+
+```ts
+// 原写法（仍可用）
+const opts = [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }]
+const v = ref<string>('a')
+<KunSelect :options="opts" v-model="v" />
+
+// 升级写法（推荐）
+const opts = [
+  { label: 'A', value: 'a' },
+  { label: 'B', value: 'b' }
+] as const
+const v = ref<'a' | 'b'>('a')
+<KunSelect :options="opts" v-model="v" />
+// TS 自动校验 v 只能是 'a' | 'b'
+```
+
+#### #2 KunTextarea / KunInput expose
+
+新增方法：`focus / blur / select / insertAtCaret` + 兜底 ref（`textareaRef` / `inputRef`）。chat 表情插入典型用法：
+
+```vue
+<script setup>
+const taRef = ref()
+const insertEmoji = (emoji: string) => taRef.value?.insertAtCaret(emoji)
+</script>
+<KunTextarea ref="taRef" v-model="msg" />
+<KunButton @click="insertEmoji('🐱')">🐱</KunButton>
+```
+
+#### #3 useFilePicker
+
+Nuxt 4 layer 自动 import，直接用：
+
+```vue
+<script setup>
+const { pickFiles, files } = useFilePicker({
+  accept: '.zip,.tar.gz',
+  maxSize: 100 * 1024 * 1024,
+  onError: (msg) => useKunMessage(msg, 'error')
+})
+watch(files, ([f]) => f && handleArchive(f))
+</script>
+<template>
+  <KunButton @click="pickFiles">选择压缩包</KunButton>
+</template>
+```
+
+**和 KunUpload 的取舍**：
+- 要做图片裁剪/拖拽/预览 → KunUpload
+- 纯文件选择（zip / pdf / 任意 mime）→ useFilePicker
+
+#### #4 KunRadioGroup
+
+```vue
+<!-- classic: 标准圆点 -->
+<KunRadioGroup
+  v-model="role"
+  :options="[
+    { value: 'admin', label: '管理员' },
+    { value: 'user', label: '普通用户' }
+  ]"
+  label="选择角色"
+/>
+
+<!-- card: 卡片式（适合大目标 + 多信息） -->
+<KunRadioGroup
+  v-model="plan"
+  variant="card"
+  color="primary"
+  :options="[
+    { value: 'free', label: 'Free', description: '$0 / 月，10GB' },
+    { value: 'pro', label: 'Pro', description: '$10 / 月，100GB' },
+    { value: 'team', label: 'Team', description: '$30 / 月，无限' }
+  ]"
+/>
+```
+
+完整 ARIA + 键盘（↑↓←→ 移焦并激活，Space/Enter 激活，roving tabindex）。
+
+### 10.4 验证
+
+```bash
+# 在你们 app 仓
+pnpm typecheck    # 应该全过
+pnpm -F web exec nuxt build    # 应该全过
+```
+
+如果旧调用方传 `options: someArray` 给 Select 报 TS 错误（"readonly 不能赋值给 mutable"），那是你们以前的代码就有错（KunSelect 不会修改 options），新版反而宽容了 readonly 输入。如果反过来报 mutable 不能赋值给 readonly，那不会发生 —— TS 允许 mutable 赋值给 readonly。
+
+### 10.5 不需要做的事
+
+- v0.4.0 没改任何现有 props 的语义
+- v0.4.0 没有任何文件被删
+- v0.4.0 没有 sed 改造（call-site 零变更）
+- v0.3.1 同上
+
+**风险等级**：极低。建议作为单独一个小 PR 合并。
+
 合并顺序很重要 —— 中间任何 PR 都应该能独立 build pass。
+
+---
+
+## 11. v0.4.1 hotfix — 浮层动画"从角落飞来"修复（2026-05-21）
+
+`KunSelect` / `KunPopover` / `KunDatePicker` 打开时弹出层从 body 左上角"飞过来"是 transform 双写竞态。@floating-ui/vue 默认通过 `transform: translate3d()` 定位，与 Vue Transition 的 `-translate-y-1` / `scale-95` 类争抢同一个 CSS 属性，挂载瞬间出现可见的"飞行"插值。
+
+**修复**：给 3 个组件的 `useFloating()` 各加一行 `transform: false`，定位改走 `top/left`。详见 `improvement-plan.md` §12。
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue       ./components/kun/select/Select.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/Popover.vue             ./components/kun/Popover.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/date-picker/Picker.vue  ./components/kun/date-picker/Picker.vue
+```
+
+**消费侧**：零修改，无 API 变化，纯内部修复。建议直接合并。

@@ -33,7 +33,16 @@ const input = ref('')
 const sending = ref(false)
 const loading = ref(false)
 const scrollArea = ref<HTMLElement | null>(null)
-const inputEl = ref<HTMLTextAreaElement | null>(null)
+// KunTextarea exposes { focus, blur, select, insertAtCaret, textareaRef }
+// — we use focus() for autofocus-on-reply and insertAtCaret() for emoji.
+type KunTextareaExposed = {
+  focus: () => void
+  blur: () => void
+  select: () => void
+  insertAtCaret: (text: string) => void
+  textareaRef: globalThis.Ref<HTMLTextAreaElement | null>
+}
+const inputEl = ref<KunTextareaExposed | null>(null)
 
 const sanitize = (html: string) =>
   DOMPurify.sanitize(html || '', { ADD_ATTR: ['data-id', 'target'] })
@@ -241,18 +250,14 @@ const onStickerSend = (url: string) => {
   postMessage(`![sticker](${url})`)
 }
 const onEmojiSelect = (emoji: string) => {
-  const ta = inputEl.value
-  if (!ta) {
-    input.value += emoji
+  // KunTextarea.insertAtCaret handles selection splice + focus + caret
+  // restore. Fallback only when the ref hasn't mounted (shouldn't happen
+  // post-mount but kept for SSR-safety / disabled-state edge cases).
+  if (inputEl.value) {
+    inputEl.value.insertAtCaret(emoji)
     return
   }
-  const s = ta.selectionStart ?? input.value.length
-  const e = ta.selectionEnd ?? input.value.length
-  input.value = input.value.slice(0, s) + emoji + input.value.slice(e)
-  nextTick(() => {
-    ta.focus()
-    ta.selectionStart = ta.selectionEnd = s + emoji.length
-  })
+  input.value += emoji
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
@@ -551,22 +556,18 @@ onBeforeUnmount(() => pause())
             />
           </KunPopover>
 
-          <!-- Native <textarea>: emoji insertion needs the underlying DOM
-               element's selectionStart/selectionEnd to splice into the
-               caret position. KunTextarea v0.1.x does not defineExpose its
-               inner textareaRef, so it can't provide the DOM access this
-               picker requires. Tracked as KunUI feedback. -->
-          <textarea
-            ref="inputEl"
-            v-model="input"
-            :placeholder="
-              myUserId ? 'Ctrl + 回车 发送，支持 Markdown' : '请先登录'
-            "
-            :disabled="!myUserId"
-            rows="2"
-            class="border-default/20 bg-background flex-1 rounded-lg border p-2 text-sm"
-            @keydown="handleKeydown"
-          />
+          <div class="flex-1">
+            <KunTextarea
+              ref="inputEl"
+              v-model="input"
+              :placeholder="
+                myUserId ? 'Ctrl + 回车 发送，支持 Markdown' : '请先登录'
+              "
+              :disabled="!myUserId"
+              :rows="2"
+              @keydown="handleKeydown"
+            />
+          </div>
           <KunButton
             color="primary"
             is-icon-only

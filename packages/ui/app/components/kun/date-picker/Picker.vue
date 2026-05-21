@@ -38,6 +38,10 @@ const { floatingStyles } = useFloating(datePickerRef, dropdownRef, {
   placement: 'bottom-start',
   open: isOpen,
   whileElementsMounted: autoUpdate,
+  // Position via top/left instead of transform so Vue Transition's
+  // -translate-y-1 enter class doesn't fight floating-ui's translate3d.
+  // See floating-ui.com/docs/useFloating#transform.
+  transform: false,
   middleware: [offset(4), flip(), shift({ padding: 8 })],
 })
 
