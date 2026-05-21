@@ -91,7 +91,11 @@ const removeAlias = async (id: number) => {
 
 // ─── Contributors ─────────────────────────────────────
 const removeContributor = async (userId: number) => {
-  if (!confirm('确定移除该贡献者？仅创建者或管理员可操作。')) return
+  const ok = await useKunAlert({
+    title: '移除贡献者',
+    message: '确定移除该贡献者？仅创建者或管理员可操作。'
+  })
+  if (!ok) return
   const res = await ge.deleteContributor(props.gid, userId)
   if (res.code === 0) {
     useKunMessage('已移除', 'success')

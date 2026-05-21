@@ -109,8 +109,12 @@ const move = (hash: string, dir: -1 | 1) => {
   )
 }
 
-const remove = (hash: string) => {
-  if (!confirm('确定移除该截图？将在保存后从 Wiki 集合里删除。')) return
+const remove = async (hash: string) => {
+  const ok = await useKunAlert({
+    title: '移除截图',
+    message: '确定移除该截图？将在保存后从 Wiki 集合里删除。'
+  })
+  if (!ok) return
   emit(
     'update:modelValue',
     props.modelValue.filter((s) => s.image_hash !== hash)

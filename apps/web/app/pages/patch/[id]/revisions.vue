@@ -92,8 +92,11 @@ const handleRevert = async (rev: number) => {
     useKunMessage('请先登录', 'warn')
     return
   }
-  if (!confirm(`确定回滚到版本 #${rev}？这会创建一个新的回滚版本，不会删除历史。`))
-    return
+  const ok = await useKunAlert({
+    title: '回滚版本',
+    message: `确定回滚到版本 #${rev}？这会创建一个新的回滚版本，不会删除历史。`
+  })
+  if (!ok) return
   reverting.value = rev
   try {
     const res = await ge.revert(gid.value, rev)

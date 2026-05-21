@@ -230,7 +230,7 @@ const isInPreviewRange = (date: Date) => {
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          :class="cn('bg-content1 border-default-200 z-50 border p-3 shadow-lg', roundedClass)"
+          :class="cn('bg-content1 border-default-200 z-kun-popover border p-3 shadow-lg', roundedClass)"
           :style="[floatingStyles, { minWidth: '260px' }]"
           role="dialog"
           aria-modal="true"

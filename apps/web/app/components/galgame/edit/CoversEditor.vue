@@ -36,8 +36,12 @@ const pin = (hash: string) => {
   emit('update:modelValue', next)
 }
 
-const remove = (hash: string) => {
-  if (!confirm('确定移除该封面？将在保存后从 Wiki 集合里删除。')) return
+const remove = async (hash: string) => {
+  const ok = await useKunAlert({
+    title: '移除封面',
+    message: '确定移除该封面？将在保存后从 Wiki 集合里删除。'
+  })
+  if (!ok) return
   emit(
     'update:modelValue',
     props.modelValue.filter((c) => c.image_hash !== hash)

@@ -67,12 +67,11 @@ const statusLabel = (s: number): { text: string; color: KunUIColor } => {
 // ─── Withdraw (DELETE /galgame/:gid) ──────────────────
 const withdrawing = ref<number | null>(null)
 const handleWithdraw = async (m: MineItem) => {
-  if (
-    !confirm(
-      `确定要撤回《${displayName(m)}》的提交吗？撤回后无法恢复，需要重新提交。`
-    )
-  )
-    return
+  const ok = await useKunAlert({
+    title: '撤回提交',
+    message: `确定要撤回《${displayName(m)}》的提交吗？撤回后无法恢复，需要重新提交。`
+  })
+  if (!ok) return
   withdrawing.value = m.id
   try {
     const res = await api.delete(`/galgame/${m.id}`)

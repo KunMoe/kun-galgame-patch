@@ -12,9 +12,17 @@ const props = defineProps<Props>()
       v-if="props.frontmatter.banner"
       class="bg-default-100 aspect-[3/1] w-full overflow-hidden rounded-xl"
     >
+      <!-- Same reasoning as AboutCard: pre-optimized static AVIF, IPX would
+           only add latency. `eager` + fetchpriority="high" because this is
+           the LCP element on the post detail page. -->
       <KunImage
         :src="props.frontmatter.banner"
         :alt="props.frontmatter.title"
+        provider="none"
+        loading="eager"
+        fetchpriority="high"
+        :width="1200"
+        :height="400"
         class-name="h-full w-full object-cover"
       />
     </div>

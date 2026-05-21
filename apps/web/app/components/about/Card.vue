@@ -23,9 +23,19 @@ const readMinutes = computed(() =>
       v-if="props.post.banner"
       class="bg-default-100 aspect-video w-full overflow-hidden"
     >
+      <!-- About post banners are pre-optimized AVIF authored at build time
+           (/posts/notice/*/banner.avif). `provider="none"` returns the URL
+           untouched — skips the IPX → sharp roundtrip + 5-min FS cache miss
+           latency that would otherwise hit on every cold load. Explicit
+           width/height + lazy also eliminate the layout shift / reflow churn
+           previously seen with 4 banner cards loading in parallel. -->
       <KunImage
         :src="props.post.banner"
         :alt="props.post.title"
+        provider="none"
+        loading="lazy"
+        :width="512"
+        :height="288"
         class-name="h-full w-full object-cover"
       />
     </div>

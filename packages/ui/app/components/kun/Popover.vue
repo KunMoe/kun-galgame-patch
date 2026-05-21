@@ -115,7 +115,7 @@ defineExpose({
           :aria-hidden="!isOpen"
           :class="
             cn(
-              'bg-content1 border-default-200 z-50 border shadow-lg',
+              'bg-content1 border-default-200 z-kun-popover border shadow-lg',
               roundedClass,
               innerClass
             )

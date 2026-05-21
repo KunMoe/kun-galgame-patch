@@ -26,7 +26,11 @@ watch(page, () => refresh())
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
 
 const handleDelete = async (id: number) => {
-  if (!confirm('确定要删除这个补丁资源吗?')) return
+  const ok = await useKunAlert({
+    title: '删除补丁资源',
+    message: '确定要删除这个补丁资源吗？此操作不可恢复。'
+  })
+  if (!ok) return
   const res = await api.delete(`/admin/resource/${id}`)
   if (res.code === 0) {
     useKunMessage('已删除', 'success')

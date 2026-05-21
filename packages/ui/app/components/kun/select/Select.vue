@@ -151,7 +151,7 @@ const selectOption = (value: T, index: number) => {
           v-if="isOpen"
           ref="dropdownRef"
           :style="floatingStyles"
-          :class="cn('bg-content1 border-default-200 z-50 border p-1 shadow-lg', roundedClass)"
+          :class="cn('bg-content1 border-default-200 z-kun-popover border p-1 shadow-lg', roundedClass)"
         >
           <ul
             class="scrollbar-hide overflow-auto rounded-md text-sm focus:outline-none"

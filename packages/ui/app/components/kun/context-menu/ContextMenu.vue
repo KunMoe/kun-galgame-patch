@@ -136,7 +136,7 @@ const handleSelect = (item: KunContextMenuItem) => {
       <div
         v-if="visible && items.length"
         ref="menuRef"
-        class="border-default-200 bg-background/95 fixed z-[1100] rounded-xl border p-1 text-sm shadow-2xl backdrop-blur"
+        class="border-default-200 bg-background/95 fixed z-kun-popover rounded-xl border p-1 text-sm shadow-2xl backdrop-blur"
         :style="menuStyle"
         @click.stop
       >

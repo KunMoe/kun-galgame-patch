@@ -54,7 +54,7 @@ onBeforeUnmount(() => {
     leave-active-class="animate-fadeOutDown"
   >
     <div
-      class="bg-background fixed right-0 bottom-0 left-0 z-2000 min-h-30 w-full border-t"
+      class="bg-background fixed right-0 bottom-0 left-0 z-kun-message min-h-30 w-full border-t"
       v-if="isVisible"
     >
       <Transition enter-active-class="animate-swing" appear>

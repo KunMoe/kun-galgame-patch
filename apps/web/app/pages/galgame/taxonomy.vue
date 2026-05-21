@@ -230,7 +230,11 @@ const save = async () => {
 // ─── Two-step delete (doc-mandated) ───────────────────
 const deleting = ref<number | null>(null)
 const del = async (row: Row) => {
-  if (!confirm(`确定删除「${row.name || '#' + row.id}」？`)) return
+  const ok = await useKunAlert({
+    title: '删除',
+    message: `确定删除「${row.name || '#' + row.id}」？`
+  })
+  if (!ok) return
   deleting.value = row.id
   try {
     const call = (force: boolean) => {
@@ -247,19 +251,22 @@ const del = async (row: Row) => {
     }
     // code:7 = still referenced by N galgames → offer forced cascade.
     if (res.code === 7 && tab.value !== 'series') {
-      if (
-        !confirm(
-          `${res.message}\n\n强制删除会清除它在所有作品上的关联，且不可恢复。确定继续？`
-        )
-      )
+      const okForce = await useKunAlert({
+        title: '强制删除',
+        message: `${res.message}\n\n强制删除会清除它在所有作品上的关联，且不可恢复。确定继续？`
+      })
+      if (!okForce) {
+        deleting.value = null
         return
-      const forced = await call(true)
-      if (forced.code === 0) {
+      }
+      const res2 = await call(true)
+      if (res2.code === 0) {
         useKunMessage('已强制删除', 'success')
         await loadList()
       } else {
-        useKunMessage(forced.message || '强制删除失败', 'error')
+        useKunMessage(res2.message || '删除失败', 'error')
       }
+      deleting.value = null
       return
     }
     useKunMessage(res.message || '删除失败（仅管理员 / 协管可操作）', 'error')
@@ -331,16 +338,15 @@ watch(histPage, loadHistory)
 const doRevert = async (rev: TaxonomyRevision) => {
   if (!histRow.value) return
   const verb = rev.action === 'deleted' ? '恢复（撤销删除）' : '回滚'
-  if (
-    !confirm(
-      `${verb}到版本 #${rev.revision}？将在 Wiki 创建一条 reverted 行${
-        rev.action === 'deleted'
-          ? '；恢复后该实体重新出现，但被引用的作品不会自动加回——需手动到对应 galgame 编辑里重新选上'
-          : ''
-      }。`
-    )
-  )
-    return
+  const ok = await useKunAlert({
+    title: verb,
+    message: `${verb}到版本 #${rev.revision}？将在 Wiki 创建一条 reverted 行${
+      rev.action === 'deleted'
+        ? '；恢复后该实体重新出现，但被引用的作品不会自动加回——需手动到对应 galgame 编辑里重新选上'
+        : ''
+    }。`
+  })
+  if (!ok) return
   acting.value = rev.id
   try {
     const res = await ge.taxRevert(

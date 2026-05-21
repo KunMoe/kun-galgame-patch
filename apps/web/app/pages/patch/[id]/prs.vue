@@ -192,7 +192,11 @@ const doMerge = async () => {
 }
 const doDecline = async () => {
   if (!detail.value) return
-  if (!confirm('确定拒绝该编辑请求？')) return
+  const ok = await useKunAlert({
+    title: '拒绝编辑请求',
+    message: '确定拒绝该编辑请求？'
+  })
+  if (!ok) return
   acting.value = true
   try {
     const res = await ge.declinePR(gid.value, detail.value.pr.id)

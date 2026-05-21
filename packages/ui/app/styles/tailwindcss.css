@@ -140,6 +140,33 @@
   --radius-kun-lg: 0.75rem;
   --radius-kun-full: 9999px;
 
+  /* z-index layering — global floating UI must stack predictably so
+   * popovers opened from inside a modal aren't hidden under it.
+   *
+   * The bug this fixes: KunModal sits at z-1007, but KunSelect /
+   * KunPopover / KunDatePicker / KunTooltip dropdowns were all at
+   * z-50. Since these floats Teleport to body, they share the
+   * stacking context with Modal — z-50 < z-1007 means the dropdown
+   * renders below the modal whenever the trigger lives inside one.
+   *
+   * Tier rule: a floating element always sits above the layer that
+   * triggered it. Modal < popover (popovers inside modals) < alert
+   * (modal-blocking confirm) < message (always-on-top toasts).
+   *
+   * Tailwind v4 @theme auto-generates utility classes:
+   *   z-kun-sticky / z-kun-modal / z-kun-popover / z-kun-alert /
+   *   z-kun-message
+   *
+   * Override per-app by re-declaring the variable in :root if you
+   * need to interoperate with third-party widgets that use specific
+   * z-index values.
+   */
+  --z-kun-sticky: 30;
+  --z-kun-modal: 1000;
+  --z-kun-popover: 1500;
+  --z-kun-alert: 2000;
+  --z-kun-message: 9000;
+
   /* Animations */
   --animate-shake: shake 1s ease-in-out;
   --animate-bounceInDown: bounceInDown 1s ease-in-out;

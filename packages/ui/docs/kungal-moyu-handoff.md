@@ -939,3 +939,220 @@ v0.4.3 修复了 `getRandomSticker` 在 reactive recompute 路径上的崩溃（
 违反任何一条 → 等着踩 `$nuxt null` 的坑。
 
 **风险等级**：极低 —— 一个文件 + 一行 graft，API 不变。**优先级最高**，建议作为独立 PR 立即合并。
+
+---
+
+## 15. v0.4.5 — z-index 设计 token 系统：浮层不再被 Modal 压住（2026-05-21）
+
+**症状**：KunModal 里打开 KunSelect / KunPopover / KunDatePicker / KunTooltip，下拉视觉上**沉到 Modal 下面**，看不见。
+
+**根因**：v0.1.x 起 9 个浮层组件各自硬编码 magic number z-index：Modal 是 z-1007、popover 类全是 z-50 → Modal **永远盖住** popover。Teleport to body 没有改变 z-index 竞争关系。
+
+详细分析见 `improvement-plan.md` §16。
+
+### 同步 — 10 个文件
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+
+# token 定义（关键 —— 必须先同步这个）
+cp $KUN_OAUTH/packages/ui/app/styles/tailwindcss.css ./styles/tailwindcss.css
+
+# 9 个 component 文件
+cp $KUN_OAUTH/packages/ui/app/components/kun/Modal.vue                       ./components/kun/Modal.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/Popover.vue                     ./components/kun/Popover.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue               ./components/kun/select/Select.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/date-picker/Picker.vue          ./components/kun/date-picker/Picker.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/tooltip/Tooltip.vue             ./components/kun/tooltip/Tooltip.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/context-menu/ContextMenu.vue    ./components/kun/context-menu/ContextMenu.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/alert/Alert.vue                 ./components/kun/alert/Alert.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/alert/Loli.vue                  ./components/kun/alert/Loli.vue
+cp $KUN_OAUTH/packages/ui/app/components/kun/alert/MessageContainer.vue      ./components/kun/alert/MessageContainer.vue
+```
+
+如果你 fork 后改过 `tailwindcss.css`（加了自己的 design tokens），**不要直接覆盖** —— 把 v0.4.5 加的这段插进你的 `@theme` 块即可：
+
+```css
+@theme {
+  /* ... 你既有的 token ... */
+  --z-kun-sticky: 30;
+  --z-kun-modal: 1000;
+  --z-kun-popover: 1500;
+  --z-kun-alert: 2000;
+  --z-kun-message: 9000;
+}
+```
+
+### 设计层级速查
+
+```
+z-kun-sticky (30) < z-kun-modal (1000) < z-kun-popover (1500) < z-kun-alert (2000) < z-kun-message (9000)
+```
+
+| token | 谁用 | 何时该用 |
+|---|---|---|
+| `z-kun-sticky` | 自定义 sticky header / 滚动阴影 | 局部 sticky / 容器内浮层 |
+| `z-kun-modal` | `KunModal` | 阻塞容器 |
+| `z-kun-popover` | `KunPopover` / `KunSelect` / `KunDatePicker` / `KunTooltip` / `KunContextMenu` | 任何 Teleport 出去的浮层 |
+| `z-kun-alert` | `KunAlert`（确认对话框） | 比 Modal 更高一级的阻塞 dialog |
+| `z-kun-message` | `KunMessage`（toast） / `KunLoliInfo` | 永远在最上层 |
+
+### 消费侧
+
+**零修改**。所有 KunUI 组件依然按之前用法工作。如果你自己有 `class="z-50"` 之类硬编码 Modal 边沿的 z-index，建议改成 token，避免将来 token 调整后行为漂移：
+
+```bash
+# 在你们仓里 grep 一下自己写的 z-index 硬编码
+grep -rn 'z-\[\|class="[^"]*z-[0-9]\+' apps --include='*.vue'
+```
+
+业务代码里少量 `z-10` / `z-20` 这种局部相对值是 OK 的，**只要不是 fixed / absolute 跨容器的全局浮层即可**。
+
+### 验证
+
+```bash
+pnpm -F your-app exec nuxt build
+```
+
+运行时复现：
+- 任何场景"在 KunModal 里打开 KunSelect / KunPopover / KunDatePicker / KunTooltip" → **浮层正确出现在 Modal 之上**
+- KunAlert 确认对话框打开时盖住 KunPopover（如果同时存在）
+- KunMessage toast 永远可见，不会被任何 modal / popover 盖住
+
+### 与 Modal-stack 第三方 widget 协作
+
+如果你接入了某个写死 `z-index: 9998` 的 vendor 库，可以在你 app 的 `:root` 里覆盖 token：
+
+```css
+:root {
+  --z-kun-modal: 9998;
+  --z-kun-popover: 10500;  /* KunSelect 仍然高于 vendor modal */
+}
+```
+
+这是 token 系统比 magic number 优越的关键 —— 跨库 z-index 协作通过修改变量解决，不用挨个改组件。
+
+**风险等级**：低 —— token 引入是新增 CSS 变量，组件改动只是把硬编码值换 token。**视觉无差异**（除了"在 Modal 内打开 popover" 这一个 bug 修复场景）。建议作为独立 PR 合并。
+
+---
+
+## 16. v0.4.6 — KunImage 5 个 prop 透传 + `none` provider 在 layer 层注册（2026-05-21）
+
+来自 moyu 调查 `/about` 页卡顿的副产品：KunImage 缺 `provider` / `densities` / `sizes` / `fetchpriority` / `decoding` 几个常用 NuxtImg pass-through prop，导致优化场景被迫用裸 `<NuxtImg>`。详细背景见 `improvement-plan.md` §17。
+
+### 同步 — 2 个文件
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+cp $KUN_OAUTH/packages/ui/app/components/kun/image/Image.vue ./components/kun/image/Image.vue
+cp $KUN_OAUTH/packages/ui/nuxt.config.ts                     ./nuxt.config.ts
+```
+
+注意第二个 —— 如果你 fork 了 KunUI layer 的 `nuxt.config.ts` 并自己改过，**别整个覆盖**，把 `image.providers.none` 这一段插进你的版本即可：
+
+```ts
+image: {
+  providers: {
+    none: { name: 'none', provider: '@nuxt/image/runtime/providers/none' }
+  }
+}
+```
+
+### 你之前在自己 app 的 nuxt.config 加的 `none` provider 可以删了
+
+moyu 之前在自己仓的 `apps/web/nuxt.config.ts` 加过：
+
+```ts
+image: {
+  providers: {
+    none: { ... }
+  }
+}
+```
+
+**v0.4.6 之后这段可以从 app 层删掉** —— KunUI layer 已经全局注册，下游 inherit。如果想保留 app 层覆盖（比如要重新定义自己的 provider）也无害，nuxt 会 merge。
+
+### 用 KunImage 的最佳实践 cheat sheet
+
+#### 静态预优化图（author 时已 AVIF / WebP）—— 跳过 IPX
+
+```vue
+<KunImage
+  :src="post.banner"
+  provider="none"
+  loading="lazy"
+  :width="512" :height="288"
+  class-name="h-full w-full object-cover"
+/>
+```
+
+适用场景：about / blog post banner、固定品牌图、已经手动压过的图
+
+#### LCP 元素（首屏最大图，详情页 banner）
+
+```vue
+<KunImage
+  :src="banner"
+  provider="none"
+  loading="eager"
+  fetchpriority="high"
+  :width="1200" :height="400"
+/>
+```
+
+适用场景：博客详情页头图、产品详情页主图
+
+#### 需要 runtime resize 的图（用户上传、变体尺寸）
+
+```vue
+<KunImage
+  :src="user.avatar"
+  loading="lazy"
+  :width="64" :height="64"
+  densities="1x 2x"
+/>
+```
+
+适用场景：用户头像、galgame banner、缩略图
+
+#### 列表里的次要图（非 LCP，可以慢点）
+
+```vue
+<KunImage
+  :src="thumb"
+  loading="lazy"
+  decoding="async"
+  :width="200" :height="120"
+/>
+```
+
+`decoding="async"` 让浏览器在主线程外解码，避免阻塞滚动。
+
+### 验证
+
+```bash
+pnpm -F your-app exec nuxt build
+# 应该都通过
+```
+
+运行时验证：把 `/about` 或类似含多 banner 的页面打开 Chrome DevTools Network，确认：
+
+1. **预优化 banner 的 URL 没有 `/_ipx/` 前缀**（说明 provider="none" 生效）
+2. **第二次访问同一张图直接 304 / from cache**（没走 IPX 5 分钟缓存）
+3. **layout shift 看 Web Vitals 接近 0**（width/height 预留生效）
+4. **LCP < 2.5s**（fetchpriority="high" 生效）
+
+### 反思 —— sharp 不在前端运行，但卡是真的
+
+moyu 这次最值得学的不是技术修复，是**调试方法**：
+
+用户报告"sharp 在前端运行所以卡"。**moyu 没顺着错假设修**，先用 build artifact 直接证伪（`.output/public/_nuxt/*.js` 里 0 sharp），然后重新定义问题（"卡是真的，但成因是 IPX 冷启动 + layout shift + 重复 transcode"），再去修真根因。
+
+下次遇到 KunUI / 其他 layer 的性能 / 崩溃 bug 报告，第一步**永远是查证假设**：
+- 报"前端 X 在跑" → 看 client bundle 有没有 X
+- 报"内存泄漏" → DevTools Memory profile 找具体保留引用
+- 报"重渲染太多" → Vue DevTools 看 component re-render count
+
+把假设当作待验证的命题而不是事实，是 senior 调试的核心姿态。
+
+**风险等级**：极低 —— Image.vue 加可选 prop，nuxt.config 加 provider 注册。无 API 破坏。建议作为独立 PR 合并。
