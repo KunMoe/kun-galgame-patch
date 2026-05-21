@@ -1,3 +1,6 @@
+/* See note in editor.css — @reference makes @apply resolve @kun/ui tokens. */
+@reference '@kun/ui/app/styles/tailwindcss.css';
+
 .kun-prose {
   @apply text-default-800 leading-7 text-inherit;
 

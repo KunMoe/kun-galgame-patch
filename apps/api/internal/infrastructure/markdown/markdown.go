@@ -271,9 +271,9 @@ func RenderWithTOC(src string) (string, []TOCItem, error) {
 	return buf.String(), toc, nil
 }
 
-// ExtractMentionedUIDs scans markdown source for [@text](/user/<id>/...)
+// ExtractMentionedUserIDs scans markdown source for [@text](/user/<id>/...)
 // patterns and returns the unique uids in order of first occurrence.
-func ExtractMentionedUIDs(src string) []int {
+func ExtractMentionedUserIDs(src string) []int {
 	matches := mentionPatternRegex.FindAllStringSubmatch(src, -1)
 	if len(matches) == 0 {
 		return nil

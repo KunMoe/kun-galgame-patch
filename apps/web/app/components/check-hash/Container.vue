@@ -153,7 +153,7 @@ const handleFileSelect = (e: Event) => {
         v-else-if="status === 'match'"
         class="text-success mt-6 flex items-center justify-center gap-2"
       >
-        <KunIcon name="lucide:check-circle-2" class="size-6" />
+        <KunIcon name="lucide:circle-check" class="size-6" />
         <span>校验成功! Hash 一致, 文件未损坏🎉🎉🎉</span>
       </div>
 
@@ -161,7 +161,7 @@ const handleFileSelect = (e: Event) => {
         v-else-if="status === 'mismatch'"
         class="text-danger mt-6 flex items-center justify-center gap-2"
       >
-        <KunIcon name="lucide:x-circle" class="size-6" />
+        <KunIcon name="lucide:circle-x" class="size-6" />
         <span>校验失败! 文件可能在下载过程中损坏!</span>
       </div>
     </div>

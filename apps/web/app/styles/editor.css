@@ -1,3 +1,9 @@
+/* Tailwind v4: @apply in a standalone CSS file (not directly imported with
+ * @tailwind directives in the same scope) needs @reference to know which
+ * theme to read tokens from. Without it the compiler can't see custom
+ * tokens like `default-800` shipped by @kun/ui's tailwindcss.css. */
+@reference '@kun/ui/app/styles/tailwindcss.css';
+
 .milkdown {
   @apply text-default-800 max-h-[500px] overflow-y-scroll leading-7 whitespace-pre-line;
 }

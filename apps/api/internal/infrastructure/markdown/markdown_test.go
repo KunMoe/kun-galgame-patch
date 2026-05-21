@@ -47,9 +47,9 @@ func TestMentionLink(t *testing.T) {
 	}
 }
 
-func TestExtractMentionedUIDs(t *testing.T) {
+func TestExtractMentionedUserIDs(t *testing.T) {
 	in := "ping [@a](/user/1/resource), [@b](/user/2), [@a-again](/user/1) and [link](/about)"
-	got := markdown.ExtractMentionedUIDs(in)
+	got := markdown.ExtractMentionedUserIDs(in)
 	want := []int{1, 2}
 	if len(got) != len(want) {
 		t.Fatalf("userID count mismatch, got %v want %v", got, want)

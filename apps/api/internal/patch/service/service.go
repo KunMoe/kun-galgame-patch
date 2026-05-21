@@ -787,7 +787,7 @@ func (s *PatchService) GetContributorIDs(patchID int) ([]int, error) {
 // for notification routing matches exactly what the renderer treats as a
 // mention link.
 func (s *PatchService) ExtractMentionUserIDs(content string) []int {
-	return markdown.ExtractMentionedUIDs(content)
+	return markdown.ExtractMentionedUserIDs(content)
 }
 
 // ===== Notifications (simplified) =====
