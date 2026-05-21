@@ -13,11 +13,14 @@
     "prepare": "nuxt prepare"
   },
   "dependencies": {
+    "@floating-ui/vue": "^1.1.11",
     "@nuxt/icon": "2.2.1",
     "@nuxt/image": "2.0.0",
     "@vueuse/core": "^14.2.1",
+    "@vueuse/integrations": "^14.3.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "focus-trap": "^8.2.1",
     "isomorphic-dompurify": "^3.3.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",

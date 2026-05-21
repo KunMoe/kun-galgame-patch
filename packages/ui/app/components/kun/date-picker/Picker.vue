@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, toRefs, nextTick, watch } from 'vue'
-import { onClickOutside, useElementBounding, useWindowSize } from '@vueuse/core'
+import { onClickOutside } from '@vueuse/core'
+import { useFloating, autoUpdate, offset, flip, shift } from '@floating-ui/vue'
 import { useCalendar } from './useCalendar'
 import type { KunDatePickerProps } from './types'
 
@@ -22,27 +23,18 @@ const emit = defineEmits<{
 }>()
 
 const isOpen = ref(false)
-const showAbove = ref(false)
 const datePickerRef = ref<HTMLElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const hoveredDate = ref<Date | null>(null)
 
 onClickOutside(datePickerRef, () => (isOpen.value = false))
-const {
-  bottom: pickerBottom,
-  top: pickerTop,
-  width: pickerWidth
-} = useElementBounding(datePickerRef)
-const { height: dropdownHeight } = useElementBounding(dropdownRef)
-const { height: windowHeight } = useWindowSize()
 
-const updateDropdownPosition = () => {
-  if (!datePickerRef.value || !dropdownRef.value) return
-  const spaceBelow = windowHeight.value - pickerBottom.value
-  const spaceAbove = pickerTop.value
-  const requiredSpace = dropdownHeight.value + 8
-  showAbove.value = spaceBelow < requiredSpace && spaceAbove > requiredSpace
-}
+const { floatingStyles } = useFloating(datePickerRef, dropdownRef, {
+  placement: 'bottom-start',
+  open: isOpen,
+  whileElementsMounted: autoUpdate,
+  middleware: [offset(4), flip(), shift({ padding: 8 })],
+})
 
 const {
   modelValue,
@@ -142,11 +134,8 @@ const toggle = () => {
   if (props.disabled) return
   isOpen.value = !isOpen.value
   if (isOpen.value) {
-    nextTick(() => {
-      updateDropdownPosition()
-      // focus so keyboard works
-      datePickerRef.value?.focus()
-    })
+    // focus so keyboard works (positioning is handled by useFloating)
+    nextTick(() => datePickerRef.value?.focus())
   }
 }
 
@@ -219,16 +208,23 @@ const isInPreviewRange = (date: Date) => {
       </button>
     </div>
 
-    <Transition :name="showAbove ? 'fadeDown' : 'fadeUp'">
-      <div
-        v-show="isOpen"
-        ref="dropdownRef"
-        class="bg-content1 border-default-200 absolute z-50 rounded-md border p-3"
-        :class="showAbove ? 'bottom-full mb-1' : 'top-full mt-1'"
-        :style="{ minWidth: `${Math.max(260, Math.round(pickerWidth))}px` }"
-        role="dialog"
-        aria-modal="true"
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 -translate-y-1"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition duration-100 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 -translate-y-1"
       >
+        <div
+          v-if="isOpen"
+          ref="dropdownRef"
+          class="bg-content1 border-default-200 z-50 rounded-md border p-3 shadow-lg"
+          :style="[floatingStyles, { minWidth: '260px' }]"
+          role="dialog"
+          aria-modal="true"
+        >
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <KunButton
@@ -343,30 +339,11 @@ const isInPreviewRange = (date: Date) => {
             </KunButton>
           </div>
         </div>
-      </div>
-    </Transition>
+        </div>
+      </Transition>
+    </Teleport>
 
     <p v-if="error" class="text-danger mt-2 text-sm">{{ error }}</p>
   </div>
 </template>
 
-<style scoped>
-.fadeUp-enter-active,
-.fadeUp-leave-active,
-.fadeDown-enter-active,
-.fadeDown-leave-active {
-  transition: all 0.2s ease-in-out;
-}
-
-.fadeUp-enter-from,
-.fadeUp-leave-to {
-  transform: translateY(-8px);
-  opacity: 0;
-}
-
-.fadeDown-enter-from,
-.fadeDown-leave-to {
-  transform: translateY(8px);
-  opacity: 0;
-}
-</style>

@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import type { KunSelectProps } from './type'
+import { computed, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 import {
-  useElementBounding,
-  useEventListener,
-  useWindowSize,
-  onClickOutside
-} from '@vueuse/core'
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  size,
+} from '@floating-ui/vue'
+import type { KunSelectProps } from './type'
 
 const props = withDefaults(defineProps<KunSelectProps>(), {
   placeholder: '',
@@ -17,7 +21,11 @@ const props = withDefaults(defineProps<KunSelectProps>(), {
   className: ''
 })
 
-const modelValue = defineModel<string | number>()
+// `required: true` makes the model `Ref<string | number>` (without
+// `undefined`), so consumers' @update:model-value callbacks can type
+// the arg as `string | number` without TS rejecting it. Without
+// `required` Vue 3.5 infers `Ref<T | undefined>` by spec.
+const modelValue = defineModel<string | number>({ required: true })
 
 const emit = defineEmits<{
   set: [value: string | number, index: number]
@@ -25,14 +33,33 @@ const emit = defineEmits<{
 
 const kunUniqueId = useKunUniqueId('kun-select')
 const isOpen = ref(false)
-const showAbove = ref(false)
-const button = useTemplateRef<HTMLElement>('button')
-const dropdown = useTemplateRef<HTMLElement>('dropdown')
+const buttonRef = ref<HTMLElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
 
-const buttonBounds = useElementBounding(button)
-const dropdownBounds = useElementBounding(dropdown)
-const { height: windowHeight } = useWindowSize()
-onClickOutside(button, () => {
+const { floatingStyles } = useFloating(buttonRef, dropdownRef, {
+  placement: 'bottom-start',
+  open: isOpen,
+  whileElementsMounted: autoUpdate,
+  middleware: [
+    offset(4),
+    flip(),
+    shift({ padding: 8 }),
+    // size middleware matches the dropdown width to the trigger and
+    // caps height to the available viewport space so the list scrolls
+    // instead of overflowing the screen.
+    size({
+      apply({ rects, elements, availableHeight }) {
+        Object.assign(elements.floating.style, {
+          width: `${rects.reference.width}px`,
+          maxHeight: `${Math.min(240, availableHeight - 8)}px`,
+        })
+      },
+    }),
+  ],
+})
+
+onClickOutside(buttonRef, (event) => {
+  if (dropdownRef.value?.contains(event.target as Node)) return
   isOpen.value = false
 })
 
@@ -43,35 +70,8 @@ const selectedLabel = computed(() => {
   return selected?.label
 })
 
-const updateDropdownPosition = () => {
-  if (!button.value || !dropdown.value) {
-    return
-  }
-
-  const spaceBelow = windowHeight.value - buttonBounds.bottom.value
-  const spaceAbove = buttonBounds.top.value
-  const requiredSpace = dropdownBounds.height.value + 8
-
-  showAbove.value = spaceBelow < requiredSpace && spaceAbove > requiredSpace
-}
-
-useEventListener(document, 'click', (e: MouseEvent) => {
-  const target = e.target as HTMLElement
-  if (!target.closest(`#${kunUniqueId.value}`)) {
-    isOpen.value = false
-  }
-})
-
-watch([isOpen, dropdownBounds.height], () => {
-  if (isOpen.value) {
-    nextTick(updateDropdownPosition)
-  }
-})
-
 const toggle = () => {
-  if (!props.disabled) {
-    isOpen.value = !isOpen.value
-  }
+  if (!props.disabled) isOpen.value = !isOpen.value
 }
 
 const selectOption = (value: string | number, index: number) => {
@@ -92,15 +92,17 @@ const selectOption = (value: string | number, index: number) => {
     </label>
 
     <button
-      ref="button"
+      ref="buttonRef"
       :id="kunUniqueId"
       type="button"
       :aria-label="props.ariaLabel || 'select'"
+      :aria-expanded="isOpen"
+      :aria-haspopup="'listbox'"
       :class="
         cn(
-          'focus:border-primary-500 focus:ring-primary-500 flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-sm focus:ring-1 focus:outline-none',
+          'focus:border-primary focus:ring-primary flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-sm focus:ring-1 focus:outline-none',
           darkBorder && 'dark:border-default-200 border-default/20 border',
-          disabled && 'bg-default-100 cursor-cursor-not-allowed'
+          disabled && 'bg-default-100 cursor-not-allowed'
         )
       "
       @click="toggle"
@@ -118,60 +120,46 @@ const selectOption = (value: string | number, index: number) => {
       />
     </button>
 
-    <Transition :name="showAbove ? 'fadeDown' : 'fadeUp'">
-      <div
-        v-show="isOpen"
-        ref="dropdown"
-        class="bg-content1 absolute z-50 w-full rounded-md border p-1"
-        :class="showAbove ? 'bottom-full mb-1' : 'top-full mt-1'"
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 -translate-y-1"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition duration-100 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 -translate-y-1"
       >
-        <ul
-          class="scrollbar-hide max-h-60 overflow-auto rounded-md text-base text-sm focus:outline-none"
-          tabindex="-1"
-          role="listbox"
+        <div
+          v-if="isOpen"
+          ref="dropdownRef"
+          :style="floatingStyles"
+          class="bg-content1 border-default-200 z-50 rounded-md border p-1 shadow-lg"
         >
-          <li
-            v-for="(option, index) in options"
-            :key="option.value"
-            class="hover:bg-default-100 text-foreground relative flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 select-none"
-            @click="selectOption(option.value, index)"
-            role="option"
+          <ul
+            class="scrollbar-hide overflow-auto rounded-md text-sm focus:outline-none"
+            tabindex="-1"
+            role="listbox"
           >
-            <span class="block truncate">
-              {{ option.label }}
-            </span>
-
-            <KunIcon
-              v-if="modelValue === option.value"
-              name="lucide:check"
-              class="flex items-center pr-4"
-            />
-          </li>
-        </ul>
-      </div>
-    </Transition>
+            <li
+              v-for="(option, index) in options"
+              :key="option.value"
+              class="hover:bg-default-100 text-foreground relative flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 select-none"
+              @click="selectOption(option.value, index)"
+              role="option"
+              :aria-selected="modelValue === option.value"
+            >
+              <span class="block truncate">{{ option.label }}</span>
+              <KunIcon
+                v-if="modelValue === option.value"
+                name="lucide:check"
+                class="ml-2 shrink-0"
+              />
+            </li>
+          </ul>
+        </div>
+      </Transition>
+    </Teleport>
 
     <p v-if="error" class="text-danger mt-2 text-sm">{{ error }}</p>
   </div>
 </template>
-
-<style scoped>
-.fadeUp-enter-active,
-.fadeUp-leave-active,
-.fadeDown-enter-active,
-.fadeDown-leave-active {
-  transition: all 0.2s ease-in-out;
-}
-
-.fadeUp-enter-from,
-.fadeUp-leave-to {
-  transform: translateY(-8px);
-  opacity: 0;
-}
-
-.fadeDown-enter-from,
-.fadeDown-leave-to {
-  transform: translateY(8px);
-  opacity: 0;
-}
-</style>

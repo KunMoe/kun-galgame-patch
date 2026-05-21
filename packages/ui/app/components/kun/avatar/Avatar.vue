@@ -11,8 +11,8 @@ const props = withDefaults(defineProps<KunAvatarProps>(), {
 
 const handleClickAvatar = async (event: MouseEvent) => {
   event.preventDefault()
-  if (!props.isNavigation || !props.user?.id) return
-  await navigateTo(`/user/${props.user.id}/info`)
+  if (!props.isNavigation || !props.user?.uid) return
+  await navigateTo(`/user/${props.user.uid}/info`)
 }
 
 const sizeClasses = computed(() => {

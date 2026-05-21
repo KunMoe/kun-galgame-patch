@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getRandomSticker } from '../utils/getRandomSticker'
+import { getRandomSticker } from '../../utils/getRandomSticker'
 
 withDefaults(
   defineProps<{

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
-import { onMounted, onUnmounted, watch } from 'vue'
+import { useFocusTrap } from '@vueuse/integrations/useFocusTrap'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 
 const props = withDefaults(
@@ -41,6 +42,19 @@ const applyLock = (shouldLock: boolean) => {
   }
 }
 
+// Focus trap on the modal container — keyboard focus can't escape via
+// Tab/Shift+Tab while the modal is open. `escapeDeactivates: false`
+// because Modal.vue already owns the Escape handler (handleCloseKunModal
+// dispatches through isDismissable). `returnFocusOnDeactivate` restores
+// focus to whatever was active before open.
+const trapEl = ref<HTMLElement | null>(null)
+const { activate, deactivate } = useFocusTrap(trapEl, {
+  immediate: false,
+  escapeDeactivates: false,
+  allowOutsideClick: true,
+  returnFocusOnDeactivate: true,
+})
+
 const handleCloseKunModal = () => {
   if (props.isDismissable) {
     modelValue.value = false
@@ -54,14 +68,29 @@ useEventListener('keydown', (e: KeyboardEvent) => {
   }
 })
 
-watch(modelValue, (v) => applyLock(v))
+watch(modelValue, async (v) => {
+  applyLock(v)
+  if (v) {
+    // nextTick so the trap element is mounted before activate() walks
+    // its children for focusable nodes.
+    await nextTick()
+    activate()
+  } else {
+    deactivate()
+  }
+})
 
-onMounted(() => {
-  if (modelValue.value) applyLock(true)
+onMounted(async () => {
+  if (modelValue.value) {
+    applyLock(true)
+    await nextTick()
+    activate()
+  }
 })
 
 onUnmounted(() => {
   applyLock(false)
+  deactivate()
 })
 </script>
 
@@ -70,6 +99,7 @@ onUnmounted(() => {
     <Transition name="kun-modal">
       <div
         v-if="modelValue"
+        ref="trapEl"
         :class="
           cn(
             'bg-default-800/70 dark:bg-background/70 fixed top-0 left-0 z-1007 flex h-full w-full items-center justify-center p-3 transition-all',

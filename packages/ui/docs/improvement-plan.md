@@ -739,6 +739,98 @@ Tab / TagInput 是新组件 + 新 API，下游按 §4 / §5 spec 实现即可，
 
 下游（kungal / moyu）拿到本节后，照 §7 同步清单 + v0.1.1 这 14 条按需对照。Modal 的 `useBodyScrollLock` 是 @kun/ui 的新 composable，下游不需要单独导入（消费 KunModal 就能享受到，自己写 Modal 的话才需要 import）。
 
+---
+
+## §9 v0.2.0 浮层引擎统一 + a11y 工具链（2026-05-21）
+
+新增 4 个 npm 依赖，把项目里"手写浮层定位"的 4 处全部收口到 `@floating-ui/vue`，并加 focus-trap + a11y lint + typecheck 三件套。
+
+### 新依赖
+
+| 包 | 装在哪 | 用途 |
+|---|---|---|
+| `@floating-ui/vue` | `@kun/ui` runtime | Popover / Tooltip / Select / DatePicker 的浮层定位 |
+| `@vueuse/integrations` + `focus-trap` | `@kun/ui` runtime | Modal / Lightbox 的键盘焦点陷阱 |
+| `eslint-plugin-vuejs-accessibility` | root devDep + apps/web + apps/wiki eslint 配置 | 静态 a11y 检查（防止下次又出"按钮嵌套按钮"这种） |
+| `vue-tsc` | root devDep | 真正的 .vue + .ts 类型检查（之前 typecheck 只跑 nuxt prepare） |
+
+### 浮层定位（4 个组件）
+
+**Popover.vue**：手写 220+ 行的 `computePosition` / `candidatesFor` / `coordsFor` / `ResizeObserver` → 用 `useFloating()` 一行，加 `offset(8)` + `flip()` + `shift({padding:8})` middleware。
+- 旧实现的 `useEventListener` 嵌在 `watch` 里，每次开都注册新 listener 不销毁 —— **泄漏 bug 自动消除**
+- 旧实现监听整个 `document` click —— 改用 `onClickOutside` 收敛到 trigger + popover 两个元素
+- 加 `Teleport to="body"` —— 父级 `overflow: hidden` 不会再裁掉浮层
+- `defineExpose` 暴露 `open() / close() / toggle()` 给父组件命令式控制
+
+**Tooltip.vue**：从 119 行精简 + **功能增强**
+- 加 `delayShow` / `delayHide` props（默认 100ms / 0ms）—— 防止鼠标快速划过闪烁
+- 加 `arrow()` middleware + `arrowStyles` computed —— 真正的箭头跟随飞行边
+- 加 `Teleport` —— 同上原因
+- `hideOnMobile` prop 可关 —— 之前 `hidden sm:block` 写死
+
+**Select.vue**：浮层用 `size()` middleware：
+- 自动让下拉宽度 = 触发按钮宽度（旧版用 `w-full` 但不准）
+- 自动 `maxHeight = Math.min(240, availableHeight - 8)` —— 视口空间不足时自动缩小，列表内部滚动
+- Modal 内的 Select 不再被 Modal 的 z-1007 压住（Teleport + `z-50`）
+
+**DatePicker.vue**：去掉手写的 `showAbove` 逻辑（用 vueuse `useElementBounding` + 自己算可用空间），改 `useFloating` 自动 flip。删除 scoped style 里的 `fadeUp`/`fadeDown` 类（不再被引用）。
+
+### Focus trap
+
+**Modal.vue** 加 `useFocusTrap` from `@vueuse/integrations`：
+- Tab / Shift+Tab 不会再漂出 Modal
+- 关闭时自动 restore focus 到打开前的元素
+- `escapeDeactivates: false` —— Modal 自己处理 Escape，不让 trap 抢
+- `allowOutsideClick: true` —— 允许背景点击关闭（Modal 的 `isDismissable` 仍然生效）
+- 嵌套 Modal：内层 activate 时外层自动 deactivate；内层 close 后焦点回外层（trap 库本身的栈语义）
+
+Lightbox 通过 KunModal 自动继承 trap，无需单独改。
+
+### ESLint a11y
+
+`apps/web/eslint.config.mjs` + `apps/wiki/eslint.config.mjs` 都接入 `eslint-plugin-vuejs-accessibility` 的 `flat/recommended` config。
+
+少数规则降级到 warn 或关闭：
+- `no-autofocus`: off（Input.vue 有 autofocus prop 是合理设计）
+- `click-events-have-key-events` / `no-static-element-interactions`: warn（不少地方 KunCard 等已经通过 button/link 渲染，但 lint 静态看不出）
+
+### vue-tsc typecheck
+
+加 `typecheck` script：
+- root `package.json`: `"typecheck": "pnpm -F \"./apps/**\" --parallel run typecheck"`
+- `apps/web/package.json` + `apps/wiki/package.json`: `"typecheck": "nuxt typecheck"`
+
+Nuxt 自带的 `nuxt typecheck` 命令在装了 `vue-tsc` 后能实际跑类型检查，覆盖 .vue 模板里的 prop 类型 / defineModel 推断错误。建议 CI 加 `pnpm typecheck` 阻塞合并。
+
+### 验证
+
+- `pnpm -F web exec nuxt build` ✅
+- `pnpm -F wiki exec nuxt build` ✅
+- 浮层手测：Popover / Tooltip / Select / DatePicker 在普通页面 + Modal 内部都能正确 flip / shift / size，不被父级 overflow 裁切
+- focus trap 手测：Modal 内 Tab 转一圈仍在 Modal 内；关闭后焦点回到打开前的按钮
+
+### 给下游的同步说明
+
+`kungal-moyu-handoff.md` 的 §1.1 文件复制清单要新加：
+```
+packages/ui/app/components/kun/Popover.vue              ← 全文重写
+packages/ui/app/components/kun/tooltip/Tooltip.vue      ← 全文重写
+packages/ui/app/components/kun/select/Select.vue        ← 全文重写
+packages/ui/app/components/kun/date-picker/Picker.vue   ← 主要改 useFloating + Teleport
+packages/ui/app/components/kun/Modal.vue                ← 加 useFocusTrap
+```
+
+下游 `package.json` 需补：
+```bash
+pnpm add @floating-ui/vue @vueuse/integrations focus-trap
+pnpm add -D vue-tsc eslint-plugin-vuejs-accessibility
+```
+
+**Tooltip 新 API**：`delayShow` / `delayHide` / `hideOnMobile` 三个新 prop，旧调用不传也能用（默认 100/0/true，比之前体验更好）。
+**Popover 新 API**：`defineExpose` 出 `open/close/toggle` 三个方法，可选用。
+**Select 视觉变化**：下拉宽度严格匹配触发器，超出视口时自动 maxHeight + 内部滚动。
+**DatePicker 视觉变化**：不再用 `showAbove` 字面跳转，改 flip middleware 平滑。
+
 ### 批 3（功能增强 + 体验打磨；持续）
 
 - [ ] §3.5 Select 加键盘导航 + search filter + multi 模式
