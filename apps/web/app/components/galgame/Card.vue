@@ -11,10 +11,8 @@ const galgameName = computed(() => getPreferredLanguageText(props.patch.name))
 
 const imageLoaded = ref(false)
 
-const bannerSrc = computed(() =>
-  props.patch.banner
-    ? props.patch.banner.replace(/\.avif$/, '-mini.avif')
-    : '/kungalgame-trans.webp'
+const bannerSrc = computed(
+  () => resolveBannerUrl(props.patch, 'mini') || '/kungalgame-trans.webp'
 )
 </script>
 

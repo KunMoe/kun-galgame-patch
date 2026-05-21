@@ -85,6 +85,27 @@ export interface GalgameContributor {
   user?: { id: number; name: string; avatar: string }
 }
 
+// W3 / Wiki U3 — taxonomy revision (multi-polymorphic single-table on the
+// Wiki side; entity column distinguishes tag/official/engine/series). snapshot
+// shape varies per entity; we render it generically as Record<string, unknown>.
+// See docs/galgame_wiki/04-taxonomy.md §修订与回滚.
+export interface TaxonomyRevision {
+  id: number
+  entity: 'tag' | 'official' | 'engine' | 'series'
+  target_id: number
+  revision: number
+  action: 'created' | 'updated' | 'deleted' | 'reverted' | string
+  user_id: number
+  user_role: number
+  snapshot: Record<string, unknown>
+  changed_fields: string[]
+  // `deleted` rows only:
+  ref_count?: number
+  affected_galgame_ids?: number[]
+  note: string
+  created: string
+}
+
 export interface WikiTag {
   id: number
   name: string
@@ -117,7 +138,25 @@ export interface WikiSeries {
   description: string
 }
 
+// CoverInput / ScreenshotInput mirror docs/galgame_wiki/03-relations.md §封面 /
+// 截图 (W2 / Wiki PR5). Same shape used in both responses (PatchDetail.galgame
+// .covers / .screenshots) and request payloads — single round trip.
+export interface CoverInput {
+  image_hash: string
+  sort_order: number
+  sexual?: number
+  violence?: number
+  source?: string
+  source_key?: string
+}
+export interface ScreenshotInput extends CoverInput {
+  caption?: string
+}
+
 // PR / galgame field payload (all optional, replace-all semantics on arrays).
+// Presence semantics (docs/galgame_wiki/00-handbook §15 PR2-5): omit a field =
+// keep集合 unchanged; `[]` = clear all; non-empty array = authoritative full
+// replace — caller MUST resubmit the FULL current set, never deltas.
 export interface GalgameEditFields {
   name_en_us?: string
   name_ja_jp?: string
@@ -130,10 +169,14 @@ export interface GalgameEditFields {
   content_limit?: string
   age_limit?: string
   original_language?: string
+  release_date?: string | null
+  release_date_tba?: boolean
   aliases?: string[]
   tag_ids?: number[]
   official_ids?: number[]
   engine_ids?: number[]
+  covers?: CoverInput[]
+  screenshots?: ScreenshotInput[]
   links?: { name: string; link: string }[]
   series_id?: number
   note?: string
@@ -205,6 +248,46 @@ export const useGalgameEdit = () => {
       message: '提交失败',
       data: null
     }) as { code: number; message: string; data: unknown }
+  }
+
+  // W2 / PR3b — upload a file to image_service via our backend proxy and
+  // return the content hash + URLs. Use for screenshots (Wiki accepts no
+  // multipart for them) and for any other place that needs a raw image hash.
+  // For galgame covers, prefer the PUT /galgame/:gid multipart flow which lets
+  // Wiki auto-promote the upload to covers[sort_order=0]; this composable
+  // method can still be used to add NON-pinned covers via the JSON path.
+  // preset must be enabled for our OAuth client on image_service:
+  //   - 'topic'           → free-form gallery image (screenshots) — moyu default
+  //   - 'galgame_banner'  → only if admin enabled it on our oauth_client
+  //   - 'avatar'          → user avatars
+  interface ImageServiceUploadResult {
+    hash: string
+    url: string
+    variant_urls: Record<string, string>
+    width: number
+    height: number
+    size_bytes: number
+    deduplicated: boolean
+  }
+  const uploadImageService = async (file: File, preset = 'topic') => {
+    const fd = new FormData()
+    fd.append('preset', preset)
+    fd.append('file', file, file.name)
+    const r = await $fetch
+      .raw<{ code: number; message: string; data: ImageServiceUploadResult }>(
+        `${apiBase}/upload/image-service`,
+        { method: 'POST', body: fd, credentials: 'include' }
+      )
+      .catch((e) => e?.response)
+    return (r?._data ?? {
+      code: -1,
+      message: '上传失败',
+      data: null
+    }) as {
+      code: number
+      message: string
+      data: ImageServiceUploadResult | null
+    }
   }
 
   const mergePR = (gid: number, prid: number) =>
@@ -338,6 +421,28 @@ export const useGalgameEdit = () => {
   ) => api.put(`/series/${id}`, body)
   const deleteSeries = (id: number) => api.delete(`/series/${id}`)
 
+  // ─── W3 / PR4 — Taxonomy 修订历史 + 回滚（4 实体 × 3 端点 = 12 个方法）─
+  // 全部由通用 WikiEditProxy 代理；Wiki 端鉴权（GET 公开、revert 需 admin/
+  // moderator）；snapshot 形态因 entity 而异（TagSnapshot / OfficialSnapshot /
+  // EngineSnapshot / SeriesSnapshot），UI 层用泛型 Record 展示，无需逐型建模。
+  // docs/galgame_wiki/04-taxonomy.md §修订与回滚 + 00-handbook §15.
+  type TaxKind = 'tag' | 'official' | 'engine' | 'series'
+
+  const taxListRevisions = (
+    kind: TaxKind,
+    id: number,
+    opts?: { page?: number; limit?: number }
+  ) =>
+    api.get<WikiPage<TaxonomyRevision>>(
+      `/${kind}/${id}/revisions${qs(opts as Q)}`
+    )
+
+  const taxGetRevision = (kind: TaxKind, id: number, rev: number) =>
+    api.get<TaxonomyRevision>(`/${kind}/${id}/revisions/${rev}`)
+
+  const taxRevert = (kind: TaxKind, id: number, revision: number) =>
+    api.post<{ reverted_to: number }>(`/${kind}/${id}/revert`, { revision })
+
   return {
     listRevisions,
     getRevision,
@@ -347,6 +452,7 @@ export const useGalgameEdit = () => {
     getPR,
     submitPR,
     submitPRMultipart,
+    uploadImageService,
     mergePR,
     declinePR,
     listLinks,
@@ -375,6 +481,9 @@ export const useGalgameEdit = () => {
     createSeries,
     seriesModal,
     updateSeries,
-    deleteSeries
+    deleteSeries,
+    taxListRevisions,
+    taxGetRevision,
+    taxRevert
   }
 }

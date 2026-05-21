@@ -317,16 +317,21 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	// original_language without an extra round-trip. Brief fields only --
 	// intro/tags/officials are surfaced via their own response fields.
 	base.Galgame = &galgameClient.GalgameBrief{
-		ID:               g.ID,
-		VndbID:           g.VndbID,
-		NameEnUs:         g.NameEnUs,
-		NameZhCn:         g.NameZhCn,
-		NameJaJp:         g.NameJaJp,
-		NameZhTw:         g.NameZhTw,
-		Banner:           g.Banner,
-		ContentLimit:     g.ContentLimit,
-		AgeLimit:         g.AgeLimit,
-		OriginalLanguage: g.OriginalLanguage,
+		ID:                  g.ID,
+		VndbID:              g.VndbID,
+		NameEnUs:            g.NameEnUs,
+		NameZhCn:            g.NameZhCn,
+		NameJaJp:            g.NameJaJp,
+		NameZhTw:            g.NameZhTw,
+		Banner:              g.Banner,
+		ContentLimit:        g.ContentLimit,
+		AgeLimit:            g.AgeLimit,
+		OriginalLanguage:    g.OriginalLanguage,
+		ReleaseDate:         g.ReleaseDate,
+		ReleaseDateTBA:      g.ReleaseDateTBA,
+		EffectiveBannerHash: g.EffectiveBannerHash,
+		Covers:              g.Covers,
+		Screenshots:         g.Screenshots,
 	}
 
 	for _, t := range g.Tag {

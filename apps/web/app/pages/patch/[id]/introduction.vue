@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DOMPurify from 'isomorphic-dompurify'
+import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const route = useRoute()
 const api = useApi()
@@ -184,10 +185,40 @@ const wikiOrigin =
       </div>
     </section>
 
-    <!-- Wiki link footer for richer info (characters, staff, screenshots, releases). -->
+    <!-- W2 / PR3b — screenshots gallery (inline from Wiki PUT-managed list). -->
+    <section v-if="detail.galgame?.screenshots?.length">
+      <div class="mb-4 flex items-center gap-3">
+        <div class="bg-primary h-6 w-1 rounded" />
+        <h2 class="text-2xl font-bold">截图 / 画廊</h2>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <figure
+          v-for="s in [...detail.galgame.screenshots].sort(
+            (a, b) => a.sort_order - b.sort_order
+          )"
+          :key="s.image_hash"
+          class="border-default/20 overflow-hidden rounded-lg border"
+        >
+          <img
+            :src="imageServiceUrl(s.image_hash)"
+            :alt="s.caption || s.image_hash.slice(0, 8)"
+            loading="lazy"
+            class="bg-default-100 aspect-video w-full object-cover"
+          />
+          <figcaption
+            v-if="s.caption"
+            class="text-default-500 px-2 py-1 text-xs"
+          >
+            {{ s.caption }}
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Wiki link footer for richer info (characters, staff, releases). -->
     <section v-if="detail.galgame">
       <p class="text-default-500 text-sm">
-        角色、制作人员、截图、发行版本等更多信息请查看
+        角色、制作人员、发行版本等更多信息请查看
         <a
           :href="`${wikiOrigin}/galgame/${detail.galgame.id}`"
           target="_blank"

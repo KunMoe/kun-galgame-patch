@@ -29,6 +29,13 @@ interface GalgameCard {
   }
   user?: KunUser
   // Optional: raw Wiki galgame object (includes age_limit, original_language, etc.)
+  // U1 (2026-05-18): release_date / release_date_tba replaced the old `released`
+  // string. release_date is "YYYY-MM-DD" or null (unknown); release_date_tba=true
+  // means 官方已宣布但日期未定 — the two are independent.
+  // W2 / Wiki PR5 (2026-05-18): banner_image_hash gone. effective_banner_hash =
+  // covers[sort_order=0].image_hash (or '' if no pinned cover). covers /
+  // screenshots are arrays of CoverInput / ScreenshotInput per Wiki §03-relations
+  // (presence semantics on PUT: omit = keep; [] = clear; non-empty = full replace).
   galgame?: {
     id: number
     vndb_id: string
@@ -37,12 +44,30 @@ interface GalgameCard {
     name_ja_jp: string
     name_zh_tw: string
     banner: string
+    effective_banner_hash: string
+    covers: GalgameCoverRow[]
+    screenshots: GalgameScreenshotRow[]
     content_limit: string
     age_limit: string
     original_language: string
+    release_date: string | null
+    release_date_tba: boolean
     user_id: number
     resource_update_time: string
   }
+}
+
+interface GalgameCoverRow {
+  image_hash: string
+  sort_order: number
+  sexual: number
+  violence: number
+  source: string
+  source_key: string
+}
+
+interface GalgameScreenshotRow extends GalgameCoverRow {
+  caption: string
 }
 
 // Patch header (/patch/:id) -- GalgameCard + is_favorite.

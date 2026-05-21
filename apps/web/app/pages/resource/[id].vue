@@ -35,10 +35,9 @@ const patchName = computed(() =>
   detail.value?.patch ? getPreferredLanguageText(detail.value.patch.name) : ''
 )
 
-const bannerSrc = computed(() => {
-  const b = detail.value?.patch?.banner
-  return b ? b.replace(/\.avif$/, '-mini.avif') : ''
-})
+const bannerSrc = computed(() =>
+  resolveBannerUrl(detail.value?.patch, 'mini')
+)
 
 // Composed title:
 //   {gameName}{platforms}{languages}{modelName}{types}资源下载

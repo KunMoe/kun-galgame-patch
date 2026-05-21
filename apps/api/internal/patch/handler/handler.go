@@ -367,7 +367,7 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	var req dto.PatchResourceCreateRequest
+	var req dto.PatchResourceUpdateRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -388,7 +388,17 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 		Platform:  model.JSONArray(req.Platform),
 	}
 
-	if err := h.service.UpdateResource(resourceID, user.UID, update); err != nil {
+	// Snapshot the actor's privilege so the file-history row records who+role
+	// at time of edit (MOYU-PR5 / M3). Mirrors the Wiki revision convention
+	// (3=admin / 2=mod / 1=user / 0=unknown).
+	actorRole := 1
+	if middleware.HasAnyRole(c, "admin") {
+		actorRole = 3
+	} else if middleware.HasAnyRole(c, "moderator") {
+		actorRole = 2
+	}
+
+	if err := h.service.UpdateResource(resourceID, user.UID, update, req.Reason, actorRole); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 

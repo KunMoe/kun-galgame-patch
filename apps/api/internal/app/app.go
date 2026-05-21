@@ -34,6 +34,7 @@ import (
 	userService "kun-galgame-patch-api/internal/user/service"
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
 
@@ -113,9 +114,29 @@ func New(cfg *config.Config) *App {
 	// Common handler (direct DB access for simple aggregation endpoints)
 	commonHdl := common.NewHandler(db, wiki, usrCli)
 
-	// Upload module (D10: minio-go presigned URL direct upload)
-	uploadSvc := uploadPkg.New(s3, db)
-	uploadHdl := uploadPkg.NewHandler(uploadSvc)
+	// Upload module (D10: minio-go presigned URL direct upload).
+	// rdb is passed so verifyAndFinalize can SETNX-dedupe Complete calls and
+	// prevent double-charging daily_upload_size (MOYU-PR7 / M5).
+	uploadSvc := uploadPkg.New(s3, db, rdb)
+	// image_service client (W2 / PR3b). Defaults credentials to the project's
+	// OAuth client when the dedicated KUN_IMAGE_OAUTH_* env vars are unset —
+	// image_service reuses the OAuth oauth_client table as its "site" registry,
+	// so the same credentials work end-to-end provided the admin flipped
+	// image_enabled=true for this client.
+	imgCfg := cfg.ImageService
+	if imgCfg.ClientID == "" {
+		imgCfg.ClientID = cfg.OAuth.ClientID
+	}
+	if imgCfg.ClientSecret == "" {
+		imgCfg.ClientSecret = cfg.OAuth.ClientSecret
+	}
+	imgCli := imageclient.New(imageclient.Config{
+		BaseURL:      imgCfg.BaseURL,
+		CDNBase:      imgCfg.CDNBase,
+		ClientID:     imgCfg.ClientID,
+		ClientSecret: imgCfg.ClientSecret,
+	})
+	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 
 	// Chat module (D9: REST only, no WebSocket)
 	chatRepository := chatRepo.New(db)

@@ -126,6 +126,33 @@ const sameIdSet = (a: number[], b: number[]): boolean => {
   return b.every((x) => s.has(x))
 }
 
+// ─── W2 / PR3b: covers / screenshots (image_service hash) ─────────────────
+// presence semantics same as tag_ids — prefill the FULL current set, diff
+// before submit. CoversEditor handles pin/remove on existing rows; new banner
+// is still uploaded via the bannerFile multipart `file` field below (Wiki
+// auto-promotes the upload to covers[sort_order=0]). Screenshots go through
+// image_service directly via ScreenshotsEditor.
+const covers = ref<GalgameCoverRow[]>([])
+const screenshots = ref<GalgameScreenshotRow[]>([])
+const origCovers = ref<GalgameCoverRow[]>([])
+const origScreenshots = ref<GalgameScreenshotRow[]>([])
+
+// Order-independent equality for the cover/screenshot arrays. We compare by
+// the 5-field shape since any field change (sort_order/caption/sexual/...)
+// must roundtrip. Reuses the keyed Map for O(n).
+const rowKey = (r: GalgameCoverRow | GalgameScreenshotRow): string => {
+  const c = (r as GalgameScreenshotRow).caption ?? ''
+  return `${r.image_hash}|${r.sort_order}|${r.sexual}|${r.violence}|${r.source}|${r.source_key}|${c}`
+}
+const sameRowSet = (
+  a: (GalgameCoverRow | GalgameScreenshotRow)[],
+  b: (GalgameCoverRow | GalgameScreenshotRow)[]
+): boolean => {
+  if (a.length !== b.length) return false
+  const ka = new Set(a.map(rowKey))
+  return b.every((r) => ka.has(rowKey(r)))
+}
+
 watch(
   detail,
   (d) => {
@@ -166,6 +193,15 @@ watch(
       id: o.id,
       name: o.name
     }))
+
+    // W2 / PR3b — prefill covers/screenshots from Wiki object. Deep-clone so
+    // editor mutations don't bleed back into the cached detail object.
+    const detailCovers = d.galgame?.covers ?? []
+    const detailScreens = d.galgame?.screenshots ?? []
+    covers.value = detailCovers.map((c) => ({ ...c }))
+    screenshots.value = detailScreens.map((s) => ({ ...s }))
+    origCovers.value = detailCovers.map((c) => ({ ...c }))
+    origScreenshots.value = detailScreens.map((s) => ({ ...s }))
   },
   { immediate: true }
 )
@@ -210,6 +246,13 @@ const buildPayload = () => {
     payload.official_ids = officialIds.value
   if (!sameIdSet(engineIds.value, origEngineIds.value))
     payload.engine_ids = engineIds.value
+  // Covers / screenshots presence semantics (W2): omit = keep, full array =
+  // authoritative replace. Diff against the prefilled original; only send when
+  // the row set changed (any field change on any row counts).
+  if (!sameRowSet(covers.value, origCovers.value))
+    payload.covers = covers.value
+  if (!sameRowSet(screenshots.value, origScreenshots.value))
+    payload.screenshots = screenshots.value
   // series_id is a plain optional scalar (not part of the §presence note);
   // only send when the user explicitly set a positive id.
   if (seriesId.value != null && seriesId.value > 0)
@@ -344,9 +387,12 @@ const handleSubmit = async () => {
         </section>
 
         <section class="space-y-3">
-          <h3 class="text-lg font-semibold">Banner</h3>
+          <h3 class="text-lg font-semibold">封面 / 截图</h3>
           <p class="text-default-500 text-xs">
-            可选，支持 JPEG / PNG / WebP，最大 10MB。上传后会在 Wiki 创建一个新版本快照。
+            上传新封面：从下方文件选择器选一张图，提交后该图自动成为当前 Banner
+            （Wiki 把它推到 covers 的 sort_order=0，原来的 banner 降级保留）。
+            已有封面/截图集合在下面可单独管理（设为 banner / 移除 / 调序）。
+            covers/screenshots 按 presence 全量替换，下方编辑器已预填该作当前全集。
           </p>
           <input
             type="file"
@@ -361,6 +407,8 @@ const handleSubmit = async () => {
               class="bg-default-100 max-h-48 w-full rounded object-contain"
             />
           </div>
+          <GalgameEditCoversEditor v-model="covers" />
+          <GalgameEditScreenshotsEditor v-model="screenshots" />
         </section>
 
         <section class="space-y-3">

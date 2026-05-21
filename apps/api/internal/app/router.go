@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"kun-galgame-patch-api/internal/middleware"
 )
 
@@ -57,7 +59,19 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/resource/:resourceId", auth, a.PatchHandler.UpdateResource)
 	patchRoutes.Delete("/resource/:resourceId", auth, a.PatchHandler.DeleteResource)
 	patchRoutes.Put("/resource/:resourceId/disable", auth, a.PatchHandler.ToggleResourceDisable)
-	patchRoutes.Get("/resource/:resourceId/link", a.PatchHandler.GetResourceDownloadInfo)
+	// MOYU-PR8 (M6) — rate-limit the link-reveal endpoint to deter mass
+	// scraping. Original plan §4.6 proposed size-scaled presigned-URL TTL,
+	// but the current architecture serves downloads as public S3 URLs (no
+	// presigned URL involved), so TTL scaling doesn't apply. The actual
+	// abuse surface is bulk-fetching `/link` to harvest URLs — capping at
+	// 30/min per uid (or per IP when anonymous) keeps legitimate browsing
+	// (one user opens 10 patch resource pages = ~10-30 calls) untouched
+	// while breaking automated scraping. Returns 429 on overflow.
+	patchRoutes.Get(
+		"/resource/:resourceId/link",
+		middleware.RateLimit(a.RDB, "resource-link", 30, time.Minute),
+		a.PatchHandler.GetResourceDownloadInfo,
+	)
 	patchRoutes.Put("/resource/:resourceId/download", a.PatchHandler.IncrementResourceDownload)
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
@@ -168,6 +182,8 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Get("/resource", a.AdminHandler.GetResources)
 	adminRoutes.Put("/resource/:id", a.AdminHandler.UpdateResource)
 	adminRoutes.Delete("/resource/:id", a.AdminHandler.DeleteResource)
+	// MOYU-PR5 / M3 — append-only file-replacement audit trail for one resource.
+	adminRoutes.Get("/resource/:id/history", a.AdminHandler.GetResourceFileHistory)
 
 	// Settings
 	adminRoutes.Get("/setting/comment-verify", a.AdminHandler.GetCommentVerify)
@@ -226,6 +242,17 @@ func (a *App) RegisterRoutes() {
 	api.Delete("/series/:id", auth, a.PatchHandler.WikiEditProxy)
 	api.Get("/series/:id", a.PatchHandler.WikiEditProxy)
 
+	// ===== Taxonomy 修订历史 / 回滚（W3 / Wiki U3 PR4，12 条）=====
+	// 4 实体 × 3 端点；都是纯透传到 Wiki，鉴权 Wiki 自己强制
+	// （GET 公开，revert 需 admin/moderator —— 我们只挂 auth 拿 Bearer）。
+	// Fiber 按段数匹配，/<entity>/:name (2段) 与 /<entity>/:id/revisions (3段)
+	// 不冲突，顺序无关；放在 taxonomy 块尾保持归类清晰。
+	for _, e := range []string{"tag", "official", "engine", "series"} {
+		api.Get("/"+e+"/:id/revisions", a.PatchHandler.WikiEditProxy)
+		api.Get("/"+e+"/:id/revisions/:rev", a.PatchHandler.WikiEditProxy)
+		api.Post("/"+e+"/:id/revert", auth, a.PatchHandler.WikiEditProxy)
+	}
+
 	// ===== Common Routes =====
 	api.Get("/home", a.CommonHandler.GetHome)
 	api.Get("/home/random", a.PatchHandler.GetRandomPatch)
@@ -260,6 +287,9 @@ func (a *App) RegisterRoutes() {
 	uploadRoutes.Post("/multipart/init", a.UploadHandler.InitMultipart)
 	uploadRoutes.Post("/multipart/complete", a.UploadHandler.CompleteMultipart)
 	uploadRoutes.Post("/multipart/abort", a.UploadHandler.AbortMultipart)
+	// W2 / PR3b: multipart file → image_service → hash + variant URLs.
+	// Used by the screenshot editor (Wiki accepts no multipart for those).
+	uploadRoutes.Post("/image-service", a.UploadHandler.UploadImageService)
 
 	// Full-text search (Meilisearch)
 	api.Post("/search", a.SearchHandler.Search)

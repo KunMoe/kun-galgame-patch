@@ -97,6 +97,29 @@ func (r *AdminRepository) GetStatsSum() (userCount, galgameCount, resourceCount,
 	return
 }
 
+// ===== Resource file history (MOYU-PR5 / M3) =====
+
+// GetResourceFileHistory returns the audit trail for one resource, newest
+// first. Page-based; default limit comes from the caller. Admin-only — exposed
+// at GET /api/v1/admin/resource/:id/history.
+func (r *AdminRepository) GetResourceFileHistory(
+	resourceID, offset, limit int,
+) ([]patchModel.PatchResourceFileHistory, int64, error) {
+	var rows []patchModel.PatchResourceFileHistory
+	var total int64
+
+	base := r.db.Model(&patchModel.PatchResourceFileHistory{}).
+		Where("resource_id = ?", resourceID)
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := base.Session(&gorm.Session{}).
+		Order("created_at DESC, id DESC").
+		Offset(offset).Limit(limit).
+		Find(&rows).Error
+	return rows, total, err
+}
+
 // ===== Admin Logs =====
 
 func (r *AdminRepository) GetLogs(offset, limit int) ([]adminModel.AdminLog, int64, error) {

@@ -3,14 +3,15 @@ package config
 import "os"
 
 type Config struct {
-	Server      ServerConfig
-	Database    DatabaseConfig
-	Redis       RedisConfig
-	OAuth       OAuthConfig
-	S3          S3Config
-	GalgameWiki GalgameWikiConfig
-	CORS        CORSConfig
-	About       AboutConfig
+	Server       ServerConfig
+	Database     DatabaseConfig
+	Redis        RedisConfig
+	OAuth        OAuthConfig
+	S3           S3Config
+	GalgameWiki  GalgameWikiConfig
+	ImageService ImageServiceConfig
+	CORS         CORSConfig
+	About        AboutConfig
 }
 
 type ServerConfig struct {
@@ -53,6 +54,18 @@ type S3Config struct {
 // GalgameWikiConfig points at the separately deployed Galgame Wiki Service (D11).
 type GalgameWikiConfig struct {
 	BaseURL string // e.g. http://127.0.0.1:9280/api
+}
+
+// ImageServiceConfig points at the centralized image_service (W2 / PR3b).
+// Auth is HTTP Basic with an OAuth client_id/secret (per
+// docs/image_service/06-integration-guide.md). ClientID/Secret default to the
+// project's OAuth credentials when unset — image_service reuses the OAuth
+// `oauth_client` table as its "site" registry, so the same credentials work.
+type ImageServiceConfig struct {
+	BaseURL      string // e.g. http://127.0.0.1:9278 (no trailing slash)
+	CDNBase      string // e.g. http://127.0.0.1:9000/kun-images-dev; serves the /img/ab/cd/<hash>.webp tree
+	ClientID     string // defaults to OAuth.ClientID
+	ClientSecret string // defaults to OAuth.ClientSecret
 }
 
 type CORSConfig struct {
@@ -99,6 +112,13 @@ func Load() *Config {
 		},
 		GalgameWiki: GalgameWikiConfig{
 			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),
+		},
+		ImageService: ImageServiceConfig{
+			BaseURL: getEnv("KUN_IMAGE_SERVICE_BASE_URL", "http://127.0.0.1:9278"),
+			CDNBase: getEnv("KUN_IMAGE_CDN_BASE", "http://127.0.0.1:9000/kun-images-dev"),
+			// Empty fallback → app.go fills from OAuth credentials.
+			ClientID:     getEnv("KUN_IMAGE_OAUTH_CLIENT_ID", ""),
+			ClientSecret: getEnv("KUN_IMAGE_OAUTH_CLIENT_SECRET", ""),
 		},
 		CORS: CORSConfig{
 			AllowOrigins: getEnv("CORS_ALLOW_ORIGINS", "http://127.0.0.1:5213"),

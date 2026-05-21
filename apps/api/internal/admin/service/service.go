@@ -134,6 +134,14 @@ func (s *AdminService) GetLogs(page, limit int) ([]adminModel.AdminLog, int64, e
 	return s.repo.GetLogs((page-1)*limit, limit)
 }
 
+// ===== Resource file history (MOYU-PR5 / M3) =====
+
+func (s *AdminService) GetResourceFileHistory(
+	resourceID, page, limit int,
+) ([]patchModel.PatchResourceFileHistory, int64, error) {
+	return s.repo.GetResourceFileHistory(resourceID, (page-1)*limit, limit)
+}
+
 // ===== Orphan Patches (D12) =====
 
 // GetOrphanPatches returns the list of orphan patches with galgame_id=0.

@@ -57,8 +57,8 @@ const tabs = computed(() => [
     >
       <div class="absolute inset-0">
         <img
-          v-if="patch.banner"
-          :src="patch.banner"
+          v-if="resolveBannerUrl(patch)"
+          :src="resolveBannerUrl(patch)"
           :alt="displayName"
           class="size-full scale-110 object-cover blur-2xl"
         />
@@ -72,7 +72,7 @@ const tabs = computed(() => [
           class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
         >
           <img
-            :src="patch.banner || '/kungalgame-trans.webp'"
+            :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
             :alt="displayName"
             class="size-full object-cover transition-transform duration-300 hover:scale-[1.03]"
           />

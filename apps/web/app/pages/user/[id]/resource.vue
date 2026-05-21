@@ -26,10 +26,8 @@ const { data, pending } = await useAsyncData<ListResponse>(
 const patchName = (r: UserResourceItem) =>
   r.patch?.name ? getPreferredLanguageText(r.patch.name) : `补丁 #${r.galgame_id}`
 
-const patchBanner = (r: UserResourceItem) => {
-  const b = r.patch?.banner
-  return b ? b.replace(/\.avif$/, '-mini.avif') : '/kungalgame-trans.webp'
-}
+const patchBanner = (r: UserResourceItem) =>
+  resolveBannerUrl(r.patch, 'mini') || '/kungalgame-trans.webp'
 </script>
 
 <template>

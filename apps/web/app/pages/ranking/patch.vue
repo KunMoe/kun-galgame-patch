@@ -80,8 +80,8 @@ const onChangeSort = async (v: string | number) => {
           {{ index + 1 }}
         </span>
         <img
-          v-if="patch.banner"
-          :src="patch.banner.replace(/\.avif$/, '-mini.avif')"
+          v-if="resolveBannerUrl(patch, 'mini')"
+          :src="resolveBannerUrl(patch, 'mini')"
           :alt="getPreferredLanguageText(patch.name)"
           class="bg-default-100 h-14 w-24 rounded object-cover"
         />

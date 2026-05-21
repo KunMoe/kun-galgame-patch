@@ -252,6 +252,33 @@ func (h *AdminHandler) GetStatsSum(c *fiber.Ctx) error {
 
 // ===== Logs =====
 
+// GetResourceFileHistory GET /api/admin/resource/:id/history
+//
+// Returns the append-only file-replacement audit trail for one patch_resource
+// (MOYU-PR5 / M3). Admin/moderator only (route gated by moderatorAuth). Rows
+// are paginated newest-first; each row carries the snapshot of the resource's
+// old file pointer (storage / s3_key / blake3 / size / content), the
+// operator-supplied reason, and the actor id+role snapshot.
+//
+// Use case: when a user reports "this download is broken", an admin can pull
+// up the resource's history and see exactly when the file was swapped, by
+// whom, and why.
+func (h *AdminHandler) GetResourceFileHistory(c *fiber.Ctx) error {
+	resourceID, perr := strconv.Atoi(c.Params("id"))
+	if perr != nil || resourceID <= 0 {
+		return response.Error(c, errors.ErrBadRequest("invalid resource id"))
+	}
+	var req dto.AdminPaginationRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	items, total, err := h.service.GetResourceFileHistory(resourceID, req.Page, req.Limit)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.Paginated(c, items, total)
+}
+
 // GetLogs GET /api/admin/log
 func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
 	var req dto.AdminPaginationRequest

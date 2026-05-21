@@ -56,9 +56,14 @@ type PatchResourceCreateRequest struct {
 	Platform  []string `json:"platform" validate:"required,min=1,max=10"`
 }
 
-// PatchResourceUpdateRequest is the request body for updating a resource
+// PatchResourceUpdateRequest is the request body for updating a resource.
+// Reason is the optional "why am I replacing the file" memo — captured into
+// patch_resource_file_history when the file actually changed (Storage / S3Key
+// / Content differs from current). Pure metadata edits don't record history
+// regardless of whether Reason was set (MOYU-PR5 / M3).
 type PatchResourceUpdateRequest struct {
 	PatchResourceCreateRequest
+	Reason string `json:"reason" validate:"max=500"`
 }
 
 // DuplicateCheckRequest is the request for checking VNDB ID duplicates

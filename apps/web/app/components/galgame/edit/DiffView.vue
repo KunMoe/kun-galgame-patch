@@ -35,7 +35,13 @@ const KEY_LABEL: Record<string, string> = {
   engine_ids: '引擎',
   links: '链接',
   series_id: '系列',
-  banner_image_hash: 'Banner'
+  // W2 / Wiki PR5: banner is now expressed via covers[sort_order=0]; the old
+  // `banner_image_hash` snapshot key was migrated and dropped Wiki-side.
+  effective_banner_hash: '当前 Banner',
+  covers: '封面集合',
+  screenshots: '截图集合',
+  release_date: '发售日期',
+  release_date_tba: '发售日期未定'
 }
 
 const label = (k: string) => KEY_LABEL[k] ?? k
@@ -57,6 +63,37 @@ const fmt = (v: unknown): string => {
 const keys = computed(() =>
   Object.keys(props.changedKeys).filter((k) => props.changedKeys[k])
 )
+
+// ─── MOYU-PR6 / M4+M9 — render-dispatch by field shape ──────────────────
+// Wiki snapshots mix scalars, long markdown (intro_*), id arrays (tag_ids
+// etc), and object arrays (covers / screenshots / links). A one-size block
+// dump is unreadable for the long-string and array shapes; route each to a
+// purpose-built sub-component.
+const ARRAY_KEYS = new Set([
+  'aliases',
+  'tag_ids',
+  'official_ids',
+  'engine_ids',
+  'links',
+  'covers',
+  'screenshots'
+])
+// Long-string threshold; intro_* always counts as long regardless of length.
+const LONG_STRING_THRESHOLD = 200
+
+const valOf = (k: string, snap?: GalgameSnapshot): unknown =>
+  snap ? snap[k] : undefined
+
+const isArrayKey = (k: string, o: unknown, n: unknown): boolean =>
+  ARRAY_KEYS.has(k) || Array.isArray(o) || Array.isArray(n)
+
+const isLongStringKey = (k: string, o: unknown, n: unknown): boolean => {
+  if (k.startsWith('intro_')) return true
+  const oLen = typeof o === 'string' ? o.length : 0
+  const nLen = typeof n === 'string' ? n.length : 0
+  if (oLen === 0 && nLen === 0) return false
+  return oLen + nLen >= LONG_STRING_THRESHOLD
+}
 </script>
 
 <template>
@@ -71,6 +108,7 @@ const keys = computed(() =>
       class="border-default/20 rounded-xl border p-3"
     >
       <p class="text-foreground mb-2 text-sm font-semibold">{{ label(k) }}</p>
+      <!-- Proposal-only (PR detail has no `old`) keeps the simple block form. -->
       <div v-if="proposalOnly" class="border-primary/30 bg-primary/5 rounded-lg border p-2">
         <p class="text-primary mb-1 text-xs font-medium">提案值</p>
         <pre
@@ -78,6 +116,22 @@ const keys = computed(() =>
           >{{ fmt(newSnap?.[k]) }}</pre
         >
       </div>
+      <!-- Array fields (aliases / *_ids / links / covers / screenshots) →
+           set-level "+ added / − removed / = kept" collapse. -->
+      <GalgameEditArrayDiff
+        v-else-if="isArrayKey(k, valOf(k, oldSnap), valOf(k, newSnap))"
+        :old="valOf(k, oldSnap)"
+        :new="valOf(k, newSnap)"
+      />
+      <!-- Long strings (intro_*, or any string ≥ 200 chars) → line-level
+           LCS with shared-edge trim + optional inline char highlight. -->
+      <GalgameEditStringDiff
+        v-else-if="isLongStringKey(k, valOf(k, oldSnap), valOf(k, newSnap))"
+        :old="(valOf(k, oldSnap) as string | null | undefined) ?? ''"
+        :new="(valOf(k, newSnap) as string | null | undefined) ?? ''"
+      />
+      <!-- Default: side-by-side block. Best for scalars (vndb_id, release_date,
+           content_limit, …) and short strings. -->
       <div v-else class="grid gap-2 sm:grid-cols-2">
         <div class="border-danger/30 bg-danger/5 rounded-lg border p-2">
           <p class="text-danger mb-1 text-xs font-medium">旧</p>

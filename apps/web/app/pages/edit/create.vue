@@ -40,7 +40,7 @@ interface GalgameHit {
   name_zh_cn: string
   name_zh_tw: string
   banner: string
-  banner_image_hash?: string
+  effective_banner_hash?: string
 }
 interface SearchResult {
   items: GalgameHit[]

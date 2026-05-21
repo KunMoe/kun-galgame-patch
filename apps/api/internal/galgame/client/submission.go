@@ -44,26 +44,35 @@ func (c *Client) SetBasicAuth(clientID, clientSecret string) {
 
 // SubmitGalgameRequest is the JSON body of POST /galgame/submit. All fields
 // are pointers so callers can omit them (Wiki applies its own defaults).
+//
+// U1: ReleaseDate / ReleaseDateTBA replace the old `released string`.
+// W2 / Wiki PR5: BannerImageHash dropped — banner via multipart `file` (auto
+// promoted to covers[sort_order=0]) or explicit covers array.
+// Covers / Screenshots presence-replace semantics (see UpdateGalgameRequest
+// comment).
 type SubmitGalgameRequest struct {
-	VndbID           *string `json:"vndb_id,omitempty"`
-	NameEnUs         *string `json:"name_en_us,omitempty"`
-	NameJaJp         *string `json:"name_ja_jp,omitempty"`
-	NameZhCn         *string `json:"name_zh_cn,omitempty"`
-	NameZhTw         *string `json:"name_zh_tw,omitempty"`
-	Banner           *string `json:"banner,omitempty"`
-	BannerImageHash  *string `json:"banner_image_hash,omitempty"`
-	IntroEnUs        *string `json:"intro_en_us,omitempty"`
-	IntroJaJp        *string `json:"intro_ja_jp,omitempty"`
-	IntroZhCn        *string `json:"intro_zh_cn,omitempty"`
-	IntroZhTw        *string `json:"intro_zh_tw,omitempty"`
-	ContentLimit     *string `json:"content_limit,omitempty"`
-	OriginalLanguage *string `json:"original_language,omitempty"`
-	AgeLimit         *string `json:"age_limit,omitempty"`
-	SeriesID         *int    `json:"series_id,omitempty"`
-	Aliases          *string `json:"aliases,omitempty"`
-	TagIDs           *[]int  `json:"tag_ids,omitempty"`
-	OfficialIDs     *[]int  `json:"official_ids,omitempty"`
-	EngineIDs        *[]int  `json:"engine_ids,omitempty"`
+	VndbID           *string            `json:"vndb_id,omitempty"`
+	NameEnUs         *string            `json:"name_en_us,omitempty"`
+	NameJaJp         *string            `json:"name_ja_jp,omitempty"`
+	NameZhCn         *string            `json:"name_zh_cn,omitempty"`
+	NameZhTw         *string            `json:"name_zh_tw,omitempty"`
+	Banner           *string            `json:"banner,omitempty"`
+	IntroEnUs        *string            `json:"intro_en_us,omitempty"`
+	IntroJaJp        *string            `json:"intro_ja_jp,omitempty"`
+	IntroZhCn        *string            `json:"intro_zh_cn,omitempty"`
+	IntroZhTw        *string            `json:"intro_zh_tw,omitempty"`
+	ContentLimit     *string            `json:"content_limit,omitempty"`
+	OriginalLanguage *string            `json:"original_language,omitempty"`
+	AgeLimit         *string            `json:"age_limit,omitempty"`
+	ReleaseDate      *string            `json:"release_date,omitempty"`
+	ReleaseDateTBA   *bool              `json:"release_date_tba,omitempty"`
+	SeriesID         *int               `json:"series_id,omitempty"`
+	Aliases          *string            `json:"aliases,omitempty"`
+	TagIDs           *[]int             `json:"tag_ids,omitempty"`
+	OfficialIDs      *[]int             `json:"official_ids,omitempty"`
+	EngineIDs        *[]int             `json:"engine_ids,omitempty"`
+	Covers           *[]CoverInput      `json:"covers,omitempty"`
+	Screenshots      *[]ScreenshotInput `json:"screenshots,omitempty"`
 }
 
 // MineItem mirrors one entry returned by GET /galgame/mine. Only the
@@ -78,7 +87,7 @@ type MineItem struct {
 	NameZhCn        string `json:"name_zh_cn"`
 	NameZhTw        string `json:"name_zh_tw"`
 	Banner          string `json:"banner"`
-	BannerImageHash string `json:"banner_image_hash"`
+	EffectiveBannerHash string `json:"effective_banner_hash"`
 	ContentLimit    string `json:"content_limit"`
 	Created         string `json:"created"`
 	Updated         string `json:"updated"`
@@ -94,7 +103,7 @@ type WikiMessageGalgame struct {
 	NameZhCn        string `json:"name_zh_cn"`
 	NameZhTw        string `json:"name_zh_tw"`
 	Banner          string `json:"banner"`
-	BannerImageHash string `json:"banner_image_hash"`
+	EffectiveBannerHash string `json:"effective_banner_hash"`
 	Status          int    `json:"status"`
 	UserID          int    `json:"user_id"`
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -535,7 +536,36 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 func (s *PatchService) CreateResource(resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
 
+	// MOYU-PR7 / M5 — upload-handle integrity.
+	//
+	// The D10 upload flow has no upload_session table; the client just hands
+	// the server an s3_key string and we trust it. Without these two checks
+	// a malicious / buggy client could submit:
+	//   (a) an s3_key pointing OUTSIDE the patch upload area (e.g. paths the
+	//       upload service would never have minted, possibly disclosing
+	//       other tenants' objects via signed-URL probing), or
+	//   (b) an s3_key already attached to another patch_resource (single-use
+	//       violation — same upload claimed by N rows).
+	//
+	// Migration 008 adds a partial UNIQUE INDEX on (s3_key) WHERE storage='s3'
+	// AND s3_key<>'' so (b) is also enforced at the DB layer (caller sees a
+	// "duplicate key" error if two CreateResource races to the same key).
+	if resource.Storage == "s3" {
+		prefix := fmt.Sprintf("patch/%d/", resource.GalgameID)
+		if !strings.HasPrefix(resource.S3Key, prefix) {
+			return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+		}
+	}
+
 	if err := s.repo.CreateResource(resource); err != nil {
+		// Surface duplicate-key errors as a clear user-facing message rather
+		// than a raw Postgres unique-violation; the partial unique index on
+		// (s3_key) enforces single-use of an upload.
+		msg := err.Error()
+		if strings.Contains(msg, "idx_patch_resource_s3_key_unique") ||
+			strings.Contains(msg, "duplicate key value") {
+			return fmt.Errorf("该上传已被其它资源占用，请重新上传一次")
+		}
 		return err
 	}
 
@@ -562,7 +592,17 @@ func (s *PatchService) CreateResource(resource *model.PatchResource, userID int)
 	return nil
 }
 
-func (s *PatchService) UpdateResource(resourceID, userID int, update *model.PatchResource) error {
+// UpdateResource mutates a resource in place. When the FILE fields (Storage /
+// S3Key / Content) differ from the current row, an append-only history row is
+// written first inside the same transaction (MOYU-PR5 / M3) so the previous
+// file pointer + blake3 + size + reason + actor are recoverable for support
+// triage. Pure metadata edits (name / note / type / ...) skip history.
+//
+// reason is the operator's optional explanation (DTO PatchResourceUpdateRequest
+// .Reason, max 500 chars). actorRole is the role-snapshot integer (3=admin,
+// 2=moderator, 1=user, 0=unknown) so the audit row records the privilege at
+// time of edit.
+func (s *PatchService) UpdateResource(resourceID, userID int, update *model.PatchResource, reason string, actorRole int) error {
 	existing, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return fmt.Errorf("resource not found")
@@ -571,25 +611,56 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 		return fmt.Errorf("can only edit your own resources")
 	}
 
-	existing.Storage = update.Storage
-	existing.Name = update.Name
-	existing.ModelName = update.ModelName
-	existing.Size = update.Size
-	existing.Code = update.Code
-	existing.Password = update.Password
-	existing.Note = update.Note
-	existing.S3Key = update.S3Key
-	existing.Content = update.Content
-	existing.Type = update.Type
-	existing.Language = update.Language
-	existing.Platform = update.Platform
-	existing.UpdateTime = time.Now()
+	// File-substantive change detection. We compare update vs existing on
+	// the three fields that together identify "the file/link" — storage
+	// class, the S3 object key, and the external link content. Anything
+	// else (note, code, password, size string, type/lang/platform jsonb) is
+	// metadata-only and doesn't merit a history row.
+	fileChanged := update.Storage != existing.Storage ||
+		update.S3Key != existing.S3Key ||
+		update.Content != existing.Content
 
-	if err := s.repo.UpdateResource(existing); err != nil {
+	galgameID := existing.GalgameID
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if fileChanged {
+			hist := &model.PatchResourceFileHistory{
+				ResourceID: existing.ID,
+				OldStorage: existing.Storage,
+				OldS3Key:   existing.S3Key,
+				OldBlake3:  existing.Blake3,
+				OldSize:    existing.Size,
+				OldContent: existing.Content,
+				Reason:     reason,
+				ActorID:    userID,
+				ActorRole:  actorRole,
+			}
+			if err := tx.Create(hist).Error; err != nil {
+				return fmt.Errorf("write file history: %w", err)
+			}
+		}
+
+		existing.Storage = update.Storage
+		existing.Name = update.Name
+		existing.ModelName = update.ModelName
+		existing.Size = update.Size
+		existing.Code = update.Code
+		existing.Password = update.Password
+		existing.Note = update.Note
+		existing.S3Key = update.S3Key
+		existing.Content = update.Content
+		existing.Type = update.Type
+		existing.Language = update.Language
+		existing.Platform = update.Platform
+		existing.UpdateTime = time.Now()
+
+		return tx.Save(existing).Error
+	}); err != nil {
 		return err
 	}
 
-	s.repo.RecalculatePatchAggregates(existing.GalgameID)
+	// Aggregate refresh outside the transaction — it's a derived counter
+	// touching the parent patch row; doesn't need to share the txn.
+	s.repo.RecalculatePatchAggregates(galgameID)
 	return nil
 }
 

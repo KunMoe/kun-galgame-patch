@@ -34,7 +34,7 @@ interface WikiGalgame {
   name_zh_cn: string
   name_zh_tw: string
   banner: string
-  banner_image_hash: string
+  effective_banner_hash: string
   intro_en_us: string
   intro_ja_jp: string
   intro_zh_cn: string

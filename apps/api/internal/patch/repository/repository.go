@@ -151,9 +151,12 @@ func (r *PatchRepository) GetResourceByID(id int) (*model.PatchResource, error) 
 	return &resource, err
 }
 
-func (r *PatchRepository) UpdateResource(resource *model.PatchResource) error {
-	return r.db.Save(resource).Error
-}
+// NOTE: the former PatchRepository.UpdateResource(resource) helper was
+// removed (MOYU-PR5 / M3). All resource updates now go through
+// PatchService.UpdateResource which wraps the same Save inside a transaction
+// that ALSO writes patch_resource_file_history on file-substantive change.
+// Calling tx.Save directly via the repo would silently bypass the audit
+// trail — keep the entry point at the service layer.
 
 func (r *PatchRepository) DeleteResource(id int) error {
 	return r.db.Delete(&model.PatchResource{}, id).Error

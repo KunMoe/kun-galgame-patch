@@ -7,9 +7,7 @@ const props = defineProps<Props>()
 
 const galgameName = computed(() => getPreferredLanguageText(props.patch.name))
 
-const bannerSrc = computed(() =>
-  props.patch.banner.replace(/\.avif$/, '-mini.avif')
-)
+const bannerSrc = computed(() => resolveBannerUrl(props.patch, 'mini'))
 </script>
 
 <template>

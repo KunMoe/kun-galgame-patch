@@ -69,39 +69,55 @@ type Paginated[T any] struct {
 // ─── Models (only the fields this project uses) ─────
 
 // GalgameHit is a single item returned from Wiki /galgame/search.
+//
+// U1 (2026-05-18): the old `released string` field is gone; Wiki now exposes
+// `release_date` (YYYY-MM-DD string or null) + `release_date_tba` (bool).
+// The search query params `released_from / released_to / sort=released_*`
+// remain unchanged on Wiki side (year-based filter/sort over the derived
+// `released_year` index field).
 type GalgameHit struct {
-	ID               int    `json:"id"`
-	VndbID           string `json:"vndb_id"`
-	NameEnUs         string `json:"name_en_us"`
-	NameZhCn         string `json:"name_zh_cn"`
-	NameJaJp         string `json:"name_ja_jp"`
-	NameZhTw         string `json:"name_zh_tw"`
-	Banner           string `json:"banner"`
-	ContentLimit     string `json:"content_limit"`
-	AgeLimit         string `json:"age_limit"`
-	OriginalLanguage string `json:"original_language"`
-	Released         string `json:"released"`
-	View             int    `json:"view"`
-	Status           int    `json:"status"`
-	TagIDs           []int  `json:"tag_ids"`
-	OfficialIDs      []int  `json:"official_ids"`
-	EngineIDs        []int  `json:"engine_ids"`
+	ID               int     `json:"id"`
+	VndbID           string  `json:"vndb_id"`
+	NameEnUs         string  `json:"name_en_us"`
+	NameZhCn         string  `json:"name_zh_cn"`
+	NameJaJp         string  `json:"name_ja_jp"`
+	NameZhTw         string  `json:"name_zh_tw"`
+	Banner           string  `json:"banner"`
+	ContentLimit     string  `json:"content_limit"`
+	AgeLimit         string  `json:"age_limit"`
+	OriginalLanguage string  `json:"original_language"`
+	ReleaseDate         *string           `json:"release_date"`
+	ReleaseDateTBA      bool              `json:"release_date_tba"`
+	EffectiveBannerHash string            `json:"effective_banner_hash"`
+	Covers              []CoverInput      `json:"covers"`
+	Screenshots         []ScreenshotInput `json:"screenshots"`
+	View                int               `json:"view"`
+	Status              int               `json:"status"`
+	TagIDs              []int             `json:"tag_ids"`
+	OfficialIDs         []int             `json:"official_ids"`
+	EngineIDs           []int             `json:"engine_ids"`
 }
 
 // GalgameBrief is the lightweight shape returned by /galgame/batch.
+// U1: includes release_date / release_date_tba (see GalgameHit comment).
 type GalgameBrief struct {
-	ID                 int    `json:"id"`
-	VndbID             string `json:"vndb_id"`
-	NameEnUs           string `json:"name_en_us"`
-	NameZhCn           string `json:"name_zh_cn"`
-	NameJaJp           string `json:"name_ja_jp"`
-	NameZhTw           string `json:"name_zh_tw"`
-	Banner             string `json:"banner"`
-	ContentLimit       string `json:"content_limit"`
-	AgeLimit           string `json:"age_limit"`
-	OriginalLanguage   string `json:"original_language"`
-	UserID             int    `json:"user_id"`
-	ResourceUpdateTime string `json:"resource_update_time"`
+	ID                 int     `json:"id"`
+	VndbID             string  `json:"vndb_id"`
+	NameEnUs           string  `json:"name_en_us"`
+	NameZhCn           string  `json:"name_zh_cn"`
+	NameJaJp           string  `json:"name_ja_jp"`
+	NameZhTw           string  `json:"name_zh_tw"`
+	Banner             string  `json:"banner"`
+	ContentLimit       string  `json:"content_limit"`
+	AgeLimit           string  `json:"age_limit"`
+	OriginalLanguage   string  `json:"original_language"`
+	ReleaseDate         *string           `json:"release_date"`
+	ReleaseDateTBA      bool              `json:"release_date_tba"`
+	EffectiveBannerHash string            `json:"effective_banner_hash"`
+	Covers              []CoverInput      `json:"covers"`
+	Screenshots         []ScreenshotInput `json:"screenshots"`
+	UserID              int               `json:"user_id"`
+	ResourceUpdateTime  string            `json:"resource_update_time"`
 }
 
 // Tag is Wiki's galgame_tag.
@@ -123,6 +139,35 @@ type Official struct {
 	Link         string   `json:"link"`
 	Description  string   `json:"description"`
 	GalgameCount int      `json:"galgame_count"`
+}
+
+// CoverInput / ScreenshotInput mirror the Wiki cover/screenshot row shape
+// (docs/galgame_wiki/03-relations.md §封面 / 截图). Used as both response
+// element (galgame.covers / galgame.screenshots) and request element (PUT
+// /galgame body covers/screenshots arrays) — identical fields, single round
+// trip. ImageHash references image_service (no cross-service FK; the hash is
+// guaranteed live via Wiki refping).
+//
+// Wiki PR5 (2026-05-18) replaced `banner_image_hash` with `covers[sort_order=0]`
+// as the canonical "pinned banner"; the derived response field
+// `effective_banner_hash` is the image_hash of that row (or empty if none).
+type CoverInput struct {
+	ImageHash string `json:"image_hash"`
+	SortOrder int    `json:"sort_order"`
+	Sexual    int    `json:"sexual"`
+	Violence  int    `json:"violence"`
+	Source    string `json:"source"`
+	SourceKey string `json:"source_key"`
+}
+
+type ScreenshotInput struct {
+	ImageHash string `json:"image_hash"`
+	SortOrder int    `json:"sort_order"`
+	Caption   string `json:"caption"`
+	Sexual    int    `json:"sexual"`
+	Violence  int    `json:"violence"`
+	Source    string `json:"source"`
+	SourceKey string `json:"source_key"`
 }
 
 // ─── Generic GET ─────────────────────────────────────
@@ -260,11 +305,13 @@ type GalgameFull struct {
 	IntroZhCn        string `json:"intro_zh_cn"`
 	IntroJaJp        string `json:"intro_ja_jp"`
 	IntroZhTw        string `json:"intro_zh_tw"`
-	ContentLimit     string `json:"content_limit"`
-	AgeLimit         string `json:"age_limit"`
-	OriginalLanguage string `json:"original_language"`
-	View             int    `json:"view"`
-	SeriesID         *int   `json:"series_id"`
+	ContentLimit     string  `json:"content_limit"`
+	AgeLimit         string  `json:"age_limit"`
+	OriginalLanguage string  `json:"original_language"`
+	ReleaseDate      *string `json:"release_date"`
+	ReleaseDateTBA   bool    `json:"release_date_tba"`
+	View             int     `json:"view"`
+	SeriesID         *int    `json:"series_id"`
 	Alias            []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
@@ -290,8 +337,11 @@ type GalgameFull struct {
 		Name string `json:"name"`
 		Link string `json:"link"`
 	} `json:"link"`
-	Created string `json:"created"`
-	Updated string `json:"updated"`
+	EffectiveBannerHash string            `json:"effective_banner_hash"`
+	Covers              []CoverInput      `json:"covers"`
+	Screenshots         []ScreenshotInput `json:"screenshots"`
+	Created             string            `json:"created"`
+	Updated             string            `json:"updated"`
 }
 
 // GalgameDetailEnvelope is the data envelope for /galgame/:gid. Wiki nests another layer of galgame + users under data.
@@ -406,25 +456,35 @@ func (c *Client) SearchOfficial(ctx context.Context, q, category, lang string, l
 // UpdateGalgameRequest mirrors the documented JSON body of PUT /galgame/:gid.
 // All fields are pointers so the JSON encoding only includes what was set
 // (any unset field on the Wiki side stays unchanged).
+//
+// U1: ReleaseDate / ReleaseDateTBA replace the old `released string`.
+// W2 / Wiki PR5: BannerImageHash dropped — new banner edits go through
+// `Covers[sort_order=0]` or the multipart `file` field on PUT /galgame.
+// Covers / Screenshots follow presence semantics (omit = keep集合 unchanged;
+// `[]` = clear all; non-empty = authoritative full replace — caller MUST
+// resubmit current full set, see docs/galgame_wiki/00-handbook §15 PR2-5 段).
 type UpdateGalgameRequest struct {
-	NameEnUs         *string `json:"name_en_us,omitempty"`
-	NameJaJp         *string `json:"name_ja_jp,omitempty"`
-	NameZhCn         *string `json:"name_zh_cn,omitempty"`
-	NameZhTw         *string `json:"name_zh_tw,omitempty"`
-	IntroEnUs        *string `json:"intro_en_us,omitempty"`
-	IntroJaJp        *string `json:"intro_ja_jp,omitempty"`
-	IntroZhCn        *string `json:"intro_zh_cn,omitempty"`
-	IntroZhTw        *string `json:"intro_zh_tw,omitempty"`
-	ContentLimit     *string `json:"content_limit,omitempty"`
-	AgeLimit         *string `json:"age_limit,omitempty"`
-	OriginalLanguage *string `json:"original_language,omitempty"`
-	Aliases          *string `json:"aliases,omitempty"`
-	BannerImageHash  *string `json:"banner_image_hash,omitempty"`
-	SeriesID         *int    `json:"series_id,omitempty"`
-	TagIDs           *[]int  `json:"tag_ids,omitempty"`
-	OfficialIDs      *[]int  `json:"official_ids,omitempty"`
-	EngineIDs        *[]int  `json:"engine_ids,omitempty"`
-	IsMinor          *bool   `json:"is_minor,omitempty"`
+	NameEnUs         *string            `json:"name_en_us,omitempty"`
+	NameJaJp         *string            `json:"name_ja_jp,omitempty"`
+	NameZhCn         *string            `json:"name_zh_cn,omitempty"`
+	NameZhTw         *string            `json:"name_zh_tw,omitempty"`
+	IntroEnUs        *string            `json:"intro_en_us,omitempty"`
+	IntroJaJp        *string            `json:"intro_ja_jp,omitempty"`
+	IntroZhCn        *string            `json:"intro_zh_cn,omitempty"`
+	IntroZhTw        *string            `json:"intro_zh_tw,omitempty"`
+	ContentLimit     *string            `json:"content_limit,omitempty"`
+	AgeLimit         *string            `json:"age_limit,omitempty"`
+	OriginalLanguage *string            `json:"original_language,omitempty"`
+	ReleaseDate      *string            `json:"release_date,omitempty"`
+	ReleaseDateTBA   *bool              `json:"release_date_tba,omitempty"`
+	Aliases          *string            `json:"aliases,omitempty"`
+	Covers           *[]CoverInput      `json:"covers,omitempty"`
+	Screenshots      *[]ScreenshotInput `json:"screenshots,omitempty"`
+	SeriesID         *int               `json:"series_id,omitempty"`
+	TagIDs           *[]int             `json:"tag_ids,omitempty"`
+	OfficialIDs      *[]int             `json:"official_ids,omitempty"`
+	EngineIDs        *[]int             `json:"engine_ids,omitempty"`
+	IsMinor          *bool              `json:"is_minor,omitempty"`
 }
 
 // UpdateGalgame proxies PUT /galgame/:gid. Returns the raw `data` payload

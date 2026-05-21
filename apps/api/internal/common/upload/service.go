@@ -19,24 +19,63 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"kun-galgame-patch-api/internal/constants"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	authModel "kun-galgame-patch-api/internal/auth/model"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
-// Service combines the S3 client and DB (used for quota checks and deductions).
+// Service combines the S3 client and DB + Redis. Redis is used purely as an
+// idempotency guard for the Complete endpoints (MOYU-PR7 / M5): without it,
+// calling /upload/small/complete twice on the same s3_key double-deducts
+// daily_upload_size. We can't dedupe via patch_resource (which is created in
+// a separate later call) and don't want to add an upload_session table just
+// for this; a 24h SETNX is the cheapest correct fix.
 type Service struct {
-	s3 *storage.S3Client
-	db *gorm.DB
+	s3  *storage.S3Client
+	db  *gorm.DB
+	rdb *redis.Client
 }
 
-// New constructs a Service.
-func New(s3 *storage.S3Client, db *gorm.DB) *Service {
-	return &Service{s3: s3, db: db}
+// New constructs a Service. rdb may be nil in tests; the complete-idempotency
+// guard then degrades to "best effort, no DB-level dedupe" — acceptable for
+// pure unit tests that don't care.
+func New(s3 *storage.S3Client, db *gorm.DB, rdb *redis.Client) *Service {
+	return &Service{s3: s3, db: db, rdb: rdb}
+}
+
+// completeOnceTTL is how long we remember "this s3_key already had its
+// quota deducted". 24h covers the daily-quota reset window.
+const completeOnceTTL = 24 * time.Hour
+
+// markCompleteOnce returns true if THIS call is the first complete for the
+// given s3_key, false if a prior call already deducted quota. Nil rdb (tests)
+// always returns true (degraded "best effort"). Uses SetArgs with NX mode
+// (the modern Redis API; SetNX is deprecated since 2.6.12) — matches the
+// pattern already used in middleware/auth.go refreshOAuthToken.
+func (s *Service) markCompleteOnce(ctx context.Context, s3Key string) (bool, error) {
+	if s.rdb == nil {
+		return true, nil
+	}
+	key := "upload:complete:" + s3Key
+	res, err := s.rdb.SetArgs(ctx, key, "1", redis.SetArgs{
+		TTL:  completeOnceTTL,
+		Mode: "NX",
+	}).Result()
+	if err != nil {
+		// Redis returns redis.Nil when the NX condition fails (key already
+		// exists). That's the "not first" signal, not an error.
+		if err == redis.Nil {
+			return false, nil
+		}
+		return false, err
+	}
+	return res == "OK", nil
 }
 
 // ─── s3_key generation ───────────────────────────────
@@ -121,7 +160,9 @@ func (s *Service) dailyLimit(privileged bool) int64 {
 // verifyAndFinalize is shared by small and multipart completion:
 //  1. HeadObject confirms the object really exists
 //  2. Compare actual size with declared size (mismatch -> delete + error)
-//  3. Increment daily_upload_size (atomic UPDATE)
+//  3. Idempotency guard: only deduct quota once per s3_key (Redis SETNX,
+//     24h TTL — MOYU-PR7 / M5; prevents double-charge on retry/replay)
+//  4. Increment daily_upload_size (atomic UPDATE)
 func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, declared int64, privileged bool) (int64, error) {
 	info, err := s.s3.StatObject(ctx, s3Key)
 	if err != nil {
@@ -136,6 +177,18 @@ func (s *Service) verifyAndFinalize(ctx context.Context, uid int, s3Key string, 
 	if actual > constants.MaxLargeFileSize {
 		_ = s.s3.DeleteObject(ctx, s3Key)
 		return 0, fmt.Errorf("文件大小超过 1GB 上限，已删除")
+	}
+
+	// SETNX-style idempotency: if this s3_key was already complete'd within
+	// the TTL window, return the size without re-deducting quota. The S3
+	// object stays put (caller's retry sees the same successful "size"
+	// response).
+	first, err := s.markCompleteOnce(ctx, s3Key)
+	if err != nil {
+		return 0, fmt.Errorf("complete 幂等校验失败: %w", err)
+	}
+	if !first {
+		return actual, nil
 	}
 
 	var user authModel.User

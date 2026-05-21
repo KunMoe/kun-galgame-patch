@@ -274,5 +274,27 @@ type UserPatchResourceLikeRelation struct {
 
 func (UserPatchResourceLikeRelation) TableName() string { return "user_patch_resource_like_relation" }
 
+// PatchResourceFileHistory is the append-only audit trail for resource file
+// replacements (MOYU-PR5 / M3). One row is written BEFORE each substantive
+// file change in PatchService.UpdateResource (Storage / S3Key / Content
+// differs from current). Pure metadata edits (note / code / type / ...) do
+// NOT write a row. CASCADE on delete: history goes with the resource — see
+// migrations/007_patch_resource_file_history.up.sql §rationale.
+type PatchResourceFileHistory struct {
+	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	ResourceID int       `gorm:"not null;index:idx_prfh_resource,priority:1" json:"resource_id"`
+	OldStorage string    `gorm:"type:varchar(16);not null" json:"old_storage"`
+	OldS3Key   string    `gorm:"type:varchar(2048);not null;default:''" json:"old_s3_key"`
+	OldBlake3  string    `gorm:"type:varchar(128);not null;default:''" json:"old_blake3"`
+	OldSize    string    `gorm:"type:varchar(107);not null;default:''" json:"old_size"`
+	OldContent string    `gorm:"type:text;not null;default:''" json:"old_content"`
+	Reason     string    `gorm:"type:varchar(500);not null;default:''" json:"reason"`
+	ActorID    int       `gorm:"not null" json:"actor_id"`
+	ActorRole  int       `gorm:"not null;default:0" json:"actor_role"` // 3=admin / 2=mod / 1=user / 0=unknown
+	CreatedAt  time.Time `gorm:"autoCreateTime;index:idx_prfh_resource,priority:2,sort:desc" json:"created_at"`
+}
+
+func (PatchResourceFileHistory) TableName() string { return "patch_resource_file_history" }
+
 // NOTE: PatchTag / PatchTagRel are deprecated per D11 (2026-04-21).
 // Tag metadata is owned by the Galgame Wiki; fetch it via patch.vndb_id -> Wiki /galgame/batch.
