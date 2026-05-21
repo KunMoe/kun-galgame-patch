@@ -65,6 +65,13 @@ const tagColor = (cat: string): 'primary' | 'danger' | 'success' => {
   if (cat === 'technical') return 'success'
   return 'primary' // content + unknown fallback
 }
+// Static class map — Tailwind JIT only sees literal class strings, so we can
+// NEVER write `text-${color}-600` (the spec calls this out as a latent bug).
+const TAG_CATEGORY_TEXT_CLASS: Record<TagCategory, string> = {
+  content: 'text-primary-600',
+  sexual: 'text-danger-600',
+  technical: 'text-success-600'
+}
 
 const showSpoiler = ref(false)
 const visibleCategories = ref<Set<TagCategory>>(
@@ -209,7 +216,7 @@ const wikiOrigin =
               class="accent-primary"
               @change="toggleCategory(c)"
             />
-            <span :class="`text-${tagColor(c)}-600`">
+            <span :class="TAG_CATEGORY_TEXT_CLASS[c]">
               {{ CATEGORY_LABEL[c] }}
             </span>
           </label>
@@ -221,7 +228,7 @@ const wikiOrigin =
           :key="t.id"
           :to="`/tag/${t.id}`"
         >
-          <KunBadge
+          <KunChip
             :color="tagColor(t.category)"
             variant="flat"
             size="sm"
@@ -232,7 +239,7 @@ const wikiOrigin =
               class="mr-0.5 size-3.5"
             />
             {{ t.name }}
-          </KunBadge>
+          </KunChip>
         </NuxtLink>
         <span
           v-if="!filteredTags.length"
@@ -260,12 +267,12 @@ const wikiOrigin =
           :key="o.id"
           :to="`/official/${o.id}`"
         >
-          <KunBadge color="success" variant="flat" size="sm">
+          <KunChip color="success" variant="flat" size="sm">
             {{ o.name }}
             <span v-if="o.category" class="text-default-500 text-xs">
               · {{ o.category }}
             </span>
-          </KunBadge>
+          </KunChip>
         </NuxtLink>
       </div>
     </section>

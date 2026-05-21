@@ -596,9 +596,9 @@ onBeforeUnmount(() => pause())
 
     <!-- delete confirm -->
     <KunModal
-      :modal-value="deleteOpen"
+      :model-value="deleteOpen"
       inner-class-name="max-w-md"
-      @update:modal-value="(v) => (deleteOpen = v)"
+      @update:model-value="(v) => (deleteOpen = v)"
     >
       <div class="space-y-4">
         <div class="space-y-1">

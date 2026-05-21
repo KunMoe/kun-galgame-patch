@@ -13,7 +13,7 @@ const { data: posts } = await useAsyncData<HomeCarouselMetadata[]>(
     <div
       class="pointer-events-none relative hidden select-none md:block"
     >
-      <KunBadge
+      <KunChip
         size="lg"
         class-name="absolute top-0 left-0"
         variant="flat"
@@ -23,7 +23,7 @@ const { data: posts } = await useAsyncData<HomeCarouselMetadata[]>(
           <KunIcon name="lucide:lollipop" class="h-5 w-5" />
           欢迎来到 {{ kunMoyuMoe.titleShort }}
         </div>
-      </KunBadge>
+      </KunChip>
       <img
         :alt="kunMoyuMoe.titleShort"
         class="rounded-2xl"

@@ -197,10 +197,10 @@ onUnmounted(() => {
     </div>
 
     <KunModal
-      :modal-value="showCropper"
+      :model-value="showCropper"
       inner-class-name="max-w-3xl w-full"
       :is-dismissable="false"
-      @update:modal-value="(v) => !v && handleCancel()"
+      @update:model-value="(v) => !v && handleCancel()"
     >
       <div class="space-y-4">
         <h3 class="text-lg font-semibold">裁剪图片</h3>

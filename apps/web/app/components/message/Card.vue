@@ -54,12 +54,12 @@ const iconName = computed(
         </span>
       </div>
 
-      <KunBadge
+      <KunChip
         :color="props.msg.status === 0 ? 'danger' : 'default'"
         size="sm"
       >
         {{ props.msg.status === 0 ? '新消息' : '已阅读' }}
-      </KunBadge>
+      </KunChip>
     </div>
   </NuxtLink>
 </template>

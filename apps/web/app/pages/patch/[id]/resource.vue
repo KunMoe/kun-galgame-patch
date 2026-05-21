@@ -194,10 +194,10 @@ const toggleLike = async (r: PatchResource) => {
               </span>
             </div>
           </div>
-          <KunBadge color="warning" size="sm" variant="flat">
+          <KunChip color="warning" size="sm" variant="flat">
             <KunIcon name="lucide:database" class="size-3.5" />
             {{ r.size }}
-          </KunBadge>
+          </KunChip>
         </div>
 
         <KunPatchAttribute
@@ -309,9 +309,9 @@ const toggleLike = async (r: PatchResource) => {
               class="text-success size-4"
             />
             <span class="text-sm font-semibold">资源下载链接</span>
-            <KunBadge color="secondary" variant="flat" size="sm">
+            <KunChip color="secondary" variant="flat" size="sm">
               {{ storageLabelOf(fetched[r.id]!) }}
-            </KunBadge>
+            </KunChip>
           </div>
 
           <div class="space-y-2">

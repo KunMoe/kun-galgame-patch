@@ -58,7 +58,7 @@ onUnmounted(() => {
         <p class="mr-2 ml-4 font-bold">
           {{ kunMoyuMoe.creator.name }}
         </p>
-        <KunBadge size="sm" variant="flat" color="primary"> 补丁 </KunBadge>
+        <KunChip size="sm" variant="flat" color="primary"> 补丁 </KunChip>
       </NuxtLink>
 
       <nav class="flex flex-col gap-1">

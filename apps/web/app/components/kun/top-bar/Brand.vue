@@ -27,14 +27,14 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
       <p class="mr-2 ml-4 hidden font-bold lg:block">
         {{ kunMoyuMoe.creator.name }}
       </p>
-      <KunBadge
+      <KunChip
         class="hidden lg:flex"
         size="sm"
         variant="flat"
         color="primary"
       >
         补丁
-      </KunBadge>
+      </KunChip>
     </NuxtLink>
   </KunTooltip>
 </template>

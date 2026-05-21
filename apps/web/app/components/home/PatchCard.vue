@@ -12,7 +12,6 @@ const bannerSrc = computed(() => resolveBannerUrl(props.patch, 'mini'))
 
 <template>
   <KunCard
-    is-pressable
     :href="`/patch/${props.patch.id}/introduction`"
     class-name="w-full"
   >

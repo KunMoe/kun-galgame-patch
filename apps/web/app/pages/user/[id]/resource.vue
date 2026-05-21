@@ -50,9 +50,9 @@ const patchBanner = (r: UserResourceItem) =>
             <h3 class="hover:text-primary-500 text-lg font-semibold line-clamp-2">
               {{ patchName(r) }}
             </h3>
-            <KunBadge variant="flat">
+            <KunChip variant="flat">
               {{ formatDistanceToNow(r.created) }}
-            </KunBadge>
+            </KunChip>
           </div>
           <KunPatchAttribute
             :types="r.type"

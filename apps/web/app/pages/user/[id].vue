@@ -99,9 +99,9 @@ const toggleFollow = async () => {
             <KunAvatar :user="user" size="original-sm" :is-navigation="false" />
             <div class="flex flex-col items-center gap-1">
               <h4 class="text-2xl font-bold">{{ user.name }}</h4>
-              <KunBadge color="primary" variant="flat" size="sm">
+              <KunChip color="primary" variant="flat" size="sm">
                 {{ pickRoleLabel(user.roles) }}
-              </KunBadge>
+              </KunChip>
 
               <div class="text-default-500 mt-2 flex gap-4 text-sm">
                 <span>粉丝 {{ user.follower_count }}</span>

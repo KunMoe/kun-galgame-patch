@@ -140,13 +140,13 @@ const vndbLink = (v: string) =>
               <span class="font-mono text-default-500 text-sm">
                 #{{ p.id }}
               </span>
-              <KunBadge
+              <KunChip
                 size="sm"
                 variant="flat"
                 :color="isPlaceholder(p.vndb_id) ? 'warning' : 'danger'"
               >
                 {{ isPlaceholder(p.vndb_id) ? '未填' : 'Wiki 缺失' }}
-              </KunBadge>
+              </KunChip>
               <code
                 class="bg-default-100 rounded px-2 py-0.5 text-xs"
               >

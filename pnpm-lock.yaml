@@ -31,6 +31,9 @@ importers:
       '@iconify-json/lucide':
         specifier: ^1.2.81
         version: 1.2.105
+      '@kun/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.2.0

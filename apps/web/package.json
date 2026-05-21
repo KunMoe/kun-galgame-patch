@@ -11,6 +11,7 @@
     "icons": "node scripts/generate-icon-list.mjs"
   },
   "dependencies": {
+    "@kun/ui": "workspace:*",
     "@iconify-json/lucide": "^1.2.81",
     "@noble/hashes": "^2.0.1",
     "@nuxt/eslint": "1.15.2",

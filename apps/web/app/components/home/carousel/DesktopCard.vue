@@ -54,13 +54,13 @@ const post = computed(() => props.posts[props.currentSlide])
         {{ post.description }}
       </p>
       <div class="flex flex-wrap gap-2">
-        <KunBadge variant="flat" size="sm" color="primary">
+        <KunChip variant="flat" size="sm" color="primary">
           {{ aboutDirectoryLabelMap[post.directory] }}
-        </KunBadge>
+        </KunChip>
 
-        <KunBadge variant="flat" size="sm">
+        <KunChip variant="flat" size="sm">
           {{ formatDistanceToNow(post.date) }}
-        </KunBadge>
+        </KunChip>
       </div>
     </div>
   </div>

@@ -11,7 +11,7 @@ import type {
   GalgamePRDetail,
   GalgameEditFields
 } from '~/composables/useGalgameEdit'
-import type { KunUIColor } from '~/components/kun/ui/type'
+import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
 const route = useRoute()
 const gid = computed(() => Number(route.params.id))
@@ -296,9 +296,9 @@ const doDecline = async () => {
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-mono text-sm font-semibold">PR #{{ pr.id }}</span>
-              <KunBadge :color="PR_STATUS[pr.status]?.color" size="sm">
+              <KunChip :color="PR_STATUS[pr.status]?.color" size="sm">
                 {{ PR_STATUS[pr.status]?.text }}
-              </KunBadge>
+              </KunChip>
               <span class="text-default-500 text-xs">
                 base #{{ pr.base_revision }}
               </span>
@@ -325,15 +325,15 @@ const doDecline = async () => {
     </div>
 
     <!-- PR detail modal -->
-    <KunModal v-model:modal-value="modalOpen" :is-show-close-button="true">
+    <KunModal v-model="modalOpen" :is-show-close-button="true">
       <div class="max-h-[80vh] w-[92vw] max-w-2xl overflow-y-auto p-5">
         <KunLoading v-if="modalLoading" description="加载中..." />
         <template v-else-if="detail">
           <div class="mb-4 flex flex-wrap items-center gap-2">
             <h3 class="text-lg font-semibold">PR #{{ detail.pr.id }}</h3>
-            <KunBadge :color="PR_STATUS[detail.pr.status]?.color" size="sm">
+            <KunChip :color="PR_STATUS[detail.pr.status]?.color" size="sm">
               {{ PR_STATUS[detail.pr.status]?.text }}
-            </KunBadge>
+            </KunChip>
           </div>
           <p v-if="detail.pr.note" class="text-default-700 mb-4 text-sm">
             {{ detail.pr.note }}

@@ -15,7 +15,7 @@ import type {
   WikiSeries,
   TaxonomyRevision
 } from '~/composables/useGalgameEdit'
-import type { KunUIColor } from '~/components/kun/ui/type'
+import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
 useKunSeoMeta({
   title: 'Galgame 分类管理',
@@ -460,7 +460,7 @@ const fmtSnapshotValue = (v: unknown): string => {
       </KunCard>
     </div>
 
-    <KunModal v-model:modal-value="modalOpen" :is-show-close-button="true">
+    <KunModal v-model="modalOpen" :is-show-close-button="true">
       <div class="w-[92vw] max-w-md space-y-3 p-5">
         <h3 class="text-lg font-semibold">
           {{ editing ? '编辑' : '新建'
@@ -509,7 +509,7 @@ const fmtSnapshotValue = (v: unknown): string => {
     </KunModal>
 
     <!-- W3 / PR4 — Revision history modal (per entity) -->
-    <KunModal v-model:modal-value="histOpen" :is-show-close-button="true">
+    <KunModal v-model="histOpen" :is-show-close-button="true">
       <div class="max-h-[85vh] w-[92vw] max-w-2xl space-y-3 overflow-y-auto p-5">
         <h3 class="text-lg font-semibold">
           编辑历史 ·
@@ -533,9 +533,9 @@ const fmtSnapshotValue = (v: unknown): string => {
                 <span class="font-mono text-sm font-semibold">
                   #{{ rev.revision }}
                 </span>
-                <KunBadge :color="actionOf(rev.action).color" size="sm">
+                <KunChip :color="actionOf(rev.action).color" size="sm">
                   {{ actionOf(rev.action).text }}
-                </KunBadge>
+                </KunChip>
                 <span class="text-default-500 text-xs">
                   用户 #{{ rev.user_id }} ·
                   {{

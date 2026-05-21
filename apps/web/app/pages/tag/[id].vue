@@ -82,16 +82,16 @@ watch(tag, () => refresh(), { flush: 'post' })
       <section class="border-default/20 rounded-xl border p-5">
         <div class="flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-bold sm:text-3xl">{{ tag.name }}</h1>
-          <KunBadge
+          <KunChip
             :color="CATEGORY_COLOR[tag.category] ?? 'default'"
             variant="flat"
             size="sm"
           >
             {{ CATEGORY_LABEL[tag.category] ?? tag.category }}
-          </KunBadge>
-          <KunBadge color="default" size="sm">
+          </KunChip>
+          <KunChip color="default" size="sm">
             {{ tag.galgame_count ?? 0 }} 个 Galgame
-          </KunBadge>
+          </KunChip>
         </div>
         <p
           v-if="tag.description"

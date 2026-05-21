@@ -11,7 +11,7 @@ import type {
   GalgameRevisionDetail,
   GalgameDiff
 } from '~/composables/useGalgameEdit'
-import type { KunUIColor } from '~/components/kun/ui/type'
+import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
 const route = useRoute()
 const gid = computed(() => Number(route.params.id))
@@ -146,12 +146,12 @@ const snapshotEntries = computed(() =>
               <span class="font-mono text-sm font-semibold">
                 #{{ r.revision }}
               </span>
-              <KunBadge :color="actionOf(r.action).color" size="sm">
+              <KunChip :color="actionOf(r.action).color" size="sm">
                 {{ actionOf(r.action).text }}
-              </KunBadge>
-              <KunBadge v-if="r.is_minor" color="default" size="sm">
+              </KunChip>
+              <KunChip v-if="r.is_minor" color="default" size="sm">
                 小修改
-              </KunBadge>
+              </KunChip>
               <span
                 v-if="r.reverted_to"
                 class="text-default-500 text-xs"
@@ -206,7 +206,7 @@ const snapshotEntries = computed(() =>
       />
     </div>
 
-    <KunModal v-model:modal-value="modalOpen" :is-show-close-button="true">
+    <KunModal v-model="modalOpen" :is-show-close-button="true">
       <div class="max-h-[80vh] w-[92vw] max-w-2xl overflow-y-auto p-5">
         <h3 class="mb-4 text-lg font-semibold">
           版本 #{{ activeRev }} ·

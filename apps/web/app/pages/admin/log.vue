@@ -42,9 +42,9 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
         <div class="flex-1 space-y-1">
           <div class="flex flex-wrap items-center gap-2 text-sm">
             <span class="font-semibold">{{ l.user?.name ?? '系统' }}</span>
-            <KunBadge size="sm" variant="flat" color="primary">
+            <KunChip size="sm" variant="flat" color="primary">
               {{ ADMIN_LOG_TYPE_MAP[l.type] ?? l.type }}
-            </KunBadge>
+            </KunChip>
             <span class="text-default-500 text-xs">
               {{
                 formatDate(l.created, { isShowYear: true, isPrecise: true })

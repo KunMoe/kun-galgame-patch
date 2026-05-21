@@ -73,12 +73,12 @@ watch(official, () => refresh(), { flush: 'post' })
       <section class="border-default/20 rounded-xl border p-5">
         <div class="flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-bold sm:text-3xl">{{ official.name }}</h1>
-          <KunBadge color="success" variant="flat" size="sm">
+          <KunChip color="success" variant="flat" size="sm">
             {{ CATEGORY_LABEL[official.category] ?? official.category }}
-          </KunBadge>
-          <KunBadge color="default" size="sm">
+          </KunChip>
+          <KunChip color="default" size="sm">
             {{ official.galgame_count ?? 0 }} 个 Galgame
-          </KunBadge>
+          </KunChip>
           <a
             v-if="official.link"
             :href="official.link"

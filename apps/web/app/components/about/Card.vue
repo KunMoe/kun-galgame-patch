@@ -31,17 +31,17 @@ const readMinutes = computed(() =>
     </div>
     <div class="space-y-2 p-4">
       <div class="flex flex-wrap gap-2">
-        <KunBadge
+        <KunChip
           v-if="aboutDirectoryLabelMap[props.post.directory]"
           variant="flat"
           color="primary"
           size="sm"
         >
           {{ aboutDirectoryLabelMap[props.post.directory] }}
-        </KunBadge>
-        <KunBadge variant="flat" size="sm">
+        </KunChip>
+        <KunChip variant="flat" size="sm">
           {{ readMinutes }} 分钟阅读
-        </KunBadge>
+        </KunChip>
       </div>
       <h2 class="text-lg font-semibold line-clamp-2">
         {{ props.post.title }}

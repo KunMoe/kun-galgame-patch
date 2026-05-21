@@ -18,7 +18,6 @@ const bannerSrc = computed(
 
 <template>
   <KunCard
-    is-pressable
     :href="`/patch/${props.patch.id}/introduction`"
     class-name="w-full border-default-100 dark:border-default-200 border"
     content-class="gap-0 p-0"
@@ -50,12 +49,12 @@ const bannerSrc = computed(
       />
 
       <div class="bg-background absolute top-2 left-2 z-10 rounded-full">
-        <KunBadge
+        <KunChip
           :color="props.patch.content_limit === 'sfw' ? 'success' : 'danger'"
           variant="flat"
         >
           {{ GALGAME_AGE_LIMIT_MAP[props.patch.content_limit] }}
-        </KunBadge>
+        </KunChip>
       </div>
     </div>
 

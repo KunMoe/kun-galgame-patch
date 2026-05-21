@@ -29,9 +29,9 @@ const save = () => {
 
 <template>
   <KunModal
-    :modal-value="open"
+    :model-value="open"
     inner-class-name="max-w-lg"
-    @update:modal-value="(v) => emit('update:open', v)"
+    @update:model-value="(v) => emit('update:open', v)"
   >
     <div class="space-y-4">
       <div class="space-y-1">

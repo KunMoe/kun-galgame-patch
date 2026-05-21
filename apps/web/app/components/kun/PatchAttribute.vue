@@ -5,7 +5,7 @@ import {
   SUPPORTED_TYPE_MAP,
   SUPPORTED_RESOURCE_LINK_MAP
 } from '~/constants/resource'
-import type { KunUISize } from './ui/type'
+import type { KunUISize } from '@kun/ui/app/components/kun/ui/type'
 
 interface Props {
   types: string[]
@@ -31,7 +31,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 <template>
   <div :class="cn('flex flex-wrap gap-2', props.className)">
-    <KunBadge
+    <KunChip
       v-for="type in props.types"
       :key="type"
       variant="flat"
@@ -39,9 +39,9 @@ const props = withDefaults(defineProps<Props>(), {
       :size="props.size"
     >
       {{ SUPPORTED_TYPE_MAP[type] }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge
+    <KunChip
       v-for="lang in props.languages"
       :key="lang"
       variant="flat"
@@ -49,9 +49,9 @@ const props = withDefaults(defineProps<Props>(), {
       :size="props.size"
     >
       {{ SUPPORTED_LANGUAGE_MAP[lang] }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge
+    <KunChip
       v-for="platform in props.platforms"
       :key="platform"
       variant="flat"
@@ -59,18 +59,18 @@ const props = withDefaults(defineProps<Props>(), {
       :size="props.size"
     >
       {{ SUPPORTED_PLATFORM_MAP[platform] }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge
+    <KunChip
       v-if="props.modelName"
       variant="flat"
       color="danger"
       :size="props.size"
     >
       {{ props.modelName }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge v-if="props.storage" variant="flat" color="secondary">
+    <KunChip v-if="props.storage" variant="flat" color="secondary">
       <KunIcon
         v-if="props.storage === 's3'"
         name="lucide:cloud"
@@ -82,20 +82,20 @@ const props = withDefaults(defineProps<Props>(), {
         class="size-4"
       />
       {{ SUPPORTED_RESOURCE_LINK_MAP[props.storage] }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge v-if="props.storageSize" variant="flat" color="warning">
+    <KunChip v-if="props.storageSize" variant="flat" color="warning">
       <KunIcon name="lucide:database" class="size-4" />
       {{ props.storageSize }}
-    </KunBadge>
+    </KunChip>
 
-    <KunBadge
+    <KunChip
       v-if="props.downloadCount"
       variant="flat"
       color="default"
       :size="props.size"
     >
       {{ `${props.downloadCount} 人下载` }}
-    </KunBadge>
+    </KunChip>
   </div>
 </template>

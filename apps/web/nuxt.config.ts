@@ -5,6 +5,12 @@ import { ICON_COLLECTIONS, ICON_NAMES } from './icon/icon'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
 
+  // KunUI ships as a Nuxt layer (packages/ui). Extending it auto-imports
+  // every <KunButton> / <KunChip> / ... component plus the layer's
+  // app/composables, app/utils, shared/utils, and tailwindcss theme. moyu
+  // no longer maintains a local kun copy — single source of truth in @kun/ui.
+  extends: ['@kun/ui'],
+
   devtools: { enabled: false },
 
   modules: [

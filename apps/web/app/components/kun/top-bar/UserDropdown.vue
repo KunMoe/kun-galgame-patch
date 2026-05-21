@@ -122,7 +122,7 @@ const handleCheckIn = async () => {
     </div>
   </KunPopover>
 
-  <KunModal v-model:modal-value="logoutOpen" inner-class-name="max-w-md">
+  <KunModal v-model="logoutOpen" inner-class-name="max-w-md">
     <div class="space-y-4">
       <h3 class="text-lg font-semibold">您确定要登出网站吗?</h3>
       <p class="text-foreground/80 text-sm">

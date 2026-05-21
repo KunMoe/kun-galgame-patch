@@ -34,11 +34,10 @@ const target = computed(
   () => `/patch/${props.comment.galgame_id}/comment`
 )
 
-// The card was previously rendered as a NuxtLink (KunCard isPressable). That
-// nested every <a> inside the comment's rendered Markdown — @mentions, auto-
-// links, even KunAvatar's internal link — under an outer <a>, which Vue flags
-// as a hydration mismatch. We now keep the card as a plain div and navigate
-// imperatively, deferring to any inner <a>/<button> the user actually clicked.
+// The card MUST NOT render as a NuxtLink (i.e. don't pass `:href`). Rendered
+// comment Markdown carries its own <a> (@mentions, autolinks, KunAvatar's link),
+// and nesting <a> inside <a> triggers a Vue hydration mismatch. Keep as a plain
+// div + imperative navigation; defer to any inner <a>/<button> the user clicked.
 const handleCardClick = async (event: MouseEvent) => {
   const el = event.target as HTMLElement | null
   if (el?.closest('a, button')) return

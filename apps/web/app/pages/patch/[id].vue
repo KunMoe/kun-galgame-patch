@@ -90,12 +90,12 @@ const tabs = computed(() => [
                 :text="GALGAME_AGE_LIMIT_DETAIL[patch.content_limit]"
                 position="right"
               >
-                <KunBadge
+                <KunChip
                   :color="patch.content_limit === 'sfw' ? 'success' : 'danger'"
                   variant="flat"
                 >
                   {{ GALGAME_AGE_LIMIT_MAP[patch.content_limit] }}
-                </KunBadge>
+                </KunChip>
               </KunTooltip>
             </div>
 

@@ -201,14 +201,14 @@ useKunSeoMeta({
             </h1>
 
             <div class="flex flex-wrap items-center gap-2">
-              <KunBadge color="secondary" variant="flat" size="sm">
+              <KunChip color="secondary" variant="flat" size="sm">
                 <KunIcon :name="storageIcon" class="size-3.5" />
                 {{ storageLabel }}
-              </KunBadge>
-              <KunBadge color="warning" variant="flat" size="sm">
+              </KunChip>
+              <KunChip color="warning" variant="flat" size="sm">
                 <KunIcon name="lucide:database" class="size-3.5" />
                 {{ resource.size }}
-              </KunBadge>
+              </KunChip>
             </div>
 
             <!-- publisher: avatar + name, clickable → user profile -->

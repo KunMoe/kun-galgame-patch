@@ -117,9 +117,9 @@ const handleEdit = async (m: MineItem) => {
             <div class="flex-1">
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="text-lg font-semibold">{{ displayName(m) }}</h3>
-                <KunBadge :color="statusLabel(m.status).color" size="sm">
+                <KunChip :color="statusLabel(m.status).color" size="sm">
                   {{ statusLabel(m.status).text }}
-                </KunBadge>
+                </KunChip>
               </div>
               <p class="text-default-500 mt-1 text-xs">
                 {{ m.vndb_id || '无 VNDB ID' }} · 提交于

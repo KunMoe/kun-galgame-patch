@@ -32,7 +32,6 @@ const userDescription = computed(() => {
 
 <template>
   <KunCard
-    is-pressable
     :href="`/resource/${props.resource.id}`"
     class-name="w-full"
   >
@@ -68,9 +67,9 @@ const userDescription = computed(() => {
             {{ props.resource.download }}
           </div>
         </div>
-        <KunBadge size="sm" variant="flat">
+        <KunChip size="sm" variant="flat">
           {{ props.resource.size }}
-        </KunBadge>
+        </KunChip>
       </div>
     </div>
   </KunCard>
