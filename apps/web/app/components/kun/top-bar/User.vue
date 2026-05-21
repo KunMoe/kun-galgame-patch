@@ -40,7 +40,7 @@ const fetchUnread = async () => {
 }
 
 onMounted(async () => {
-  if (userStore.user.uid) {
+  if (userStore.user.id) {
     await Promise.all([fetchUserStatus(), fetchUnread()])
   }
 })

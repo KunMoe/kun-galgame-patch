@@ -145,7 +145,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 // the page.
 func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
 	resp := dto.MeResponse{
-		UID:             local.ID,
+		ID:              local.ID,
 		Sub:             sub,
 		Roles:           roles,
 		Moemoepoint:     local.Moemoepoint,

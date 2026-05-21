@@ -23,7 +23,7 @@ const route = useRoute()
 const userStore = useUserStore()
 const api = useApi()
 
-if (!userStore.user.uid) {
+if (!userStore.user.id) {
   await navigateTo({ path: '/login', query: { from: route.fullPath } })
 }
 

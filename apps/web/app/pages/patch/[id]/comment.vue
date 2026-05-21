@@ -38,7 +38,7 @@ const content = ref('')
 const submitting = ref(false)
 
 const submit = async () => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录', 'warn')
     return
   }
@@ -72,7 +72,7 @@ const renderComment = (c: PatchPageComment): PatchPageComment => c
 // adjust the displayed like_count by the resulting delta. On error we leave
 // state untouched so the next refresh reconciles.
 const toggleLike = async (c: PatchPageComment) => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录后再点赞', 'warn')
     return
   }
@@ -94,7 +94,7 @@ const toggleLike = async (c: PatchPageComment) => {
   <div class="space-y-6">
     <!-- composer -->
     <div
-      v-if="userStore.user.uid"
+      v-if="userStore.user.id"
       class="border-default/20 bg-background flex gap-3 rounded-2xl border p-4"
     >
       <KunAvatar :user="userStore.user" size="sm" :is-navigation="false" />

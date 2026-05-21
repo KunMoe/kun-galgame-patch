@@ -40,7 +40,7 @@ watch(
 )
 
 const toggleFavorite = async () => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录后再收藏', 'warn')
     return
   }

@@ -8,6 +8,7 @@
 // tidy (`/tag/:id`).
 
 import { resolveBannerUrl } from '~/shared/utils/resolveBannerUrl'
+import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +28,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   sexual: '性相关',
   technical: '技术'
 }
-const CATEGORY_COLOR: Record<string, string> = {
+const CATEGORY_COLOR: Record<string, KunUIColor> = {
   content: 'primary',
   sexual: 'danger',
   technical: 'success'

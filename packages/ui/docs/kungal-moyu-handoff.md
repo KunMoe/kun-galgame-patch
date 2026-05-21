@@ -83,7 +83,7 @@ icon/LucideXCircle.vue                      ← 删
 | `Null.vue` | v0.2.1：import 路径 `../utils/` → `../../utils/`（其实 Nuxt 自动 import 兜底了，但 vue-tsc 严格模式 TS2307）|
 | `button/Button.vue` | v0.2.1：删本地 colorVariants 表，改 import `kunVariantClasses`。**这一步顺带修了 `<KunButton color="info">` 不出色的 bug**（v0.1.0 加 info 时漏改 Button）|
 | `select/Select.vue` | v0.2.1：`defineModel<string \| number>({ required: true })` —— 回调签名收紧不含 undefined |
-| `shared/user.d.ts` | v0.2.1（**breaking**）：`KunUser.id` → `KunUser.uid`，跟齐全栈 `/user/[uid]/...` 路由约定 |
+| `shared/user.d.ts` | v0.2.2：保持 `KunUser.id`（v0.2.1 误改为 uid 已回滚 —— DB 列名 `id` 是真理之源；JWT claim/URL `uid` 只是 auth/transport 标签，不向上传播到数据/UI 层）|
 | `Modal.vue` | `modalValue` → `modelValue`；scroll-lock 改 import composable；`v-model` 现在直接生效 |
 | `Card.vue` | `isPressable` → `clickable`/`href` 拆分；移除 `href: '/'` 默认 |
 | `Brand.vue` | 接受 `name` / `iconSrc` / `iconAlt` / `iconClass` / `badge` / `badgeColor` / `to` / `nameClass` props |
@@ -175,28 +175,31 @@ grep -rn '<KunLink.*tag=' apps --include='*.vue'
 
 逐处删 `tag` 属性。功能不变：NuxtLink 对外链自动 fallback 到 `<a>`。
 
-### 2.7 KunUser `id` → `uid`（v0.2.1 breaking）
+### 2.7 KunUser 字段名澄清（v0.2.2 决定）
+
+**结论**：KunUser 保留 `id`，**不**改 `uid`。如果你的项目里把用户对象的主键字段叫 `uid`，你这边要 rename 回 `id` 来对齐 @kun/ui。
+
+**为什么**：
+
+- 真理之源是 DB（Prisma user.id 列）
+- 上游链：DB `id` → Go DTO `json:"id"`（apps/api/.../oauth_dto.go 注释明确把它列为 FK 不变量）→ nitro response 类型 `id` → KunUser `id`
+- 你看到的 `uid` 出现在：
+  - JWT claim 名字（OAuth 内部）
+  - URL 路由参数 `[uid]`（routing 层 label）
+  - 这两处是 **auth/transport 层的本地标签**，跟传到数据层的字段名不该耦合
+
+**moyu/kungal 这边怎么改**：
+
+如果你们的 nitro response 类型、composable 返回的 user 对象等用了 `uid: number` 字段，全部 rename 为 `id: number`：
 
 ```bash
-# 找所有给 KunAvatar / KunUser 传对象字面量的地方
-grep -rn '<KunAvatar\|<KunUser' apps --include='*.vue' -A 4 | grep 'id:'
+# 在你们仓里找 user 对象的 uid 字段（不是 user.uuid 这种是字符串、function param 不算）
+grep -rn '\.uid\b\| uid:' apps --include='*.ts' --include='*.vue'
 
-# 模板里 `:user="{ id: X, ... }"` → `:user="{ uid: X, ... }"`
-# 单行 sed（适用绝大多数）：
-find apps -name '*.vue' | xargs sed -i 's/:user="{ id:/:user="{ uid:/g'
-
-# 多行格式的（`:user="{` 单独一行 + 下一行 `id: X,`）手动改
+# 谨慎的手动改 —— 自动化容易误伤
 ```
 
-如果你的 user brief 来源是 Prisma row（自带 `id` 主键），构造时显式 rename：
-
-```ts
-const userBrief: KunUser = {
-  uid: user.id,           // map row.id → kun user.uid
-  name: user.name,
-  avatar: user.avatar
-}
-```
+模板里现在写的 `:user="{ uid: u.id, ... }"` 这种转换层全部可以删掉，改回 `:user="u"` 直接传。
 
 ### 2.8 Tab variant 默认值改了
 

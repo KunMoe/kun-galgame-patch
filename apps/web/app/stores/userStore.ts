@@ -8,7 +8,11 @@ import { defineStore } from 'pinia'
 // returned by the backend; downstream gates (isAdmin / isModerator) read
 // this array directly.
 export interface UserState {
-  uid: number
+  // DB PK (Prisma user.id == Go MeResponse.id) — matches /user/:uid,
+  // /ranking/user, and @kun/ui's KunUser. The auth/transport label `uid`
+  // (JWT claim, URL [uid]) is a transport name for the same integer and
+  // doesn't surface here. See apps/api/internal/auth/dto/dto.go.
+  id: number
   name: string
   avatar: string
   // OAuth image_service hash for the avatar; preferred by resolveAvatarUrl
@@ -26,7 +30,7 @@ export interface UserState {
 }
 
 const initialUserState: UserState = {
-  uid: 0,
+  id: 0,
   name: '',
   avatar: '',
   avatar_image_hash: '',
@@ -65,7 +69,7 @@ export const useUserStore = defineStore('user', {
     }
   },
   getters: {
-    isLoggedIn: (state) => state.user.uid > 0 && !!state.user.name,
+    isLoggedIn: (state) => state.user.id > 0 && !!state.user.name,
     // OAuth role mapping (see docs/user-migration/02-data-mapping.md §7):
     //   moyu super-admin -> "admin"
     //   moyu/kungal admin -> "moderator"

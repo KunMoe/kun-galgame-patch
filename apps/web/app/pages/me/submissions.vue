@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 // "My submissions" page — proxies GET /galgame/mine.
 //
 // Shows the caller's status ∈ {3, 4} drafts so they can:
@@ -57,7 +58,7 @@ const { data, pending, refresh } = await useAsyncData<MineResp>(
 const displayName = (m: MineItem): string =>
   m.name_zh_cn || m.name_zh_tw || m.name_ja_jp || m.name_en_us || `#${m.id}`
 
-const statusLabel = (s: number): { text: string; color: string } => {
+const statusLabel = (s: number): { text: string; color: KunUIColor } => {
   if (s === 3) return { text: '审核中', color: 'warning' }
   if (s === 4) return { text: '已拒绝', color: 'danger' }
   return { text: `状态 ${s}`, color: 'default' }

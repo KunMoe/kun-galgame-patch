@@ -26,7 +26,7 @@ const { data: room } = await useAsyncData<ChatRoomDetail | null>(
 )
 
 const isGroup = computed(() => room.value?.type !== 'PRIVATE')
-const myUid = computed(() => userStore.user.uid)
+const myUid = computed(() => userStore.user.id)
 
 const messages = ref<ChatMessageItem[]>([])
 const input = ref('')

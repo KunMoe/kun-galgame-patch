@@ -60,10 +60,7 @@ const rowClass = computed(() => [
     >
       <KunIcon
         name="lucide:chevron-right"
-        :class="[
-          'size-4 transition-transform duration-200',
-          isOpen ? 'rotate-90' : ''
-        ]"
+        :class="cn('size-4 transition-transform duration-200', isOpen && 'rotate-90')"
       />
       <KunIcon name="lucide:folder-open" class="text-warning size-4" />
       <span class="text-sm leading-tight break-words">

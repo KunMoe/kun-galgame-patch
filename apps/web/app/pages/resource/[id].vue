@@ -86,7 +86,7 @@ const onDownload = () => {
 const liking = ref(false)
 const toggleLike = async () => {
   if (!resource.value) return
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录后再点赞', 'warn')
     return
   }
@@ -123,7 +123,7 @@ watch(
 const favoriting = ref(false)
 const toggleFavorite = async () => {
   if (!detail.value?.patch) return
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录后再收藏', 'warn')
     return
   }
@@ -250,7 +250,7 @@ useKunSeoMeta({
               >
                 <KunIcon
                   name="lucide:heart"
-                  :class="['size-4', resource.is_liked ? 'fill-current' : '']"
+                  :class="cn('size-4', resource.is_liked && 'fill-current')"
                 />
                 点赞
                 <span class="text-default-400">{{ resource.like_count }}</span>
@@ -270,7 +270,7 @@ useKunSeoMeta({
               >
                 <KunIcon
                   name="lucide:star"
-                  :class="['size-4', favorited ? 'fill-current' : '']"
+                  :class="cn('size-4', favorited && 'fill-current')"
                 />
                 {{ favorited ? '已收藏' : '收藏游戏' }}
               </button>

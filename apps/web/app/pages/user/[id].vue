@@ -21,7 +21,7 @@ useKunSeoMeta({
 })
 
 const isSelf = computed(
-  () => user.value && user.value.id === userStore.user.uid
+  () => user.value && user.value.id === userStore.user.id
 )
 
 const tabs = computed(() => [
@@ -42,12 +42,12 @@ const currentTab = computed(() =>
 // converges both directions).
 const startingChat = ref(false)
 const handleStartPrivateChat = async () => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录', 'warn')
     return
   }
   if (!user.value) return
-  if (user.value.id === userStore.user.uid) {
+  if (user.value.id === userStore.user.id) {
     useKunMessage('不能给自己发消息', 'warn')
     return
   }
@@ -68,7 +68,7 @@ const handleStartPrivateChat = async () => {
 
 const followLoading = ref(false)
 const toggleFollow = async () => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录', 'warn')
     return
   }

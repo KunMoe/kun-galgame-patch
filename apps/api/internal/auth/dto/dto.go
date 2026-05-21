@@ -20,7 +20,11 @@ type OAuthCallbackRequest struct {
 // downstream pages can render KunAvatar / userStore.user without per-page
 // userclient.User lookups.
 type MeResponse struct {
-	UID             int      `json:"uid"`
+	// ID is the local DB PK (Prisma user.id == authModel.User.ID), used as the
+	// FK across moyu/kungal/wiki — wire field MUST stay "id" to match the rest
+	// of the API (/user/:uid, /ranking/user) and KunUser. The URL/JWT label
+	// `uid` is a transport name for the same integer and lives at that layer.
+	ID              int      `json:"id"`
 	Sub             string   `json:"sub"`
 	Roles           []string `json:"roles"`
 	Name            string   `json:"name"`

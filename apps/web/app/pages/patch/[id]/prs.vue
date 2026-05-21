@@ -133,7 +133,7 @@ const buildPayload = (): GalgameEditFields => {
 }
 
 const submitPR = async () => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录', 'warn')
     return
   }

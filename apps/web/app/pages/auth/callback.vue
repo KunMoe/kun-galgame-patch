@@ -51,7 +51,7 @@ onMounted(async () => {
 
   userStore.setUser(res.data)
   useKunMessage('登录成功!', 'success')
-  await navigateTo(`/user/${res.data.uid}/resource`)
+  await navigateTo(`/user/${res.data.id}/resource`)
 })
 </script>
 

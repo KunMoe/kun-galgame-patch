@@ -71,7 +71,7 @@ const handleCheckIn = async () => {
         <span>{{ userStore.user.moemoepoint }}</span>
       </div>
       <NuxtLink
-        :to="`/user/${userStore.user.uid}/resource`"
+        :to="`/user/${userStore.user.id}/resource`"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:user-round" class="size-4" />

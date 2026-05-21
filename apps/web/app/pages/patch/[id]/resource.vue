@@ -111,7 +111,7 @@ const onLinkDownload = (r: PatchResource) => {
 // Optimistic resource-like toggle, mirroring the comment pattern: backend
 // returns { liked }, we fold it onto the local row.
 const toggleLike = async (r: PatchResource) => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录后再点赞', 'warn')
     return
   }

@@ -88,7 +88,7 @@ const openDiff = async (rev: number) => {
 // ─── Revert ───────────────────────────────────────────
 const reverting = ref<number | null>(null)
 const handleRevert = async (rev: number) => {
-  if (!userStore.user.uid) {
+  if (!userStore.user.id) {
     useKunMessage('请先登录', 'warn')
     return
   }
