@@ -4,6 +4,7 @@ import { onClickOutside } from '@vueuse/core'
 import { useFloating, autoUpdate, offset, flip, shift } from '@floating-ui/vue'
 import { useCalendar } from './useCalendar'
 import type { KunDatePickerProps } from './types'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 
 const props = withDefaults(defineProps<KunDatePickerProps>(), {
   modelValue: '',
@@ -15,8 +16,12 @@ const props = withDefaults(defineProps<KunDatePickerProps>(), {
   darkBorder: true,
   clearable: true,
   format: 'yyyy-MM-dd',
-  valueFormat: 'yyyy-MM-dd'
+  valueFormat: 'yyyy-MM-dd',
+  rounded: undefined
 })
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null | [string | null, string | null]]
@@ -181,7 +186,8 @@ const isInPreviewRange = (date: Date) => {
         :disabled="disabled"
         :class="
           cn(
-            'flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left focus:ring-1 focus:outline-none sm:text-sm',
+            'flex w-full cursor-pointer items-center justify-between px-3 py-2 text-left focus:ring-1 focus:outline-none sm:text-sm',
+            roundedClass,
             'focus:border-primary-500 focus:ring-primary-500',
             darkBorder && 'dark:border-default-200 border-default-200 border',
             disabled && 'bg-default-100 cursor-not-allowed'
@@ -220,7 +226,7 @@ const isInPreviewRange = (date: Date) => {
         <div
           v-if="isOpen"
           ref="dropdownRef"
-          class="bg-content1 border-default-200 z-50 rounded-md border p-3 shadow-lg"
+          :class="cn('bg-content1 border-default-200 z-50 border p-3 shadow-lg', roundedClass)"
           :style="[floatingStyles, { minWidth: '260px' }]"
           role="dialog"
           aria-modal="true"

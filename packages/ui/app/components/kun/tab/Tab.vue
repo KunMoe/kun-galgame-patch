@@ -99,18 +99,38 @@ const updateIndicator = () => {
     return
   }
   const isLine = props.variant === 'underlined'
+  // Panel variants (solid / light) must translate on BOTH axes so the
+  // highlight sits exactly over the active tab. The lists used by these
+  // variants carry padding (`p-1`), which shifts the buttons inward —
+  // `top-0` / `left-0` from the indicator class targets the padding
+  // edge, so without the cross-axis translate the panel ends up offset
+  // by exactly the padding (visible as the highlight floating above /
+  // beside the tab). Line variant (underlined) is fine with main-axis
+  // translate only because it's pinned to the opposite edge.
   if (isVertical.value) {
-    indicatorStyle.value = {
-      transform: `translateY(${el.offsetTop}px)`,
-      height: `${el.offsetHeight}px`,
-      width: isLine ? '2px' : `${el.offsetWidth}px`,
-    }
+    indicatorStyle.value = isLine
+      ? {
+          transform: `translateY(${el.offsetTop}px)`,
+          height: `${el.offsetHeight}px`,
+          width: '2px',
+        }
+      : {
+          transform: `translate(${el.offsetLeft}px, ${el.offsetTop}px)`,
+          width: `${el.offsetWidth}px`,
+          height: `${el.offsetHeight}px`,
+        }
   } else {
-    indicatorStyle.value = {
-      transform: `translateX(${el.offsetLeft}px)`,
-      width: `${el.offsetWidth}px`,
-      height: isLine ? '2px' : `${el.offsetHeight}px`,
-    }
+    indicatorStyle.value = isLine
+      ? {
+          transform: `translateX(${el.offsetLeft}px)`,
+          width: `${el.offsetWidth}px`,
+          height: '2px',
+        }
+      : {
+          transform: `translate(${el.offsetLeft}px, ${el.offsetTop}px)`,
+          width: `${el.offsetWidth}px`,
+          height: `${el.offsetHeight}px`,
+        }
   }
 }
 

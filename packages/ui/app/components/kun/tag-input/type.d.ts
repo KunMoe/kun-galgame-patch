@@ -1,4 +1,4 @@
-import type { KunUIColor, KunUISize } from '../ui/type'
+import type { KunUIColor, KunUIRounded, KunUISize } from '../ui/type'
 
 export type KunTagInputVariant = 'bordered' | 'flat'
 
@@ -47,5 +47,6 @@ export interface KunTagInputProps {
   disabled?: boolean
   readonly?: boolean
   showCounter?: boolean
+  rounded?: KunUIRounded
   className?: string
 }

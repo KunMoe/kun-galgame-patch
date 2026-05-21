@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { kunRingClasses } from '../ui/variants'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 import type {
   KunTagInputInvalidReason,
   KunTagInputProps,
@@ -34,8 +35,12 @@ const props = withDefaults(defineProps<KunTagInputProps>(), {
   disabled: false,
   readonly: false,
   showCounter: false,
+  rounded: undefined,
   className: '',
 })
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const tags = defineModel<string[]>({ default: () => [] })
 
@@ -307,7 +312,8 @@ const sizeText: Record<string, string> = {
 
 const containerClasses = computed(() =>
   cn(
-    'flex flex-wrap items-center rounded-lg transition-shadow',
+    'flex flex-wrap items-center transition-shadow',
+    roundedClass,
     sizeMinH[props.size],
     sizePadding[props.size],
     sizeText[props.size],

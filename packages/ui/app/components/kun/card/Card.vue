@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRipple } from '../ripple/useRipple'
-import type { KunUIColor } from '../ui/type'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
+import type { KunUIColor, KunUIRounded } from '../ui/type'
 
 // KunCard renders as one of three elements depending on which props
 // are present (priority: href > clickable > div):
@@ -15,7 +16,7 @@ interface Props {
   bordered?: boolean
   className?: string
   contentClass?: string
-  rounded?: 'none' | 'sm' | 'md' | 'lg' | 'full'
+  rounded?: KunUIRounded
   color?: KunUIColor | 'background'
   darkBorder?: boolean
 }
@@ -28,7 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
   bordered: true,
   className: '',
   contentClass: '',
-  rounded: 'lg',
+  rounded: undefined,
   color: 'background',
   darkBorder: false
 })
@@ -63,22 +64,8 @@ const colorClasses: Record<KunUIColor | 'background', string> = {
   info: 'bg-info-100/30 border-info-300'
 }
 
-const roundedClasses = computed(() => {
-  switch (props.rounded) {
-    case 'none':
-      return 'rounded-none'
-    case 'sm':
-      return 'rounded-sm'
-    case 'md':
-      return 'rounded-md'
-    case 'lg':
-      return 'rounded-lg'
-    case 'full':
-      return 'rounded-full'
-    default:
-      return 'rounded-lg'
-  }
-})
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 </script>
 
 <template>
@@ -96,7 +83,7 @@ const roundedClasses = computed(() => {
           ),
         isInteractive && 'cursor-pointer overflow-hidden active:scale-[0.97] text-left',
         isTransparent ? 'backdrop-blur-none' : colorClasses[props.color],
-        roundedClasses,
+        roundedClass,
         className
       )
     "

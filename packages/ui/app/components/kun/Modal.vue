@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
 import { useFocusTrap } from '@vueuse/integrations/useFocusTrap'
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
+import { kunRoundedClasses, useResolvedRounded } from './ui/rounded'
+import type { KunUIRounded } from './ui/type'
 
 const props = withDefaults(
   defineProps<{
@@ -11,15 +13,23 @@ const props = withDefaults(
     isDismissable?: boolean
     isShowCloseButton?: boolean
     withContainer?: boolean
+    rounded?: KunUIRounded
   }>(),
   {
     className: '',
     innerClassName: '',
     isDismissable: true,
     isShowCloseButton: true,
-    withContainer: true
+    withContainer: true,
+    rounded: undefined
   }
 )
+
+// Modal built-in default is 'lg' (slightly rounder than the global
+// fallback 'md') because the larger surface looks better with more
+// rounding. Override via prop or provideKunUIConfig.
+const rounded = useResolvedRounded(() => props.rounded, 'lg')
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const modelValue = defineModel<boolean>({ required: true })
 
@@ -113,7 +123,8 @@ onUnmounted(() => {
           v-if="withContainer"
           :class="
             cn(
-              'bg-content1/85 scrollbar-hide relative m-auto max-h-[90vh] min-w-80 overflow-y-auto rounded-lg border p-6 backdrop-blur-[var(--kun-background-blur)] transition-all',
+              'bg-content1/85 scrollbar-hide relative m-auto max-h-[90vh] min-w-80 overflow-y-auto border p-6 backdrop-blur-[var(--kun-background-blur)] transition-all',
+              roundedClass,
               innerClassName
             )
           "

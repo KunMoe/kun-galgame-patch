@@ -125,6 +125,21 @@
   --color-info-900: hsl(var(--info-900));
   --color-info-950: hsl(var(--info-950));
 
+  /* Border radius — 5 buckets all KunUI components reference.
+   * Override by setting :root { --radius-kun-md: ... } in the
+   * consuming app's stylesheet, or per-subtree via the
+   * useKunUIConfig composable.
+   *
+   * Tailwind v4 @theme auto-generates utility classes:
+   *   rounded-kun-none / rounded-kun-sm / rounded-kun-md /
+   *   rounded-kun-lg   / rounded-kun-full
+   */
+  --radius-kun-none: 0;
+  --radius-kun-sm: 0.25rem;
+  --radius-kun-md: 0.5rem;
+  --radius-kun-lg: 0.75rem;
+  --radius-kun-full: 9999px;
+
   /* Animations */
   --animate-shake: shake 1s ease-in-out;
   --animate-bounceInDown: bounceInDown 1s ease-in-out;

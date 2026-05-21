@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Cropper } from 'vue-advanced-cropper'
 import { checkImageValid, resizeImage } from './handleFileChange'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
+import type { KunUIRounded } from '../ui/type'
 import 'vue-advanced-cropper/dist/style.css'
 import 'vue-advanced-cropper/dist/theme.compact.css'
 
@@ -11,13 +13,18 @@ const props = withDefaults(
     initialImage?: string
     hint?: string
     className?: string
+    rounded?: KunUIRounded
   }>(),
   {
     initialImage: '',
     hint: '',
-    className: ''
+    className: '',
+    rounded: undefined
   }
 )
+
+const rounded = useResolvedRounded(() => props.rounded, 'lg')
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const emits = defineEmits<{
   setImage: [img: Blob]
@@ -105,7 +112,8 @@ const handleApplyCrop = () => {
       tabindex="0"
       :class="
         cn(
-          'border-default-500 hover:border-default-700 relative cursor-pointer rounded-lg border-2 border-dashed transition-colors',
+          'border-default-500 hover:border-default-700 relative cursor-pointer border-2 border-dashed transition-colors',
+          roundedClass,
           className
         )
       "
@@ -128,7 +136,7 @@ const handleApplyCrop = () => {
         v-if="selectedFileUrl || initialImage"
         :src="selectedFileUrl || initialImage"
         alt="上传图片"
-        class="h-full w-full rounded-lg object-cover"
+        :class="cn('h-full w-full object-cover', roundedClass)"
       />
 
       <input

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useEventListener, onClickOutside } from '@vueuse/core'
 import {
   useFloating,
@@ -9,6 +9,8 @@ import {
   shift,
   type Placement,
 } from '@floating-ui/vue'
+import { kunRoundedClasses, useResolvedRounded } from './ui/rounded'
+import type { KunUIRounded } from './ui/type'
 
 type PopoverPosition = 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end'
 
@@ -17,13 +19,18 @@ const props = withDefaults(
     position?: PopoverPosition
     innerClass?: string
     autoPosition?: boolean
+    rounded?: KunUIRounded
   }>(),
   {
     position: 'bottom-start',
     innerClass: '',
     autoPosition: false,
+    rounded: undefined,
   }
 )
+
+const rounded = useResolvedRounded(() => props.rounded, 'lg')
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 // @floating-ui placements use the same string format we already accept,
 // so the prop maps 1:1 onto its `placement` config.
@@ -103,7 +110,8 @@ defineExpose({
           :aria-hidden="!isOpen"
           :class="
             cn(
-              'bg-content1 border-default-200 z-50 rounded-lg border shadow-lg',
+              'bg-content1 border-default-200 z-50 border shadow-lg',
+              roundedClass,
               innerClass
             )
           "

@@ -5,6 +5,8 @@ export interface KunSelectOption {
 
 // modelValue is intentionally not on this interface — Select.vue uses
 // defineModel<string | number>() to expose the v-model binding.
+import type { KunUIRounded } from '../ui/type'
+
 export interface KunSelectProps {
   options: KunSelectOption[]
   label?: string
@@ -14,4 +16,5 @@ export interface KunSelectProps {
   darkBorder?: boolean
   ariaLabel?: string
   className?: string
+  rounded?: KunUIRounded
 }

@@ -5,6 +5,7 @@ import type {
   KunUISize,
   KunUIRounded
 } from '../ui/type'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 
 export interface KunProgressProps {
   value?: number
@@ -24,7 +25,7 @@ const props = withDefaults(defineProps<KunProgressProps>(), {
   variant: 'solid',
   color: 'primary',
   size: 'md',
-  rounded: 'lg',
+  rounded: undefined,
   showLabel: false,
   indeterminate: false,
   className: ''
@@ -53,22 +54,8 @@ const sizeClasses = computed(() => {
   }
 })
 
-const roundedClasses = computed(() => {
-  switch (props.rounded) {
-    case 'none':
-      return 'rounded-none'
-    case 'sm':
-      return 'rounded-sm'
-    case 'md':
-      return 'rounded-md'
-    case 'lg':
-      return 'rounded-lg'
-    case 'full':
-      return 'rounded-full'
-    default:
-      return 'rounded-lg'
-  }
-})
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const colorClasses: Record<KunUIColor, string> = {
   default: 'bg-default',
@@ -168,7 +155,7 @@ const circleOffset = computed(
       :aria-valuenow="indeterminate ? undefined : percentage"
       :aria-valuemin="0"
       :aria-valuemax="max"
-      :class="[sizeClasses, roundedClasses, className]"
+      :class="[sizeClasses, roundedClass, className]"
     >
       <div
         :class="

@@ -1,3 +1,5 @@
+import type { KunUIRounded } from '../ui/type'
+
 export type KunDatePickerMode = 'single' | 'range'
 
 export interface KunDatePickerProps {
@@ -20,4 +22,6 @@ export interface KunDatePickerProps {
   locale?: string
   weekdays?: string[]
   months?: string[]
+
+  rounded?: KunUIRounded
 }

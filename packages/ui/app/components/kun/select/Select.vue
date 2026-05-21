@@ -10,6 +10,7 @@ import {
   size,
 } from '@floating-ui/vue'
 import type { KunSelectProps } from './type'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 
 const props = withDefaults(defineProps<KunSelectProps>(), {
   placeholder: '',
@@ -18,8 +19,12 @@ const props = withDefaults(defineProps<KunSelectProps>(), {
   error: '',
   darkBorder: true,
   ariaLabel: '',
-  className: ''
+  className: '',
+  rounded: undefined
 })
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 // `required: true` makes the model `Ref<string | number>` (without
 // `undefined`), so consumers' @update:model-value callbacks can type
@@ -100,7 +105,8 @@ const selectOption = (value: string | number, index: number) => {
       :aria-haspopup="'listbox'"
       :class="
         cn(
-          'focus:border-primary focus:ring-primary flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-left text-sm focus:ring-1 focus:outline-none',
+          'focus:border-primary focus:ring-primary flex w-full cursor-pointer items-center justify-between px-3 py-2 text-left text-sm focus:ring-1 focus:outline-none',
+          roundedClass,
           darkBorder && 'dark:border-default-200 border-default/20 border',
           disabled && 'bg-default-100 cursor-not-allowed'
         )
@@ -133,7 +139,7 @@ const selectOption = (value: string | number, index: number) => {
           v-if="isOpen"
           ref="dropdownRef"
           :style="floatingStyles"
-          class="bg-content1 border-default-200 z-50 rounded-md border p-1 shadow-lg"
+          :class="cn('bg-content1 border-default-200 z-50 border p-1 shadow-lg', roundedClass)"
         >
           <ul
             class="scrollbar-hide overflow-auto rounded-md text-sm focus:outline-none"

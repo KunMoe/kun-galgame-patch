@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRipple } from '../ripple/useRipple'
 import { kunVariantClasses } from '../ui/variants'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 import type { KunButtonProps } from './type'
 
 const props = withDefaults(defineProps<KunButtonProps>(), {
@@ -76,22 +77,8 @@ const colorClasses = computed(() =>
   kunVariantClasses(props.variant, props.color)
 )
 
-const roundedClasses = computed(() => {
-  switch (props.rounded) {
-    case 'none':
-      return 'rounded-none'
-    case 'sm':
-      return 'rounded-sm'
-    case 'md':
-      return 'rounded-md'
-    case 'lg':
-      return 'rounded-lg'
-    case 'full':
-      return 'rounded-full'
-    default:
-      return 'rounded-lg'
-  }
-})
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const isIconOnlyClasses = computed(() => {
   if (!props.isIconOnly) {
@@ -126,10 +113,10 @@ const handleKunButtonClick = (event: MouseEvent) => {
     :is="props.href ? defineNuxtLink({}) : 'button'"
     :class="
       cn(
-        'relative inline-flex cursor-pointer items-center justify-center gap-1 overflow-hidden rounded-md font-medium transition-all hover:opacity-80 active:scale-[0.97] disabled:opacity-50',
+        'relative inline-flex cursor-pointer items-center justify-center gap-1 overflow-hidden font-medium transition-all hover:opacity-80 active:scale-[0.97] disabled:opacity-50',
         sizeClasses,
         colorClasses,
-        roundedClasses,
+        roundedClass,
         fullWidth ? 'w-full' : '',
         isIconOnlyClasses,
         disabled && 'cursor-not-allowed hover:bg-none',

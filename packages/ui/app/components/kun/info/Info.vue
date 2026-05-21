@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { KunUIVariant, KunUIColor } from '../ui/type'
+import type { KunUIVariant, KunUIColor, KunUIRounded } from '../ui/type'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
 
 type KunInfoColor = KunUIColor | 'info'
 
@@ -10,6 +11,7 @@ interface Props {
   color?: KunInfoColor
   variant?: KunUIVariant
   icon?: string
+  rounded?: KunUIRounded
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -18,8 +20,12 @@ const props = withDefaults(defineProps<Props>(), {
   color: 'default',
   className: '',
   variant: 'flat',
-  icon: ''
+  icon: '',
+  rounded: undefined
 })
+
+const rounded = useResolvedRounded(() => props.rounded, 'lg')
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const variantClasses = computed(() => {
   switch (props.variant) {
@@ -135,7 +141,7 @@ const titleColor = computed(() => {
 <template>
   <div
     :class="
-      cn('space-y-2 rounded-lg p-3', variantClasses, colorClasses, className)
+      cn('space-y-2 p-3', roundedClass, variantClasses, colorClasses, className)
     "
   >
     <h3 :class="cn('flex items-center gap-2 font-medium', titleColor)">

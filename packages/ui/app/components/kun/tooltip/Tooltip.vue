@@ -9,6 +9,8 @@ import {
   arrow,
   type Placement,
 } from '@floating-ui/vue'
+import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
+import type { KunUIRounded } from '../ui/type'
 
 interface Props {
   text?: string
@@ -22,6 +24,7 @@ interface Props {
   // Hide entirely below the sm breakpoint — tooltips on mobile are
   // usually noise. Set to false to keep them.
   hideOnMobile?: boolean
+  rounded?: KunUIRounded
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -31,7 +34,11 @@ const props = withDefaults(defineProps<Props>(), {
   delayShow: 100,
   delayHide: 0,
   hideOnMobile: true,
+  rounded: undefined,
 })
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const triggerRef = ref<HTMLElement | null>(null)
 const tooltipRef = ref<HTMLElement | null>(null)
@@ -137,7 +144,8 @@ const hide = () => {
           role="tooltip"
           :class="
             cn(
-              'bg-content1 border-default-200 z-50 rounded-lg border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-md',
+              'bg-content1 border-default-200 z-50 border px-3 py-2 text-sm font-medium whitespace-nowrap shadow-md',
+              roundedClass,
               hideOnMobile && 'hidden sm:block'
             )
           "

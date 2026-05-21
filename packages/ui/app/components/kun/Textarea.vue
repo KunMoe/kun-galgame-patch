@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { kunRoundedClasses, useResolvedRounded } from './ui/rounded'
+import type { KunUIRounded } from './ui/type'
+
 const props = withDefaults(
   defineProps<{
     placeholder?: string
@@ -18,6 +21,7 @@ const props = withDefaults(
     minlength?: number
     resize?: 'none' | 'vertical' | 'horizontal' | 'both'
     darkBorder?: boolean
+    rounded?: KunUIRounded
   }>(),
   {
     placeholder: '',
@@ -36,9 +40,13 @@ const props = withDefaults(
     maxlength: 100007,
     minlength: 1,
     resize: 'none',
-    darkBorder: true
+    darkBorder: true,
+    rounded: undefined
   }
 )
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const modelValue = defineModel<string>({ default: '' })
 
@@ -116,7 +124,8 @@ onMounted(() => {
         :autofocus="autofocus"
         :class="
           cn(
-            'scrollbar-hide border-default/20 w-full rounded-md border p-3 transition duration-150 ease-in-out',
+            'scrollbar-hide border-default/20 w-full border p-3 transition duration-150 ease-in-out',
+            roundedClass,
             'focus:ring-primary focus:border-transparent focus:ring-2 focus:outline-none',
             disabled ? 'text-default-500 cursor-not-allowed shadow-none' : '',
             darkBorder && 'dark:border-default-200',

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { KunUIColor, KunUISize } from './ui/type'
+import type { KunUIColor, KunUIRounded, KunUISize } from './ui/type'
+import { kunRoundedClasses, useResolvedRounded } from './ui/rounded'
 
 const props = withDefaults(
   defineProps<{
@@ -15,6 +16,7 @@ const props = withDefaults(
     disabled?: boolean
     darkBorder?: boolean
     autofocus?: boolean
+    rounded?: KunUIRounded
   }>(),
   {
     type: 'text',
@@ -28,9 +30,13 @@ const props = withDefaults(
     required: false,
     disabled: false,
     darkBorder: true,
-    autofocus: false
+    autofocus: false,
+    rounded: undefined
   }
 )
+
+const rounded = useResolvedRounded(() => props.rounded)
+const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const modelValue = defineModel<string | number>({ default: '' })
 
@@ -122,7 +128,8 @@ defineExpose({
         :required="required"
         :class="
           cn(
-            'border-default/20 block w-full rounded-md border px-2 py-1 text-sm transition duration-150 ease-in-out focus:border-transparent focus:ring-2',
+            'border-default/20 block w-full border px-2 py-1 text-sm transition duration-150 ease-in-out focus:border-transparent focus:ring-2',
+            roundedClass,
             colorClass[color],
             sizeClasses,
             darkBorder && 'dark:border-default-200',
