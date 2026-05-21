@@ -104,7 +104,7 @@
 }
 ```
 
-### DELETE /galgame/:gid/contributors/:uid
+### DELETE /galgame/:gid/contributors/:id
 
 删除贡献者。**需要认证**。仅 galgame 创建者或 admin 可操作。
 

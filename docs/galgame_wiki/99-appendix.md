@@ -36,7 +36,7 @@
 
 | 模块 | 方法 | 路径 | 认证 | 数量 |
 |------|------|------|------|------|
-| **Galgame** | GET | `/galgame`, `/galgame/search`, `/galgame/batch`, `/galgame/check`, `/galgame/user/:uid/stats`, `/galgame/:gid` | 公开 | 6 |
+| **Galgame** | GET | `/galgame`, `/galgame/search`, `/galgame/batch`, `/galgame/check`, `/galgame/user/:id/stats`, `/galgame/:gid` | 公开 | 6 |
 | | POST/PUT | `/galgame`, `/galgame/:gid` | Bearer | 2 |
 | **Revision** | GET | `/galgame/:gid/revisions`, `.../:rev`, `.../:rev/diff` | 公开 | 3 |
 | | POST | `/galgame/:gid/revert` | Bearer | 1 |

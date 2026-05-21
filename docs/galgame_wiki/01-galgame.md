@@ -97,11 +97,11 @@
 
 不存在或对调用者不可见的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
 
-**带 Bearer 的语义**：与 OAuth 终端用户 access_token 一起调用，wiki 解 JWT 得 `uid`，返回结果中额外包含调用者的 status=3/4 条目（参见 [07-submission.md GET /galgame/batch 增量行为](./07-submission.md#get-galgamebatch-增量行为)）。无 Bearer 时只返 status=0。
+**带 Bearer 的语义**：与 OAuth 终端用户 access_token 一起调用，wiki 解 JWT 得 `id`，返回结果中额外包含调用者的 status=3/4 条目（参见 [07-submission.md GET /galgame/batch 增量行为](./07-submission.md#get-galgamebatch-增量行为)）。无 Bearer 时只返 status=0。
 
 ---
 
-### GET /galgame/user/:uid/stats
+### GET /galgame/user/:id/stats
 
 获取用户的 Galgame 统计数据。
 
@@ -109,7 +109,7 @@
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| uid | int | 用户 ID |
+| id | int | 用户 ID |
 
 **成功响应**：
 

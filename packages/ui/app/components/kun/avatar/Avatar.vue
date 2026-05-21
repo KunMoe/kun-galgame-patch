@@ -12,8 +12,6 @@ const props = withDefaults(defineProps<KunAvatarProps>(), {
 const handleClickAvatar = async (event: MouseEvent) => {
   event.preventDefault()
   if (!props.isNavigation || !props.user?.id) return
-  // URL convention `/user/[uid]/info` — the route param happens to be
-  // named `uid` but the value is the same integer as `user.id`.
   await navigateTo(`/user/${props.user.id}/info`)
 }
 

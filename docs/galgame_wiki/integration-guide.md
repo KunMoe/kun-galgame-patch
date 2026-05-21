@@ -95,7 +95,7 @@ func (c *GalgameClient) handleResponse(resp *http.Response, target any) error {
 ```go
 func (h *GalgameHandler) GetDetail(c *fiber.Ctx) error {
     gid := c.Params("gid")
-    uid := getOptionalUserID(c)
+    userID := getOptionalUserID(c)
 
     g, _ := errgroup.WithContext(c.Context())
 
@@ -113,10 +113,10 @@ func (h *GalgameHandler) GetDetail(c *fiber.Ctx) error {
         stats, err = h.localRepo.GetStats(ctx, gid)
         return err
     })
-    if uid > 0 {
+    if userID > 0 {
         g.Go(func() error {
             var err error
-            interaction, err = h.localRepo.GetUserInteraction(ctx, gid, uid)
+            interaction, err = h.localRepo.GetUserInteraction(ctx, gid, userID)
             return err
         })
     }
@@ -146,7 +146,7 @@ func (h *GalgameHandler) Create(c *fiber.Ctx) error {
     // 2. 本地副作用（事务）
     h.db.Transaction(func(tx *gorm.DB) error {
         tx.Create(&GalgameStats{GalgameID: result.ID})
-        tx.Model(&User{}).Where("id = ?", uid).
+        tx.Model(&User{}).Where("id = ?", userID).
             Update("moemoepoint", gorm.Expr("moemoepoint + 3"))
         return nil
     })

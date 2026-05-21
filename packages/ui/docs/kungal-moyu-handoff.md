@@ -81,7 +81,7 @@ icon/LucideXCircle.vue                      ← 删
 | 文件 | 改动要点 |
 |---|---|
 | `Null.vue` | v0.2.1：import 路径 `../utils/` → `../../utils/`（其实 Nuxt 自动 import 兜底了，但 vue-tsc 严格模式 TS2307）|
-| `button/Button.vue` | v0.2.1：删本地 colorVariants 表，改 import `kunVariantClasses`。**这一步顺带修了 `<KunButton color="info">` 不出色的 bug**（v0.1.0 加 info 时漏改 Button）|
+| `button/Button.vue` | v0.2.1：**删本地 colorVariants 表，改 import `kunVariantClasses`**（不是"在本地表里给每个 variant 追加 `info: '...'`"——后者会把 v0.1.0 §1.2 刚消灭的"4 份重复 variant×color 表"问题原样引回。Button 是当时唯一漏改的组件，本次顺带收口）。**未来再加新色（第 8 色）时不要给任何组件加本地表，统一改 `ui/variants.ts` + `ui/type.d.ts` 两处**。|
 | `select/Select.vue` | v0.2.1：`defineModel<string \| number>({ required: true })` —— 回调签名收紧不含 undefined |
 | `shared/user.d.ts` | v0.2.2：保持 `KunUser.id`（v0.2.1 误改为 uid 已回滚 —— DB 列名 `id` 是真理之源；JWT claim/URL `uid` 只是 auth/transport 标签，不向上传播到数据/UI 层）|
 | `Modal.vue` | `modalValue` → `modelValue`；scroll-lock 改 import composable；`v-model` 现在直接生效 |
@@ -185,7 +185,7 @@ grep -rn '<KunLink.*tag=' apps --include='*.vue'
 - 上游链：DB `id` → Go DTO `json:"id"`（apps/api/.../oauth_dto.go 注释明确把它列为 FK 不变量）→ nitro response 类型 `id` → KunUser `id`
 - 你看到的 `uid` 出现在：
   - JWT claim 名字（OAuth 内部）
-  - URL 路由参数 `[uid]`（routing 层 label）
+  - URL 路由参数 `[id]`（routing 层 label，v0.3.0 之前曾用 `[uid]`）
   - 这两处是 **auth/transport 层的本地标签**，跟传到数据层的字段名不该耦合
 
 **moyu/kungal 这边怎么改**：

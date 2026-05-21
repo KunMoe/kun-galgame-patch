@@ -4,7 +4,7 @@
 // `id` matches the DB-truth chain: Prisma user.id column → Go DTO
 // `json:"id"` (apps/api/.../oauth_dto.go documents this as the FK
 // invariant across kungal/moyu/wiki) → nitro-server response types.
-// JWT claim `uid` and URL param `[uid]` are auth/transport labels
+// JWT claim `id` and URL param `[id]` are auth/transport labels
 // for the same integer — those names live in their own layer and
 // don't propagate into UI props.
 //
