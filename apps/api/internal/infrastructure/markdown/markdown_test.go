@@ -16,12 +16,12 @@ func TestMentionLink(t *testing.T) {
 		{
 			name: "mention with /resource sub-route",
 			in:   "hi [@kun](/user/1/resource) hello",
-			want: `<a class="kun-mention" data-uid="1" href="/user/1/resource">@kun</a>`,
+			want: `<a class="kun-mention" data-id="1" href="/user/1/resource">@kun</a>`,
 		},
 		{
-			name: "bare /user/<uid>",
+			name: "bare /user/<userID>",
 			in:   "[@yui](/user/42)",
-			want: `<a class="kun-mention" data-uid="42" href="/user/42">@yui</a>`,
+			want: `<a class="kun-mention" data-id="42" href="/user/42">@yui</a>`,
 		},
 		{
 			name: "non-mention link is unchanged",
@@ -52,11 +52,11 @@ func TestExtractMentionedUIDs(t *testing.T) {
 	got := markdown.ExtractMentionedUIDs(in)
 	want := []int{1, 2}
 	if len(got) != len(want) {
-		t.Fatalf("uid count mismatch, got %v want %v", got, want)
+		t.Fatalf("userID count mismatch, got %v want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("uid[%d] = %d, want %d", i, got[i], want[i])
+			t.Errorf("userID[%d] = %d, want %d", i, got[i], want[i])
 		}
 	}
 }

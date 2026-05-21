@@ -14,12 +14,12 @@ import (
 
 func RateLimit(rdb *redis.Client, prefix string, maxRequests int, window time.Duration) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		uid := GetUID(c)
+		userID := GetUserID(c)
 		ip := c.IP()
 
 		var key string
-		if uid > 0 {
-			key = fmt.Sprintf("ratelimit:%s:user:%d", prefix, uid)
+		if userID > 0 {
+			key = fmt.Sprintf("ratelimit:%s:user:%d", prefix, userID)
 		} else {
 			key = fmt.Sprintf("ratelimit:%s:ip:%s", prefix, ip)
 		}

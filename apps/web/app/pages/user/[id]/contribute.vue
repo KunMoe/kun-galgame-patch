@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// /user/:uid/contribute returns a paginated list of GalgameCard-shaped patches
+// /user/:id/contribute returns a paginated list of GalgameCard-shaped patches
 // the user has contributed to (see apps/api/internal/user/handler GetUserContributions
 // which passes the rows through enricher.EnrichPatches).
 const route = useRoute()

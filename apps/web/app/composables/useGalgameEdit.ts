@@ -313,8 +313,8 @@ export const useGalgameEdit = () => {
 
   const listContributors = (gid: number) =>
     api.get<GalgameContributor[]>(`/galgame/${gid}/contributors`)
-  const deleteContributor = (gid: number, uid: number) =>
-    api.delete(`/galgame/${gid}/contributors/${uid}`)
+  const deleteContributor = (gid: number, userId: number) =>
+    api.delete(`/galgame/${gid}/contributors/${userId}`)
 
   // ─── Taxonomy: tag ──────────────────────────────────
   const tagSearch = (q: string, category?: string, limit = 30) =>

@@ -27,7 +27,7 @@ const resource = computed(() => detail.value?.resource ?? null)
 
 const noteHtml = computed(() =>
   resource.value?.note_html
-    ? DOMPurify.sanitize(resource.value.note_html, { ADD_ATTR: ['data-uid'] })
+    ? DOMPurify.sanitize(resource.value.note_html, { ADD_ATTR: ['data-id'] })
     : ''
 )
 

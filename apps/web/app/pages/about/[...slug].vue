@@ -64,9 +64,9 @@ const tree = computed<KunTreeNode>(() =>
   postsResponse.value?.code === 0 ? postsResponse.value.data.tree : emptyTree
 )
 
-// data-uid is allowed so server-rendered @mentions keep their attribute.
+// data-id is allowed so server-rendered @mentions keep their attribute.
 const html = computed(() =>
-  DOMPurify.sanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-uid'] })
+  DOMPurify.sanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-id'] })
 )
 
 const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])

@@ -45,22 +45,22 @@ func New(svc *service.UserService, wiki *galgameClient.Client, users *userclient
 }
 
 func getUID(c *fiber.Ctx) (int, error) {
-	uid, err := strconv.Atoi(c.Params("uid"))
-	if err != nil || uid < 1 {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || userID < 1 {
 		return 0, errors.ErrBadRequest("invalid user ID")
 	}
-	return uid, nil
+	return userID, nil
 }
 
-// GetUserInfo GET /api/user/:uid
+// GetUserInfo GET /api/user/:id
 func (h *UserHandler) GetUserInfo(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	currentUID := middleware.GetUID(c)
-	info, err := h.service.GetUserInfo(c.Context(), uid, currentUID)
+	currentUID := middleware.GetUserID(c)
+	info, err := h.service.GetUserInfo(c.Context(), userID, currentUID)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
@@ -68,14 +68,14 @@ func (h *UserHandler) GetUserInfo(c *fiber.Ctx) error {
 	return response.OK(c, info)
 }
 
-// GetUserFloating GET /api/user/:uid/floating
+// GetUserFloating GET /api/user/:id/floating
 func (h *UserHandler) GetUserFloating(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	info, err := h.service.GetUserFloating(c.Context(), uid)
+	info, err := h.service.GetUserFloating(c.Context(), userID)
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
@@ -83,9 +83,9 @@ func (h *UserHandler) GetUserFloating(c *fiber.Ctx) error {
 	return response.OK(c, info)
 }
 
-// GetUserPatches GET /api/user/:uid/patch
+// GetUserPatches GET /api/user/:id/patch
 func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -101,16 +101,16 @@ func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserPatches(uid, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserPatches(userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
 }
 
-// GetUserResources GET /api/user/:uid/resource
+// GetUserResources GET /api/user/:id/resource
 func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -126,16 +126,16 @@ func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	data, total, err := h.service.GetUserResources(c.Context(), uid, req.Page, req.Limit)
+	data, total, err := h.service.GetUserResources(c.Context(), userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.Paginated(c, data, total)
 }
 
-// GetUserFavorites GET /api/user/:uid/favorite
+// GetUserFavorites GET /api/user/:id/favorite
 func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -151,16 +151,16 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserFavorites(uid, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserFavorites(userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
 }
 
-// GetUserComments GET /api/user/:uid/comment
+// GetUserComments GET /api/user/:id/comment
 func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -176,16 +176,16 @@ func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	data, total, err := h.service.GetUserComments(c.Context(), uid, req.Page, req.Limit)
+	data, total, err := h.service.GetUserComments(c.Context(), userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.Paginated(c, data, total)
 }
 
-// GetUserContributions GET /api/user/:uid/contribute
+// GetUserContributions GET /api/user/:id/contribute
 func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -201,7 +201,7 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserContributions(uid, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserContributions(userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -212,39 +212,39 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 // OAuth: the frontend should call OAuth's PATCH /auth/me directly or be
 // redirected to oauth.kungal.com/profile.
 
-// Follow PUT /api/user/:uid/follow
+// Follow PUT /api/user/:id/follow
 func (h *UserHandler) Follow(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.Follow(user.UID, uid); err != nil {
+	if err := h.service.Follow(user.ID, userID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	return response.OKMessage(c, "Followed")
 }
 
-// Unfollow DELETE /api/user/:uid/follow
+// Unfollow DELETE /api/user/:id/follow
 func (h *UserHandler) Unfollow(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.Unfollow(user.UID, uid); err != nil {
+	if err := h.service.Unfollow(user.ID, userID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	return response.OKMessage(c, "Unfollowed")
 }
 
-// GetFollowers GET /api/user/:uid/follower
+// GetFollowers GET /api/user/:id/follower
 func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -260,16 +260,16 @@ func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowers(c.Context(), uid, req.Page, req.Limit)
+	users, total, err := h.service.GetFollowers(c.Context(), userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.Paginated(c, users, total)
 }
 
-// GetFollowing GET /api/user/:uid/following
+// GetFollowing GET /api/user/:id/following
 func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
-	uid, err := getUID(c)
+	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
@@ -285,7 +285,7 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowing(c.Context(), uid, req.Page, req.Limit)
+	users, total, err := h.service.GetFollowing(c.Context(), userID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -295,7 +295,7 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 // CheckIn POST /api/user/check-in
 func (h *UserHandler) CheckIn(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	points, err := h.service.CheckIn(user.UID)
+	points, err := h.service.CheckIn(user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -328,7 +328,7 @@ func (h *UserHandler) UploadImage(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	url, err := h.service.UploadUserImage(c.Context(), user.UID, raw)
+	url, err := h.service.UploadUserImage(c.Context(), user.ID, raw)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}

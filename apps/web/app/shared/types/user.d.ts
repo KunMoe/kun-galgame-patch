@@ -3,7 +3,7 @@
 //
 // `roles` is the OAuth-side role set for the profile being viewed. Per-site
 // numeric `role` / `status` / `email` were dropped in the OAuth migration --
-// identity is owned by OAuth and not re-exposed by /user/:uid.
+// identity is owned by OAuth and not re-exposed by /user/:id.
 interface UserInfo {
   id: number
   name: string

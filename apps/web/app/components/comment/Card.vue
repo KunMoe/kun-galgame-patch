@@ -26,7 +26,7 @@ const patchName = computed(() =>
 
 const contentHtml = computed(() =>
   DOMPurify.sanitize(props.comment.content_html || '', {
-    ADD_ATTR: ['data-uid']
+    ADD_ATTR: ['data-id']
   })
 )
 

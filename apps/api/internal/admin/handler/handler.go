@@ -109,7 +109,7 @@ func (h *AdminHandler) UpdateComment(c *fiber.Ctx) error {
 	}
 
 	admin := middleware.MustGetUser(c)
-	if err := h.service.UpdateComment(id, req.Content, admin.UID); err != nil {
+	if err := h.service.UpdateComment(id, req.Content, admin.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Comment updated")
@@ -123,7 +123,7 @@ func (h *AdminHandler) DeleteComment(c *fiber.Ctx) error {
 	}
 
 	admin := middleware.MustGetUser(c)
-	if err := h.service.DeleteComment(id, admin.UID); err != nil {
+	if err := h.service.DeleteComment(id, admin.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Comment deleted")
@@ -159,7 +159,7 @@ func (h *AdminHandler) UpdateResource(c *fiber.Ctx) error {
 	}
 
 	admin := middleware.MustGetUser(c)
-	if err := h.service.UpdateResource(id, req.Note, admin.UID); err != nil {
+	if err := h.service.UpdateResource(id, req.Note, admin.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Resource updated")
@@ -173,7 +173,7 @@ func (h *AdminHandler) DeleteResource(c *fiber.Ctx) error {
 	}
 
 	admin := middleware.MustGetUser(c)
-	if err := h.service.DeleteResource(id, admin.UID); err != nil {
+	if err := h.service.DeleteResource(id, admin.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Resource deleted")

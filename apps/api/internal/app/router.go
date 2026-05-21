@@ -64,7 +64,7 @@ func (a *App) RegisterRoutes() {
 	// but the current architecture serves downloads as public S3 URLs (no
 	// presigned URL involved), so TTL scaling doesn't apply. The actual
 	// abuse surface is bulk-fetching `/link` to harvest URLs — capping at
-	// 30/min per uid (or per IP when anonymous) keeps legitimate browsing
+	// 30/min per userID (or per IP when anonymous) keeps legitimate browsing
 	// (one user opens 10 patch resource pages = ~10-30 calls) untouched
 	// while breaking automated scraping. Returns 429 on overflow.
 	patchRoutes.Get(
@@ -130,7 +130,7 @@ func (a *App) RegisterRoutes() {
 	api.Post("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
 	api.Delete("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
 	api.Get("/galgame/:gid/contributors", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/galgame/:gid/contributors/:uid", auth, a.PatchHandler.WikiEditProxy)
+	api.Delete("/galgame/:gid/contributors/:id", auth, a.PatchHandler.WikiEditProxy)
 
 	// ===== User Routes =====
 	//
@@ -144,19 +144,19 @@ func (a *App) RegisterRoutes() {
 	userRoutes.Get("/search", auth, a.UserHandler.SearchUsers)
 
 	// Public user profiles
-	userRoutes.Get("/:uid", optionalAuth, a.UserHandler.GetUserInfo)
-	userRoutes.Get("/:uid/floating", a.UserHandler.GetUserFloating)
-	userRoutes.Get("/:uid/patch", a.UserHandler.GetUserPatches)
-	userRoutes.Get("/:uid/resource", a.UserHandler.GetUserResources)
-	userRoutes.Get("/:uid/favorite", a.UserHandler.GetUserFavorites)
-	userRoutes.Get("/:uid/comment", a.UserHandler.GetUserComments)
-	userRoutes.Get("/:uid/contribute", a.UserHandler.GetUserContributions)
-	userRoutes.Get("/:uid/follower", optionalAuth, a.UserHandler.GetFollowers)
-	userRoutes.Get("/:uid/following", optionalAuth, a.UserHandler.GetFollowing)
+	userRoutes.Get("/:id", optionalAuth, a.UserHandler.GetUserInfo)
+	userRoutes.Get("/:id/floating", a.UserHandler.GetUserFloating)
+	userRoutes.Get("/:id/patch", a.UserHandler.GetUserPatches)
+	userRoutes.Get("/:id/resource", a.UserHandler.GetUserResources)
+	userRoutes.Get("/:id/favorite", a.UserHandler.GetUserFavorites)
+	userRoutes.Get("/:id/comment", a.UserHandler.GetUserComments)
+	userRoutes.Get("/:id/contribute", a.UserHandler.GetUserContributions)
+	userRoutes.Get("/:id/follower", optionalAuth, a.UserHandler.GetFollowers)
+	userRoutes.Get("/:id/following", optionalAuth, a.UserHandler.GetFollowing)
 
 	// Follow/Unfollow
-	userRoutes.Put("/:uid/follow", auth, a.UserHandler.Follow)
-	userRoutes.Delete("/:uid/follow", auth, a.UserHandler.Unfollow)
+	userRoutes.Put("/:id/follow", auth, a.UserHandler.Follow)
+	userRoutes.Delete("/:id/follow", auth, a.UserHandler.Unfollow)
 
 	// ===== Message Routes =====
 	msgRoutes := api.Group("/message", auth)

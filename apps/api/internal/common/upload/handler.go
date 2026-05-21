@@ -34,7 +34,7 @@ func (h *Handler) InitSmall(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.InitSmall(c.Context(), user.UID, privileged, req)
+	resp, err := h.svc.InitSmall(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -50,7 +50,7 @@ func (h *Handler) CompleteSmall(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.CompleteSmall(c.Context(), user.UID, privileged, req)
+	resp, err := h.svc.CompleteSmall(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -66,7 +66,7 @@ func (h *Handler) InitMultipart(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.InitMultipart(c.Context(), user.UID, privileged, req)
+	resp, err := h.svc.InitMultipart(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -82,7 +82,7 @@ func (h *Handler) CompleteMultipart(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.CompleteMultipart(c.Context(), user.UID, privileged, req)
+	resp, err := h.svc.CompleteMultipart(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}

@@ -349,7 +349,7 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	// recommendations, and is_favorite on the owning patch — so the
 	// redesigned hero renders the like/favorite buttons in their real state.
 	patchFavorited := false
-	if u := middleware.GetUser(c); u != nil && u.UID > 0 {
+	if u := middleware.GetUser(c); u != nil && u.ID > 0 {
 		ids := make([]int, 0, len(recs)+1)
 		ids = append(ids, resource.ID)
 		for i := range recs {
@@ -357,7 +357,7 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 		}
 		var likedIDs []int
 		h.db.Model(&patchModel.UserPatchResourceLikeRelation{}).
-			Where("user_id = ? AND resource_id IN ?", u.UID, ids).
+			Where("user_id = ? AND resource_id IN ?", u.ID, ids).
 			Pluck("resource_id", &likedIDs)
 		likedSet := make(map[int]bool, len(likedIDs))
 		for _, id := range likedIDs {
@@ -370,7 +370,7 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 
 		var favCount int64
 		h.db.Model(&patchModel.UserPatchFavoriteRelation{}).
-			Where("user_id = ? AND galgame_id = ?", u.UID, resource.GalgameID).
+			Where("user_id = ? AND galgame_id = ?", u.ID, resource.GalgameID).
 			Count(&favCount)
 		patchFavorited = favCount > 0
 	}

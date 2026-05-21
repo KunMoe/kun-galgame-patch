@@ -169,7 +169,7 @@ func getMessageIDParam(c *fiber.Ctx) (int, error) {
 // "{lowUid}-{highUid}"). Briefs and last messages are batch-fetched, no N+1.
 func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	rooms, err := h.svc.ListRooms(user.UID)
+	rooms, err := h.svc.ListRooms(user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -182,7 +182,7 @@ func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
 		if rooms[i].Type == "PRIVATE" {
 			if a, b, ok := parsePrivateLink(rooms[i].Link); ok {
 				peer := a
-				if peer == user.UID {
+				if peer == user.ID {
 					peer = b
 				}
 				peerByRoom[rooms[i].ID] = peer
@@ -267,7 +267,7 @@ func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	room, err := h.svc.CreateGroupRoom(user.UID, req.Name, req.Avatar)
+	room, err := h.svc.CreateGroupRoom(user.ID, req.Name, req.Avatar)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -281,7 +281,7 @@ func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
 func (h *ChatHandler) GetRoomDetail(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	link := c.Params("link")
-	detail, err := h.svc.GetRoomDetail(user.UID, link)
+	detail, err := h.svc.GetRoomDetail(user.ID, link)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -296,7 +296,7 @@ func (h *ChatHandler) JoinRoom(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	room, err := h.svc.JoinRoomByLink(user.UID, req.Link)
+	room, err := h.svc.JoinRoomByLink(user.ID, req.Link)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -314,10 +314,10 @@ func (h *ChatHandler) StartPrivate(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	if req.PeerUID == user.UID {
+	if req.PeerUID == user.ID {
 		return response.Error(c, errors.ErrBadRequest("不能给自己发消息"))
 	}
-	room, err := h.svc.StartPrivateChat(user.UID, req.PeerUID)
+	room, err := h.svc.StartPrivateChat(user.ID, req.PeerUID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -345,9 +345,9 @@ func (h *ChatHandler) ListMessages(c *fiber.Ctx) error {
 		// In-place refresh of an exact set (post edit/delete/reaction). The
 		// frontend patches these into its existing list without re-paging or
 		// scrolling, so it never yanks the view to the bottom.
-		msgs, err = h.svc.GetMessagesByIDsInRoom(user.UID, link, ids)
+		msgs, err = h.svc.GetMessagesByIDsInRoom(user.ID, link, ids)
 	} else {
-		msgs, err = h.svc.GetMessages(user.UID, link, q.After, q.Before, q.Limit)
+		msgs, err = h.svc.GetMessages(user.ID, link, q.After, q.Before, q.Limit)
 	}
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -386,7 +386,7 @@ func (h *ChatHandler) CreateMessage(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	msg, err := h.svc.CreateMessage(user.UID, link, req.Content, req.FileURL, req.ReplyToID)
+	msg, err := h.svc.CreateMessage(user.ID, link, req.Content, req.FileURL, req.ReplyToID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -409,7 +409,7 @@ func (h *ChatHandler) UpdateMessage(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	if err := h.svc.UpdateMessage(user.UID, id, req.Content); err != nil {
+	if err := h.svc.UpdateMessage(user.ID, id, req.Content); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "消息已编辑")
@@ -423,7 +423,7 @@ func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.svc.DeleteMessage(user.UID, isPrivileged, id); err != nil {
+	if err := h.svc.DeleteMessage(user.ID, isPrivileged, id); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "消息已删除")
@@ -442,7 +442,7 @@ func (h *ChatHandler) ToggleReaction(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	added, err := h.svc.ToggleReaction(user.UID, id, req.Emoji)
+	added, err := h.svc.ToggleReaction(user.ID, id, req.Emoji)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -458,7 +458,7 @@ func (h *ChatHandler) MarkSeen(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	if err := h.svc.MarkSeen(user.UID, link, req.MessageIDs); err != nil {
+	if err := h.svc.MarkSeen(user.ID, link, req.MessageIDs); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "已标记")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// /user/:uid/comment returns paginated PatchComments with the owning patch
+// /user/:id/comment returns paginated PatchComments with the owning patch
 // summary attached (see user/service.attachPatchSummaries). The row carries
 // the local `like_count` and `galgame_id`; backend does not currently fill
 // content_html for this list since the user-profile view shows plain content.

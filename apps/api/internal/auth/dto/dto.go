@@ -9,7 +9,7 @@ type OAuthCallbackRequest struct {
 // MeResponse is the identity + site-state payload returned by /auth/me and
 // the success path of /auth/oauth/callback. It composes:
 //
-//   - Identity (uid, sub, roles) from the OAuth session / JWT
+//   - Identity (userID, sub, roles) from the OAuth session / JWT
 //   - Display fields (name, avatar, bio) batch-resolved from OAuth /users/batch
 //     via pkg/userclient (cached; one network round-trip per logged-in user
 //     within the cache TTL)
@@ -22,8 +22,8 @@ type OAuthCallbackRequest struct {
 type MeResponse struct {
 	// ID is the local DB PK (Prisma user.id == authModel.User.ID), used as the
 	// FK across moyu/kungal/wiki — wire field MUST stay "id" to match the rest
-	// of the API (/user/:uid, /ranking/user) and KunUser. The URL/JWT label
-	// `uid` is a transport name for the same integer and lives at that layer.
+	// of the API (/user/:id, /ranking/user) and KunUser. The URL/JWT label
+	// `userID` is a transport name for the same integer and lives at that layer.
 	ID              int      `json:"id"`
 	Sub             string   `json:"sub"`
 	Roles           []string `json:"roles"`

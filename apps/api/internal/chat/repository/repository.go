@@ -36,11 +36,11 @@ func (r *ChatRepository) FindRoomByLink(link string) (*model.ChatRoom, error) {
 // frontend. The authoritative "is this room empty" signal is the existence
 // of a chat_message row, so we gate on it here (single EXISTS subquery, no
 // N+1).
-func (r *ChatRepository) ListRoomsByUser(uid int) ([]model.ChatRoom, error) {
+func (r *ChatRepository) ListRoomsByUser(userID int) ([]model.ChatRoom, error) {
 	var rooms []model.ChatRoom
 	err := r.db.
 		Joins("JOIN chat_member ON chat_member.chat_room_id = chat_room.id").
-		Where("chat_member.user_id = ?", uid).
+		Where("chat_member.user_id = ?", userID).
 		Where(`EXISTS (
 			SELECT 1 FROM chat_message
 			WHERE chat_message.chat_room_id = chat_room.id
@@ -73,18 +73,18 @@ func (r *ChatRepository) CreateRoom(ownerUID int, name, link, avatar string) (*m
 }
 
 // IsMember reports whether a user is a member of a given room.
-func (r *ChatRepository) IsMember(uid, roomID int) (bool, error) {
+func (r *ChatRepository) IsMember(userID, roomID int) (bool, error) {
 	var count int64
 	err := r.db.Model(&model.ChatMember{}).
-		Where("user_id = ? AND chat_room_id = ?", uid, roomID).
+		Where("user_id = ? AND chat_room_id = ?", userID, roomID).
 		Count(&count).Error
 	return count > 0, err
 }
 
 // AddMember joins a room; idempotent if already a member.
-func (r *ChatRepository) AddMember(uid, roomID int) error {
+func (r *ChatRepository) AddMember(userID, roomID int) error {
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.ChatMember{
-		UserID:     uid,
+		UserID:     userID,
 		ChatRoomID: roomID,
 		Role:       "MEMBER",
 	}).Error
@@ -97,11 +97,11 @@ func (r *ChatRepository) AddMember(uid, roomID int) error {
 // (A→B and B→A) always converge to the same row. The natural unique index
 // on chat_room.link prevents duplicate rooms even under concurrent first
 // invocations.
-func (r *ChatRepository) FindOrCreatePrivateRoom(uid, peerUID int) (*model.ChatRoom, error) {
-	if uid == peerUID {
+func (r *ChatRepository) FindOrCreatePrivateRoom(userID, peerUID int) (*model.ChatRoom, error) {
+	if userID == peerUID {
 		return nil, fmt.Errorf("cannot start a private chat with yourself")
 	}
-	low, high := uid, peerUID
+	low, high := userID, peerUID
 	if low > high {
 		low, high = high, low
 	}
@@ -111,7 +111,7 @@ func (r *ChatRepository) FindOrCreatePrivateRoom(uid, peerUID int) (*model.ChatR
 	if err := r.db.Where("link = ?", link).First(&room).Error; err == nil {
 		// Defensive: re-affirm membership in case some old row is missing one
 		// side (e.g. a legacy chat_member row was deleted by a script).
-		_ = r.AddMember(uid, room.ID)
+		_ = r.AddMember(userID, room.ID)
 		_ = r.AddMember(peerUID, room.ID)
 		return &room, nil
 	} else if err != gorm.ErrRecordNotFound {
@@ -281,9 +281,9 @@ func (r *ChatRepository) SoftDeleteMessage(id, deletedByUID int, deletedAt any) 
 // ─── Reactions ──────────────────────────────────────
 
 // ToggleReaction toggles an emoji reaction. added=true means added, false means removed.
-func (r *ChatRepository) ToggleReaction(messageID, uid int, emoji string) (added bool, err error) {
+func (r *ChatRepository) ToggleReaction(messageID, userID int, emoji string) (added bool, err error) {
 	var existing model.ChatMessageReaction
-	err = r.db.Where("chat_message_id = ? AND user_id = ? AND emoji = ?", messageID, uid, emoji).
+	err = r.db.Where("chat_message_id = ? AND user_id = ? AND emoji = ?", messageID, userID, emoji).
 		First(&existing).Error
 	if err == nil {
 		// Already exists -> remove
@@ -295,7 +295,7 @@ func (r *ChatRepository) ToggleReaction(messageID, uid int, emoji string) (added
 	// Not present -> add
 	return true, r.db.Create(&model.ChatMessageReaction{
 		ChatMessageID: messageID,
-		UserID:        uid,
+		UserID:        userID,
 		Emoji:         emoji,
 	}).Error
 }
@@ -325,7 +325,7 @@ func (r *ChatRepository) GetMessagesByIDs(ids []int) ([]model.ChatMessage, error
 // ─── Seen ───────────────────────────────────────────
 
 // MarkSeen writes seen markers in bulk. Duplicate inserts are ignored via OnConflict DoNothing.
-func (r *ChatRepository) MarkSeen(roomID, uid int, messageIDs []int) error {
+func (r *ChatRepository) MarkSeen(roomID, userID int, messageIDs []int) error {
 	if len(messageIDs) == 0 {
 		return nil
 	}
@@ -345,7 +345,7 @@ func (r *ChatRepository) MarkSeen(roomID, uid int, messageIDs []int) error {
 	for _, id := range validIDs {
 		records = append(records, model.ChatMessageSeen{
 			ChatMessageID: id,
-			UserID:        uid,
+			UserID:        userID,
 		})
 	}
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&records).Error

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// /user/:uid/resource returns paginated PatchResources. user/service
+// /user/:id/resource returns paginated PatchResources. user/service
 // attaches each row's owning patch summary (id / vndb_id / name / banner)
 // from the Wiki Service via the same path the global resource list uses --
 // see attachPatchSummaries in apps/api/internal/user/service/service.go.

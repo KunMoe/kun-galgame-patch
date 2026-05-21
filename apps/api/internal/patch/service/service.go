@@ -56,7 +56,7 @@ func New(repo *repository.PatchRepository, rdb *redis.Client, db *gorm.DB, s3 *s
 //  2. Local dedup on vndb_id
 //  3. One transaction: insert patch with id=galgame_id, +3 moemoepoint,
 //     register contributor.
-func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) (int, error) {
+func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID string) (int, error) {
 	// 1. Check with Wiki: must exist, and get galgame_id
 	exists, galgameID, err := s.wiki.CheckGalgameByVndbID(ctx, vndbID)
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 		p := &model.Patch{
 			ID:     galgameID,
 			VndbID: vndbID,
-			UserID: uid,
+			UserID: userID,
 		}
 		if err := tx.Create(p).Error; err != nil {
 			return fmt.Errorf("创建 patch 失败: %w", err)
@@ -92,14 +92,14 @@ func (s *PatchService) CreatePatch(ctx context.Context, uid int, vndbID string) 
 		patchID = p.ID
 
 		// User reward: +3 moemoepoint
-		if err := tx.Table("user").Where("id = ?", uid).
+		if err := tx.Table("user").Where("id = ?", userID).
 			UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + 3")).Error; err != nil {
 			return fmt.Errorf("更新用户积分失败: %w", err)
 		}
 
 		// Register contributor
 		if err := tx.Create(&model.UserPatchContributeRelation{
-			UserID: uid, GalgameID: p.ID,
+			UserID: userID, GalgameID: p.ID,
 		}).Error; err != nil {
 			return fmt.Errorf("登记 contributor 失败: %w", err)
 		}
@@ -205,7 +205,7 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 // with before, or a double-submit), we return its id without re-rewarding.
 // This is the single source of the claim reward — the handler must NOT also
 // call a separate reward path (that was the prior double-+3 bug).
-func (s *PatchService) RegisterClaimedGalgame(uid, galgameID int, vndbID string) (int, error) {
+func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID string) (int, error) {
 	if galgameID <= 0 {
 		return 0, fmt.Errorf("invalid galgame id")
 	}
@@ -217,19 +217,19 @@ func (s *PatchService) RegisterClaimedGalgame(uid, galgameID int, vndbID string)
 
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
-		p := &model.Patch{ID: galgameID, VndbID: vndbID, UserID: uid}
+		p := &model.Patch{ID: galgameID, VndbID: vndbID, UserID: userID}
 		if err := tx.Create(p).Error; err != nil {
 			return fmt.Errorf("创建 patch 失败: %w", err)
 		}
 		patchID = p.ID
 
-		if err := tx.Table("user").Where("id = ?", uid).
+		if err := tx.Table("user").Where("id = ?", userID).
 			UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + 3")).Error; err != nil {
 			return fmt.Errorf("更新用户积分失败: %w", err)
 		}
 
 		if err := tx.Create(&model.UserPatchContributeRelation{
-			UserID: uid, GalgameID: p.ID,
+			UserID: userID, GalgameID: p.ID,
 		}).Error; err != nil {
 			return fmt.Errorf("登记 contributor 失败: %w", err)
 		}
@@ -798,8 +798,8 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 		Where("galgame_id = ? AND user_id != ?", patchID, senderID).
 		Pluck("user_id", &userIDs)
 
-	for _, uid := range userIDs {
-		s.createDedupMessage(senderID, uid, "patchResourceCreate",
+	for _, userID := range userIDs {
+		s.createDedupMessage(senderID, userID, "patchResourceCreate",
 			"New resource added to patch",
 			fmt.Sprintf("/patch/%d/resource", patchID))
 	}
@@ -832,9 +832,9 @@ func (s *PatchService) CreateMentionMessages(senderID, patchID int, content stri
 	if len(excerpt) > 233 {
 		excerpt = excerpt[:233]
 	}
-	for _, uid := range ids {
-		if uid != senderID {
-			s.createDedupMessage(senderID, uid, "mention", excerpt,
+	for _, userID := range ids {
+		if userID != senderID {
+			s.createDedupMessage(senderID, userID, "mention", excerpt,
 				fmt.Sprintf("/patch/%d", patchID))
 		}
 	}

@@ -8,10 +8,10 @@ import { defineStore } from 'pinia'
 // returned by the backend; downstream gates (isAdmin / isModerator) read
 // this array directly.
 export interface UserState {
-  // DB PK (Prisma user.id == Go MeResponse.id) — matches /user/:uid,
-  // /ranking/user, and @kun/ui's KunUser. The auth/transport label `uid`
-  // (JWT claim, URL [uid]) is a transport name for the same integer and
-  // doesn't surface here. See apps/api/internal/auth/dto/dto.go.
+  // DB PK (Prisma user.id == Go MeResponse.id) — matches /user/:id,
+  // /ranking/user, and @kun/ui's KunUser. The legacy `uid` transport
+  // label was hard-cut to `id` everywhere (JWT claim, URL routes, Fiber
+  // session JSON). See apps/api/internal/auth/dto/dto.go.
   id: number
   name: string
   avatar: string

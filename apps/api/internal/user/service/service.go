@@ -91,8 +91,8 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patch
 //
 // On OAuth lookup failure name/avatar/bio come back empty -- the page still
 // renders, just without display fields.
-func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dto.UserInfoResponse, error) {
-	user, err := s.repo.FindByID(uid)
+func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int) (*dto.UserInfoResponse, error) {
+	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found")
 	}
@@ -103,14 +103,14 @@ func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dt
 		FollowerCount:  user.FollowerCount,
 		FollowingCount: user.FollowingCount,
 		RegisterTime:   user.Created.Format(time.RFC3339),
-		PatchCount:     s.repo.CountUserPatches(uid),
-		ResourceCount:  s.repo.CountUserResources(uid),
-		CommentCount:   s.repo.CountUserComments(uid),
-		FavoriteCount:  s.repo.CountUserFavorites(uid),
+		PatchCount:     s.repo.CountUserPatches(userID),
+		ResourceCount:  s.repo.CountUserResources(userID),
+		CommentCount:   s.repo.CountUserComments(userID),
+		FavoriteCount:  s.repo.CountUserFavorites(userID),
 	}
 
 	if s.users != nil {
-		if b, _ := s.users.User(ctx, uint(uid)); b != nil {
+		if b, _ := s.users.User(ctx, uint(userID)); b != nil {
 			resp.Name = b.Name
 			resp.Avatar = b.Avatar
 			resp.Bio = b.Bio
@@ -118,8 +118,8 @@ func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dt
 		}
 	}
 
-	if currentUID > 0 && currentUID != uid {
-		_, err := s.repo.FindFollow(currentUID, uid)
+	if currentUID > 0 && currentUID != userID {
+		_, err := s.repo.FindFollow(currentUID, userID)
 		resp.IsFollowed = err == nil
 	}
 
@@ -127,8 +127,8 @@ func (s *UserService) GetUserInfo(ctx context.Context, uid, currentUID int) (*dt
 }
 
 // GetUserFloating retrieves the floating-card view of a user.
-func (s *UserService) GetUserFloating(ctx context.Context, uid int) (*dto.UserInfoResponse, error) {
-	return s.GetUserInfo(ctx, uid, 0)
+func (s *UserService) GetUserFloating(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
+	return s.GetUserInfo(ctx, userID, 0)
 }
 
 // Follow creates a follow relation and bumps the denormalized counts.
@@ -159,8 +159,8 @@ func (s *UserService) Unfollow(followerID, followingID int) error {
 }
 
 // GetFollowers returns follower user briefs, batch-resolved from OAuth.
-func (s *UserService) GetFollowers(ctx context.Context, uid, page, limit int) ([]model.UserBasic, int64, error) {
-	ids, total, err := s.repo.GetFollowerIDs(uid, (page-1)*limit, limit)
+func (s *UserService) GetFollowers(ctx context.Context, userID, page, limit int) ([]model.UserBasic, int64, error) {
+	ids, total, err := s.repo.GetFollowerIDs(userID, (page-1)*limit, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -168,8 +168,8 @@ func (s *UserService) GetFollowers(ctx context.Context, uid, page, limit int) ([
 }
 
 // GetFollowing returns followee user briefs, batch-resolved from OAuth.
-func (s *UserService) GetFollowing(ctx context.Context, uid, page, limit int) ([]model.UserBasic, int64, error) {
-	ids, total, err := s.repo.GetFollowingIDs(uid, (page-1)*limit, limit)
+func (s *UserService) GetFollowing(ctx context.Context, userID, page, limit int) ([]model.UserBasic, int64, error) {
+	ids, total, err := s.repo.GetFollowingIDs(userID, (page-1)*limit, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -228,16 +228,16 @@ func (s *UserService) CheckIn(userID int) (int, error) {
 }
 
 // GetUserPatches retrieves the user's patch list.
-func (s *UserService) GetUserPatches(uid, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserPatches(uid, (page-1)*limit, limit)
+func (s *UserService) GetUserPatches(userID, page, limit int) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserPatches(userID, (page-1)*limit, limit)
 }
 
 // GetUserResources retrieves the user's resource list with each resource
 // enriched with its owning patch's Wiki summary (name + banner) so the
-// /user/:uid/resource page can render the game thumbnail + title without an
+// /user/:id/resource page can render the game thumbnail + title without an
 // extra round-trip per row.
-func (s *UserService) GetUserResources(ctx context.Context, uid, page, limit int) ([]patchModel.PatchResource, int64, error) {
-	rs, total, err := s.repo.GetUserResources(uid, (page-1)*limit, limit)
+func (s *UserService) GetUserResources(ctx context.Context, userID, page, limit int) ([]patchModel.PatchResource, int64, error) {
+	rs, total, err := s.repo.GetUserResources(userID, (page-1)*limit, limit)
 	if err != nil {
 		return rs, total, err
 	}
@@ -248,15 +248,15 @@ func (s *UserService) GetUserResources(ctx context.Context, uid, page, limit int
 }
 
 // GetUserFavorites retrieves the user's favorite list.
-func (s *UserService) GetUserFavorites(uid, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserFavorites(uid, (page-1)*limit, limit)
+func (s *UserService) GetUserFavorites(userID, page, limit int) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserFavorites(userID, (page-1)*limit, limit)
 }
 
 // GetUserComments retrieves the user's comment list with each comment
 // enriched with its owning patch's Wiki summary (name only — banner is not
 // needed for the "评论在 <game>" link on the user-comments page).
-func (s *UserService) GetUserComments(ctx context.Context, uid, page, limit int) ([]patchModel.PatchComment, int64, error) {
-	cs, total, err := s.repo.GetUserComments(uid, (page-1)*limit, limit)
+func (s *UserService) GetUserComments(ctx context.Context, userID, page, limit int) ([]patchModel.PatchComment, int64, error) {
+	cs, total, err := s.repo.GetUserComments(userID, (page-1)*limit, limit)
 	if err != nil {
 		return cs, total, err
 	}
@@ -266,13 +266,13 @@ func (s *UserService) GetUserComments(ctx context.Context, uid, page, limit int)
 }
 
 // GetUserContributions retrieves the user's contribution list.
-func (s *UserService) GetUserContributions(uid, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserContributions(uid, (page-1)*limit, limit)
+func (s *UserService) GetUserContributions(userID, page, limit int) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserContributions(userID, (page-1)*limit, limit)
 }
 
 // GetUserByID retrieves the local user row (site-local fields only).
-func (s *UserService) GetUserByID(uid int) (*authModel.User, error) {
-	return s.repo.FindByID(uid)
+func (s *UserService) GetUserByID(userID int) (*authModel.User, error) {
+	return s.repo.FindByID(userID)
 }
 
 // attachResourceUsers / attachCommentUsers stamp the User field on rows
@@ -307,8 +307,8 @@ func (s *UserService) attachCommentUsers(ctx context.Context, cs []patchModel.Pa
 
 // UploadUserImage uploads an image for the user's personal page (fit within 1920x1080, JPEG q=50).
 // Rate-limited by daily_image_count (aligned with the original project's DailyImageLimit).
-func (s *UserService) UploadUserImage(ctx context.Context, uid int, raw []byte) (string, error) {
-	user, err := s.repo.FindByID(uid)
+func (s *UserService) UploadUserImage(ctx context.Context, userID int, raw []byte) (string, error) {
+	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return "", fmt.Errorf("用户不存在")
 	}
@@ -321,12 +321,12 @@ func (s *UserService) UploadUserImage(ctx context.Context, uid int, raw []byte) 
 		return "", err
 	}
 
-	key := fmt.Sprintf("user_%d/image/%d-%d.jpg", uid, uid, time.Now().UnixMilli())
+	key := fmt.Sprintf("user_%d/image/%d-%d.jpg", userID, userID, time.Now().UnixMilli())
 	if err := s.s3.PutObject(ctx, key, bytes.NewReader(jpg), int64(len(jpg)), "image/jpeg"); err != nil {
 		return "", err
 	}
 
-	if err := s.repo.UpdateFields(uid, map[string]any{
+	if err := s.repo.UpdateFields(userID, map[string]any{
 		"daily_image_count": gorm.Expr("daily_image_count + 1"),
 	}); err != nil {
 		return "", err

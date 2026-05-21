@@ -450,7 +450,7 @@ func (c *Client) SearchOfficial(ctx context.Context, q, category, lang string, l
 // Per integration-guide.md §2, write operations are proxied through the site
 // backend, but the user identity is carried by the user's OAuth access_token
 // (the same one we already keep in the Redis session). The Wiki Service
-// validates the JWT, extracts the uid, and enforces creator/admin rules
+// validates the JWT, extracts the userID, and enforces creator/admin rules
 // itself — the patch backend does not need to re-implement authorization.
 
 // UpdateGalgameRequest mirrors the documented JSON body of PUT /galgame/:gid.

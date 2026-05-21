@@ -69,13 +69,13 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 
 	localUser, err := h.service.FindOrCreateUserByID(userInfo.ID)
 	if err != nil {
-		slog.Error("Failed to provision local user row", "uid", userInfo.ID, "error", err)
+		slog.Error("Failed to provision local user row", "userID", userInfo.ID, "error", err)
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
 	// Stamp last login (best effort).
-	go func(uid int, ip string) {
-		h.db.Table("user").Where("id = ?", uid).Updates(map[string]any{
+	go func(userID int, ip string) {
+		h.db.Table("user").Where("id = ?", userID).Updates(map[string]any{
 			"last_login_time": time.Now().Format(time.RFC3339),
 			"ip":              ip,
 		})
@@ -83,7 +83,7 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 
 	session := &middleware.SessionData{
 		UserInfo: middleware.UserInfo{
-			UID: userInfo.ID,
+	ID: userInfo.ID,
 			Sub: userInfo.Sub,
 		},
 		OAuthAccessToken:  tokenResp.AccessToken,
@@ -123,7 +123,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 
 // Me GET /api/v1/auth/me
 //
-// Composes identity (uid/sub/roles from session+JWT), display fields
+// Composes identity (userID/sub/roles from session+JWT), display fields
 // (name/avatar/bio from OAuth /users/batch), and site-local state
 // (moemoepoint, daily counters, follow counts) into a single response so
 // the frontend can render the whole profile without extra round-trips.
@@ -132,7 +132,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	roles := middleware.GetRoles(c)
 
 	var local authModel.User
-	if err := h.db.First(&local, user.UID).Error; err != nil {
+	if err := h.db.First(&local, user.ID).Error; err != nil {
 		return response.Error(c, errors.ErrNotFound("user not found"))
 	}
 
@@ -159,7 +159,7 @@ func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string,
 	brief, err := h.users.User(c.Context(), uint(local.ID))
 	if err != nil {
 		slog.Warn("OAuth /users/batch lookup failed in composeMe; returning empty display fields",
-			"uid", local.ID, "error", err)
+			"userID", local.ID, "error", err)
 		return resp
 	}
 	if brief != nil {

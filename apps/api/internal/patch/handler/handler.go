@@ -64,7 +64,7 @@ func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("vndb_id 格式不合法（应为 vXXX）"))
 	}
 
-	id, err := h.service.CreatePatch(c.Context(), user.UID, req.VndbID)
+	id, err := h.service.CreatePatch(c.Context(), user.ID, req.VndbID)
 	if err != nil {
 		// Distinct error code so the frontend can render a "前往 Wiki 创建"
 		// CTA when the vndb_id is missing on Wiki, vs the generic toast for
@@ -100,7 +100,7 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 
 	card := headerCard{GalgameCard: enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch)}
 	if user := middleware.GetUser(c); user != nil {
-		card.IsFavorite = h.service.IsFavorited(user.UID, id)
+		card.IsFavorite = h.service.IsFavorited(user.ID, id)
 	}
 	return response.OK(c, card)
 }
@@ -141,7 +141,7 @@ func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.UpdatePatch(c.Context(), id, user.UID, isPrivileged, req.VndbID); err != nil {
+	if err := h.service.UpdatePatch(c.Context(), id, user.ID, isPrivileged, req.VndbID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Patch updated")
@@ -156,7 +156,7 @@ func (h *PatchHandler) DeletePatch(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isAdmin := middleware.HasRole(c, "admin")
-	if err := h.service.DeletePatch(id, user.UID, isAdmin); err != nil {
+	if err := h.service.DeletePatch(id, user.ID, isAdmin); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -202,7 +202,7 @@ func (h *PatchHandler) GetComments(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	currentUID := middleware.GetUID(c)
+	currentUID := middleware.GetUserID(c)
 	comments, total, err := h.service.GetComments(c.Context(), id, currentUID, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
@@ -225,15 +225,15 @@ func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
 	req.GalgameID = patchID
 
 	user := middleware.MustGetUser(c)
-	comment, err := h.service.CreateComment(patchID, user.UID, req.Content, req.ParentID)
+	comment, err := h.service.CreateComment(patchID, user.ID, req.Content, req.ParentID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	// Background notifications
 	go func() {
-		h.service.CreateMentionMessages(user.UID, patchID, req.Content)
-		h.service.CreateCommentNotification(user.UID, comment)
+		h.service.CreateMentionMessages(user.ID, patchID, req.Content)
+		h.service.CreateCommentNotification(user.ID, comment)
 	}()
 
 	return response.OK(c, comment)
@@ -252,7 +252,7 @@ func (h *PatchHandler) UpdateComment(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.UpdateComment(commentID, user.UID, req.Content); err != nil {
+	if err := h.service.UpdateComment(commentID, user.ID, req.Content); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -268,7 +268,7 @@ func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.DeleteComment(commentID, user.UID, isPrivileged); err != nil {
+	if err := h.service.DeleteComment(commentID, user.ID, isPrivileged); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -283,7 +283,7 @@ func (h *PatchHandler) ToggleCommentLike(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	liked, err := h.service.ToggleCommentLike(commentID, user.UID)
+	liked, err := h.service.ToggleCommentLike(commentID, user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -315,7 +315,7 @@ func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	currentUID := middleware.GetUID(c)
+	currentUID := middleware.GetUserID(c)
 	resources, err := h.service.GetResources(c.Context(), id, currentUID)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
@@ -353,7 +353,7 @@ func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
 		Platform:  model.JSONArray(req.Platform),
 	}
 
-	if err := h.service.CreateResource(resource, user.UID); err != nil {
+	if err := h.service.CreateResource(resource, user.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -398,7 +398,7 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 		actorRole = 2
 	}
 
-	if err := h.service.UpdateResource(resourceID, user.UID, update, req.Reason, actorRole); err != nil {
+	if err := h.service.UpdateResource(resourceID, user.ID, update, req.Reason, actorRole); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -413,7 +413,7 @@ func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.DeleteResource(resourceID, user.UID); err != nil {
+	if err := h.service.DeleteResource(resourceID, user.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -429,7 +429,7 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.ToggleResourceDisable(resourceID, user.UID, isPrivileged); err != nil {
+	if err := h.service.ToggleResourceDisable(resourceID, user.ID, isPrivileged); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -480,7 +480,7 @@ func (h *PatchHandler) ToggleResourceLike(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	liked, err := h.service.ToggleResourceLike(resourceID, user.UID)
+	liked, err := h.service.ToggleResourceLike(resourceID, user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -498,7 +498,7 @@ func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	favorited, err := h.service.ToggleFavorite(id, user.UID)
+	favorited, err := h.service.ToggleFavorite(id, user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -525,8 +525,8 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 
 	briefs := userclient.BriefMapByInt(c.Context(), h.users, ids)
 	out := make([]model.PatchUser, 0, len(ids))
-	for _, uid := range ids {
-		if b := briefs[uid]; b != nil {
+	for _, userID := range ids {
+		if b := briefs[userID]; b != nil {
 			out = append(out, model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles})
 		}
 	}
@@ -737,8 +737,8 @@ func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
 		claimed.ID = gid
 	}
 
-	uid := middleware.MustGetUser(c).UID
-	patchID, regErr := h.service.RegisterClaimedGalgame(uid, claimed.ID, claimed.VndbID)
+	userID := middleware.MustGetUser(c).ID
+	patchID, regErr := h.service.RegisterClaimedGalgame(userID, claimed.ID, claimed.VndbID)
 	if regErr != nil {
 		// The Wiki-side claim already succeeded and cannot be rolled back; the
 		// galgame is published and owned by the user. Surface a soft error so
@@ -875,7 +875,7 @@ func (h *PatchHandler) GetWikiMessagesReadState(c *fiber.Ctx) error {
 	var lastRead int64
 	row := h.service.DB().Raw(
 		`SELECT last_read_message_id FROM wiki_message_read_state WHERE user_id = ?`,
-		user.UID,
+		user.ID,
 	).Row()
 	_ = row.Scan(&lastRead)
 	return response.OK(c, map[string]any{"last_read_message_id": lastRead})
@@ -902,7 +902,7 @@ func (h *PatchHandler) UpdateWikiMessagesReadState(c *fiber.Ctx) error {
 		ON CONFLICT(user_id) DO UPDATE
 		SET last_read_message_id = GREATEST(wiki_message_read_state.last_read_message_id, EXCLUDED.last_read_message_id),
 		    updated_at = NOW()
-	`, user.UID, body.LastReadMessageID).Error; err != nil {
+	`, user.ID, body.LastReadMessageID).Error; err != nil {
 		return response.Error(c, errors.ErrInternal("保存已读状态失败"))
 	}
 	return response.OKMessage(c, "OK")

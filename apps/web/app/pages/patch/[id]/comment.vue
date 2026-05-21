@@ -6,10 +6,10 @@ const api = useApi()
 const userStore = useUserStore()
 
 // DOMPurify allows <a> by default but strips data-* attrs unless we whitelist
-// them. The mention renderer emits data-uid so the frontend can wire up
+// them. The mention renderer emits data-id so the frontend can wire up
 // click-to-profile behaviour later.
 const sanitize = (html: string) =>
-  DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
+  DOMPurify.sanitize(html, { ADD_ATTR: ['data-id'] })
 
 const galgameId = computed(() => Number(route.params.id))
 

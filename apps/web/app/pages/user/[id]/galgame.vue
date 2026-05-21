@@ -2,7 +2,7 @@
 // Backend wraps lists in response.Paginated -> { items, total }. Items are
 // already enriched GalgameCards via enricher.EnrichPatches (Wiki batch).
 //
-// API path is /user/:uid/patch (backend route name), even though the tab is
+// API path is /user/:id/patch (backend route name), even though the tab is
 // labeled "Galgame" on the frontend -- the local row is `patch`, the
 // galgame metadata comes from Wiki via the enricher.
 const route = useRoute()

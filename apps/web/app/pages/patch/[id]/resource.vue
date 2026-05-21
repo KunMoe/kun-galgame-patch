@@ -9,7 +9,7 @@ const userStore = useUserStore()
 const galgameId = computed(() => Number(route.params.id))
 
 const sanitize = (html: string) =>
-  DOMPurify.sanitize(html, { ADD_ATTR: ['data-uid'] })
+  DOMPurify.sanitize(html, { ADD_ATTR: ['data-id'] })
 
 const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   () => `patch-resource-${galgameId.value}`,

@@ -5,7 +5,7 @@
 //
 // Built on goldmark + GFM extensions. A small custom HTML renderer detects
 // "@mention"-style links — markdown of the form `[@username](/user/<id>/...)`
-// — and emits them with a `kun-mention` class plus a `data-uid` attribute so
+// — and emits them with a `kun-mention` class plus a `data-id` attribute so
 // the frontend can style and behave them differently from regular links.
 package markdown
 
@@ -82,8 +82,8 @@ func (s *cjkIDs) Generate(value []byte, kind ast.NodeKind) []byte {
 func (s *cjkIDs) Put(value []byte) { s.values[string(value)] = true }
 
 // mentionURLRegex matches the destination of a mention link: `/user/<digits>`
-// optionally followed by a sub-route. The captured uid is surfaced via a
-// `data-uid` attribute on the rendered <a>.
+// optionally followed by a sub-route. The captured userID is surfaced via a
+// `data-id` attribute on the rendered <a>.
 var mentionURLRegex = regexp.MustCompile(`^/user/(\d+)(?:/.*)?$`)
 
 // mentionPatternRegex pulls uids straight from markdown source for callers
@@ -134,7 +134,7 @@ func (r *mentionLinkRenderer) renderLink(w util.BufWriter, source []byte, n ast.
 	}
 
 	if entering {
-		_, _ = w.WriteString(`<a class="kun-mention" data-uid="`)
+		_, _ = w.WriteString(`<a class="kun-mention" data-id="`)
 		_, _ = w.WriteString(uidMatch[1])
 		_, _ = w.WriteString(`" href="`)
 		_, _ = w.Write(util.EscapeHTML(util.URLEscape([]byte(dest), true)))
@@ -281,15 +281,15 @@ func ExtractMentionedUIDs(src string) []int {
 	seen := make(map[int]struct{}, len(matches))
 	out := make([]int, 0, len(matches))
 	for _, m := range matches {
-		uid, err := strconv.Atoi(m[1])
-		if err != nil || uid <= 0 {
+		userID, err := strconv.Atoi(m[1])
+		if err != nil || userID <= 0 {
 			continue
 		}
-		if _, ok := seen[uid]; ok {
+		if _, ok := seen[userID]; ok {
 			continue
 		}
-		seen[uid] = struct{}{}
-		out = append(out, uid)
+		seen[userID] = struct{}{}
+		out = append(out, userID)
 	}
 	return out
 }

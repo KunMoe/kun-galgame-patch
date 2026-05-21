@@ -57,13 +57,13 @@ func NewTestApp(t *testing.T) *TestApp {
 // roles is the OAuth roles set; pass e.g. "admin" / "moderator" to grant
 // privileged access. The fake access_token is a JWT-shaped string with the
 // given roles in its claims, so middleware.GetRoles works in tests too.
-func (ta *TestApp) CreateTestSession(t *testing.T, uid int, roles ...string) string {
+func (ta *TestApp) CreateTestSession(t *testing.T, userID int, roles ...string) string {
 	t.Helper()
-	sessionID := fmt.Sprintf("test-session-%d-%d", uid, time.Now().UnixNano())
+	sessionID := fmt.Sprintf("test-session-%d-%d", userID, time.Now().UnixNano())
 	session := middleware.SessionData{
 		UserInfo: middleware.UserInfo{
-			UID: uid,
-			Sub: fmt.Sprintf("test-sub-%d", uid),
+	ID: userID,
+			Sub: fmt.Sprintf("test-sub-%d", userID),
 		},
 		OAuthAccessToken: fakeJWTWithRoles(roles),
 	}

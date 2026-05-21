@@ -1,7 +1,7 @@
 // Package middleware: session-cookie auth backed by Redis, plus role-gated
 // helpers that read OAuth roles from the access_token JWT.
 //
-// The session is intentionally minimal -- only uid, sub and the OAuth tokens.
+// The session is intentionally minimal -- only userID, sub and the OAuth tokens.
 // Display fields (name, avatar, bio) are fetched from OAuth on demand by
 // downstream handlers via pkg/userclient. Roles are read from the JWT roles
 // claim in the OAuth access_token (no signature verify needed: the token was
@@ -36,8 +36,13 @@ import (
 
 // UserInfo is the slim per-request identity stamped onto fiber locals by
 // the Auth / OptionalAuth middleware.
+//
+// `id` matches the DB-truth chain (Prisma user.id → Go MeResponse.id →
+// /user/:id → KunUser). The JWT/URL label `userID` was a transport-layer
+// alias for the same integer; it lives at the OAuth layer only and does
+// not propagate into local types.
 type UserInfo struct {
-	UID int    `json:"uid"`
+	ID  int    `json:"id"`
 	Sub string `json:"sub"`
 }
 
@@ -200,12 +205,12 @@ func MustGetUser(c *fiber.Ctx) *UserInfo {
 	return c.Locals(userContextKey).(*UserInfo)
 }
 
-func GetUID(c *fiber.Ctx) int {
+func GetUserID(c *fiber.Ctx) int {
 	user := GetUser(c)
 	if user == nil {
 		return 0
 	}
-	return user.UID
+	return user.ID
 }
 
 // GetAccessToken returns the OAuth access_token bound to the current session

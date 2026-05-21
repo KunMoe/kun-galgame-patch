@@ -70,7 +70,7 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	messages, total, err := h.service.GetMessages(user.UID, req.Type, req.Page, req.Limit)
+	messages, total, err := h.service.GetMessages(user.ID, req.Type, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -90,7 +90,7 @@ func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	messages, total, err := h.service.GetMessages(user.UID, "", req.Page, req.Limit)
+	messages, total, err := h.service.GetMessages(user.ID, "", req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -102,7 +102,7 @@ func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
 // GetUnreadTypes GET /api/message/unread
 func (h *MessageHandler) GetUnreadTypes(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	types, err := h.service.GetUnreadTypes(user.UID)
+	types, err := h.service.GetUnreadTypes(user.ID)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -117,7 +117,7 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.CreateMessage(user.UID, req.RecipientID, req.Type, req.Content, req.Link); err != nil {
+	if err := h.service.CreateMessage(user.ID, req.RecipientID, req.Type, req.Content, req.Link); err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
@@ -132,7 +132,7 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.MarkAsRead(user.UID, req.Type); err != nil {
+	if err := h.service.MarkAsRead(user.ID, req.Type); err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 

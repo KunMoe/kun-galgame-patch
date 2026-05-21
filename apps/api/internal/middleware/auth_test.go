@@ -40,7 +40,7 @@ func TestAuth_ValidSession(t *testing.T) {
 
 	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
 		user := middleware.MustGetUser(c)
-		return c.JSON(response.Response{Code: 0, Message: "OK", Data: user.UID})
+		return c.JSON(response.Response{Code: 0, Message: "OK", Data: user.ID})
 	})
 
 	sessionID := ta.CreateTestSession(t, 1, "user")
@@ -71,8 +71,8 @@ func TestOptionalAuth_NoSession(t *testing.T) {
 	oauthCfg := config.OAuthConfig{}
 
 	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
-		uid := middleware.GetUID(c)
-		return c.JSON(response.Response{Code: 0, Data: uid})
+		userID := middleware.GetUserID(c)
+		return c.JSON(response.Response{Code: 0, Data: userID})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/optional", nil)
@@ -90,8 +90,8 @@ func TestOptionalAuth_ValidSession(t *testing.T) {
 	oauthCfg := config.OAuthConfig{}
 
 	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
-		uid := middleware.GetUID(c)
-		return c.JSON(response.Response{Code: 0, Data: uid})
+		userID := middleware.GetUserID(c)
+		return c.JSON(response.Response{Code: 0, Data: userID})
 	})
 
 	sessionID := ta.CreateTestSession(t, 42, "user")
@@ -149,7 +149,7 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 
 	ta.App.Post("/login", func(c *fiber.Ctx) error {
 		session := &middleware.SessionData{
-			UserInfo: middleware.UserInfo{UID: 99, Sub: "test-sub"},
+			UserInfo: middleware.UserInfo{ID: 99, Sub: "test-sub"},
 		}
 		return middleware.CreateSession(c, ta.RDB, session)
 	})
@@ -176,7 +176,7 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 
 	var session middleware.SessionData
 	json.Unmarshal([]byte(val), &session)
-	assert.Equal(t, 99, session.UID)
+	assert.Equal(t, 99, session.ID)
 
 	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	logoutReq.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: capturedCookie})
@@ -195,14 +195,14 @@ func TestGetUser_Helpers(t *testing.T) {
 	ta.App.Get("/helpers", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
 		user := middleware.GetUser(c)
 		must := middleware.MustGetUser(c)
-		uid := middleware.GetUID(c)
+		userID := middleware.GetUserID(c)
 		roles := middleware.GetRoles(c)
 		isMod := middleware.HasRole(c, "moderator")
 
 		return c.JSON(map[string]any{
 			"user_nil": user == nil,
 			"must_nil": must == nil,
-			"uid":      uid,
+			"userID":      userID,
 			"roles":    roles,
 			"is_mod":   isMod,
 		})
@@ -217,6 +217,6 @@ func TestGetUser_Helpers(t *testing.T) {
 	json.Unmarshal([]byte(body), &result)
 	assert.Equal(t, false, result["user_nil"])
 	assert.Equal(t, false, result["must_nil"])
-	assert.Equal(t, float64(7), result["uid"])
+	assert.Equal(t, float64(7), result["userID"])
 	assert.Equal(t, true, result["is_mod"])
 }

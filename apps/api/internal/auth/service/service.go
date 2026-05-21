@@ -155,7 +155,7 @@ func (s *AuthService) FindOrCreateUserByID(id int) (*authModel.User, error) {
 	if err := s.repo.CreateUser(newUser); err != nil {
 		return nil, fmt.Errorf("failed to create local user row: %w", err)
 	}
-	slog.Info("Provisioned local user row", "uid", id)
+	slog.Info("Provisioned local user row", "userID", id)
 	return newUser, nil
 }
 

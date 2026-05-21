@@ -26,7 +26,7 @@ const { data: room } = await useAsyncData<ChatRoomDetail | null>(
 )
 
 const isGroup = computed(() => room.value?.type !== 'PRIVATE')
-const myUid = computed(() => userStore.user.id)
+const myUserId = computed(() => userStore.user.id)
 
 const messages = ref<ChatMessageItem[]>([])
 const input = ref('')
@@ -36,7 +36,7 @@ const scrollArea = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 
 const sanitize = (html: string) =>
-  DOMPurify.sanitize(html || '', { ADD_ATTR: ['data-uid', 'target'] })
+  DOMPurify.sanitize(html || '', { ADD_ATTR: ['data-id', 'target'] })
 
 // Pagination model (REST-only, no realtime):
 //   - loadLatest(): the most recent page, used on entry + after any in-place
@@ -407,7 +407,7 @@ onBeforeUnmount(() => pause())
               <span
                 class="bg-default-100 text-default-500 rounded-full px-3 py-1 text-xs"
               >
-                {{ m.sender_id === myUid ? '您' : `“${m.sender?.name}”` }}
+                {{ m.sender_id === myUserId ? '您' : `“${m.sender?.name}”` }}
                 删除了一条消息
               </span>
             </div>
@@ -416,21 +416,21 @@ onBeforeUnmount(() => pause())
               v-else
               :id="`chat-msg-${m.id}`"
               class="group flex items-end gap-2 rounded-lg p-1 transition-shadow"
-              :class="m.sender_id === myUid ? 'justify-end' : 'justify-start'"
+              :class="m.sender_id === myUserId ? 'justify-end' : 'justify-start'"
             >
               <KunAvatar
-                v-if="m.sender_id !== myUid"
+                v-if="m.sender_id !== myUserId"
                 :user="m.sender"
                 size="sm"
               />
               <div
                 class="flex max-w-[72%] flex-col"
-                :class="m.sender_id === myUid ? 'items-end' : 'items-start'"
+                :class="m.sender_id === myUserId ? 'items-end' : 'items-start'"
               >
                 <div
                   class="relative rounded-xl px-3 py-2 text-sm"
                   :class="
-                    m.sender_id === myUid
+                    m.sender_id === myUserId
                       ? 'bg-primary/10'
                       : 'bg-default-100'
                   "
@@ -494,7 +494,7 @@ onBeforeUnmount(() => pause())
                 </div>
               </div>
               <KunAvatar
-                v-if="m.sender_id === myUid"
+                v-if="m.sender_id === myUserId"
                 :user="m.sender"
                 size="sm"
                 :is-navigation="false"
@@ -535,7 +535,7 @@ onBeforeUnmount(() => pause())
                 is-icon-only
                 variant="light"
                 aria-label="表情与贴纸"
-                :disabled="!myUid"
+                :disabled="!myUserId"
               >
                 <KunIcon name="lucide:smile" class="size-5" />
               </KunButton>
@@ -550,9 +550,9 @@ onBeforeUnmount(() => pause())
             ref="inputEl"
             v-model="input"
             :placeholder="
-              myUid ? 'Ctrl + 回车 发送，支持 Markdown' : '请先登录'
+              myUserId ? 'Ctrl + 回车 发送，支持 Markdown' : '请先登录'
             "
-            :disabled="!myUid"
+            :disabled="!myUserId"
             rows="2"
             class="border-default/20 bg-background flex-1 rounded-lg border p-2 text-sm"
             @keydown="handleKeydown"
@@ -561,7 +561,7 @@ onBeforeUnmount(() => pause())
             color="primary"
             is-icon-only
             :loading="sending"
-            :disabled="sending || !input.trim() || !myUid"
+            :disabled="sending || !input.trim() || !myUserId"
             aria-label="发送"
             @click="sendMessage"
           >
@@ -577,7 +577,7 @@ onBeforeUnmount(() => pause())
       v-if="menuTarget"
       :open="menuOpen"
       :anchor="menuAnchor"
-      :is-owner="menuTarget.sender_id === myUid"
+      :is-owner="menuTarget.sender_id === myUserId"
       :reactions="menuTarget.reaction ?? []"
       @close="menuOpen = false"
       @reply="startReply(menuTarget)"

@@ -31,14 +31,14 @@ watchEffect(() => {
 
 // introduction_html is pre-rendered server-side via the markdown package; we
 // only need to sanitize before mounting it. ADD_ATTR keeps mention links'
-// data-uid attribute (the renderer adds class="kun-mention").
+// data-id attribute (the renderer adds class="kun-mention").
 const introHtml = computed(() => {
   if (!detail.value?.introduction_html) return ''
   const text = getPreferredLanguageText(
     detail.value.introduction_html,
     lang.value
   )
-  return DOMPurify.sanitize(text, { ADD_ATTR: ['data-uid'] })
+  return DOMPurify.sanitize(text, { ADD_ATTR: ['data-id'] })
 })
 
 const langOptions = [
