@@ -17,10 +17,10 @@ const children = computed(() =>
 
 <template>
   <!-- The parent <aside> handles sticky positioning + scroll bounds; this
-       component is just the styled chrome. -->
-  <nav
-    class="border-default/20 bg-background rounded-lg border p-3"
-  >
+       component is just the styled chrome. Matches the next-web original:
+       a right divider (border-r) only, not a boxed card — the sidebar is
+       part of the page layout, not a floating panel. -->
+  <nav class="border-default-200 pr-3 lg:border-r">
     <NuxtLink
       to="/about"
       class="hover:bg-default-100 mb-2 flex items-center gap-2 rounded-md px-2 py-2 text-base font-semibold"

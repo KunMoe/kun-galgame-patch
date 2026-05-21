@@ -1417,4 +1417,299 @@ KunUI 至此对"文件交互"主题给出完整三层方案，**没有任何 nat
 
 ---
 
+## §14 v0.4.3 — `getRandomSticker` 双层修复：useState + 客户端 Map 缓存（2026-05-21）🔴
+
+moyu 上报的运行时崩溃 bug，**严重度 critical**。任何下游 app 只要在 computed / watcher 重算路径上渲染 `<KunAvatar :user>` 或 `<KunNull description>` 就会撞上。
+
+> **本节双层教训**：第一层是 moyu 抓到的原始 bug，第二层是**我修复时引入的新 bug**（SSR 模块级缓存跨请求泄漏）。两层都已经修，但保留中间过程作为反面教材 —— 改 SSR 代码时如果不同时想清楚 server / client / setup / reactive effect 四个执行上下文，很容易"修一个 bug 引一个新 bug"。
+
+### 症状
+
+页面正常加载 → 调用任何会刷新数据的 action（resource refresh / list reload / 任何 `refresh()` 调用）→ 整个页面崩，控制台 `Cannot read properties of null (reading '$nuxt')`。
+
+### 第一层根因（moyu 诊断）
+
+`packages/ui/app/utils/getRandomSticker.ts` 用了 **Nuxt 的 `useState`**：
+
+```ts
+// 最初版（炸）
+export const getRandomSticker = (id: string) => {
+  const stickerUrl = useState<string>(`random-sticker-${id}`, () => { /* pick random */ })
+  return stickerUrl
+}
+```
+
+调用栈：
+
+```
+tryUseNuxtApp → useNuxtApp → useState → getRandomSticker (line 6:22)
+  ← Avatar.vue::userAvatarSrc (computed)
+    ← <KunAvatar :user> 在父组件 refresh 后的 microtask 重算
+```
+
+Vue 的 reactivity scheduler 在 microtask 里跑 computed 重算时，**`tryUseNuxtApp()` 拿不到 Nuxt 实例**（实例只在 setup / lifecycle hook 同步路径上可访问），返回 `null` → 取 `null.$nuxt` 崩。
+
+这是 **Nuxt 3 的已知陷阱**：`useState` 必须在 setup / lifecycle hook 同步路径调用，不能从重入式 reactive effect 里调。同族表现还有 `LinkDetailModal.vue::watch(open)` 里 `useRuntimeConfig` / `kunFetch` 必须 `nuxtApp.runWithContext(...)` 包一下 —— 都是 Nuxt context 在 microtask 边界不自动激活造成的。
+
+### 第二层根因（我修复时引入的新 bug）
+
+我第一版修复用"**模块级 `Map<string, Ref<string>>` 缓存 + 纯 `ref()`**"，看似避开了 Nuxt context 依赖。但**这个 Map 在 SSR 进程里跨请求泄漏**，触发新一类水合不一致：
+
+| | F5 #1 | F5 #2（同进程下一个请求） |
+|---|---|---|
+| Server module cache | 空 | **已有 F5 #1 留下的 ref** ← 泄漏点 |
+| Server 是否调 `useState` | ✅ 调 → 选 URL X → 入 payload | ❌ cache hit 直接返，**`useState` 没调，payload 没 X** |
+| Server 渲染 HTML | X | X（从 stale ref） |
+| Client 水合：payload 里有 X？ | ✅ 有 → 渲 X | ❌ 没有 → `useState` 调 initFn → 选 Y → **渲 Y ✗** |
+
+Server 进程是长驻的（Node 的 `process.on('request', ...)` 一直跑），`const cache = new Map()` 模块作用域变量在两次请求间继续活着。但 **`NUXT.payload` 是按请求重新构造的**。两个寿命不对齐时，module cache 把 `useState` 短路掉，server 渲了 X，client 不知道是 X，自己算了 Y → 水合 mismatch。**只在 F5 #2+ 出现**，#1 永远正常 —— 比第一层 bug 更隐蔽。
+
+### 最终修复（双层都覆盖）
+
+**关键洞察**：cache **只在 client 端**存在；server 端永远走 `useState` 的 per-request 路径。
+
+```ts
+import { ref, type Ref } from 'vue'
+import { randomNum } from '../../shared/utils/random'
+
+const KUN_STICKER_DOMAIN = 'https://sticker.kungal.com'
+
+const makeUrl = (): string => {
+  const randomPackIndex = randomNum(1, 5)
+  const randomStickerIndex = randomNum(1, 80)
+  return `${KUN_STICKER_DOMAIN}/stickers/KUNgal${randomPackIndex}/${randomStickerIndex}.webp`
+}
+
+// Client-only cache. Server-side stays null → every request goes
+// through useState's per-request payload path → hydration stays
+// consistent across F5s.
+const clientCache = import.meta.client
+  ? new Map<string, Ref<string>>()
+  : null
+
+export const getRandomSticker = (id: string): Ref<string> => {
+  const key = `random-sticker-${id}`
+
+  if (clientCache) {
+    const existing = clientCache.get(key)
+    if (existing) return existing
+  }
+
+  const nuxtApp = tryUseNuxtApp()
+  let stickerUrl: Ref<string>
+  if (nuxtApp) {
+    // setup / lifecycle / SSR path — useState wires the URL into
+    // NUXT.payload so server-picked value is what client hydrates with.
+    stickerUrl = useState<string>(key, makeUrl)
+  } else {
+    // Reactive recompute path on client — tryUseNuxtApp returns null
+    // here. The id is by definition post-hydration (SSR never saw it),
+    // so no hydration parity exists to preserve; plain ref is safe.
+    stickerUrl = ref(makeUrl())
+  }
+
+  if (clientCache) clientCache.set(key, stickerUrl)
+  return stickerUrl
+}
+```
+
+四条路径覆盖矩阵：
+
+| 路径 | 行为 | 为什么对 |
+|---|---|---|
+| SSR pass | `clientCache=null` → 跳过 → 走 `useState` → 入 payload | per-request 序列化正确，无跨请求泄漏 |
+| Client 首次挂载（cache miss + 有 nuxtApp） | 走 `useState` → 读 NUXT.payload | 拿到 server 选的 URL，水合一致 |
+| Client reactive 重算（cache hit） | 直接返 cached ref | 不调任何 Nuxt composable，不崩 |
+| Client 首见 refresh 后才出现的新 id（cache miss + 无 nuxtApp） | fallback `ref(makeUrl())` + 入 cache | 这个 id 从未参与 SSR，没水合配对要保护，任意 URL 都可 |
+
+### 接受的退化（更精确的描述）
+
+只剩**一种**残留：client reactive 路径上第一次见某个全新 id 时，`tryUseNuxtApp()` 返 null → 走 fallback `ref()` 路径 → 选的 URL 与"如果 server 看到这个 id 会选的 URL"可能不同。**但这个 id 根本没经过 SSR**（refresh 后才出现），所以没有"参照真值"可对比，不存在 hydration mismatch。
+
+### 给 KunUI 立两条工程规则（在 v0.4.3 加上）
+
+#### 规则 1：layer utils 调 Nuxt composable 必须 `tryUseNuxtApp()` 守门
+
+> 任何依赖 Nuxt context 的 composable（`useState` / `useFetch` / `useAsyncData` / `useRoute` / `useRuntimeConfig` 等）调用前，要主动审视"是否可能从 reactive effect 重入路径触发"。如果可能，**必须 `tryUseNuxtApp()` 守门 + 准备 plain Vue 原语 fallback**。
+
+#### 规则 2：layer utils 里**永远不要加模块级 mutable 缓存而不区分 server / client**
+
+> Nuxt SSR 进程长驻，模块作用域变量跨请求泄漏，会把 `useState` / `useFetch` 这种 per-request scoped 机制短路，导致**只在首次 F5 后才出现的水合 / payload 不一致 bug** —— 难诊断、产线很常见。
+>
+> 安全模式：
+> ```ts
+> const cache = import.meta.client ? new Map() : null
+> ```
+> 或者干脆挂到 `nuxtApp.payload._xxxCache` 之类的请求作用域里。
+>
+> **静态只读常量（如 `KEY_OWNING_ROLES = new Set([...])` 这种 lookup table）不在此约束内** —— 不写入就没有泄漏。
+
+### 为什么 v0.1.x silent-failure-hunter 没抓到第一层
+
+v0.1.1 复审时 agent 跑过 `getRandomSticker.ts`，但当时关注的是"`useState` 是否被正确序列化到 payload"，**没有模拟"从重入式 reactive effect 调用"的场景**。Nuxt context 依赖的运行时检测在 SSR pass / CSR 第一次挂载时都能拿到实例 —— bug 只在数据 refresh 触发 computed 重算时出现，这个场景不在静态 review 的常规检查面里。
+
+### 为什么第二层 bug 我自己也没第一时间看出
+
+修复第一层时，我满足于"避开 `useState` → 用 `ref()`" 的局部对症，**没把"模块级 Map 在 Node SSR 长驻进程里的寿命"作为独立维度审视**。这种"修一个 bug 引一个新 bug"在 SSR 代码里很常见：每次改 layer util 都该同时拿这四个轴过一遍：
+
+```
+1. 在 setup 顶层调用    → OK?
+2. 在 reactive effect 重入路径调用 → OK?
+3. 在 SSR 进程的 N 个请求间共享状态 → OK?
+4. 在 CSR hydration 时 server / client 状态对得上 → OK?
+```
+
+只通过 1+2 是不够的。这次的反思让 KunUI 的 silent-failure-hunter agent 下次跑 review 时也应该把 (3) (4) 显式加入检查清单。
+
+### 验证
+
+- `pnpm -F web exec nuxt build` ✅
+- `pnpm -F wiki exec nuxt build` ✅
+- moyu 上报：`nuxt prepare` 无 dup warning、`tsc + vue-tsc` 通过、`vitest 12/12 spec 85/85 case` 通过 ✅
+- 运行时验证：moyu 编辑提交 → 资源 refresh → 不再炸 ✅
+- F5 多次刷新水合警告消失 ✅
+
+### 给 kungal 的 patch notes
+
+> ▎ **v0.4.3 patch — `getRandomSticker` 修复 reactive effect 崩溃 + SSR 水合不一致**
+> ▎ 1) 避开 `useState` 在 microtask 重算里调用导致的 null context 崩溃；2) cache 只在 client 端启用，避免 SSR 模块级缓存跨请求泄漏破坏 payload 序列化。
+> ▎ 下游消费方零迁移成本（API 不变）。如果你 fork 了 `getRandomSticker.ts`，请覆盖到 v0.4.3 版本。
+
+---
+
+## §15 v0.4.4 — `useKunMessage` 裸 `render()` 漏 appContext 才是一连串崩溃的真根因（2026-05-21）🔴🔴
+
+moyu 在多轮调试后揪到的"**统一根因**"，**严重度 critical**，且**意外解释了 §14 之前那一连串看似不相关的 `$nuxt null` 崩溃报告**。这一节是 KunUI 自 v0.1.0 起最关键的一个 hotfix。
+
+> **本节是一个完整侦探故事**：表象 A、B、C、D 看起来是四个独立的 Nuxt context bug，调试者（先是我，再是 moyu）顺着每个表象局部对症，结果只是把崩溃点推迟。最终发现**全是同一个 root cause** —— `useKunMessage` 第一次被调用时挂载 MessageContainer 的 `render(vNode, container)` 没带 appContext，**整个 Nuxt 实例从此被腐化**，后续任何 Nuxt composable 调用都可能拿到 null。
+
+### 真正的 bug — 一行代码
+
+`packages/ui/app/composables/useKunMessage.ts:42`：
+
+```ts
+// 之前（炸）
+const vNode = h(MessageContainer)
+render(vNode, containerRef)   // ❌ 裸 render，vNode 处在孤立 app context
+```
+
+Vue 3 的 `render(vNode, container)` API 创建的 vNode 默认**处在一个孤立的 app context**：没有 Nuxt 实例、没有 `@nuxt/icon` 插件、没有 pinia、什么都没有。
+
+`<MessageContainer>` 被这样裸 render → 内部 `<KunAlertMessageItem>` → 渲染 `<KunIcon>`（`@nuxt/icon` 的包装）→ `<NuxtIcon>` 的 `setup()` 第一行 `useNuxtApp()` → `tryUseNuxtApp()` 返 null → **崩**。
+
+Stack trace 一目了然：
+
+```
+at setup (index.js:32:21)       ← NuxtIcon 的 setup
+at <NuxtIcon name="...">
+at <KunIcon name="...">
+at <KunAlertMessageItem>
+at <KunAlertMessageContainer>   ← 被 bare render() 挂载的
+```
+
+### 一行修复
+
+```ts
+const vNode = h(MessageContainer)
+
+const nuxtApp = tryUseNuxtApp()
+if (nuxtApp?.vueApp) {
+  vNode.appContext = nuxtApp.vueApp._context
+}
+
+render(vNode, containerRef)
+```
+
+`vNode.appContext = nuxtApp.vueApp._context` 是 **Vue 3 文档化的 "render 独立 vNode 但保留 app context" 模式**。这一行让 MessageContainer 子树里所有 Nuxt composable（NuxtIcon 的 `useNuxtApp`、`useKunMessageState` 等）都能拿到原 Nuxt 实例。
+
+### 之前那一连串错误的统一解释
+
+| 表象 | 我（和 moyu）以为的根因 | **真实根因** |
+|---|---|---|
+| A. `getRandomSticker $nuxt null` | computed 重算路径 useState 失败 | 大部分是真，但部分是 B 引起的腐化 |
+| B. `kunFetch useRuntimeConfig $nuxt null` (在 `LinkDetailModal.vue::watch(open)` 里) | watch 调度从 microtask 跑，丢了 Nuxt context | **`useKunMessage` 之前已经把 Nuxt 实例搞坏了**，watch 拿到的本来就是腐化态 |
+| C. 编辑 modal 关闭报 `$nuxt` | 关闭流程里某个 composable 调度问题 | **关闭时 `useKunMessage(10550, 'success')` 触发首次挂载 MessageContainer → NuxtIcon 炸** |
+| D. 后续任意操作都开始报 `$nuxt` | 多个独立 bug | **C 把 Vue 内部状态弄坏后，后续所有 useNuxtApp 一片 null** |
+
+A 确实是独立的 reactive recompute 问题（§14 修过），但 B、C、D **不是独立 bug**，是 useKunMessage 首次挂载失败的连锁反应。**之前所有 `runWithContext` / `nextTick` / refactor 的修复都在错误的地方修**，只是把崩溃点推迟，没解决真正的源头。
+
+### 为什么"首次崩溃会腐化整个 Nuxt 实例"
+
+Vue 3 `render(vnode, container)` 失败时，Vue 内部的渲染器状态可能进入半挂载态。如果失败的子树有 effect / setup 已经注册到全局 reactive system 但没成功绑到 component instance 上，**这些 dangling effects 会污染后续 `useNuxtApp()` 的查找路径**。具体机制要看 Vue 源码细节，但实测表现是：useKunMessage 首次失败 → 后续任意 setup 调用 `useNuxtApp()` 也开始返 null。
+
+**这就是为什么我之前用 `runWithContext` 包 LinkDetailModal 的 watch 一度看似有效但又不稳定** —— `runWithContext` 把 Nuxt 实例显式注入到回调里，绕过了 `useNuxtApp()` 的查找，所以**在被腐化的实例还能用时**修复有效；一旦腐化更深，连显式注入的实例本身都不健康。
+
+### 修复后的连锁效应
+
+| 表象 | 修复 v0.4.4 后 |
+|---|---|
+| A. `getRandomSticker` | §14 的双层修复已经独立解决了 |
+| B. `kunFetch` in watch | **自动消失** —— 真正的根因是 C 引起的腐化，C 修了 B 自然好 |
+| C. 编辑 modal 关闭 `$nuxt` | **自动消失** —— MessageContainer 现在带着正确 appContext 挂载，NuxtIcon 拿得到 Nuxt 实例 |
+| D. 后续任意操作崩溃 | **自动消失** —— 没有 C 的连锁腐化就不存在 |
+
+### 验证
+
+- `pnpm -F web exec nuxt build` ✅
+- `pnpm -F wiki exec nuxt build` ✅
+- moyu 上报：`nuxt prepare` / `tsc + vue-tsc` / `vitest 85/85` 全过 ✅
+- 运行时验证：编辑提交触发 success message → 正常显示 + 后续操作不再炸 ✅
+
+### 给 KunUI 立第三条工程规则（v0.4.4 起生效，与 §14 那两条合并成 KunUI 三铁律）
+
+#### 规则 3：用 Vue 原生 `render(vnode, container)` 命令式挂载组件时，**必须**显式 graft Nuxt appContext
+
+> ```ts
+> const vNode = h(SomeComponent)
+> const nuxtApp = tryUseNuxtApp()
+> if (nuxtApp?.vueApp) {
+>   vNode.appContext = nuxtApp.vueApp._context
+> }
+> render(vNode, container)
+> ```
+>
+> **不这样做的后果**：被 render 的子树处于孤立 app context，任何调用 Nuxt composable 的子组件（`<NuxtIcon>` / `<NuxtLink>` / `<NuxtImg>` 之类）都会在 setup 期崩，而且**首次崩溃可能腐化整个 Vue / Nuxt 实例**，后续 `useNuxtApp()` 一片 null。
+>
+> 涉及面：任何用 `render()` / `createVNode()` / `createApp().mount()` 命令式挂载 UI 的 KunUI 代码（弹窗、toast、command palette、context menu）。审查时主动 grep `\brender\(` 看是否都带了 appContext graft。
+>
+> **Vue 文档参考**：https://vuejs.org/api/render-function.html#h —— "createVNode() also accepts a third argument context to specify which app context to use"。
+
+### KunUI v0.1.x → v0.4.x 三铁律总结
+
+把 §14 + §15 的反思合并成 KunUI layer / composable / util 的三条强制规则：
+
+| # | 规则 | 反面教材 |
+|---|---|---|
+| 1 | layer utils 调 Nuxt composable 必须 `tryUseNuxtApp()` 守门 + plain Vue 原语 fallback | `getRandomSticker` v0.1.x（§14） |
+| 2 | layer utils 里 module-level mutable cache 必须 `import.meta.client`-gated；读写都禁止跨请求泄漏 | `getRandomSticker` 我修第一版（§14） |
+| 3 | 命令式 `render(vnode, container)` 必须 graft `nuxtApp.vueApp._context` 到 vNode.appContext | `useKunMessage` v0.1.x（§15） |
+
+### 反思 — 调试 SSR / Nuxt context bug 的元教训
+
+这一轮调试有三层教训叠加：
+
+**层 1 — 局部对症 vs 根因**：我和 moyu 都犯过"看到 stack trace 直接修 stack trace 顶部"的错。`getRandomSticker` 是真 bug（§14），但 `kunFetch in watch` / `editModal close` / `subsequent useNuxtApp null` 这三个"看起来是 watch 调度 / async timing / cleanup 的问题" **统统是 useKunMessage 一次性挂载失败的连锁反应**。
+
+**层 2 — Nuxt 实例的"腐化"是真存在的**：以前我以为 Nuxt context 失败只是"局部拿不到"，不会"污染整个 app"。这次实测发现 `render()` 失败会让后续 `useNuxtApp()` 全军覆没 —— 一旦某个表象出现，赶紧问自己"**这是不是某个早一点的 render / mount 失败的余波**？"
+
+**层 3 — 多 bug 同时报告时，先找"最早触发的那个"**：调试时按时间顺序排查事件，不要按当前报错位置排查。如果 useKunMessage 在 t=0 失败，但你的注意力被 t=5 的 LinkDetailModal watch 报错吸走，就会一直跟着 t=5 的红鲱鱼跑。
+
+### 给 kungal 的 patch notes
+
+> ▎ **v0.4.4 patch — `useKunMessage` 修复整个 KunUI 调试链最深处的真根因** 🔴🔴
+> ▎ 原因：`useKunMessage` 内部用 Vue 的 `render(vnode, container)` 裸挂载 MessageContainer，没设 `vNode.appContext`，导致 MessageContainer 子树里任何调用 Nuxt
+> ▎ composable 的组件（首当其冲是 `<NuxtIcon>`）都崩，**且首次崩溃会腐化整个 Nuxt 实例**，后续看似不相关的 `useState` / `useFetch` / `useNuxtApp` 一片 null。
+> ▎
+> ▎ 修复（packages/ui/app/composables/useKunMessage.ts）：
+> ▎ ```ts
+> ▎ const vNode = h(MessageContainer)
+> ▎ const nuxtApp = tryUseNuxtApp()
+> ▎ if (nuxtApp?.vueApp) vNode.appContext = nuxtApp.vueApp._context
+> ▎ render(vNode, containerRef)
+> ▎ ```
+> ▎
+> ▎ 下游消费方零迁移成本（API 不变）。**强烈建议立即覆盖 v0.4.4 版本**。如果你之前为绕这个 bug 加过 `nuxtApp.runWithContext(() => useKunMessage(...))` 或类似 wrap，**可以删掉了**（修复后不再需要），但留着也无害。
+
+---
+
 *文档维护：每次完成批次后更新对应章节的 checkbox。新增组件评审进 §2 表 + §3 新章节。*

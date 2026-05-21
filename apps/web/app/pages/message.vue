@@ -21,9 +21,12 @@ const navItems = [
   { key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }
 ]
 
-const currentKey = computed(() => {
-  const seg = route.path.split('/').filter(Boolean)
-  return seg[1] ?? ''
+// Writable computed for KunTab v-model — setter is a no-op since item.href
+// drives the navigation via navigateTo(), and the route change re-runs
+// the getter to update the active indicator.
+const currentKey = computed({
+  get: () => route.path.split('/').filter(Boolean)[1] ?? '',
+  set: () => {}
 })
 </script>
 
@@ -32,24 +35,19 @@ const currentKey = computed(() => {
     <div class="grid gap-4 lg:grid-cols-4">
       <aside class="lg:col-span-1">
         <KunCard :bordered="true">
-          <nav class="flex flex-col gap-1">
-            <NuxtLink
-              v-for="item in navItems"
-              :key="item.key"
-              :to="item.href"
-              :class="
-                cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  currentKey === item.key
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-default-700 hover:bg-default-100'
-                )
-              "
-            >
-              <KunIcon :name="item.icon" class="size-4" />
-              {{ item.title }}
-            </NuxtLink>
-          </nav>
+          <KunTab
+            v-model="currentKey"
+            :items="navItems.map((n) => ({
+              value: n.key,
+              textValue: n.title,
+              icon: n.icon,
+              href: n.href
+            }))"
+            variant="light"
+            color="primary"
+            size="md"
+            orientation="vertical"
+          />
         </KunCard>
       </aside>
 

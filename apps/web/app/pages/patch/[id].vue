@@ -32,9 +32,12 @@ onMounted(async () => {
 
 provide('patch', patch)
 
-const currentTab = computed(() => {
-  const last = route.path.split('/').filter(Boolean).pop() ?? 'introduction'
-  return last
+// Writable computed so it can drive KunTab's v-model. The "set" path is a
+// no-op because KunTab.href already calls navigateTo(); the route change
+// re-runs the getter and the tab indicator follows.
+const currentTab = computed({
+  get: () => route.path.split('/').filter(Boolean).pop() ?? 'introduction',
+  set: () => {}
 })
 
 // "编辑历史" / "编辑请求" tabs proxy the Wiki revision/PR surface that
@@ -140,25 +143,13 @@ const tabs = computed(() => [
     </div>
 
     <!-- ── Tabs ───────────────────────────────────────── -->
-    <nav
-      class="border-default/20 bg-background/60 flex gap-1 rounded-2xl border p-1"
-    >
-      <NuxtLink
-        v-for="t in tabs"
-        :key="t.key"
-        :to="t.href"
-        :class="
-          cn(
-            'flex-1 rounded-xl px-3 py-2.5 text-center text-sm transition-colors',
-            currentTab === t.key
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'text-default-600 hover:bg-default-100 hover:text-foreground'
-          )
-        "
-      >
-        {{ t.title }}
-      </NuxtLink>
-    </nav>
+    <KunTab
+      v-model="currentTab"
+      :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"
+      variant="light"
+      color="primary"
+      size="md"
+    />
 
     <div>
       <NuxtPage />

@@ -32,9 +32,13 @@ const tabs = computed(() => [
   { key: 'comment', title: '评论', href: `/user/${userId.value}/comment` }
 ])
 
-const currentTab = computed(() =>
-  route.path.split('/').filter(Boolean).pop() ?? 'resource'
-)
+// Writable computed so it can drive KunTab's v-model — `set` is a no-op
+// since KunTab.href triggers navigateTo() and the route change re-runs
+// the getter.
+const currentTab = computed({
+  get: () => route.path.split('/').filter(Boolean).pop() ?? 'resource',
+  set: () => {}
+})
 
 // 发消息: resolves or creates the private chat room between the current
 // user and the profile owner, then navigates to its transcript. Backend
@@ -212,23 +216,15 @@ const toggleFollow = async () => {
       </div>
 
       <div class="lg:col-span-2">
-        <nav class="border-default/20 mb-4 flex gap-3 overflow-x-auto border-b">
-          <NuxtLink
-            v-for="t in tabs"
-            :key="t.key"
-            :to="t.href"
-            :class="
-              cn(
-                'whitespace-nowrap px-3 py-3 text-sm transition-colors',
-                currentTab === t.key
-                  ? 'text-primary border-primary -mb-px border-b-2 font-medium'
-                  : 'text-default-600 hover:text-foreground'
-              )
-            "
-          >
-            {{ t.title }}
-          </NuxtLink>
-        </nav>
+        <KunTab
+          v-model="currentTab"
+          :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"
+          variant="underlined"
+          color="primary"
+          size="md"
+          scrollable
+          class="mb-4"
+        />
         <NuxtPage />
       </div>
     </div>

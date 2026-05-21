@@ -7,6 +7,12 @@ useKunSeoMeta({
 })
 
 const route = useRoute()
+// Writable computed for KunTab v-model — `set` is a no-op; KunTab.href
+// already does the navigateTo() and the route change re-runs the getter.
+const currentHref = computed({
+  get: () => route.path,
+  set: () => {}
+})
 </script>
 
 <template>

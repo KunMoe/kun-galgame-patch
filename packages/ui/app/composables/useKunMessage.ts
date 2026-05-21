@@ -39,6 +39,30 @@ const initializeContainer = () => {
   document.body.appendChild(containerRef)
 
   const vNode = h(MessageContainer)
+
+  // CRITICAL: attach the active Nuxt app's appContext to the vNode.
+  //
+  // Vue's bare `render(vnode, container)` creates an isolated app
+  // context. Any descendant component whose setup calls a Nuxt
+  // composable — `<KunIcon>` is the live example, it wraps
+  // `<NuxtIcon>` from @nuxt/icon whose setup() calls useNuxtApp() —
+  // hits `Cannot read properties of null (reading '$nuxt')` because
+  // tryUseNuxtApp() returns null in that isolated context.
+  //
+  // Walking the appContext from the live Nuxt instance preserves
+  // plugins (@nuxt/icon, pinia, color-mode, etc.) AND, more
+  // importantly, the `$nuxt` injection that those plugins rely on.
+  //
+  // tryUseNuxtApp can return null if useKunMessage is itself called
+  // from a microtask outside a Nuxt context. Consumers must wrap such
+  // calls in `nuxtApp.runWithContext(() => useMessage(...))` — when
+  // they do, the lookup here succeeds and the container mounts
+  // correctly for the rest of the session.
+  const nuxtApp = tryUseNuxtApp()
+  if (nuxtApp?.vueApp) {
+    vNode.appContext = nuxtApp.vueApp._context
+  }
+
   render(vNode, containerRef)
 }
 
