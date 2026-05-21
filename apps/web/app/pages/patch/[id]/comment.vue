@@ -99,11 +99,10 @@ const toggleLike = async (c: PatchPageComment) => {
     >
       <KunAvatar :user="userStore.user" size="sm" :is-navigation="false" />
       <div class="min-w-0 flex-1 space-y-3">
-        <textarea
+        <KunTextarea
           v-model="content"
           placeholder="写下你的评论..."
-          rows="3"
-          class="border-default/20 bg-default-50 focus:border-primary w-full rounded-xl border p-3 text-sm transition-colors outline-none"
+          :rows="3"
         />
         <div class="flex justify-end">
           <KunButton
@@ -147,25 +146,20 @@ const toggleLike = async (c: PatchPageComment) => {
               </span>
             </div>
             <div class="kun-prose text-sm" v-html="sanitize(c.content_html)" />
-            <button
-              type="button"
-              :class="
-                cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors',
-                  c.is_liked
-                    ? 'bg-danger/10 text-danger'
-                    : 'text-default-500 hover:bg-danger/10 hover:text-danger'
-                )
-              "
+            <KunButton
+              :variant="c.is_liked ? 'flat' : 'light'"
+              color="danger"
+              size="xs"
+              rounded="full"
               :aria-label="c.is_liked ? '取消点赞' : '点赞'"
               @click="toggleLike(c)"
             >
               <KunIcon
                 name="lucide:thumbs-up"
-                :class="cn('size-3.5', c.is_liked ? 'fill-current' : '')"
+                :class="cn('size-3.5', c.is_liked && 'fill-current')"
               />
               {{ c.like_count }}
-            </button>
+            </KunButton>
 
             <div
               v-if="c.reply?.length"
@@ -186,25 +180,21 @@ const toggleLike = async (c: PatchPageComment) => {
                   </span>
                 </div>
                 <div class="kun-prose mt-1.5" v-html="sanitize(r.content_html)" />
-                <button
-                  type="button"
-                  :class="
-                    cn(
-                      'mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors',
-                      r.is_liked
-                        ? 'bg-danger/10 text-danger'
-                        : 'text-default-500 hover:bg-danger/10 hover:text-danger'
-                    )
-                  "
+                <KunButton
+                  :variant="r.is_liked ? 'flat' : 'light'"
+                  color="danger"
+                  size="xs"
+                  rounded="full"
+                  class-name="mt-1.5"
                   :aria-label="r.is_liked ? '取消点赞' : '点赞'"
                   @click="toggleLike(r)"
                 >
                   <KunIcon
                     name="lucide:thumbs-up"
-                    :class="cn('size-3.5', r.is_liked ? 'fill-current' : '')"
+                    :class="cn('size-3.5', r.is_liked && 'fill-current')"
                   />
                   {{ r.like_count }}
-                </button>
+                </KunButton>
               </div>
             </div>
           </div>

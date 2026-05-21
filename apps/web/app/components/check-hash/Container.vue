@@ -91,14 +91,11 @@ const handleFileSelect = (e: Event) => {
     <template #header>
       <div class="flex flex-col space-y-6">
         <div v-if="contentValue" class="w-full">
-          <label class="text-default-700 mb-2 block text-sm font-medium">
-            资源链接
-          </label>
-          <textarea
+          <KunTextarea
+            label="资源链接"
+            :model-value="contentValue"
             readonly
-            :value="contentValue"
-            class="border-default/20 w-full rounded-md border p-3 text-sm"
-            rows="3"
+            :rows="3"
           />
         </div>
         <KunInput
@@ -138,12 +135,7 @@ const handleFileSelect = (e: Event) => {
       </div>
 
       <div v-if="status === 'checking'" class="mt-6">
-        <div class="bg-default-100 h-2 w-full overflow-hidden rounded-full">
-          <div
-            class="bg-primary h-full transition-all duration-200"
-            :style="{ width: `${progress}%` }"
-          />
-        </div>
+        <KunProgress :value="progress" color="primary" />
         <p class="text-default-500 mt-2 text-center">
           正在校验文件 Hash... {{ progress }}%
         </p>

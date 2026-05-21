@@ -142,23 +142,23 @@ const toggleLike = async (r: PatchResource) => {
         class="text-default-400 size-4"
       />
       <span class="text-default-500 text-sm">排序</span>
-      <button
+      <KunButton
         v-for="o in sortOptions"
         :key="o.value"
-        type="button"
-        class="rounded-full px-3 py-1 text-sm transition-colors"
-        :class="
-          sortField === o.value
-            ? 'bg-primary/10 text-primary font-medium'
-            : 'text-default-500 hover:bg-default-100'
-        "
+        :variant="sortField === o.value ? 'flat' : 'light'"
+        :color="sortField === o.value ? 'primary' : 'default'"
+        size="sm"
+        rounded="full"
         @click="sortField = o.value as SortField"
       >
         {{ o.label }}
-      </button>
-      <button
-        type="button"
-        class="text-default-500 hover:bg-default-100 ml-auto inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm transition-colors"
+      </KunButton>
+      <KunButton
+        variant="light"
+        color="default"
+        size="sm"
+        rounded="full"
+        class-name="ml-auto"
         :title="sortDesc ? '降序' : '升序'"
         @click="sortDesc = !sortDesc"
       >
@@ -167,7 +167,7 @@ const toggleLike = async (r: PatchResource) => {
           class="size-4"
         />
         {{ sortDesc ? '降序' : '升序' }}
-      </button>
+      </KunButton>
     </div>
 
     <KunLoading v-if="pending" description="正在获取补丁资源..." />
@@ -258,25 +258,20 @@ const toggleLike = async (r: PatchResource) => {
           class="border-default/15 flex flex-wrap items-center justify-between gap-2 border-t pt-3"
         >
           <div class="text-default-500 flex items-center gap-4 text-sm">
-            <button
-              type="button"
-              :class="
-                cn(
-                  'flex items-center gap-1.5 transition-colors',
-                  r.is_liked
-                    ? 'text-danger'
-                    : 'text-default-500 hover:text-danger'
-                )
-              "
+            <KunButton
+              :variant="r.is_liked ? 'flat' : 'light'"
+              color="danger"
+              size="xs"
+              rounded="full"
               :aria-label="r.is_liked ? '取消点赞' : '点赞'"
               @click="toggleLike(r)"
             >
               <KunIcon
                 name="lucide:heart"
-                :class="cn('size-4', r.is_liked ? 'fill-current' : '')"
+                :class="cn('size-4', r.is_liked && 'fill-current')"
               />
               {{ r.like_count }}
-            </button>
+            </KunButton>
             <span class="flex items-center gap-1.5">
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
@@ -337,15 +332,18 @@ const toggleLike = async (r: PatchResource) => {
                   class="text-default-400 group-hover:text-success size-3.5 shrink-0"
                 />
               </a>
-              <button
-                type="button"
-                class="text-default-400 hover:text-success hover:bg-success/10 shrink-0 rounded-md p-1.5 transition-colors"
+              <KunButton
+                variant="light"
+                color="success"
+                size="xs"
+                is-icon-only
+                class-name="shrink-0"
                 aria-label="复制下载链接"
                 title="复制下载链接"
                 @click="useKunCopy(lnk)"
               >
                 <KunIcon name="lucide:copy" class="size-4" />
-              </button>
+              </KunButton>
             </div>
             <p
               v-if="!linksOf(fetched[r.id]!).length"

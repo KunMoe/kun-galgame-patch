@@ -40,11 +40,10 @@ const save = () => {
           系统不会显示您编辑之前的消息，但消息时间前会增加「已编辑」提示。
         </p>
       </div>
-      <textarea
+      <KunTextarea
         v-model="draft"
-        rows="4"
+        :rows="4"
         autofocus
-        class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
         placeholder="支持 Markdown"
       />
       <div class="flex justify-end gap-2">

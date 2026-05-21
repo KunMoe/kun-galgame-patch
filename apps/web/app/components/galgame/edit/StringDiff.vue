@@ -136,14 +136,16 @@ const showEqContext = ref(false)
         </template>
       </div>
 
-      <button
+      <KunButton
         v-if="rows.some((r) => r.kind === 'eq')"
-        type="button"
-        class="text-primary mt-2 text-xs hover:underline"
+        variant="light"
+        color="primary"
+        size="xs"
+        class-name="mt-2 self-start"
         @click="showEqContext = !showEqContext"
       >
         {{ showEqContext ? '隐藏未变上下文' : '展开未变上下文' }}
-      </button>
+      </KunButton>
     </div>
   </div>
 </template>

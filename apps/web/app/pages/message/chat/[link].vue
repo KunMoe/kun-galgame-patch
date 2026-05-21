@@ -476,11 +476,13 @@ onBeforeUnmount(() => pause())
                   v-if="m.reaction && m.reaction.length"
                   class="mt-1 flex flex-wrap gap-1"
                 >
-                  <button
+                  <KunButton
                     v-for="r in m.reaction"
                     :key="r.id"
-                    type="button"
-                    class="bg-default-100 hover:bg-default-200 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors"
+                    variant="flat"
+                    color="default"
+                    size="xs"
+                    rounded="full"
                     @click="toggleReaction(m, r.emoji)"
                   >
                     <span>{{ r.emoji }}</span>
@@ -490,7 +492,7 @@ onBeforeUnmount(() => pause())
                       :alt="r.user?.name"
                       class="size-4 rounded-full"
                     />
-                  </button>
+                  </KunButton>
                 </div>
               </div>
               <KunAvatar
@@ -516,14 +518,17 @@ onBeforeUnmount(() => pause())
           </span>
           <p class="line-clamp-1 opacity-80">{{ replyTo.content }}</p>
         </div>
-        <button
-          type="button"
-          class="text-default-500 hover:text-foreground shrink-0 p-1"
+        <KunButton
+          variant="light"
+          color="default"
+          size="sm"
+          is-icon-only
+          class-name="shrink-0"
           aria-label="取消回复"
           @click="cancelReply"
         >
           <KunIcon name="lucide:x" class="size-4" />
-        </button>
+        </KunButton>
       </div>
 
       <!-- input -->
@@ -546,6 +551,11 @@ onBeforeUnmount(() => pause())
             />
           </KunPopover>
 
+          <!-- Native <textarea>: emoji insertion needs the underlying DOM
+               element's selectionStart/selectionEnd to splice into the
+               caret position. KunTextarea v0.1.x does not defineExpose its
+               inner textareaRef, so it can't provide the DOM access this
+               picker requires. Tracked as KunUI feedback. -->
           <textarea
             ref="inputEl"
             v-model="input"

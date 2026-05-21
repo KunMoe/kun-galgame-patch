@@ -14,54 +14,45 @@ const stickers = chatStickerArray()
 
 <template>
   <div class="w-80 sm:w-96">
-    <div class="border-default/20 mb-2 flex border-b">
-      <button
-        type="button"
-        class="flex-1 py-2 text-sm transition-colors"
-        :class="
-          tab === 'emoji'
-            ? 'text-primary border-primary border-b-2 font-medium'
-            : 'text-default-500'
-        "
-        @click="tab = 'emoji'"
-      >
-        表情
-      </button>
-      <button
-        type="button"
-        class="flex-1 py-2 text-sm transition-colors"
-        :class="
-          tab === 'sticker'
-            ? 'text-primary border-primary border-b-2 font-medium'
-            : 'text-default-500'
-        "
-        @click="tab = 'sticker'"
-      >
-        贴纸
-      </button>
-    </div>
+    <KunTab
+      v-model="tab"
+      :items="[
+        { value: 'emoji', textValue: '表情' },
+        { value: 'sticker', textValue: '贴纸' }
+      ]"
+      variant="underlined"
+      color="primary"
+      size="sm"
+      class="mb-2"
+    />
 
     <div v-show="tab === 'emoji'" class="h-48 overflow-y-auto">
       <div class="grid grid-cols-8 gap-1 p-1">
-        <button
+        <KunButton
           v-for="(e, i) in emojiArray"
           :key="i"
-          type="button"
-          class="hover:bg-default-200 rounded-md p-1 text-xl transition-colors"
+          variant="light"
+          color="default"
+          size="sm"
+          is-icon-only
+          class-name="text-xl"
           @click="emit('emoji', e)"
         >
           {{ e }}
-        </button>
+        </KunButton>
       </div>
     </div>
 
     <div v-show="tab === 'sticker'" class="h-48 overflow-y-auto">
       <div class="grid grid-cols-5 gap-2 p-1">
-        <button
+        <KunButton
           v-for="url in stickers"
           :key="url"
-          type="button"
-          class="hover:bg-default-200 rounded-md p-1 transition-colors"
+          variant="light"
+          color="default"
+          size="sm"
+          is-icon-only
+          class-name="p-1"
           @click="emit('sticker', url)"
         >
           <img
@@ -72,7 +63,7 @@ const stickers = chatStickerArray()
             loading="lazy"
             class="size-16 object-contain"
           />
-        </button>
+        </KunButton>
       </div>
     </div>
   </div>

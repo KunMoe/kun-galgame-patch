@@ -44,13 +44,13 @@ const { data: detail, pending } = await useAsyncData<PatchDetail | null>(
 // content_limit / age_limit use literal radio inputs in the template; only
 // original_language needs an options list (mirrors the four-language UI used
 // elsewhere on the site). See docs/galgame_wiki/01-galgame.md.
-const ORIGINAL_LANG_OPTIONS = [
+const ORIGINAL_LANG_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '保持不变' },
   { value: 'ja-jp', label: '日本語' },
   { value: 'zh-cn', label: '简体中文' },
   { value: 'zh-tw', label: '繁體中文' },
   { value: 'en-us', label: 'English' }
-] as const
+]
 
 interface FormState {
   name_en_us: string
@@ -353,36 +353,23 @@ const handleSubmit = async () => {
           <h3 class="text-lg font-semibold">简介 (Markdown)</h3>
           <label class="block">
             <span class="text-default-700 text-sm">简体中文</span>
-            <textarea
+            <KunTextarea
               v-model="form.intro_zh_cn"
-              rows="6"
-              class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
+              :rows="6"
               placeholder="支持 Markdown 语法"
             />
           </label>
           <label class="block">
             <span class="text-default-700 text-sm">繁體中文</span>
-            <textarea
-              v-model="form.intro_zh_tw"
-              rows="6"
-              class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
-            />
+            <KunTextarea v-model="form.intro_zh_tw" :rows="6" />
           </label>
           <label class="block">
             <span class="text-default-700 text-sm">日本語</span>
-            <textarea
-              v-model="form.intro_ja_jp"
-              rows="6"
-              class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
-            />
+            <KunTextarea v-model="form.intro_ja_jp" :rows="6" />
           </label>
           <label class="block">
             <span class="text-default-700 text-sm">English</span>
-            <textarea
-              v-model="form.intro_en_us"
-              rows="6"
-              class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
-            />
+            <KunTextarea v-model="form.intro_en_us" :rows="6" />
           </label>
         </section>
 
@@ -413,66 +400,31 @@ const handleSubmit = async () => {
 
         <section class="space-y-3">
           <h3 class="text-lg font-semibold">内容分级</h3>
-          <div class="flex gap-4">
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.content_limit"
-                type="radio"
-                value="sfw"
-                class="accent-primary"
-              />
-              <span>SFW (普通)</span>
-            </label>
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.content_limit"
-                type="radio"
-                value="nsfw"
-                class="accent-primary"
-              />
-              <span>NSFW (含成人向元素)</span>
-            </label>
-          </div>
+          <KunSelect
+            v-model="form.content_limit"
+            :options="[
+              { value: 'sfw', label: 'SFW (普通)' },
+              { value: 'nsfw', label: 'NSFW (含成人向元素)' }
+            ]"
+            class-name="w-64"
+          />
         </section>
 
         <section class="space-y-3">
           <h3 class="text-lg font-semibold">年龄分级</h3>
-          <div class="flex gap-4">
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.age_limit"
-                type="radio"
-                value="all"
-                class="accent-primary"
-              />
-              <span>全年龄</span>
-            </label>
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.age_limit"
-                type="radio"
-                value="r18"
-                class="accent-primary"
-              />
-              <span>R18</span>
-            </label>
-          </div>
+          <KunSelect
+            v-model="form.age_limit"
+            :options="[
+              { value: 'all', label: '全年龄' },
+              { value: 'r18', label: 'R18' }
+            ]"
+            class-name="w-64"
+          />
         </section>
 
         <section class="space-y-3">
           <h3 class="text-lg font-semibold">原始语言</h3>
-          <select
-            v-model="form.original_language"
-            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
-          >
-            <option
-              v-for="opt in ORIGINAL_LANG_OPTIONS"
-              :key="opt.value"
-              :value="opt.value"
-            >
-              {{ opt.label }}
-            </option>
-          </select>
+          <KunSelect v-model="form.original_language" :options="ORIGINAL_LANG_OPTIONS" />
         </section>
 
         <section class="space-y-3">
@@ -485,10 +437,9 @@ const handleSubmit = async () => {
         </section>
 
         <section class="space-y-2">
-          <label class="flex items-center gap-2">
-            <input v-model="form.is_minor" type="checkbox" class="accent-primary" />
-            <span class="text-sm">标记为小修改 (typo / 排版等，可在版本历史中过滤)</span>
-          </label>
+          <KunCheckBox v-model="form.is_minor">
+            标记为小修改 (typo / 排版等，可在版本历史中过滤)
+          </KunCheckBox>
         </section>
 
         <section class="space-y-3">

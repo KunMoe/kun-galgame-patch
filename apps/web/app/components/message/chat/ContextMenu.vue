@@ -79,45 +79,61 @@ const pick = (emoji: string) => {
       >
       <!-- quick reactions -->
       <div class="grid grid-cols-5 gap-1 pb-2">
-        <button
+        <KunButton
           v-for="e in commonReactions"
           :key="e"
-          type="button"
-          class="hover:bg-default-200 flex items-center justify-center rounded-full p-1 text-lg transition-colors"
+          variant="light"
+          color="default"
+          size="sm"
+          is-icon-only
+          rounded="full"
+          class-name="text-lg"
           @click="pick(e)"
         >
           {{ e }}
-        </button>
+        </KunButton>
       </div>
 
       <div class="border-default/20 border-t pt-1">
         <p class="text-default-400 px-2 py-1 text-xs">消息操作</p>
-        <button
-          type="button"
-          class="hover:bg-default-100 flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm"
+        <KunButton
+          variant="light"
+          color="default"
+          size="sm"
+          full-width
+          rounded="md"
+          class-name="justify-start"
           @click="emit('reply'); emit('close')"
         >
           <KunIcon name="lucide:corner-down-right" class="size-4" />
           回复
-        </button>
-        <button
+        </KunButton>
+        <KunButton
           v-if="isOwner"
-          type="button"
-          class="hover:bg-default-100 flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm"
+          variant="light"
+          color="default"
+          size="sm"
+          full-width
+          rounded="md"
+          class-name="justify-start"
           @click="emit('edit'); emit('close')"
         >
           <KunIcon name="lucide:pencil" class="size-4" />
           编辑
-        </button>
-        <button
+        </KunButton>
+        <KunButton
           v-if="isOwner"
-          type="button"
-          class="text-danger hover:bg-danger/10 flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm"
+          variant="light"
+          color="danger"
+          size="sm"
+          full-width
+          rounded="md"
+          class-name="justify-start"
           @click="emit('delete'); emit('close')"
         >
           <KunIcon name="lucide:trash-2" class="size-4" />
           删除
-        </button>
+        </KunButton>
       </div>
 
       <div

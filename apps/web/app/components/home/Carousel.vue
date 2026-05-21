@@ -57,21 +57,31 @@ watch(isHovered, (v) => (v ? pause() : resume()))
       </div>
     </Transition>
 
-    <button
-      class="bg-background/20 hover:bg-background/40 touch:opacity-100 absolute top-1/2 left-2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100"
+    <KunButton
+      variant="flat"
+      color="default"
+      size="sm"
+      is-icon-only
+      rounded="full"
+      class-name="bg-background/20 hover:bg-background/40 touch:opacity-100 absolute top-1/2 left-2 z-10 -translate-y-1/2 opacity-0 backdrop-blur-sm group-hover:opacity-100"
       aria-label="previous slide"
       @click="paginate(-1)"
     >
       <KunIcon name="lucide:chevron-left" class="size-4" />
-    </button>
+    </KunButton>
 
-    <button
-      class="bg-background/20 hover:bg-background/40 touch:opacity-100 absolute top-1/2 right-2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100"
+    <KunButton
+      variant="flat"
+      color="default"
+      size="sm"
+      is-icon-only
+      rounded="full"
+      class-name="bg-background/20 hover:bg-background/40 touch:opacity-100 absolute top-1/2 right-2 z-10 -translate-y-1/2 opacity-0 backdrop-blur-sm group-hover:opacity-100"
       aria-label="next slide"
       @click="paginate(1)"
     >
       <KunIcon name="lucide:chevron-right" class="size-4" />
-    </button>
+    </KunButton>
 
     <div
       class="absolute bottom-1 left-1/2 z-10 flex -translate-x-1/2 gap-1"
@@ -79,6 +89,7 @@ watch(isHovered, (v) => (v ? pause() : resume()))
       <button
         v-for="(_, index) in props.posts"
         :key="index"
+        type="button"
         :aria-label="`go to slide ${index + 1}`"
         :class="
           cn(

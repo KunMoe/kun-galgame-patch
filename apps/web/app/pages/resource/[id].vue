@@ -237,14 +237,12 @@ useKunSeoMeta({
 
             <!-- like + favorite, integrated into the hero -->
             <div class="mt-1 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="border-default/30 bg-background/70 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium backdrop-blur transition-colors"
-                :class="
-                  resource.is_liked
-                    ? 'text-danger border-danger/40'
-                    : 'text-default-600 hover:text-danger'
-                "
+              <KunButton
+                :variant="resource.is_liked ? 'bordered' : 'bordered'"
+                :color="resource.is_liked ? 'danger' : 'default'"
+                size="sm"
+                rounded="full"
+                :loading="liking"
                 :disabled="liking"
                 @click="toggleLike"
               >
@@ -254,17 +252,15 @@ useKunSeoMeta({
                 />
                 点赞
                 <span class="text-default-400">{{ resource.like_count }}</span>
-              </button>
+              </KunButton>
 
-              <button
+              <KunButton
                 v-if="detail.patch"
-                type="button"
-                class="border-default/30 bg-background/70 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium backdrop-blur transition-colors"
-                :class="
-                  favorited
-                    ? 'text-warning border-warning/40'
-                    : 'text-default-600 hover:text-warning'
-                "
+                variant="bordered"
+                :color="favorited ? 'warning' : 'default'"
+                size="sm"
+                rounded="full"
+                :loading="favoriting"
                 :disabled="favoriting"
                 @click="toggleFavorite"
               >
@@ -273,7 +269,7 @@ useKunSeoMeta({
                   :class="cn('size-4', favorited && 'fill-current')"
                 />
                 {{ favorited ? '已收藏' : '收藏游戏' }}
-              </button>
+              </KunButton>
 
               <span
                 class="text-default-500 inline-flex items-center gap-1 text-sm"
@@ -355,15 +351,18 @@ useKunSeoMeta({
                     class="text-default-400 group-hover:text-success size-4 shrink-0"
                   />
                 </a>
-                <button
-                  type="button"
-                  class="text-default-400 hover:text-success hover:bg-success/10 shrink-0 rounded-lg p-2 transition-colors"
+                <KunButton
+                  variant="light"
+                  color="success"
+                  size="sm"
+                  is-icon-only
+                  class-name="shrink-0"
                   aria-label="复制下载链接"
                   title="复制下载链接"
                   @click="useKunCopy(lnk)"
                 >
                   <KunIcon name="lucide:copy" class="size-4" />
-                </button>
+                </KunButton>
               </div>
               <p
                 v-if="!downloadLinks.length"

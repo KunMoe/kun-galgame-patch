@@ -51,10 +51,14 @@ const rowClass = computed(() => [
       </span>
     </NuxtLink>
 
-    <button
+    <KunButton
       v-else
-      type="button"
-      :class="rowClass"
+      variant="light"
+      color="default"
+      size="sm"
+      full-width
+      rounded="md"
+      :class-name="cn('justify-start', rowClass)"
       :style="{ paddingLeft: indentPx }"
       @click="toggle"
     >
@@ -66,7 +70,7 @@ const rowClass = computed(() => [
       <span class="text-sm leading-tight break-words">
         {{ props.node.label || props.node.name }}
       </span>
-    </button>
+    </KunButton>
 
     <div
       v-if="props.node.type === 'directory' && isOpen && props.node.children?.length"

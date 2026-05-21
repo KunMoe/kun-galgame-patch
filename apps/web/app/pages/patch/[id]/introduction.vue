@@ -196,30 +196,21 @@ const wikiOrigin =
           <h2 class="text-2xl font-bold">标签</h2>
         </div>
         <div class="flex flex-wrap items-center gap-3 text-sm">
-          <label class="flex items-center gap-1">
-            <input
-              v-model="showSpoiler"
-              type="checkbox"
-              class="accent-primary"
-            />
-            <span>显示剧透</span>
-          </label>
+          <KunCheckBox v-model="showSpoiler" color="primary">
+            显示剧透
+          </KunCheckBox>
           <span class="text-default-300">|</span>
-          <label
+          <KunCheckBox
             v-for="c in (['content', 'sexual', 'technical'] as TagCategory[])"
             :key="c"
-            class="flex items-center gap-1"
+            :model-value="visibleCategories.has(c)"
+            color="primary"
+            @change="toggleCategory(c)"
           >
-            <input
-              type="checkbox"
-              :checked="visibleCategories.has(c)"
-              class="accent-primary"
-              @change="toggleCategory(c)"
-            />
             <span :class="TAG_CATEGORY_TEXT_CLASS[c]">
               {{ CATEGORY_LABEL[c] }}
             </span>
-          </label>
+          </KunCheckBox>
         </div>
       </div>
       <div class="flex flex-wrap gap-2">

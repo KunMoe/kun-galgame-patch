@@ -221,21 +221,25 @@ const handleCreate = async () => {
 
     <!-- Selected chips -->
     <div v-if="picked.length" class="flex flex-wrap gap-2">
-      <span
+      <KunChip
         v-for="p in picked"
         :key="p.id"
-        class="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs"
+        color="primary"
+        variant="flat"
+        size="sm"
       >
         {{ p.name }}
-        <button
-          type="button"
-          class="hover:text-danger"
+        <KunButton
+          variant="light"
+          color="danger"
+          size="xs"
+          is-icon-only
           aria-label="移除"
           @click="remove(p.id)"
         >
           <KunIcon name="lucide:x" class="size-3" />
-        </button>
-      </span>
+        </KunButton>
+      </KunChip>
     </div>
     <p v-else class="text-default-400 text-xs">未选择（留空表示不修改）</p>
 
@@ -245,19 +249,11 @@ const handleCreate = async () => {
       class="border-default/20 bg-default-50 space-y-2 rounded-lg border p-3"
     >
       <KunInput v-model="form.name" placeholder="名称" size="sm" />
-      <select
+      <KunSelect
         v-if="CATEGORIES[kind].length"
         v-model="form.category"
-        class="border-default/30 bg-background w-full rounded-lg border px-2 py-1.5 text-sm"
-      >
-        <option
-          v-for="c in CATEGORIES[kind]"
-          :key="c.value"
-          :value="c.value"
-        >
-          {{ c.label }}
-        </option>
-      </select>
+        :options="CATEGORIES[kind]"
+      />
       <KunInput
         v-model="form.description"
         placeholder="描述（可选）"
@@ -280,12 +276,16 @@ const handleCreate = async () => {
     />
     <div class="max-h-40 space-y-1 overflow-y-auto">
       <KunLoading v-if="searching" description="搜索中..." />
-      <button
+      <KunButton
         v-for="r in results"
         v-else
         :key="r.id"
-        type="button"
-        class="hover:bg-default-100 flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm"
+        variant="light"
+        color="default"
+        size="sm"
+        full-width
+        rounded="lg"
+        class-name="justify-between"
         :disabled="picked.some((x) => x.id === r.id)"
         @click="add(r)"
       >
@@ -295,7 +295,7 @@ const handleCreate = async () => {
           name="lucide:check"
           class="text-success size-4"
         />
-      </button>
+      </KunButton>
     </div>
   </div>
 </template>

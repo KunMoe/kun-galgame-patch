@@ -48,13 +48,17 @@ const handleCheckIn = async () => {
 <template>
   <KunPopover position="bottom-end" inner-class="p-2 min-w-64">
     <template #trigger>
-      <button
-        type="button"
-        class="border-secondary ring-secondary/20 shrink-0 rounded-full border-2 transition-transform hover:scale-105"
+      <KunButton
+        variant="light"
+        color="default"
+        size="sm"
+        is-icon-only
+        rounded="full"
+        class-name="border-secondary ring-secondary/20 border-2 hover:scale-105"
         aria-label="用户菜单"
       >
         <KunAvatar :user="userStore.user" :is-navigation="false" size="sm" />
-      </button>
+      </KunButton>
     </template>
 
     <div class="space-y-1">
@@ -91,18 +95,26 @@ const handleCheckIn = async () => {
         <KunIcon name="lucide:circle-help" class="size-4" />
         帮助与反馈
       </NuxtLink>
-      <button
-        type="button"
-        class="text-danger hover:bg-danger/10 flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm"
+      <KunButton
+        variant="light"
+        color="danger"
+        size="sm"
+        full-width
+        rounded="md"
+        class-name="justify-start"
         @click="logoutOpen = true"
       >
         <KunIcon name="lucide:log-out" class="size-4" />
         退出登录
-      </button>
+      </KunButton>
 
-      <button
-        type="button"
-        class="text-secondary hover:bg-secondary/10 flex w-full items-center justify-between rounded px-2 py-2 text-sm disabled:opacity-50"
+      <KunButton
+        variant="light"
+        color="secondary"
+        size="sm"
+        full-width
+        rounded="md"
+        class-name="justify-between"
         :disabled="!!userStore.user.daily_check_in || checking"
         @click="handleCheckIn"
       >
@@ -118,7 +130,7 @@ const handleCheckIn = async () => {
           name="lucide:sparkles"
           class="text-secondary-500 size-5"
         />
-      </button>
+      </KunButton>
     </div>
   </KunPopover>
 

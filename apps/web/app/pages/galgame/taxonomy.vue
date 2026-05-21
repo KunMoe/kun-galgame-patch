@@ -381,26 +381,14 @@ const fmtSnapshotValue = (v: unknown): string => {
       description="标签 / 开发商 / 引擎 / 系列的增删改 —— 元数据由 Galgame Wiki 统一维护"
     />
 
-    <nav
-      class="border-default/20 bg-background/60 mt-4 flex gap-1 rounded-2xl border p-1"
-    >
-      <button
-        v-for="x in TABS"
-        :key="x.key"
-        type="button"
-        :class="
-          cn(
-            'flex-1 rounded-xl px-3 py-2 text-center text-sm transition-colors',
-            tab === x.key
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'text-default-600 hover:bg-default-100'
-          )
-        "
-        @click="tab = x.key"
-      >
-        {{ x.title }}
-      </button>
-    </nav>
+    <KunTab
+      v-model="tab"
+      :items="TABS.map((x) => ({ value: x.key, textValue: x.title }))"
+      variant="light"
+      color="primary"
+      size="md"
+      class="mt-4"
+    />
 
     <div class="mt-4 flex gap-2">
       <KunInput
@@ -467,22 +455,26 @@ const fmtSnapshotValue = (v: unknown): string => {
           }}{{ TABS.find((x) => x.key === tab)?.title }}
         </h3>
         <KunInput v-model="f.name" label="名称" />
-        <select
-          v-if="tab === 'tag' || tab === 'official'"
+        <KunSelect
+          v-if="tab === 'tag'"
           v-model="f.category"
-          class="border-default/30 bg-background w-full rounded-lg border px-2 py-2 text-sm"
-        >
-          <template v-if="tab === 'tag'">
-            <option value="content">content 内容</option>
-            <option value="sexual">sexual 性相关</option>
-            <option value="technical">technical 技术</option>
-          </template>
-          <template v-else>
-            <option value="company">company 公司</option>
-            <option value="individual">individual 个人</option>
-            <option value="amateur">amateur 同人</option>
-          </template>
-        </select>
+          label="类别"
+          :options="[
+            { value: 'content', label: 'content 内容' },
+            { value: 'sexual', label: 'sexual 性相关' },
+            { value: 'technical', label: 'technical 技术' }
+          ]"
+        />
+        <KunSelect
+          v-else-if="tab === 'official'"
+          v-model="f.category"
+          label="类别"
+          :options="[
+            { value: 'company', label: 'company 公司' },
+            { value: 'individual', label: 'individual 个人' },
+            { value: 'amateur', label: 'amateur 同人' }
+          ]"
+        />
         <KunInput v-model="f.description" label="描述（可选）" />
         <KunInput
           v-if="tab !== 'series'"
@@ -575,13 +567,15 @@ const fmtSnapshotValue = (v: unknown): string => {
               </div>
 
               <!-- Expandable snapshot -->
-              <button
-                type="button"
-                class="text-primary text-xs hover:underline"
+              <KunButton
+                variant="light"
+                color="primary"
+                size="xs"
+                class-name="self-start"
                 @click="toggleExpand(rev.id)"
               >
                 {{ expandedRev === rev.id ? '收起快照' : '查看快照' }}
-              </button>
+              </KunButton>
               <div
                 v-if="expandedRev === rev.id"
                 class="border-default/20 space-y-1 rounded-lg border p-2 text-xs"

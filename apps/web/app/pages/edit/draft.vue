@@ -221,10 +221,9 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">简介（简体中文）</h3>
-          <textarea
+          <KunTextarea
             v-model="form.intro_zh_cn"
-            rows="5"
-            class="border-default/20 bg-background w-full rounded-lg border p-3 text-sm"
+            :rows="5"
             placeholder="支持 Markdown"
           />
         </section>
@@ -248,58 +247,38 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">分级</h3>
-          <div class="flex flex-wrap gap-4 text-sm">
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.content_limit"
-                type="radio"
-                value="sfw"
-                class="accent-primary"
-              />
-              SFW
-            </label>
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.content_limit"
-                type="radio"
-                value="nsfw"
-                class="accent-primary"
-              />
-              NSFW
-            </label>
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <KunSelect
+              v-model="form.content_limit"
+              :options="[
+                { value: 'sfw', label: 'SFW' },
+                { value: 'nsfw', label: 'NSFW' }
+              ]"
+              class-name="w-32"
+            />
             <span class="text-default-300">|</span>
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.age_limit"
-                type="radio"
-                value="all"
-                class="accent-primary"
-              />
-              全年龄
-            </label>
-            <label class="flex items-center gap-2">
-              <input
-                v-model="form.age_limit"
-                type="radio"
-                value="r18"
-                class="accent-primary"
-              />
-              R18
-            </label>
+            <KunSelect
+              v-model="form.age_limit"
+              :options="[
+                { value: 'all', label: '全年龄' },
+                { value: 'r18', label: 'R18' }
+              ]"
+              class-name="w-32"
+            />
           </div>
         </section>
 
         <section class="space-y-2">
           <h3 class="font-semibold">原始语言</h3>
-          <select
+          <KunSelect
             v-model="form.original_language"
-            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
-          >
-            <option value="ja-jp">日本語</option>
-            <option value="zh-cn">简体中文</option>
-            <option value="zh-tw">繁體中文</option>
-            <option value="en-us">English</option>
-          </select>
+            :options="[
+              { value: 'ja-jp', label: '日本語' },
+              { value: 'zh-cn', label: '简体中文' },
+              { value: 'zh-tw', label: '繁體中文' },
+              { value: 'en-us', label: 'English' }
+            ]"
+          />
         </section>
 
         <section class="space-y-2">

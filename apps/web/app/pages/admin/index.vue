@@ -67,14 +67,9 @@ watch(days, () => refresh())
         <h3 class="text-lg font-semibold whitespace-nowrap">
           最近 {{ days }} 天内数据
         </h3>
-        <input
-          v-model.number="days"
-          type="range"
-          min="1"
-          max="60"
-          step="1"
-          class="max-w-xs flex-1"
-        />
+        <div class="max-w-xs flex-1">
+          <KunSlider v-model="days" :min="1" :max="60" :step="1" />
+        </div>
       </div>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KunCard

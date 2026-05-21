@@ -287,12 +287,16 @@ const doDecline = async () => {
     />
 
     <div v-else class="space-y-2">
-      <KunCard v-for="pr in data.items" :key="pr.id" :bordered="true">
-        <button
-          type="button"
-          class="hover:bg-default-50 flex w-full items-center justify-between gap-3 p-4 text-left"
-          @click="openPR(pr.id)"
-        >
+      <KunCard
+        v-for="pr in data.items"
+        :key="pr.id"
+        :bordered="true"
+        :is-hoverable="true"
+        clickable
+        content-class="flex w-full items-center justify-between gap-3 p-4"
+        @click="openPR(pr.id)"
+      >
+        <div class="contents">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-mono text-sm font-semibold">PR #{{ pr.id }}</span>
@@ -312,7 +316,7 @@ const doDecline = async () => {
             </p>
           </div>
           <KunIcon name="lucide:chevron-right" class="size-4 shrink-0" />
-        </button>
+        </div>
       </KunCard>
 
       <KunPagination

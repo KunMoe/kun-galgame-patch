@@ -149,21 +149,25 @@ const removeContributor = async (userId: number) => {
       <section class="space-y-3">
         <h3 class="text-foreground text-base font-semibold">别名</h3>
         <div class="flex flex-wrap gap-2">
-          <span
+          <KunChip
             v-for="a in aliases"
             :key="a.id"
-            class="bg-default-100 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs"
+            color="default"
+            variant="flat"
+            size="sm"
           >
             {{ a.name }}
-            <button
-              type="button"
-              class="hover:text-danger"
+            <KunButton
+              variant="light"
+              color="danger"
+              size="xs"
+              is-icon-only
               aria-label="删除别名"
               @click="removeAlias(a.id)"
             >
               <KunIcon name="lucide:x" class="size-3" />
-            </button>
-          </span>
+            </KunButton>
+          </KunChip>
           <span v-if="!aliases.length" class="text-default-400 text-xs">
             暂无别名
           </span>

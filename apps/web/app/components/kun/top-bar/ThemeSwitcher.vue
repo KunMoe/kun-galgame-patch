@@ -33,19 +33,20 @@ const setTheme = (key: 'light' | 'dark' | 'system') => {
     </template>
 
     <div class="flex flex-col">
-      <button
+      <KunButton
         v-for="t in themes"
         :key="t.key"
-        type="button"
-        class="hover:bg-default-100 flex items-center gap-2 rounded px-3 py-2 text-left text-sm"
-        :class="{
-          'bg-default-100 text-primary': colorMode.preference === t.key
-        }"
+        :variant="colorMode.preference === t.key ? 'flat' : 'light'"
+        :color="colorMode.preference === t.key ? 'primary' : 'default'"
+        size="sm"
+        full-width
+        rounded="md"
+        class-name="justify-start"
         @click="setTheme(t.key)"
       >
         <KunIcon :name="t.icon" class="size-4" />
         {{ t.label }}
-      </button>
+      </KunButton>
     </div>
   </KunPopover>
 </template>

@@ -17,9 +17,12 @@ watch(
     class="bg-background/80 sticky top-0 z-40 flex h-16 w-full items-center px-3 backdrop-blur"
   >
     <div class="mx-auto flex w-full max-w-7xl items-center gap-3">
-      <button
-        type="button"
-        class="hover:bg-default-100 flex h-10 w-10 items-center justify-center rounded md:hidden"
+      <KunButton
+        variant="light"
+        color="default"
+        size="sm"
+        is-icon-only
+        class-name="md:hidden"
         aria-label="菜单"
         @click="isMenuOpen = !isMenuOpen"
       >
@@ -27,7 +30,7 @@ watch(
           :name="isMenuOpen ? 'lucide:x' : 'lucide:menu'"
           class="size-5"
         />
-      </button>
+      </KunButton>
 
       <KunTopBarBrand />
 

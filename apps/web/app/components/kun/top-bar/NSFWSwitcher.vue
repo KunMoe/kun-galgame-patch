@@ -39,20 +39,20 @@ const onSelect = (key: string) => {
     </template>
 
     <div class="flex flex-col">
-      <button
+      <KunButton
         v-for="opt in options"
         :key="opt.key"
-        type="button"
-        class="hover:bg-default-100 flex items-center gap-2 rounded px-3 py-2 text-left text-sm"
-        :class="{
-          'bg-default-100 text-primary':
-            settingStore.data.kunNsfwEnable === opt.key
-        }"
+        :variant="settingStore.data.kunNsfwEnable === opt.key ? 'flat' : 'light'"
+        :color="settingStore.data.kunNsfwEnable === opt.key ? 'primary' : 'default'"
+        size="sm"
+        full-width
+        rounded="md"
+        class-name="justify-start"
         @click="onSelect(opt.key)"
       >
         <KunIcon :name="opt.icon" class="size-5" />
         {{ KUN_CONTENT_LIMIT_MAP[opt.key] }}
-      </button>
+      </KunButton>
     </div>
   </KunPopover>
 </template>
