@@ -141,31 +141,39 @@
   --radius-kun-full: 9999px;
 
   /* z-index layering — global floating UI must stack predictably so
-   * popovers opened from inside a modal aren't hidden under it.
+   * popovers opened from inside a modal (or from a sticky topbar) are
+   * always visible.
    *
-   * The bug this fixes: KunModal sits at z-1007, but KunSelect /
-   * KunPopover / KunDatePicker / KunTooltip dropdowns were all at
-   * z-50. Since these floats Teleport to body, they share the
-   * stacking context with Modal — z-50 < z-1007 means the dropdown
-   * renders below the modal whenever the trigger lives inside one.
+   * v0.4.5 first introduced these tokens with values in the 1000-9000
+   * range, assuming app-side code stays below z-1000. v0.4.7 raised
+   * the entire band to the 9000-9999 region after moyu reported the
+   * topbar covering tooltips/popovers — app-side sticky/fixed
+   * headers in real-world legacy code often use z-50 / z-100 / even
+   * z-9999. To win that fight defensively, KunUI floating layers
+   * sit very high in the stack.
    *
-   * Tier rule: a floating element always sits above the layer that
-   * triggered it. Modal < popover (popovers inside modals) < alert
-   * (modal-blocking confirm) < message (always-on-top toasts).
+   * Tier rule (preserved through the bump): a floating element always
+   * sits above the layer that triggered it.
+   *   modal (9000) < popover (9300) < alert (9700) < message (9999)
    *
-   * Tailwind v4 @theme auto-generates utility classes:
-   *   z-kun-sticky / z-kun-modal / z-kun-popover / z-kun-alert /
-   *   z-kun-message
+   * IMPORTANT — v0.4.8 correction: Tailwind v4 does NOT auto-generate
+   * utilities for arbitrary `--xxx-*` namespaces. Only specific
+   * namespaces (--color-*, --radius-*, --spacing-*, --font-*, etc.)
+   * get auto-generated utility classes. `--z-*` is NOT in that list,
+   * so `class="z-kun-popover"` was silently a no-op in v0.4.5/6/7.
+   * The `@utility z-kun-* { z-index: var(--z-kun-*) }` blocks below
+   * are what actually make the utility classes work. Don't remove
+   * them.
    *
    * Override per-app by re-declaring the variable in :root if you
    * need to interoperate with third-party widgets that use specific
-   * z-index values.
+   * z-index values; the @utility blocks already deref the variable.
    */
   --z-kun-sticky: 30;
-  --z-kun-modal: 1000;
-  --z-kun-popover: 1500;
-  --z-kun-alert: 2000;
-  --z-kun-message: 9000;
+  --z-kun-modal: 9000;
+  --z-kun-popover: 9300;
+  --z-kun-alert: 9700;
+  --z-kun-message: 9999;
 
   /* Animations */
   --animate-shake: shake 1s ease-in-out;
@@ -334,6 +342,31 @@
       transform: translate3d(0, 0, 0);
     }
   }
+}
+
+/* Explicit z-index utilities — Tailwind v4's @theme auto-generation
+ * doesn't cover the --z-* namespace (only --color / --radius / --spacing
+ * / --font etc.), so `class="z-kun-popover"` would silently no-op
+ * without these @utility blocks. The utility name matches the token
+ * suffix; the value derefs the @theme variable so consumer-side
+ * `:root { --z-kun-modal: ... }` overrides propagate automatically.
+ *
+ * KEEP THESE — they are the load-bearing piece of the z-index design
+ * system, not the @theme declarations. See improvement-plan §20. */
+@utility z-kun-sticky {
+  z-index: var(--z-kun-sticky);
+}
+@utility z-kun-modal {
+  z-index: var(--z-kun-modal);
+}
+@utility z-kun-popover {
+  z-index: var(--z-kun-popover);
+}
+@utility z-kun-alert {
+  z-index: var(--z-kun-alert);
+}
+@utility z-kun-message {
+  z-index: var(--z-kun-message);
 }
 
 @layer base {

@@ -1156,3 +1156,404 @@ moyu 这次最值得学的不是技术修复，是**调试方法**：
 把假设当作待验证的命题而不是事实，是 senior 调试的核心姿态。
 
 **风险等级**：极低 —— Image.vue 加可选 prop，nuxt.config 加 provider 注册。无 API 破坏。建议作为独立 PR 合并。
+
+---
+
+## 17. 迁移陷阱 —— 孤儿 store + `runWithContext` 过度防御（2026-05-21）
+
+不是组件改动，是给下游写迁移 / 调试时的两条**必读警告**。moyu 这次踩坑后总结的，避免其他 fork 重蹈。
+
+### 陷阱 1 🔴 —— 老 alert store 改用 KunUI 后变孤儿，按钮"无任何反应"
+
+**症状**：把"删除"、"举报"这类需要确认的按钮点下去，**屏幕零反应**、控制台无报错、network 无请求。
+
+**根因**：下游 app 原本有自己的 alert store，比如：
+
+```ts
+// apps/web/app/store/temp/components/message.ts  ← moyu 旧实现
+export const useComponentMessageStore = defineStore('message', () => {
+  const showAlert = ref(false)
+  const alertTitle = ref('')
+  const alertMessage = ref('')
+  // ... 一堆 ref
+
+  const alert = (title?: string, message?: string, showCancel?: boolean) => {
+    showAlert.value = true
+    alertTitle.value = title ?? ''
+    // ... 等用户点确认 / 取消，返回 Promise<boolean>
+  }
+  return { showAlert, alert, /* ... */ }
+})
+```
+
+老实现里有个 `<OldAlertComponent>` 监听这些 ref 渲染弹窗 + 处理点击 + resolve promise。
+
+**迁到 KunUI 时**，开发者通常这样做：
+
+1. 把 `<OldAlertComponent>` 删了，换成 `<KunAlert>`（KunUI layer 全局挂载）
+2. 改了 ~50% 调用点用 `useKunAlert(...)`
+3. 剩下 ~50% 调用点仍然写 `const message = useComponentMessageStore(); await message.alert(...)`
+
+**结果**：第 3 类调用点变孤儿 —— `showAlert.value = true` 改了 ref，但**没人监听这个 ref**（老组件被删了），promise 永不 resolve，`await` 卡死。代码看起来在跑，UI 完全静默。比报错更难调试。
+
+### 修复 — 桥接而不是"全部 sed"
+
+最稳的修法是**让老 store 的 `alert` 内部 delegate 给 `useKunAlert`**，所有调用点零修改：
+
+```ts
+// apps/web/app/store/temp/components/message.ts
+import { useKunAlert } from '#imports'
+
+export const useComponentMessageStore = defineStore('message', () => {
+  // ... 其他保留字段（isShowCapture / codeSalt 等保留不动，
+  // 避免破坏 capture 等其他流程）
+
+  // alert 改成 useKunAlert 的薄包装，签名照旧
+  const alert = (
+    title?: string,
+    message?: string,
+    showCancel?: boolean
+  ): Promise<boolean> =>
+    useKunAlert({
+      title,
+      message,
+      showCancel: showCancel ?? true
+    })
+
+  return { /* ...其他字段..., alert */ }
+})
+```
+
+收益：
+- 10+ 文件的调用点 `await message.alert(...)` **零修改**
+- UI 由 layer 的 `<KunAlert>` 渲染（全局挂载，肯定可见）
+- promise 由 `useKunAlertState().handleConfirm/handleCancel` 正常 resolve
+- 老 store 的其他字段（如 capture / salt）保留不动，不破坏其他流程
+
+**反例（不推荐）**：开 sed 把所有 `useComponentMessageStore().alert(...)` 全部改成 `useKunAlert(...)`。这样会：
+- 改动面广，回归风险大
+- 容易漏改（动态调用、间接引用）
+- 漏一处就静默 hang，比批量改组件 import 难发现
+
+### 排查清单 — 怀疑撞上"孤儿 store"时怎么验证
+
+```bash
+# 1. 找你们仓里所有自定义 alert 系统
+grep -rn 'defineStore.*alert\|defineStore.*message' apps --include='*.ts'
+
+# 2. 看 alert 函数的实现 —— 是否还在用 ref + watch UI 组件？
+#    那个 UI 组件还存在吗？
+
+# 3. 老 store 的 alert 调用点（迁完后应该 0 或全部是桥接）
+grep -rn 'message\.alert\|.alert(' apps --include='*.vue' | grep -v 'console.alert\|window.alert'
+```
+
+如果第 3 步还有命中，又确认那个 store 的 alert 已经没人监听 → 你正在踩这个坑。
+
+### 陷阱 2 ⚠️ —— `runWithContext` 不是万能药，过度包装是反模式
+
+之前在 v0.4.4 §15（improvement-plan）里我隐含说过"layer util 调 Nuxt composable 必须 `tryUseNuxtApp` 守门 + 准备 fallback"。这条**仍然对**，但很多人由此推论"凡是涉及 await / async / 跨 tick 都应该 `nuxtApp.runWithContext(...)` 包一下" —— **这是过度防御**。
+
+moyu 复盘他们之前的修法：
+
+> 之前我对 click 路径包 `runWithContext` 是过度防御。**可以保留**（几个闭包成本几乎为零），**也可以删**，行为一致。
+
+#### `runWithContext` 真正必须的两个场景
+
+```
+✓ 必须：1. Vue 的 watch / watchEffect 回调里
+              （脱离当前组件 instance 的微任务）
+✓ 必须：2. render(vNode, container) 裸 mount 的 vNode 子树
+              （没有任何 instance binding，例如 useKunMessage 里
+               mount MessageContainer —— 该问题已在 v0.4.4 修过）
+
+✗ 不必要：3. @click / @input 等 Vue 事件处理器
+              （Vue 3 的 withCtx 包装，执行期 getCurrentInstance() 不为 null）
+✗ 不必要：4. setup() 顶层（同步路径）
+✗ 不必要：5. onMounted / onUnmounted 等生命周期 hook（Vue 已经在 hook 里
+              保住 instance）
+✗ 大多不必要：6. await kunFetch(...) 之后继续访问 Nuxt composable
+              （Nuxt 3 对常见 await 路径——await Promise + Vue 调度——
+              有内部 patch 保 context；codebase 里大量 await kunFetch 没包
+              runWithContext 也工作）
+```
+
+#### 为什么 `@click` 不需要 `runWithContext`
+
+`tryUseNuxtApp()` 的查找顺序大致是：
+
+```
+1. nuxtAppCtx.tryUse()      ← Nuxt 自己维护的 AsyncLocalStorage
+2. getCurrentInstance()
+     .appContext.app.$nuxt  ← Vue 当前实例的 app context
+```
+
+Vue 3 的 `@click` 处理器有 `withCtx` 包装，**执行期 `getCurrentInstance()` 不为 null**，所以路径 2 永远命中。`runWithContext` 是为了路径 1 失败时也能强制注入 —— **路径 2 已经够用的话就不需要 1**。
+
+#### 当 `$nuxt null` 仍然发生时怎么诊断（升级版）
+
+之前 §13 / §14 的规则"按时间排序找最早失败" + 这次 moyu 的补充：
+
+1. **先排除"孤儿 store"**：UI 完全静默、按钮无反应 → 不是 Nuxt context 问题，是 promise 永不 resolve；grep 看是否有老 alert / dialog store 没桥接
+2. **再排除"render() 漏 graft appContext"**：见 v0.4.4 §15 / §13 修法
+3. **再排除"watch / watchEffect 微任务里调 Nuxt composable"**：用 `nuxtApp.runWithContext` 包
+4. **最后才考虑 `@click` 路径的 context 注入**：99% 的时候不需要管，Vue 已经处理
+
+按这个顺序排查能省去很多绕弯路 —— 不要一上来就在所有 await 点撒 `runWithContext`，是徒劳且让代码变脏。
+
+### 这次修正的 KunUI 三铁律
+
+§13 / §14 末尾给过 KunUI 三铁律 + §15 加了第四条。结合这次反思，规则 1 的措辞要更准：
+
+| # | 旧措辞 | 修正后 |
+|---|---|---|
+| 1 | "layer util 调 Nuxt composable 必须 `tryUseNuxtApp` 守门 + plain Vue 原语 fallback" | 同左，**适用范围仅限**：watch/watchEffect 微任务、render() 裸 mount。普通 setup / 事件处理 / 生命周期 hook **不需要** |
+
+加上 moyu 这次补的两条：
+
+| # | 规则 |
+|---|---|
+| 5 | 下游迁移 KunUI 状态类 composable（useKunAlert / useKunMessage / useKunDisclosure 等）时，**保留老 store 的接口、内部 delegate**，避免孤儿 store 静默 hang |
+| 6 | `runWithContext` 不是"撒着用更安全"的护身符，只在 watch / 裸 render() 这两个**真有 instance 漂移**的场景用 |
+
+### 验证 — 给 moyu 自己 fork 的 checklist（你已经做过，对其他 fork 也适用）
+
+```bash
+# 1. 老 alert / message / dialog store 都迁了桥接
+grep -rn 'defineStore.*alert\|defineStore.*dialog' apps --include='*.ts'
+
+# 2. 没有遗留的 await yourStore.alert(...) 调用直接拿不到 promise resolution
+grep -rn 'await.*\.alert(\|await.*\.dialog(' apps --include='*.vue' --include='*.ts'
+
+# 3. 没有过度防御的 runWithContext 在 click handler 上
+grep -rn 'nuxtApp\.runWithContext' apps --include='*.vue' | wc -l
+# 不需要为 0 但如果几十个就说明过度撒了，可以走查一遍删 click 路径上的
+```
+
+**风险等级**：本节是**文档警告**，不引入代码改动。其他下游迁移时请把 §17 这一节当 checklist 跑一遍。
+
+---
+
+## 18. v0.4.7 — z-token 升档 + Select 选项溢出（2026-05-21）
+
+moyu 又报了两个 UI bug，本节修。详细背景见 `improvement-plan.md` §19。
+
+### bug 1 — tooltip/popover 还是被 topbar 盖住
+
+v0.4.5 的 z-kun-popover = 1500 没考虑 legacy app 的 sticky header 用 z-9999 这种 nuclear z-index。**整体升档到 9000-9999 区间**：
+
+```diff
+- --z-kun-modal: 1000;     --z-kun-popover: 1500;
+- --z-kun-alert: 2000;     --z-kun-message: 9000;
++ --z-kun-modal: 9000;     --z-kun-popover: 9300;
++ --z-kun-alert: 9700;     --z-kun-message: 9999;
+```
+
+相对层级不变。只升档不重构。
+
+### bug 2 — Select dropdown 长 label 溢出
+
+`<KunSelect>` 选项 label 超过 trigger 宽度时**横向溢出 dropdown**。根因是 flex + truncate 经典坑：flex item 默认 `min-width: auto` = `min-content`，truncate 不生效。修法是给文本 span 加 `min-w-0`。
+
+### 同步 — 2 个文件
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+cp $KUN_OAUTH/packages/ui/app/styles/tailwindcss.css            ./styles/tailwindcss.css
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue  ./components/kun/select/Select.vue
+```
+
+或者只改 token（如果你 fork 改过 tailwindcss.css）：把 `--z-kun-*` 五个 token 的值升档即可。
+
+### 消费侧
+
+**零修改**。所有 `<KunSelect>` / `<KunPopover>` / `<KunTooltip>` 调用点无需改动。
+
+### 如果你 app 侧 topbar 还是盖住浮层
+
+罕见情况下 app 侧用了 z-99999 / z-2147483647 之类极端值（来自某些 vendor template）。这时有两种解决：
+
+**A. 推荐 — 把 app 侧 z-index 降下来**
+
+KunUI 升档到 9999 已经是合理上限。app 侧 navbar 不该比浮层更高。grep 找出违例：
+
+```bash
+grep -rn 'z-\[1[0-9]\{4,\}\]\|z-index:[0-9]\{5,\}' apps --include='*.vue' --include='*.css'
+```
+
+把命中的值降到 z-50 / z-100 量级。
+
+**B. 凑合 — 把 KunUI token 推到更高**
+
+如果不想动 app 侧（暂时遗留代码），在你 app 的 css 里覆盖 KunUI token：
+
+```css
+:root {
+  --z-kun-modal: 999000;
+  --z-kun-popover: 999300;
+  --z-kun-alert: 999700;
+  --z-kun-message: 999999;
+}
+```
+
+但这是俗气补丁，建议作为临时方案。
+
+### "flex + truncate 不生效" —— 你 app 业务代码也建议自查一遍
+
+这次发现的修法是 KunSelect 内部的，但同款坑可能藏在你们 app 的业务代码里。grep 自查：
+
+```bash
+grep -rn "flex.*truncate\|truncate.*flex" apps --include='*.vue'
+```
+
+每一处命中都检查：truncate 的 span / div 是不是 flex item？是的话有没有 `min-w-0`？没有的话长内容会撑爆容器。
+
+最佳实践：**任何 flex 里的 truncate span 默认加 `min-w-0 flex-1`**。
+
+### 验证
+
+```bash
+pnpm -F your-app exec nuxt build
+```
+
+视觉手测：
+- 主页 hover topbar 元素 → tooltip / popover **盖住所有页面其他元素**
+- 给 KunSelect 喂一组超长 label 的 options → 选项 **被 ellipsis 截断**，dropdown 宽度等于 trigger
+- 不论在 KunModal 内还是页面 root，KunSelect / KunPopover / KunDatePicker / KunTooltip 都在最上层
+
+**风险等级**：低 —— token 数值升档不改相对层级，Select 选项溢出修复零 API 变化。建议作为独立 PR 合并。
+
+---
+
+## 19. v0.4.8 hotfix 🔴🔴 — z-index utility 真的生效（之前三轮没生效）
+
+**重要**：v0.4.5 / v0.4.6 / v0.4.7 三轮的 z-index "修复"**实际上从未生效**。我把 `--z-kun-*` token 加到 `@theme`，假设 Tailwind v4 会像 `--radius-kun-*` 那样自动生成 utility —— **错了**。Tailwind v4 只对特定命名空间（`--color` / `--radius` / `--spacing` / `--font` 等）自动生成 utility，`--z-*` 不在白名单。所以组件里写的 `class="z-kun-popover"` 是空 class，元素拿默认 `z-auto`。
+
+之前看着"popover 在上方了" 完全是 DOM order 偶然，不是 z-index 生效。
+
+详细诊断 + 真修复见 `improvement-plan.md` §20。
+
+### 同步 — 1 个文件
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+cp $KUN_OAUTH/packages/ui/app/styles/tailwindcss.css ./styles/tailwindcss.css
+```
+
+或者只加我新增的 5 个 `@utility` 块（放在 `@theme` 关闭花括号外、`@layer base` 之前）：
+
+```css
+@utility z-kun-sticky {
+  z-index: var(--z-kun-sticky);
+}
+@utility z-kun-modal {
+  z-index: var(--z-kun-modal);
+}
+@utility z-kun-popover {
+  z-index: var(--z-kun-popover);
+}
+@utility z-kun-alert {
+  z-index: var(--z-kun-alert);
+}
+@utility z-kun-message {
+  z-index: var(--z-kun-message);
+}
+```
+
+### 同步后必须 rebuild + grep 验证
+
+```bash
+# 重新 build
+pnpm -F your-app exec nuxt build
+
+# 必须验证 utility 真的进了输出 CSS
+grep -ho '\.z-kun-[a-z]*\s*{[^}]*}' .output/public/_nuxt/*.css | sort -u
+
+# 期望看到 4 个（z-kun-sticky 没用到的话不出现是预期）：
+# .z-kun-alert{z-index:var(--z-kun-alert)}
+# .z-kun-message{z-index:var(--z-kun-message)}
+# .z-kun-modal{z-index:var(--z-kun-modal)}
+# .z-kun-popover{z-index:var(--z-kun-popover)}
+
+# 如果输出空 → @utility 块没写对，再核查
+```
+
+### 视觉手测（同步 + rebuild 后）
+
+| 场景 | 期望 |
+|---|---|
+| Hover topbar 元素 → tooltip 出现 | tooltip **在所有页面元素之上**，包括 sticky topbar 自己 |
+| 点击触发 popover | popover 同上 |
+| Modal 内打开 Select / DatePicker | 浮层在 Modal **之上**（不被 Modal 内容盖住） |
+| useKunMessage 触发 toast | toast 在最高层，永远可见 |
+| 长 label 的 Select option | label 被 ellipsis 截断（v0.4.7 已修，本次会一并奏效） |
+
+### 关于 moyu 报的"Select 还溢出"
+
+很可能是同一个 z-index bug 的视觉副作用：dropdown 没拿到正确 z-index 时，被某个 z-index 更高的元素切掉一部分，看起来像选项"溢出"到了别的地方。**z-index 修好后这个症状大概率自动消失**。如果同步 v0.4.8 + rebuild 后 Select 仍有视觉异常，请截图或具体描述（哪个 Select、什么 viewport 宽度、option 内容），我再深挖。
+
+### 反思 — 给所有下游的诚实警告
+
+我之前三轮 handoff（§15 / §16 / §18）都说"z-index 升档了，浮层会在上面"。**实际效果是 0**。这不是把数值改大没改大的事 —— 是整套 utility 根本没生成。
+
+这个错误暴露了一个我（和 KunUI maintain）必须强化的流程：
+
+> **修改 Tailwind theme / utility / 任何系统级 CSS 之后，必须 grep 编译产物确认 utility 真的生成了。不要止于"源码里写得对"或者"build 通过"。**
+
+具体 grep 命令：
+
+```bash
+grep -ho '\.YOUR-PREFIX-[a-z]*\s*{[^}]*}' .output/public/_nuxt/*.css | sort -u
+```
+
+如果空 → 你的 utility 没被 Tailwind 生成 → 视觉上什么都没发生。这条流程规则比任何具体 bug 修复都更基础，**KunUI 工程规则 §20 把它立成了铁律**。
+
+**风险等级**：低 —— 加 5 个 `@utility` 块，无破坏。**但优先级最高**：不同步这次，前面三轮所有 z-index "fix" 都是空头支票。建议立即合并。
+
+---
+
+## 20. v0.4.9 — KunSelect dropdown 真·溢出修复（height 维度同款 flex 坑）
+
+v0.4.7 修了 "Select 长 label 横向溢出"，但 **height 维度的同款 bug** 一直在没人发现：dropdown 选项内容超过 maxHeight (240px) 时，**视觉上叠在下层 UI 之上**，看起来像 "Select 溢出容器"。
+
+### 真根因
+
+`floating-ui` 的 `size()` middleware 把 `max-height: 240px` 写在 **outer floating div** 上，但 outer div 默认 `overflow: visible`。`<ul>` 按自然 content height (~360px) 渲染，溢出 outer 边界 → 画在 outer 之外。同时 `<ul>` 自己 height 是 auto (= content)，所以 `<ul>` 的 `overflow-y-auto` **scroll 永远不触发**。
+
+### 修复 — outer flex column + ul `min-h-0 flex-1`
+
+详细原理见 `improvement-plan.md` §21。机制跟 v0.4.7 的 `min-w-0` 完全对称，只是从 width 维度搬到 height 维度。
+
+### 同步 — 1 个文件
+
+```bash
+KUN_OAUTH=/path/to/kun-oauth-admin
+cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue ./components/kun/select/Select.vue
+```
+
+### 验证（Playwright DOM probe，已在 moyu 本地 dev server 验过）
+
+```
+修复前：outer.height=240, overflow:visible, ul.height=360 (溢出 120px), 滚动失败
+修复后：outer.height=240, overflow:hidden, ul.height=230 (受约束), 滚动: scrollTop 0→100 OK
+```
+
+视觉验证：dropdown 高度 cap 在 240px，超过 6 选项需要内部滚动；卡片网格完全可见、不被 dropdown 覆盖。
+
+### KunUI 工程规则 6 修订（合并 v0.4.7 + v0.4.9 的同源 bug）
+
+| 旧 (v0.4.7) | 新 (v0.4.9) |
+|---|---|
+| flex 容器里的 truncate 必须搭配 `min-w-0` | flex 容器里**任何要受父级尺寸约束的子元素**都要搭配对应的 `min-w-0` / `min-h-0`。truncate / overflow-auto / max-height 等约束都隐含这个前提 |
+
+更通用的版本，覆盖 width 和 height 两个轴。
+
+### 关于"用户报告环境一致性"的元教训
+
+这次第一轮我跑去 moyu.moe 生产部署测，发现是 HeroUI 后写了一大段"不是 KunSelect"的报告 —— 全是误诊。生产部署是旧 Next.js 项目，moyu 测试是 `127.0.0.1:6969` 本地 Nuxt dev。
+
+之后规则更明确：
+
+> **用户报视觉 bug，第一步永远先 Playwright 看一下 DOM 是不是 KunUI 渲染的**（grep `react-aria` / `data-slot` / `kun-` prefix）。不是的话直接 short-circuit "这不在 KunUI scope"，不要浪费时间。
+
+**风险等级**：低 —— 4 个 class 加在 Select.vue，无 API 变化。建议合并。

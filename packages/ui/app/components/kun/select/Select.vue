@@ -126,12 +126,12 @@ const selectOption = (value: T, index: number) => {
       @click="toggle"
       :disabled="disabled"
     >
-      <span class="block truncate">
+      <span class="block min-w-0 flex-1 truncate">
         {{ selectedLabel || placeholder }}
       </span>
       <KunIcon
         name="lucide:chevron-down"
-        class="pointer-events-none"
+        class="pointer-events-none shrink-0"
         :class="
           cn('text-inherit transition-transform', isOpen ? 'rotate-180' : '')
         "
@@ -151,10 +151,21 @@ const selectOption = (value: T, index: number) => {
           v-if="isOpen"
           ref="dropdownRef"
           :style="floatingStyles"
-          :class="cn('bg-content1 border-default-200 z-kun-popover border p-1 shadow-lg', roundedClass)"
+          :class="cn('bg-content1 border-default-200 z-kun-popover flex flex-col overflow-hidden border p-1 shadow-lg', roundedClass)"
         >
+          <!-- flex-col + overflow-hidden on the outer floating div, plus
+               flex-1 min-h-0 on the inner <ul> — together force the
+               option list to honor the maxHeight that floating-ui's
+               size() middleware writes inline. Without min-h-0 the
+               flex item's implicit min-height: auto (= content height)
+               wins and the <ul> stretches past the parent's maxHeight;
+               the overflow-y-auto then never triggers because nothing
+               is overflowing the <ul> itself. Same family of bug as
+               the v0.4.7 "min-w-0 unsticks truncate in flex" fix —
+               flex item min-* defaults need explicit override on both
+               axes whenever a parent dimension constraint must propagate. -->
           <ul
-            class="scrollbar-hide overflow-auto rounded-md text-sm focus:outline-none"
+            class="scrollbar-hide min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md text-sm focus:outline-none"
             tabindex="-1"
             role="listbox"
           >
@@ -166,7 +177,13 @@ const selectOption = (value: T, index: number) => {
               role="option"
               :aria-selected="modelValue === option.value"
             >
-              <span class="block truncate">{{ option.label }}</span>
+              <!-- min-w-0 + flex-1 is the canonical fix for "truncate
+                   inside flex doesn't work": in a flex container, items
+                   default to min-width: auto (== min-content), so long
+                   labels refuse to shrink and overflow horizontally
+                   regardless of `truncate`. min-w-0 unsticks that
+                   floor so text-overflow:ellipsis actually kicks in. -->
+              <span class="block min-w-0 flex-1 truncate">{{ option.label }}</span>
               <KunIcon
                 v-if="modelValue === option.value"
                 name="lucide:check"
