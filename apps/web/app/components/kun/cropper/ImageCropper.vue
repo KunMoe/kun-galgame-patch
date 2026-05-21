@@ -172,6 +172,12 @@ onUnmounted(() => {
         <KunIcon name="lucide:image-plus" class="size-10" />
         <span v-if="hint" class="mt-2 text-sm">{{ hint }}</span>
       </div>
+      <!-- Internal hidden <input>: this component encapsulates a drop zone +
+           cropper + replace button, and all three need to trigger the same
+           single picker via fileInput.click(). KunFileInput's `pick` is only
+           exposed through its default slot, so it can't be shared with the
+           re-select KunButton living outside the slot. Same pattern KunFile-
+           Input itself uses internally (via useFilePicker). -->
       <input
         ref="fileInput"
         type="file"

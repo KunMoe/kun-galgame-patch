@@ -88,13 +88,10 @@ const form = reactive<FormState>({
 // round-trip File objects cleanly through reactive state).
 const bannerFile = ref<File | null>(null)
 const bannerPreview = ref<string | null>(null)
-const onBannerChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const f = input.files?.[0] ?? null
-  bannerFile.value = f
+watch(bannerFile, (f) => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
   bannerPreview.value = f ? URL.createObjectURL(f) : null
-}
+})
 onBeforeUnmount(() => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
@@ -381,11 +378,14 @@ const handleSubmit = async () => {
             已有封面/截图集合在下面可单独管理（设为 banner / 移除 / 调序）。
             covers/screenshots 按 presence 全量替换，下方编辑器已预填该作当前全集。
           </p>
-          <input
-            type="file"
+          <KunFileInput
+            v-model="bannerFile"
             accept="image/jpeg,image/png,image/webp"
-            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
-            @change="onBannerChange"
+            :max-size="10 * 1024 * 1024"
+            hint="JPEG / PNG / WebP，最大 10 MB"
+            trigger-text="选择新封面"
+            trigger-icon="lucide:image-plus"
+            @error-pick="useKunMessage($event, 'error')"
           />
           <div v-if="bannerPreview" class="mt-2">
             <img

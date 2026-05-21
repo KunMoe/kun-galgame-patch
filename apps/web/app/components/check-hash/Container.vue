@@ -10,7 +10,7 @@ const contentValue = computed(() => String(route.query.content ?? ''))
 const status = ref<'idle' | 'checking' | 'match' | 'mismatch'>('idle')
 const progress = ref(0)
 const isDragging = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
+const pickedFile = ref<File | null>(null)
 
 watch(
   () => route.query.hash,
@@ -79,10 +79,11 @@ const handleDragLeave = (e: DragEvent) => {
   isDragging.value = false
 }
 
-const handleFileSelect = (e: Event) => {
-  const target = e.target as HTMLInputElement
-  const file = target.files?.[0]
+const handleFileSelect = (files: File[]) => {
+  const file = files[0]
   if (file) verifyFile(file)
+  // Reset so re-picking the same file still triggers @change.
+  pickedFile.value = null
 }
 </script>
 
@@ -121,17 +122,17 @@ const handleFileSelect = (e: Event) => {
         @dragover="handleDragOver"
         @dragleave="handleDragLeave"
       >
-        <input
-          ref="fileInput"
-          type="file"
-          class="hidden"
-          @change="handleFileSelect"
-        />
         <KunIcon name="lucide:file" class="text-default-400 mx-auto mb-4 size-12" />
         <p class="mb-2">拖动或点击以上传文件</p>
-        <KunButton color="primary" variant="flat" @click="fileInput?.click()">
-          选择文件
-        </KunButton>
+        <KunFileInput
+          v-model="pickedFile"
+          :show-file-name="false"
+          trigger-text="选择文件"
+          trigger-color="primary"
+          trigger-variant="flat"
+          class-name="items-center"
+          @change="handleFileSelect"
+        />
       </div>
 
       <div v-if="status === 'checking'" class="mt-6">

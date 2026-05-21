@@ -70,9 +70,6 @@ const origEngineIds = ref<number[]>([])
 const tagInitial = ref<{ id: number; name: string }[]>([])
 const officialInitial = ref<{ id: number; name: string }[]>([])
 const bannerFile = ref<File | null>(null)
-const onBanner = (e: Event) => {
-  bannerFile.value = (e.target as HTMLInputElement).files?.[0] ?? null
-}
 
 const sameIdSet = (a: number[], b: number[]): boolean => {
   if (a.length !== b.length) return false
@@ -257,15 +254,16 @@ const doDecline = async () => {
           v-model="engineIds"
           kind="engine"
         />
-        <div>
-          <p class="text-default-600 mb-1 text-sm">新 Banner（可选）</p>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            class="text-sm"
-            @change="onBanner"
-          />
-        </div>
+        <KunFileInput
+          v-model="bannerFile"
+          accept="image/jpeg,image/png,image/webp"
+          :max-size="10 * 1024 * 1024"
+          hint="新 Banner（可选）"
+          trigger-text="选择新 Banner"
+          trigger-icon="lucide:image-plus"
+          trigger-size="sm"
+          @error-pick="useKunMessage($event, 'error')"
+        />
         <KunTextarea
           v-model="form.note"
           label="PR 说明"

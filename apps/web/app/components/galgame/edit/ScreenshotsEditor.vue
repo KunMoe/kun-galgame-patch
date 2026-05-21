@@ -28,11 +28,9 @@ const sorted = computed(() =>
 
 // Upload one or more files; each appended to the array at the next sort_order.
 const uploading = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
+const pickedFiles = ref<File[]>([])
 
-const handleFiles = async (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
+const handleFiles = async (files: File[]) => {
   if (!files.length) return
   uploading.value = true
   try {
@@ -76,7 +74,9 @@ const handleFiles = async (e: Event) => {
     }
   } finally {
     uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
+    // Clear KunFileInput's selection so picking the same file again still
+    // triggers @change (matches native input reset semantics).
+    pickedFiles.value = []
   }
 }
 
@@ -122,24 +122,17 @@ const remove = (hash: string) => {
   <div class="border-default/20 space-y-3 rounded-xl border p-3">
     <div class="flex items-center justify-between">
       <p class="text-foreground text-sm font-semibold">截图 / 画廊</p>
-      <label class="text-sm">
-        <KunButton
-          size="sm"
-          :loading="uploading"
-          :disabled="uploading"
-          @click="fileInput?.click()"
-        >
-          上传截图
-        </KunButton>
-        <input
-          ref="fileInput"
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          multiple
-          class="hidden"
-          @change="handleFiles"
-        />
-      </label>
+      <KunFileInput
+        v-model:files="pickedFiles"
+        multiple
+        accept="image/jpeg,image/png,image/webp"
+        :disabled="uploading"
+        :show-file-name="false"
+        trigger-text="上传截图"
+        trigger-icon="lucide:image-plus"
+        trigger-size="sm"
+        @change="handleFiles"
+      />
     </div>
     <p class="text-default-500 text-xs">
       可一次选多张；按选择顺序追加到列表末尾。每张图最大 10MB。

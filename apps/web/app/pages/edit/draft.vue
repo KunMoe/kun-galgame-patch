@@ -120,13 +120,10 @@ watch(
 
 const bannerFile = ref<File | null>(null)
 const bannerPreview = ref<string | null>(null)
-const onBannerChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const f = input.files?.[0] ?? null
-  bannerFile.value = f
+watch(bannerFile, (f) => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
   bannerPreview.value = f ? URL.createObjectURL(f) : null
-}
+})
 onBeforeUnmount(() => {
   if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
 })
@@ -230,11 +227,14 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">Banner（可选，更换图片）</h3>
-          <input
-            type="file"
+          <KunFileInput
+            v-model="bannerFile"
             accept="image/jpeg,image/png,image/webp"
-            class="border-default/20 bg-background w-full rounded-lg border p-2 text-sm"
-            @change="onBannerChange"
+            :max-size="10 * 1024 * 1024"
+            hint="JPEG / PNG / WebP，最大 10 MB"
+            trigger-text="更换 Banner"
+            trigger-icon="lucide:image-plus"
+            @error-pick="useKunMessage($event, 'error')"
           />
           <div v-if="bannerPreview" class="mt-2">
             <img
