@@ -458,19 +458,22 @@ export const useGalgameEdit = () => {
     sort_order?: 'asc' | 'desc'
     content_limit?: 'sfw' | 'nsfw'
   }
+  // Backend (WikiTaxonomyDetailProxy) rewrites Wiki's flat `galgame` brief
+  // array into moyu's enriched `GalgameCard` shape so tag/official detail
+  // pages can render the same <GalgameCard> as the home / galgame index —
+  // the FE no longer has to map between two shapes. Wire field is
+  // standardized on `galgames` here.
   const tagDetail = (id: number, opts?: TaxonomyListOpts) =>
     api.get<{
       tag?: WikiTag & { description?: string }
-      items?: unknown[]
-      galgames?: unknown[]
+      galgames?: GalgameCard[]
       total?: number
     }>(`/tag/_${qs({ tag_id: id, ...(opts as Q) })}`)
 
   const officialDetail = (id: number, opts?: TaxonomyListOpts) =>
     api.get<{
       official?: WikiOfficial & { description?: string }
-      items?: unknown[]
-      galgames?: unknown[]
+      galgames?: GalgameCard[]
       total?: number
     }>(`/official/_${qs({ official_id: id, ...(opts as Q) })}`)
 

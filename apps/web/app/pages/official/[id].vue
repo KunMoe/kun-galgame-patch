@@ -3,7 +3,6 @@
 // tag/[id].vue layout — Wiki's `GET /official/_?official_id=N` returns the
 // official + paginated associated galgames.
 
-import { resolveBannerUrl } from '~/shared/utils/resolveBannerUrl'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,19 +37,11 @@ const { data, pending, refresh } = await useAsyncData(
 )
 
 const official = computed(() => data.value?.official ?? null)
-const galgames = computed<Record<string, unknown>[]>(() => {
-  const items = data.value?.items ?? data.value?.galgames ?? []
-  return items as Record<string, unknown>[]
-})
+const galgames = computed<GalgameCard[]>(
+  () => data.value?.galgames ?? []
+)
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
-
-const displayName = (g: Record<string, unknown>): string =>
-  (g.name_zh_cn as string) ||
-  (g.name_zh_tw as string) ||
-  (g.name_ja_jp as string) ||
-  (g.name_en_us as string) ||
-  `#${g.id}`
 
 useKunSeoMeta({
   title: official.value ? `会社 · ${official.value.name}` : '会社详情',
@@ -127,35 +118,10 @@ watch(official, () => refresh(), { flush: 'post' })
           v-else
           class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         >
-          <NuxtLink
-            v-for="g in galgames"
-            :key="g.id as number"
-            :to="`/patch/${g.id}`"
-            class="border-default/20 hover:border-primary/40 group block overflow-hidden rounded-lg border transition-colors"
-          >
-            <div class="aspect-video w-full overflow-hidden">
-              <img
-                :src="
-                  resolveBannerUrl(g as never, 'mini') ||
-                  '/kungalgame-trans.webp'
-                "
-                :alt="displayName(g)"
-                loading="lazy"
-                class="bg-default-100 size-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-            </div>
-            <div class="p-2">
-              <p class="line-clamp-2 text-sm font-medium">
-                {{ displayName(g) }}
-              </p>
-              <p
-                v-if="g.vndb_id"
-                class="text-default-400 mt-0.5 text-xs"
-              >
-                {{ g.vndb_id }}
-              </p>
-            </div>
-          </NuxtLink>
+          <!-- Backend now serves moyu-enriched GalgameCard shape for
+               official detail (WikiTaxonomyDetailProxy) — same shape as
+               home / galgame index, render the same component. -->
+          <GalgameCard v-for="g in galgames" :key="g.id" :patch="g" />
         </div>
 
         <KunPagination

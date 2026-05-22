@@ -7,7 +7,6 @@
 // Wiki side; we always pass "_" via the composable to keep our internal URL
 // tidy (`/tag/:id`).
 
-import { resolveBannerUrl } from '~/shared/utils/resolveBannerUrl'
 import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
 const route = useRoute()
@@ -48,19 +47,11 @@ const { data, pending, refresh } = await useAsyncData(
 // `total` for the paginated galgame list. Be defensive about which key it
 // uses since the doc shows the request but not the exact response.
 const tag = computed(() => data.value?.tag ?? null)
-const galgames = computed<Record<string, unknown>[]>(() => {
-  const items = data.value?.items ?? data.value?.galgames ?? []
-  return items as Record<string, unknown>[]
-})
+const galgames = computed<GalgameCard[]>(
+  () => data.value?.galgames ?? []
+)
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
-
-const displayName = (g: Record<string, unknown>): string =>
-  (g.name_zh_cn as string) ||
-  (g.name_zh_tw as string) ||
-  (g.name_ja_jp as string) ||
-  (g.name_en_us as string) ||
-  `#${g.id}`
 
 useKunSeoMeta({
   title: tag.value ? `标签 · ${tag.value.name}` : '标签详情',
@@ -128,35 +119,12 @@ watch(tag, () => refresh(), { flush: 'post' })
           v-else
           class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         >
-          <NuxtLink
-            v-for="g in galgames"
-            :key="g.id as number"
-            :to="`/patch/${g.id}`"
-            class="border-default/20 hover:border-primary/40 group block overflow-hidden rounded-lg border transition-colors"
-          >
-            <div class="aspect-video w-full overflow-hidden">
-              <img
-                :src="
-                  resolveBannerUrl(g as never, 'mini') ||
-                  '/kungalgame-trans.webp'
-                "
-                :alt="displayName(g)"
-                loading="lazy"
-                class="bg-default-100 size-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-            </div>
-            <div class="p-2">
-              <p class="line-clamp-2 text-sm font-medium">
-                {{ displayName(g) }}
-              </p>
-              <p
-                v-if="g.vndb_id"
-                class="text-default-400 mt-0.5 text-xs"
-              >
-                {{ g.vndb_id }}
-              </p>
-            </div>
-          </NuxtLink>
+          <!-- Backend now serves moyu-enriched GalgameCard shape for tag
+               detail (WikiTaxonomyDetailProxy joins each Wiki galgame with
+               its local patch row for stats), so no client-side adapter
+               is needed — render the same component as home / galgame
+               index does for full visual + data parity. -->
+          <GalgameCard v-for="g in galgames" :key="g.id" :patch="g" />
         </div>
 
         <KunPagination

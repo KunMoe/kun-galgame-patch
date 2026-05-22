@@ -219,14 +219,19 @@ func (a *App) RegisterRoutes() {
 	api.Post("/tag", auth, a.PatchHandler.WikiEditProxy)
 	api.Put("/tag", auth, a.PatchHandler.WikiEditProxy)
 	api.Delete("/tag/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/tag/:name", a.PatchHandler.WikiEditProxy)
+	// /tag/:name and /official/:name carry an associated `galgame` list —
+	// we rewrite the response in WikiTaxonomyDetailProxy so each entry
+	// has moyu's enriched GalgameCard shape (per-patch counts, KunLanguage
+	// name etc.), letting the FE render the same <GalgameCard> as home /
+	// galgame index. Other tag/official endpoints stay generic passthrough.
+	api.Get("/tag/:name", a.PatchHandler.WikiTaxonomyDetailProxy)
 
 	api.Get("/official", a.PatchHandler.WikiEditProxy)
 	api.Get("/official/search", a.PatchHandler.WikiEditProxy)
 	api.Post("/official", auth, a.PatchHandler.WikiEditProxy)
 	api.Put("/official", auth, a.PatchHandler.WikiEditProxy)
 	api.Delete("/official/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/official/:name", a.PatchHandler.WikiEditProxy)
+	api.Get("/official/:name", a.PatchHandler.WikiTaxonomyDetailProxy)
 
 	api.Get("/engine", a.PatchHandler.WikiEditProxy)
 	api.Post("/engine", auth, a.PatchHandler.WikiEditProxy)

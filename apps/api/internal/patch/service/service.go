@@ -123,6 +123,15 @@ func (s *PatchService) GetPatch(ctx context.Context, id int) (*model.Patch, erro
 	return s.ensureLocalPatch(ctx, id)
 }
 
+// GetPatchesByIDs returns existing patches for the given ids in the caller-
+// supplied order — no lazy materialization. Used by handlers that enrich a
+// list of Wiki galgame ids with moyu-side stats; ids that have no local row
+// are simply absent from the result so the caller can degrade to a Wiki-
+// only card (banner + name + content_limit, zero stats) for those entries.
+func (s *PatchService) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
+	return s.repo.GetPatchesByIDs(ids)
+}
+
 // GetPatchDetail returns the local patch row, lazily materializing it the
 // first time a moyu user opens a galgame that is globally published on Wiki
 // (e.g. created/claimed on kungal) but has no moyu row yet.

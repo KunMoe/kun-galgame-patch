@@ -15,9 +15,13 @@ package handler
 //     authorization locally — §15: "鉴权语义以 wiki 端为准，下游不得放宽或收紧".
 
 import (
+	"encoding/json"
 	"io"
+	"log/slog"
 	"strings"
 
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -58,6 +62,117 @@ func (h *PatchHandler) WikiEditProxy(c *fiber.Ctx) error {
 		string(c.Request().Header.ContentType()),
 	)
 	return writeWikiResult(c, data, err)
+}
+
+// WikiTaxonomyDetailProxy specializes WikiEditProxy for /tag/:name and
+// /official/:name: it forwards to Wiki same as the generic proxy, then
+// rewrites the response so the `galgame` array (Wiki's flat brief shape) is
+// replaced with moyu's enriched `GalgameCard` shape (KunLanguage `name`,
+// per-patch counts, banner-hash resolution etc.) — the same shape the home /
+// galgame index pages already consume.
+//
+// For Wiki-listed galgames moyu has no local patch row for, a degraded card
+// is emitted (Wiki name/banner/content_limit, zero counts) so the listing
+// stays visually consistent and the user can still see the full Wiki set.
+//
+// The rewritten field is renamed `galgame` → `galgames` to match the rest
+// of moyu's paginated list shape (and the existing FE TaxonomyListOpts
+// reader fallbacks).
+func (h *PatchHandler) WikiTaxonomyDetailProxy(c *fiber.Ctx) error {
+	if c.Method() != fiber.MethodGet {
+		// Non-GETs (PUT/POST/DELETE) on tag/official go through the generic
+		// proxy in WikiEditProxy; this method is read-only enrichment.
+		return h.WikiEditProxy(c)
+	}
+
+	accessToken := middleware.GetAccessToken(c)
+	raw, err := h.wiki.Proxy(
+		c.Context(),
+		fiber.MethodGet,
+		wikiPathFromRequest(c),
+		accessToken,
+		nil,
+		"",
+	)
+	if err != nil {
+		if werr, ok := err.(*galgameClient.WikiError); ok {
+			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
+		}
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+
+	// Parse the Wiki `data` field into a generic map so we can swap out the
+	// galgame array without touching the tag/official metadata around it.
+	var envelope map[string]json.RawMessage
+	if jerr := json.Unmarshal(raw, &envelope); jerr != nil {
+		// Shape is unexpected (not a JSON object) — degrade to passthrough.
+		return c.JSON(response.Response{Code: 0, Message: "OK", Data: raw})
+	}
+
+	// Wiki's TagDetail / OfficialDetail use `"galgame"` (singular). Be
+	// defensive about `galgames` / `items` in case the upstream changes.
+	var galgameKey string
+	var briefs []galgameClient.GalgameBrief
+	for _, key := range []string{"galgame", "galgames", "items"} {
+		raw, ok := envelope[key]
+		if !ok {
+			continue
+		}
+		if jerr := json.Unmarshal(raw, &briefs); jerr == nil {
+			galgameKey = key
+			break
+		}
+	}
+	if galgameKey == "" {
+		return c.JSON(response.Response{Code: 0, Message: "OK", Data: raw})
+	}
+
+	// 1) Collect ids in Wiki order. 2) Find which moyu has locally.
+	// 3) Enrich those (one /galgame/batch + one users batch internally).
+	// 4) Walk the original Wiki order and emit either enriched or degraded.
+	ids := make([]int, 0, len(briefs))
+	for i := range briefs {
+		if briefs[i].ID > 0 {
+			ids = append(ids, briefs[i].ID)
+		}
+	}
+	localPatches, lerr := h.service.GetPatchesByIDs(ids)
+	if lerr != nil {
+		slog.Warn("拉本地 patch 失败，将走 Wiki 仅元信息的降级路径",
+			"error", lerr, "count", len(ids))
+	}
+	enriched := enricher.EnrichPatches(c.Context(), h.wiki, h.users, localPatches)
+	enrichedByID := make(map[int]enricher.GalgameCard, len(enriched))
+	for i := range enriched {
+		enrichedByID[enriched[i].ID] = enriched[i]
+	}
+
+	finalCards := make([]enricher.GalgameCard, 0, len(briefs))
+	for i := range briefs {
+		if card, ok := enrichedByID[briefs[i].ID]; ok {
+			finalCards = append(finalCards, card)
+			continue
+		}
+		finalCards = append(finalCards, enricher.CardFromBrief(&briefs[i]))
+	}
+
+	cardsJSON, merr := json.Marshal(finalCards)
+	if merr != nil {
+		return c.JSON(response.Response{Code: 0, Message: "OK", Data: raw})
+	}
+	// Standardize on `galgames` regardless of the upstream key — the FE
+	// type already permits this and dropping the old key avoids shipping
+	// the same data twice.
+	if galgameKey != "galgames" {
+		delete(envelope, galgameKey)
+	}
+	envelope["galgames"] = cardsJSON
+
+	out, merr2 := json.Marshal(envelope)
+	if merr2 != nil {
+		return c.JSON(response.Response{Code: 0, Message: "OK", Data: raw})
+	}
+	return c.JSON(response.Response{Code: 0, Message: "OK", Data: json.RawMessage(out)})
 }
 
 // WikiPRSubmit handles POST /api/v1/galgame/:gid/prs. Like Submit/Update it

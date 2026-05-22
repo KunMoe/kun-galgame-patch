@@ -19,7 +19,7 @@ const bannerSrc = computed(
 <template>
   <KunCard
     :href="`/patch/${props.patch.id}/introduction`"
-    class-name="w-full border-default-100 dark:border-default-200 border"
+    class-name="w-full"
     content-class="gap-0 p-0"
   >
     <div
@@ -63,7 +63,10 @@ const bannerSrc = computed(
         class="text-medium hover:text-primary-500 space-x-2 font-semibold transition-colors line-clamp-2 sm:text-lg"
       >
         <span>{{ galgameName }}</span>
-        <span class="text-default-500 text-xs font-normal">
+        <span
+          v-if="props.patch.created"
+          class="text-default-500 text-xs font-normal"
+        >
           {{ formatDistanceToNow(props.patch.created) }}
         </span>
       </h2>

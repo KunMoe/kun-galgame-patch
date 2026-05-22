@@ -29,6 +29,37 @@ func (r *PatchRepository) GetPatchByID(id int) (*model.Patch, error) {
 	return &patch, err
 }
 
+// GetPatchesByIDs fetches multiple patch rows in one query, preserving the
+// caller-supplied id order so the enricher's downstream join keeps galgame
+// ordering intact. Empty id slice returns nil without hitting the DB.
+//
+// Used by WikiTaxonomyDetailProxy to attach moyu-side counts/dates to Wiki's
+// tag/official galgame listings — Wiki only knows metadata (name / banner /
+// content_limit), the per-patch stats live here.
+func (r *PatchRepository) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []model.Patch
+	if err := r.db.Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	// Reorder to match `ids` so the response preserves Wiki's intended order
+	// (Wiki may sort by relevance / popularity / chronology — we don't want
+	// to scramble that during enrichment).
+	byID := make(map[int]model.Patch, len(rows))
+	for _, p := range rows {
+		byID[p.ID] = p
+	}
+	ordered := make([]model.Patch, 0, len(rows))
+	for _, id := range ids {
+		if p, ok := byID[id]; ok {
+			ordered = append(ordered, p)
+		}
+	}
+	return ordered, nil
+}
+
 func (r *PatchRepository) GetPatchDetail(id int) (*model.Patch, error) {
 	var patch model.Patch
 	err := r.db.First(&patch, id).Error

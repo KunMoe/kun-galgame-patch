@@ -415,3 +415,16 @@ func applyGalgame(card *GalgameCard, g *galgameClient.GalgameBrief) {
 	card.ContentLimit = g.ContentLimit
 	card.Galgame = g
 }
+
+// CardFromBrief builds a GalgameCard from a Wiki brief alone (no local patch
+// row). All moyu-side stats stay zero — used when enriching Wiki responses
+// (tag/official detail) that include galgames moyu does not yet have a patch
+// row for. The frontend can render the same card chrome and just show 0s.
+func CardFromBrief(g *galgameClient.GalgameBrief) GalgameCard {
+	if g == nil {
+		return GalgameCard{}
+	}
+	card := GalgameCard{ID: g.ID, VndbID: g.VndbID}
+	applyGalgame(&card, g)
+	return card
+}
