@@ -150,7 +150,7 @@ useKunSeoMeta({
 </script>
 
 <template>
-  <div class="container mx-auto my-4 px-4">
+  <div class="container mx-auto my-4">
     <KunLoading v-if="pending" description="加载资源中..." />
 
     <template v-else-if="detail && resource">

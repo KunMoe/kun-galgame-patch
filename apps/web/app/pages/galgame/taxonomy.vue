@@ -381,11 +381,14 @@ const fmtSnapshotValue = (v: unknown): string => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4 max-w-3xl px-4">
+  <!-- Outer aligns with header (max-w-7xl via default layout); table /
+       form body uses inner narrow column for readability. -->
+  <div class="container mx-auto my-4">
     <KunHeader
       name="Galgame 分类管理"
       description="标签 / 开发商 / 引擎 / 系列的增删改 —— 元数据由 Galgame Wiki 统一维护"
     />
+    <div class="mx-auto max-w-3xl">
 
     <KunTab
       v-model="tab"
@@ -622,5 +625,6 @@ const fmtSnapshotValue = (v: unknown): string => {
         </div>
       </div>
     </KunModal>
+    </div>
   </div>
 </template>

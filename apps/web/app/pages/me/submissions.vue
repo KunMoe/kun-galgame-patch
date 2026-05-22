@@ -96,7 +96,7 @@ const handleEdit = async (m: MineItem) => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4 max-w-3xl px-4">
+  <div class="container mx-auto my-4">
     <KunHeader
       name="我的提交"
       description="查看您提交到 Galgame Wiki 的作品的审核进度"

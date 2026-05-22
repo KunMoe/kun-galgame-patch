@@ -283,11 +283,16 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4 max-w-3xl px-4">
+  <!-- Outer wrapper matches header (max-w-7xl via the default layout) so
+       page edges align with the top bar; the form body itself stays in a
+       centered narrow column for readability — same pattern settings/user
+       already uses. -->
+  <div class="container mx-auto my-4">
     <KunHeader
       name="发布 Galgame"
       description="先搜索 Wiki，看看是否已有条目；若没有再提交新的元数据"
     />
+    <div class="mx-auto max-w-3xl">
 
     <!-- ============ Mode: search ============ -->
     <div v-if="mode === 'search'" class="mt-6 space-y-4">
@@ -553,5 +558,6 @@ const handleSubmit = async () => {
         </div>
       </div>
     </KunCard>
+    </div>
   </div>
 </template>

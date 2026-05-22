@@ -183,8 +183,11 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4 max-w-3xl px-4">
+  <!-- Outer wrapper aligns with header (max-w-7xl via default layout); form
+       body uses inner narrow column for readability. -->
+  <div class="container mx-auto my-4">
     <KunHeader name="编辑草稿" description="修改后将自动重新进入审核队列" />
+    <div class="mx-auto max-w-3xl">
 
     <KunLoading v-if="pending" class-name="mt-6" description="加载草稿..." />
 
@@ -315,5 +318,6 @@ const handleSubmit = async () => {
         </div>
       </div>
     </KunCard>
+    </div>
   </div>
 </template>

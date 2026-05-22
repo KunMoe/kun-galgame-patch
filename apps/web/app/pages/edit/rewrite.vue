@@ -313,8 +313,11 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="container mx-auto my-6 max-w-3xl">
+  <!-- Outer wrapper aligns with header (max-w-7xl via default layout); form
+       body uses inner narrow column for readability. -->
+  <div class="container mx-auto my-6">
     <KunHeader name="编辑 Galgame" description="修改 Galgame 元数据 (经 Galgame Wiki 转发)" />
+    <div class="mx-auto max-w-3xl">
 
     <KunLoading v-if="pending" description="加载游戏信息..." class-name="mt-6" />
 
@@ -501,5 +504,6 @@ const handleSubmit = async () => {
         </div>
       </div>
     </KunCard>
+    </div>
   </div>
 </template>

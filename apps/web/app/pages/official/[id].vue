@@ -54,7 +54,7 @@ watch(official, () => refresh(), { flush: 'post' })
 </script>
 
 <template>
-  <div class="container mx-auto my-6 max-w-5xl px-4">
+  <div class="container mx-auto my-6">
     <KunLoading v-if="pending && !official" description="加载中..." />
 
     <KunNull v-else-if="!official" description="会社不存在或加载失败" />

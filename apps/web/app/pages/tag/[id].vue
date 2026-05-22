@@ -64,7 +64,7 @@ watch(tag, () => refresh(), { flush: 'post' })
 </script>
 
 <template>
-  <div class="container mx-auto my-6 max-w-5xl px-4">
+  <div class="container mx-auto my-6">
     <KunLoading v-if="pending && !tag" description="加载中..." />
 
     <KunNull v-else-if="!tag" description="标签不存在或加载失败" />

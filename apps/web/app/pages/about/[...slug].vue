@@ -75,7 +75,7 @@ const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])
 <template>
   <div
     v-if="detail"
-    class="grid w-full gap-6 px-4 py-6 lg:grid-cols-[16rem_minmax(0,1fr)_16rem]"
+    class="grid w-full gap-6 py-6 lg:grid-cols-[16rem_minmax(0,1fr)_16rem]"
   >
     <aside
       class="hidden lg:sticky lg:top-20 lg:block lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"

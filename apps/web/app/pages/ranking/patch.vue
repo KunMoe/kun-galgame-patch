@@ -38,7 +38,7 @@ const onChangeSort = async (v: string | number) => {
 </script>
 
 <template>
-  <div class="container my-6 space-y-6">
+  <div class="container mx-auto my-6 space-y-6">
     <KunHeader name="排行榜单" description="查看全部时间的数据累计" />
 
     <div class="flex flex-wrap items-center gap-3">
