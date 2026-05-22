@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
+
 interface KunImageProps {
   src: string
   alt?: string
@@ -20,6 +22,23 @@ interface KunImageProps {
     | {
         fetchPriority: 'auto' | 'high' | 'low'
       }
+  // ----- v0.5.0 skeleton (loading placeholder) -----
+  // Toggles a `bg-default-200 animate-pulse` skeleton background on the
+  // <img> element while the image is loading. Cleared on `@load` /
+  // `@error`. The skeleton lives on the same <img> (not a wrapper div)
+  // to avoid changing the rendered element type — consumers' layouts
+  // that assume KunImage renders a single <img> keep working.
+  //
+  // Requires explicit `width` + `height` (or aspect-ratio via parent)
+  // for the <img> to reserve space before the bytes arrive; otherwise
+  // the skeleton has zero size and is invisible.
+  //
+  // Pairs cleanly with NuxtImg's `placeholder` prop (low-quality
+  // blurred preview): skeleton shows first → @load fires → skeleton
+  // off → placeholder blur fades into sharp. Default true; pass
+  // `:skeleton="false"` to opt out (e.g. for tiny icons / decorations
+  // where the flash isn't worth it).
+  skeleton?: boolean
   // ----- v0.4.6 pass-throughs (moyu feedback) -----
   // Provider switch — pass "none" for pre-optimized static assets
   // (author-time AVIF/WebP) to skip the IPX → sharp round-trip. The
@@ -50,7 +69,7 @@ interface KunImageProps {
   // decode (use sparingly — blocks paint).
   decoding?: 'sync' | 'async' | 'auto'
 }
-withDefaults(defineProps<KunImageProps>(), {
+const props = withDefaults(defineProps<KunImageProps>(), {
   alt: 'image',
   loading: undefined,
   placeholder: undefined,
@@ -65,13 +84,30 @@ withDefaults(defineProps<KunImageProps>(), {
   densities: undefined,
   sizes: undefined,
   fetchpriority: undefined,
-  decoding: undefined
+  decoding: undefined,
+  skeleton: true
 })
+
+// `isLoaded` is set on either successful load OR error — on error we
+// still drop the pulse animation so a broken image doesn't shimmer
+// forever (the broken-image icon is a better signal than perpetual
+// pulse).
+const isLoaded = ref(false)
+const onLoad = () => {
+  isLoaded.value = true
+}
+const onError = () => {
+  isLoaded.value = true
+}
+
+const skeletonClass = computed(() =>
+  props.skeleton && !isLoaded.value ? 'bg-default-200 animate-pulse' : ''
+)
 </script>
 
 <template>
   <NuxtImg
-    :class="cn('', className)"
+    :class="cn(skeletonClass, className)"
     :src="src"
     :alt="alt"
     :loading="loading"
@@ -87,5 +123,7 @@ withDefaults(defineProps<KunImageProps>(), {
     :sizes="sizes"
     :fetchpriority="fetchpriority"
     :decoding="decoding"
+    @load="onLoad"
+    @error="onError"
   />
 </template>
