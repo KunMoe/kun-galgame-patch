@@ -11,19 +11,19 @@ const handleOAuthLogin = async () => {
   }
 }
 
-const oauthOrigin = computed(
-  () => (config.public.oauthServerUrl || '').replace(/\/api\/v\d+\/?$/, '')
-)
-const registerUrl = computed(() => `${oauthOrigin.value}/register`)
+// Use oauthWebUrl (frontend, dev :9420 / prod oauth.kungal.com), not oauthServerUrl
+// (API, dev :9277). In prod they're same-origin, but in dev they're split ports.
+const oauthWebUrl = computed(() => (config.public.oauthWebUrl as string) || '')
+const registerUrl = computed(() => `${oauthWebUrl.value}/register`)
 // Local /auth/forgot is just a redirect page; we link directly to OAuth's
 // reset flow to save the extra hop.
-const forgotUrl = computed(() => `${oauthOrigin.value}/forgot`)
+const forgotUrl = computed(() => `${oauthWebUrl.value}/forgot`)
 </script>
 
 <template>
   <div class="flex w-72 flex-col gap-4">
     <p class="text-default-500 text-center text-sm">
-      使用 KUN 账号登录以继续
+      使用 鲲 Galgame OAuth 登录以继续
     </p>
 
     <KunButton
@@ -35,7 +35,7 @@ const forgotUrl = computed(() => `${oauthOrigin.value}/forgot`)
       @click="handleOAuthLogin"
     >
       <KunIcon v-if="!loading" name="lucide:log-in" class="size-5" />
-      KUN 账号登录
+      鲲 Galgame OAuth 登录
     </KunButton>
 
     <KunTextDivider text="或" />
@@ -48,7 +48,7 @@ const forgotUrl = computed(() => `${oauthOrigin.value}/forgot`)
     </a>
 
     <div class="flex items-center justify-center">
-      <span class="mr-2 text-sm">没有 KUN 账号?</span>
+      <span class="mr-2 text-sm">没有 鲲 Galgame OAuth 账号?</span>
       <a
         :href="registerUrl"
         target="_blank"

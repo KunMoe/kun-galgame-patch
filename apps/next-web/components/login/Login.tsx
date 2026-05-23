@@ -23,7 +23,7 @@ export const LoginForm = () => {
   return (
     <div className="w-72 flex flex-col gap-4">
       <p className="text-center text-sm text-default-500">
-        使用 KUN 账号登录以继续
+        使用 鲲 Galgame OAuth 登录以继续
       </p>
 
       <Button
@@ -35,7 +35,7 @@ export const LoginForm = () => {
         startContent={!loading && <LogIn className="size-5" />}
         onPress={handleOAuthLogin}
       >
-        KUN 账号登录
+        鲲 Galgame OAuth 登录
       </Button>
 
       <KunTextDivider text="或" />
@@ -50,11 +50,11 @@ export const LoginForm = () => {
       </Button>
 
       <div className="flex items-center justify-center">
-        <span className="mr-2 text-sm">没有 KUN 账号?</span>
+        <span className="mr-2 text-sm">没有 鲲 Galgame OAuth 账号?</span>
         <Link
           href={
             (process.env.NEXT_PUBLIC_KUN_OAUTH_SERVER_URL ||
-              'http://127.0.0.1:9277') + '/register'
+              'http://127.0.0.1:9420') + '/register'
           }
           isExternal
           size="sm"

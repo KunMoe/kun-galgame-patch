@@ -32,11 +32,16 @@ const api = useApi()
 // (email, full bio if not yet on userStore) come from refetching /auth/me
 // directly. Cached locally so the UI can show "current email" without
 // re-querying on every keystroke.
+// Mirrors the fields moyu's `/auth/me` (composeMe in
+// internal/auth/handler/handler.go) actually returns. Notably **no email**:
+// composeMe pulls display fields from OAuth /users/batch which is a non-
+// PII display endpoint. Don't add `email?: string` "just in case" — it
+// will silently be undefined forever and re-introduce the bug where the
+// settings page showed "当前邮箱（未绑定）" for users who clearly have one.
 interface MeFull {
   id: number
   sub: string
   name: string
-  email?: string
   avatar: string
   avatar_image_hash: string
   bio: string
@@ -136,13 +141,11 @@ const uploadAvatar = async () => {
 // /auth/password、POST /auth/email/send-code、PUT /auth/email 已经从
 // router 移除）。这里只放一个跳转按钮，带 return 参数让用户改完跳回。
 const config = useRuntimeConfig()
-const oauthServerUrl =
-  (config.public.oauthServerUrl as string) ??
-  'https://oauth.kungal.com/api/v1'
-const oauthOrigin = oauthServerUrl.replace(/\/api\/v\d+\/?$/, '')
+const oauthWebUrl =
+  (config.public.oauthWebUrl as string) || 'https://oauth.kungal.com'
 const oauthProfileUrl = computed(() => {
-  if (!import.meta.client) return `${oauthOrigin}/profile`
-  return `${oauthOrigin}/profile?return=${encodeURIComponent(window.location.href)}`
+  if (!import.meta.client) return `${oauthWebUrl}/profile`
+  return `${oauthWebUrl}/profile?return=${encodeURIComponent(window.location.href)}`
 })
 
 // ─── 消息通知设置 (frontend-only, localStorage) ───────────────────────
@@ -290,6 +293,11 @@ const currentAvatarUrl = computed(() => {
            只需改一处、避免邮箱劫持攻击面跨多个站点放大。
            moyu 这里只提供跳转入口，URL 携带 `?return=<currentUrl>` 让
            OAuth 改完直接跳回原页。 -->
+      <!-- moyu's /auth/me intentionally does NOT return email (composeMe
+           pulls only name/avatar/bio from OAuth /users/batch, which is
+           a non-PII display-fields endpoint). We won't fabricate a
+           "current email" display — showing "（未绑定）" for users who
+           obviously have one is more confusing than no info at all. -->
       <KunCard :bordered="true">
         <template #header>
           <h2 class="px-1 pt-1 text-xl font-medium">身份与安全</h2>
@@ -297,21 +305,9 @@ const currentAvatarUrl = computed(() => {
         <div class="space-y-4">
           <p class="text-default-600 text-sm">
             修改邮箱、密码、注销账号等敏感操作需要在
-            <strong>KUN 账号中心</strong>完成 ——
+            <strong>鲲 Galgame OAuth</strong>完成 ——
             这是为了让所有身份层操作集中在一个安全审计点。改完后页面会自动跳回。
           </p>
-          <div
-            class="border-default/20 bg-default-50/50 space-y-2 rounded-lg border p-3 text-sm"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-default-500">当前邮箱</span>
-              <span class="font-medium">{{ me?.email || '（未绑定）' }}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-default-500">用户 ID</span>
-              <span class="font-mono text-xs">{{ me?.id ?? '—' }}</span>
-            </div>
-          </div>
           <div class="flex justify-end">
             <a
               :href="oauthProfileUrl"
@@ -320,7 +316,7 @@ const currentAvatarUrl = computed(() => {
             >
               <KunButton color="primary" variant="flat">
                 <KunIcon name="lucide:external-link" class="size-4" />
-                前往 KUN 账号中心
+                前往 鲲 Galgame OAuth
               </KunButton>
             </a>
           </div>

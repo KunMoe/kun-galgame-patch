@@ -34,10 +34,12 @@ export const startOAuthLogin = async (): Promise<void> => {
   sessionStorage.setItem('oauth_code_verifier', codeVerifier)
   sessionStorage.setItem('oauth_state', state)
 
-  const oauthServerUrl = config.public.oauthServerUrl
-  const clientId = config.public.oauthClientId
+  // Authorize endpoint is a user-facing consent screen — it lives on the OAuth
+  // frontend (dev :9420, prod oauth.kungal.com), NOT the API base (:9277/api/v1).
+  const oauthWebUrl = config.public.oauthWebUrl as string
+  const clientId = config.public.oauthClientId as string
   const redirectUri =
-    config.public.oauthRedirectUri ||
+    (config.public.oauthRedirectUri as string) ||
     `${window.location.origin}/auth/callback`
 
   const params = new URLSearchParams({
@@ -50,7 +52,7 @@ export const startOAuthLogin = async (): Promise<void> => {
     code_challenge_method: 'S256'
   })
 
-  window.location.href = `${oauthServerUrl}/oauth/authorize?${params}`
+  window.location.href = `${oauthWebUrl}/oauth/authorize?${params}`
 }
 
 export const verifyOAuthCallback = (): {

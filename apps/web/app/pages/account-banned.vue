@@ -16,14 +16,9 @@ const route = useRoute()
 const reason = computed(() => (route.query.reason as string) || '')
 
 const config = useRuntimeConfig()
-const oauthOrigin = computed(() => {
-  const u = (config.public.oauthServerUrl as string) || ''
-  try {
-    return new URL(u).origin
-  } catch {
-    return 'https://oauth.kungal.com'
-  }
-})
+const oauthOrigin = computed(
+  () => (config.public.oauthWebUrl as string) || 'https://oauth.kungal.com'
+)
 </script>
 
 <template>
@@ -51,7 +46,7 @@ const oauthOrigin = computed(() => {
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-primary hover:underline"
-              >KUN OAuth</a>
+              >鲲 Galgame OAuth</a>
               联系管理员了解封禁原因
             </li>
             <li>申诉成功后再尝试登录本站</li>

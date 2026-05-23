@@ -596,7 +596,7 @@ for _, item := range items {
 这一步在你做用户登录回调时做：
 
 ```
-用户 → 点击 "用 KUN 账号登录"
+用户 → 点击 "用 鲲 Galgame OAuth 登录"
   ↓
 你的站点 → 重定向到 /oauth/authorize
   ↓

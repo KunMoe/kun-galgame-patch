@@ -93,14 +93,20 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // 本项目 Go Fiber API（不是 KUN OAuth）。Go 端口从 apps/api/.env 的 KUN_SERVER_PORT 读，dev 默认 5214。
+      // 本项目 Go Fiber API（不是 鲲 Galgame OAuth）。Go 端口从 apps/api/.env 的 KUN_SERVER_PORT 读，dev 默认 5214。
       apiBase:
         process.env.KUN_VISUAL_NOVEL_NUXT_PUBLIC_API_BASE ||
         'http://127.0.0.1:5214/api/v1',
-      // KUN OAuth（独立服务，端口 9277，勿混淆）
+      // 鲲 Galgame OAuth — 拆成两个 URL：
+      // - oauthServerUrl：API base，给 fetch / 拿 token / 调 /users/batch 用（dev :9277）
+      // - oauthWebUrl：用户面前端，给 window.location.href 跳转 /oauth/authorize / /register / /forgot / /profile 用（dev :9420）
+      // prod 同域 `oauth.kungal.com`，但开发环境是两个端口，所以不能再从 API URL 推 origin。
       oauthServerUrl:
         process.env.NUXT_PUBLIC_KUN_OAUTH_SERVER_URL ||
         'http://127.0.0.1:9277/api/v1',
+      oauthWebUrl:
+        process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL ||
+        'http://127.0.0.1:9420',
       oauthClientId: process.env.NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID || '',
       oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || ''
     }

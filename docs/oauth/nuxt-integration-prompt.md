@@ -7,7 +7,7 @@
 
 ## 任务
 
-在当前 Nuxt 项目中接入 鲲 Galgame OAuth 2.0 登录系统，实现「使用 KUN 账号登录」功能。
+在当前 Nuxt 项目中接入 鲲 Galgame OAuth 2.0 登录系统，实现「使用 鲲 Galgame OAuth 登录」功能。
 
 ## OAuth Server 信息
 
@@ -61,7 +61,7 @@ runtimeConfig: {
 
 ### 3. 登录触发（客户端）
 
-在登录页面添加一个「使用 KUN 账号登录」按钮，点击后：
+在登录页面添加一个「使用 鲲 Galgame OAuth 登录」按钮，点击后：
 
 1. 调用 `generateCodeVerifier()` 和 `generateCodeChallenge()` 和 `generateState()`
 2. 将 `code_verifier` 和 `state` 存入 `sessionStorage`

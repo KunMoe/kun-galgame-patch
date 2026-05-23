@@ -60,7 +60,7 @@
 ### 流程概览
 
 ```
-用户点击「使用 KUN 账号登录」
+用户点击「使用 鲲 Galgame OAuth 登录」
   ↓
 客户端生成 PKCE code_verifier + code_challenge
   ↓
@@ -573,7 +573,7 @@ const handleLogin = async () => {
 </script>
 
 <template>
-  <button @click="handleLogin">使用 KUN 账号登录</button>
+  <button @click="handleLogin">使用 鲲 Galgame OAuth 登录</button>
 </template>
 ```
 
