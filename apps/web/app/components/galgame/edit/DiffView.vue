@@ -129,47 +129,84 @@ const nameMapFor = (k: string): Record<string, string> | undefined => {
       :key="k"
       class="border-default/20 rounded-xl border p-3"
     >
-      <p class="text-foreground mb-2 text-sm font-semibold">{{ label(k) }}</p>
-      <!-- Proposal-only (PR detail has no `old`) keeps the simple block form. -->
-      <div v-if="proposalOnly" class="border-primary/30 bg-primary/5 rounded-lg border p-2">
-        <p class="text-primary mb-1 text-xs font-medium">提案值</p>
-        <pre
-          class="text-default-700 text-xs break-words whitespace-pre-wrap"
-          >{{ fmt(newSnap?.[k]) }}</pre
-        >
-      </div>
+      <!-- Proposal-only (PR detail has no `old`) — single 提案值 block.
+           Field label stays above since there's no split to label. -->
+      <template v-if="proposalOnly">
+        <p class="text-foreground mb-2 text-sm font-semibold">{{ label(k) }}</p>
+        <div class="border-primary/30 bg-primary/5 rounded-lg border p-2">
+          <p class="text-primary mb-1 text-xs font-medium">提案值</p>
+          <pre
+            class="text-default-700 text-xs break-words whitespace-pre-wrap"
+            >{{ fmt(newSnap?.[k]) }}</pre
+          >
+        </div>
+      </template>
+
       <!-- Array fields (aliases / *_ids / links / covers / screenshots) →
-           set-level "+ added / − removed / = kept" collapse. `name-map`
-           is the matching slot of `names` for *_ids arrays so each id
-           renders as a human-readable taxonomy name; non-id arrays get
-           no map and keep their JSON-shape display. -->
-      <GalgameEditArrayDiff
+           set-level "+ added / − removed / = kept" collapse. This view is
+           inherently more useful than a split for arrays (you want to see
+           the delta, not two parallel lists), so we keep ArrayDiff here
+           with the field label above the way it always was. -->
+      <template
         v-else-if="isArrayKey(k, valOf(k, oldSnap), valOf(k, newSnap))"
-        :old="valOf(k, oldSnap)"
-        :new="valOf(k, newSnap)"
-        :name-map="nameMapFor(k)"
-      />
-      <!-- Long strings (intro_*, or any string ≥ 200 chars) → line-level
-           LCS with shared-edge trim + optional inline char highlight. -->
-      <GalgameEditStringDiff
+      >
+        <p class="text-foreground mb-2 text-sm font-semibold">{{ label(k) }}</p>
+        <GalgameEditArrayDiff
+          :old="valOf(k, oldSnap)"
+          :new="valOf(k, newSnap)"
+          :name-map="nameMapFor(k)"
+        />
+      </template>
+
+      <!-- Long strings (intro_*, or any string ≥ 200 chars) — split-view
+           side-by-side with per-line highlights so the reader sees the
+           WHOLE old text on the left and the WHOLE new text on the right,
+           with changed lines tinted in place. -->
+      <div
         v-else-if="isLongStringKey(k, valOf(k, oldSnap), valOf(k, newSnap))"
-        :old="(valOf(k, oldSnap) as string | null | undefined) ?? ''"
-        :new="(valOf(k, newSnap) as string | null | undefined) ?? ''"
-      />
-      <!-- Default: side-by-side block. Best for scalars (vndb_id, release_date,
-           content_limit, …) and short strings. -->
+        class="grid gap-2 sm:grid-cols-2"
+      >
+        <div class="text-danger flex items-center gap-2 text-xs font-medium">
+          <span class="text-foreground font-semibold">{{ label(k) }}</span>
+          <KunChip color="danger" variant="flat" size="sm">旧</KunChip>
+        </div>
+        <div class="text-success flex items-center gap-2 text-xs font-medium">
+          <span class="text-foreground font-semibold">{{ label(k) }}</span>
+          <KunChip color="success" variant="flat" size="sm">新</KunChip>
+        </div>
+        <div class="sm:col-span-2">
+          <GalgameEditSplitStringDiff
+            :old="(valOf(k, oldSnap) as string | null | undefined) ?? ''"
+            :new="(valOf(k, newSnap) as string | null | undefined) ?? ''"
+          />
+        </div>
+      </div>
+
+      <!-- Scalars (vndb_id, release_date, content_limit, short strings, …)
+           — side-by-side with field name + 旧/新 chip in each column
+           header so the row is self-describing (no separate row title). -->
       <div v-else class="grid gap-2 sm:grid-cols-2">
         <div class="border-danger/30 bg-danger/5 rounded-lg border p-2">
-          <p class="text-danger mb-1 text-xs font-medium">旧</p>
+          <div
+            class="text-danger mb-1 flex items-center gap-2 text-xs font-medium"
+          >
+            <span class="text-foreground font-semibold">{{ label(k) }}</span>
+            <KunChip color="danger" variant="flat" size="sm">旧</KunChip>
+          </div>
           <pre
-            class="text-default-600 text-xs break-words whitespace-pre-wrap"
+            class="text-default-700 text-sm break-words whitespace-pre-wrap"
             >{{ fmt(oldSnap?.[k]) }}</pre
           >
         </div>
         <div class="border-success/30 bg-success/5 rounded-lg border p-2">
-          <p class="text-success mb-1 text-xs font-medium">新</p>
+          <div
+            class="text-success mb-1 flex items-center gap-2 text-xs font-medium"
+          >
+            <span class="text-foreground font-semibold">{{ label(k) }}</span>
+            <KunChip color="success" variant="flat" size="sm">新</KunChip>
+          </div>
           <pre
-            class="text-default-700 text-xs break-words whitespace-pre-wrap"
+            class="text-default-700 text-sm break-words whitespace-pre-wrap"
             >{{ fmt(newSnap?.[k]) }}</pre
           >
         </div>
