@@ -1,6 +1,6 @@
-# KUN OAuth 接入指南
+# 鲲 Galgame OAuth 接入指南
 
-本文档面向需要接入 KUN OAuth 系统的第三方网站（如 kungal-nuxt、moyu-moe 等），提供完整的 OAuth 2.0 Authorization Code + PKCE 对接流程。
+本文档面向需要接入 鲲 Galgame OAuth 系统的第三方网站（如 kungal-nuxt、moyu-moe 等），提供完整的 OAuth 2.0 Authorization Code + PKCE 对接流程。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1.1 注册 OAuth 客户端
 
-在 KUN OAuth 管理后台创建 OAuth 客户端，必须正确配置以下字段（**任何一项错配都会导致 refresh 后用户被踢回登录页**）：
+在 鲲 Galgame OAuth 管理后台创建 OAuth 客户端，必须正确配置以下字段（**任何一项错配都会导致 refresh 后用户被踢回登录页**）：
 
 | 字段 | 说明 | 错配的后果 |
 |------|------|----------|

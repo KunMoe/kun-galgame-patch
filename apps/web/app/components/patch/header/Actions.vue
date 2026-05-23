@@ -1,18 +1,28 @@
 <script setup lang="ts">
 // Patch header actions: favorite / share / edit / delete.
 //
+// Design: a single icon-only action bar wrapped in tooltips. Previously
+// some actions carried a text label (收藏 / 编辑) and others didn't (分享 /
+// 删除), and delete used a default-color border despite being destructive.
+// This version standardises:
+//   - all four buttons are icon-only, same `light` variant, same size
+//   - tooltip carries the accessible label, so no per-button text noise
+//   - favorite turns danger-red + filled heart only when active (color
+//     signal for state)
+//   - delete is always danger-red so the destructive intent is obvious
+//   - a thin divider separates the read-only actions (favorite / share)
+//     from the owner-side actions (edit / delete) without spending a
+//     whole new row on grouping
+//
+// Endpoint contracts unchanged:
 //   - favorite: PUT /patch/:id/favorite — local-only state, optimistic UI
 //   - share:    copy direct URL to clipboard
-//   - edit:     navigates to the in-site /edit/rewrite?id=:id form. The form
-//               proxies to PUT /api/v1/galgame/:gid which forwards to the
-//               Galgame Wiki Service (per integration-guide.md §6, edits go
-//               through our backend so we can attach local side effects when
-//               needed). Tag/official/engine/banner edits aren't covered by
-//               the in-site form and link out to the Wiki edit page.
-//   - delete:   intentionally unimplemented — clicking shows a toast. The
-//               backend route DELETE /patch/:id exists but the surrounding
-//               cleanup (resources / comments / contributor history) needs
-//               more design before the button is wired up.
+//   - edit:     navigates to /edit/rewrite?id=:id (in-site form, proxies to
+//               PUT /api/v1/galgame/:gid → Wiki Service per
+//               integration-guide.md §6).
+//   - delete:   intentionally unimplemented — DELETE /patch/:id exists but
+//               the surrounding cleanup (resources / comments / contributor
+//               history) needs more design before this is wired up.
 
 interface Props {
   patch: PatchHeader
@@ -74,13 +84,22 @@ const handleDelete = () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-    <div class="flex flex-wrap items-center gap-2">
+  <div
+    class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+  >
+    <!-- Action bar: read-only actions (favorite / share) on the left, an
+         in-row divider, then owner-side actions (edit / delete) on the
+         right. All icon-only + tooltip — uniform shape avoids the old
+         "some labels / some not" inconsistency. -->
+    <div
+      class="border-default/20 bg-default-50/50 flex items-center gap-1 rounded-xl border p-1"
+    >
       <KunTooltip :text="favorite ? '取消收藏' : '收藏 (有新补丁时通知您)'">
         <KunButton
+          variant="light"
           :color="favorite ? 'danger' : 'default'"
-          :variant="favorite ? 'flat' : 'bordered'"
           size="sm"
+          is-icon-only
           :loading="favoriteLoading"
           :disabled="favoriteLoading"
           aria-label="收藏"
@@ -88,18 +107,17 @@ const handleDelete = () => {
         >
           <KunIcon
             name="lucide:heart"
-            :class="
-              cn('size-4', favorite ? 'fill-danger-500 text-danger-500' : '')
-            "
+            :class="cn('size-4', favorite && 'fill-danger text-danger')"
           />
-          <span>{{ favorite ? '已收藏' : '收藏' }}</span>
         </KunButton>
       </KunTooltip>
 
       <KunTooltip text="复制分享链接">
         <KunButton
-          variant="bordered"
+          variant="light"
+          color="default"
           size="sm"
+          is-icon-only
           aria-label="复制分享链接"
           @click="handleShare"
         >
@@ -107,19 +125,27 @@ const handleDelete = () => {
         </KunButton>
       </KunTooltip>
 
+      <div class="bg-default/30 mx-1 h-5 w-px" aria-hidden="true" />
+
       <KunTooltip text="编辑游戏信息">
         <NuxtLink :to="editHref" aria-label="编辑游戏信息">
-          <KunButton variant="bordered" size="sm">
+          <KunButton
+            variant="light"
+            color="default"
+            size="sm"
+            is-icon-only
+          >
             <KunIcon name="lucide:pencil" class="size-4" />
-            <span>编辑</span>
           </KunButton>
         </NuxtLink>
       </KunTooltip>
 
       <KunTooltip text="删除游戏 (暂未实现)">
         <KunButton
-          variant="bordered"
+          variant="light"
+          color="danger"
           size="sm"
+          is-icon-only
           aria-label="删除游戏"
           @click="handleDelete"
         >
