@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// Links / aliases / contributors editor (handbook §15, mandatory full proxy).
-// Each write auto-creates a Wiki revision; Wiki enforces auth (creator/admin
-// for contributor delete; any writer for links/aliases) and we forward its
-// code+message. docs/galgame_wiki/03-relations.md.
+// Links / aliases editor (handbook §15, mandatory full proxy). Each write
+// auto-creates a Wiki revision; Wiki enforces auth and we forward its
+// code+message verbatim. docs/galgame_wiki/03-relations.md.
+//
+// Contributors were intentionally removed — attribution is Wiki-owned and
+// moyu doesn't expose an edit surface for it. (Local "patch contributor"
+// = uploader at /patch/:id/contributor is a separate concept and unaffected.)
 
 import type {
   GalgameLink,
-  GalgameAlias,
-  GalgameContributor
+  GalgameAlias
 } from '~/composables/useGalgameEdit'
 
 const props = defineProps<{ gid: number }>()
@@ -15,19 +17,16 @@ const ge = useGalgameEdit()
 
 const links = ref<GalgameLink[]>([])
 const aliases = ref<GalgameAlias[]>([])
-const contributors = ref<GalgameContributor[]>([])
 const loading = ref(true)
 
 const reload = async () => {
   loading.value = true
-  const [l, a, c] = await Promise.all([
+  const [l, a] = await Promise.all([
     ge.listLinks(props.gid),
-    ge.listAliases(props.gid),
-    ge.listContributors(props.gid)
+    ge.listAliases(props.gid)
   ])
   links.value = l.code === 0 ? (l.data ?? []) : []
   aliases.value = a.code === 0 ? (a.data ?? []) : []
-  contributors.value = c.code === 0 ? (c.data ?? []) : []
   loading.value = false
 }
 onMounted(reload)
@@ -87,20 +86,6 @@ const removeAlias = async (id: number) => {
     useKunMessage('已删除', 'success')
     await reload()
   } else useKunMessage(res.message || '删除失败', 'error')
-}
-
-// ─── Contributors ─────────────────────────────────────
-const removeContributor = async (userId: number) => {
-  const ok = await useKunAlert({
-    title: '移除贡献者',
-    message: '确定移除该贡献者？仅创建者或管理员可操作。'
-  })
-  if (!ok) return
-  const res = await ge.deleteContributor(props.gid, userId)
-  if (res.code === 0) {
-    useKunMessage('已移除', 'success')
-    await reload()
-  } else useKunMessage(res.message || '移除失败', 'error')
 }
 </script>
 
@@ -182,39 +167,6 @@ const removeContributor = async (userId: number) => {
             添加
           </KunButton>
         </div>
-      </section>
-
-      <!-- Contributors -->
-      <section class="space-y-3">
-        <h3 class="text-foreground text-base font-semibold">贡献者</h3>
-        <div
-          v-for="c in contributors"
-          :key="c.id"
-          class="border-default/20 flex items-center justify-between gap-2 rounded-lg border p-2"
-        >
-          <div class="flex items-center gap-2">
-            <img
-              v-if="c.user?.avatar"
-              :src="c.user.avatar"
-              :alt="c.user?.name ?? ''"
-              class="bg-default-100 size-7 rounded-full object-cover"
-            />
-            <span class="text-sm">
-              {{ c.user?.name ?? `用户 #${c.user_id}` }}
-            </span>
-          </div>
-          <KunButton
-            variant="light"
-            color="danger"
-            size="sm"
-            @click="removeContributor(c.user_id)"
-          >
-            移除
-          </KunButton>
-        </div>
-        <p v-if="!contributors.length" class="text-default-400 text-xs">
-          暂无贡献者
-        </p>
       </section>
     </template>
   </div>

@@ -129,8 +129,12 @@ func (a *App) RegisterRoutes() {
 	api.Get("/galgame/:gid/aliases", optionalAuth, a.PatchHandler.WikiEditProxy)
 	api.Post("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
 	api.Delete("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/contributors", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/galgame/:gid/contributors/:id", auth, a.PatchHandler.WikiEditProxy)
+	// Wiki contributor list / removal is no longer surfaced. moyu only
+	// edits the galgame's metadata (creator can update / admins can
+	// moderate); contributors are an attribution attribute owned by Wiki
+	// and not editable from the moyu side. The local /patch/:id/contributor
+	// route above is a different concept (people who uploaded patch
+	// resources on moyu) — that one stays.
 
 	// ===== User Routes =====
 	//

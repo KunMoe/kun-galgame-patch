@@ -94,14 +94,6 @@ export interface GalgameAlias {
   updated: string
 }
 
-export interface GalgameContributor {
-  id: number
-  galgame_id: number
-  user_id: number
-  created: string
-  user?: { id: number; name: string; avatar: string }
-}
-
 // W3 / Wiki U3 — taxonomy revision (multi-polymorphic single-table on the
 // Wiki side; entity column distinguishes tag/official/engine/series). snapshot
 // shape varies per entity; we render it generically as Record<string, unknown>.
@@ -328,11 +320,6 @@ export const useGalgameEdit = () => {
   const deleteAlias = (gid: number, id: number) =>
     api.delete(`/galgame/${gid}/aliases`, { id })
 
-  const listContributors = (gid: number) =>
-    api.get<GalgameContributor[]>(`/galgame/${gid}/contributors`)
-  const deleteContributor = (gid: number, userId: number) =>
-    api.delete(`/galgame/${gid}/contributors/${userId}`)
-
   // ─── Taxonomy: tag ──────────────────────────────────
   const tagSearch = (q: string, category?: string, limit = 30) =>
     api.get<{ items: WikiTag[]; total: number }>(
@@ -512,8 +499,6 @@ export const useGalgameEdit = () => {
     listAliases,
     createAlias,
     deleteAlias,
-    listContributors,
-    deleteContributor,
     tagSearch,
     createTag,
     updateTag,
