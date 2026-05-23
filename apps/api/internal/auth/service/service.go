@@ -218,3 +218,44 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
+
+// ProxyUserToOAuth forwards a logged-in user's request to an OAuth self-
+// service endpoint (PATCH /auth/me, PUT /auth/password, etc.). The user's
+// access_token is sent as Bearer so OAuth identifies the actor itself —
+// moyu never re-implements identity validation, it just relays the body.
+//
+// docs/oauth/02-user-profile.md "代理模式": "站点保留自己的 /me 端点，
+// 但内部把请求转发到 OAuth 端点。要求请求带的是终端用户 JWT
+// （不是 OAuth Client Basic Auth）"。
+//
+// Returns the raw response body bytes + the OAuth-side HTTP status. The
+// handler can re-emit the envelope verbatim so the FE sees the exact same
+// {code, message, data} OAuth would have returned.
+func (s *AuthService) ProxyUserToOAuth(
+	method, path, accessToken string,
+	body []byte,
+	contentType string,
+) (status int, raw []byte, err error) {
+	var rdr io.Reader
+	if len(body) > 0 {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, s.oauthCfg.ServerURL+path, rdr)
+	if err != nil {
+		return 0, nil, fmt.Errorf("build oauth %s %s: %w", method, path, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if len(body) > 0 {
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("oauth %s %s transport: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+	raw, _ = io.ReadAll(resp.Body)
+	return resp.StatusCode, raw, nil
+}

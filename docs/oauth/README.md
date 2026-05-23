@@ -7,6 +7,22 @@
 | 开发 | `http://127.0.0.1:9277/api/v1` |
 | 生产 | `https://oauth.kungal.com/api/v1` |
 
+## 🔒 重要约定：身份操作必须在 OAuth 完成
+
+下游 kungal / moyu / wiki **不要在自己前端实现下列操作**，应当跳转到 `https://oauth.kungal.com/profile`：
+
+- **改邮箱**（POST /auth/email/send-code + PUT /auth/email）
+- **改密码**（PUT /auth/password）
+- 重设密码 / 启用 2FA / 管理登录设备 / 注销账号 / 撤销已授权 OAuth Client（未来）
+
+技术上这些端点都能通过 end-user JWT 代理，但身份层操作**必须集中在一个前端**：安全审计单点、未来加 2FA / 异地通知时只改一处、避免邮箱劫持攻击面跨多个站点放大。
+
+展示层操作（name / avatar / bio）可以站内提供 UI 或跳转，任选。
+
+详细分类表 + 跳转按钮代码示例见 [02-user-profile.md §身份操作 vs 展示操作](./02-user-profile.md#身份操作-vs-展示操作)。
+
+---
+
 ## 文档索引
 
 ### API 参考（按主题）
@@ -55,6 +71,10 @@ OAuth 一共有三种鉴权方式，按场景区分：
 
 ## 变更摘要
 
+> 🔒 **2026-05-23 政策**：明确"身份层 vs 展示层"分类。下游禁止在自己前端做改邮箱 / 改密码 / 注销账号等身份操作，必须跳转 OAuth profile。详见上方"重要约定"小节和 [02-user-profile.md](./02-user-profile.md#身份操作-vs-展示操作)。
+
 > 🆕 **2026-05-23**：新增 [POST /auth/me/avatar](./02-user-profile.md#post-authmeavatar) 端点。一次性的"上传头像图片 → 写库" multipart 端点，**避免下游 kungal / moyu 自己维护 image_service client**。配额从 OAuth 一侧扣；老的两步法（`PATCH /auth/me { avatar_image_hash }`）继续保留。
+
+> 🆕 **2026-05-23**：正式收录 [POST /auth/email/send-code](./02-user-profile.md#post-authemailsend-code) / [PUT /auth/email](./02-user-profile.md#put-authemail) / [PUT /auth/password](./02-user-profile.md#put-authpassword) 端点文档（以前只有口头提及）。同时把对应的错误码 10004 / 10006 / 10010-10013 补全到 [04-tokens-and-errors.md](./04-tokens-and-errors.md#认证错误-10xxx)。
 
 > 📦 **文档拆分（2026-05-23）**：原 `api-reference.md` 拆为 4 个主题文件（01-04）。所有内容保留，按"OAuth 协议 / 用户自助 / 跨服务 / Token 与错误"四块组织。完整 OAuth 接入指南仍是单独的 [oauth-integration-guide.md](./oauth-integration-guide.md)。

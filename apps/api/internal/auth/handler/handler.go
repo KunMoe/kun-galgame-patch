@@ -139,6 +139,52 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	return response.OK(c, h.composeMe(c, &local, user.Sub, roles))
 }
 
+// ─── OAuth display-layer proxy ────────────────────────────────────────
+// Only name / bio / avatar are proxied — these are 展示层 per the
+// 2026-05-23 OAuth policy (docs/oauth/02-user-profile.md §身份操作 vs
+// 展示操作). Identity-layer ops (改密码 / 改邮箱 / 注销账号 / 2FA) are
+// intentionally NOT exposed here; the moyu frontend sends users to OAuth's
+// own /profile via an external link instead. Reason per upstream policy:
+// security audit at a single point, future 2FA / anomaly-notify rollouts
+// only need to be implemented once, and email-hijack attack surface stays
+// out of every downstream UI.
+
+// UpdateMe PATCH /api/v1/auth/me
+// Proxies → OAuth PATCH /auth/me. Accepts {name, avatar, avatar_image_hash, bio}.
+func (h *AuthHandler) UpdateMe(c *fiber.Ctx) error {
+	return h.proxyUserOAuth(c, fiber.MethodPatch, "/auth/me")
+}
+
+// UploadAvatar POST /api/v1/auth/me/avatar
+// Proxies multipart → OAuth POST /auth/me/avatar (OAuth handles
+// image_service upload internally and writes avatar_image_hash). Body is
+// forwarded as-is so the multipart boundary survives.
+func (h *AuthHandler) UploadAvatar(c *fiber.Ctx) error {
+	return h.proxyUserOAuth(c, fiber.MethodPost, "/auth/me/avatar")
+}
+
+// proxyUserOAuth is the shared helper for the display-layer proxies.
+// Pulls access_token from session, forwards body + content-type to the
+// OAuth endpoint, writes OAuth's response back to the client unchanged.
+func (h *AuthHandler) proxyUserOAuth(c *fiber.Ctx, method, path string) error {
+	accessToken := middleware.GetAccessToken(c)
+	if accessToken == "" {
+		return response.Error(c, errors.ErrUnauthorized())
+	}
+	body := c.Body() // multipart parts ride along untouched
+	ct := string(c.Request().Header.ContentType())
+	status, raw, err := h.service.ProxyUserToOAuth(method, path, accessToken, body, ct)
+	if err != nil {
+		slog.Error("OAuth profile proxy failed", "method", method, "path", path, "error", err)
+		return response.Error(c, errors.ErrInternal("OAuth 服务不可达"))
+	}
+	// Re-emit OAuth's exact response — preserve status code (4xx errors from
+	// OAuth like "name already taken" need to round-trip with their
+	// original code so the FE shows the right message).
+	c.Set("Content-Type", "application/json")
+	return c.Status(status).Send(raw)
+}
+
 // composeMe merges the local user row with the OAuth brief (name/avatar/bio)
 // into a MeResponse. If the OAuth /users/batch call fails we still return
 // the local fields -- name/avatar will simply be empty rather than crashing

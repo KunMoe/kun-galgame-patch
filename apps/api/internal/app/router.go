@@ -31,6 +31,18 @@ func (a *App) RegisterRoutes() {
 	authRoutes.Post("/oauth/callback", a.AuthHandler.OAuthCallback)
 	authRoutes.Post("/logout", a.AuthHandler.Logout)
 	authRoutes.Get("/me", auth, a.AuthHandler.Me)
+	// OAuth display-layer proxy (docs/oauth/02-user-profile.md §身份操作 vs
+	// 展示操作). ONLY name / bio / avatar are proxied here — these are
+	// "展示层" per the 2026-05-23 policy and downstream sites are free to
+	// expose their own UI for them.
+	//
+	// Identity-layer ops (改密码 / 改邮箱 / 2FA / 注销账号) MUST stay on
+	// OAuth's own profile UI and are NOT proxied — the moyu frontend uses
+	// a jump button to https://oauth.kungal.com/profile?return=<url>.
+	// Reason: security audit, future 2FA / anomaly-notify rollouts, and
+	// avoiding email-hijack attack surface across multiple sites.
+	authRoutes.Patch("/me", auth, a.AuthHandler.UpdateMe)
+	authRoutes.Post("/me/avatar", auth, a.AuthHandler.UploadAvatar)
 
 	// ===== Patch Routes =====
 	patchRoutes := api.Group("/patch")

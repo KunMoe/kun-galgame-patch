@@ -2,16 +2,66 @@
 
 返回 [README](./README.md)
 
-这一组端点是给"已登录用户用自己的 access_token 修改自己资料"用的。kungal/moyu 等下游服务有两种典型用法：
+> 🔒 **重要 — 身份层操作必须在 OAuth profile 完成，下游禁止代理**
+>
+> **改邮箱、改密码、注销账号、管理登录设备**这类操作**只能**走 OAuth 自己的前端（https://oauth.kungal.com/profile）。**kungal / moyu / wiki 都不要在自己前端实现这些 UI**，即使技术上可以代理 JWT。详细分类见下表。
 
-1. **跳转模式**（推荐）：站点的"修改头像/简介"按钮直接跳转到 OAuth 前端的 profile 页面，让用户在 OAuth 完成修改。
-2. **代理模式**：站点保留自己的"修改资料"端点，但内部把请求转发到下面这些 OAuth 端点。要求请求带的是终端用户 JWT（**不是** OAuth Client Basic Auth）。
+## 身份操作 vs 展示操作
 
-| 端点 | 方法 | 用途 |
+OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把所有写操作都拉到自己前端做——身份层修改强制走 OAuth profile，展示层可以站内提供 UI。
+
+### 🔒 身份层（OAuth profile 专用，下游用跳转模式）
+
+凡是涉及"账号所有权"的操作，必须由 OAuth 自己的前端承担。原因：流程敏感、需要集中审计、未来要加 2FA / 异地通知 / 安全日志时只改一处。
+
+| 操作 | 对应端点 | 为什么必须 OAuth |
 |------|------|------|
-| `/auth/me` | GET | 读自己完整资料（含 moemoepoint） |
-| `/auth/me` | PATCH | 改 name / avatar / avatar_image_hash / bio |
-| `/auth/me/avatar` | POST | 上传头像文件，一步写入 |
+| **改邮箱** | [POST /auth/email/send-code](#post-authemailsend-code) + [PUT /auth/email](#put-authemail) | 验证码寄到**旧邮箱**，防 JWT 被窃后被攻击者改邮箱锁出。流程敏感，必须集中审计 |
+| **改密码** | [PUT /auth/password](#put-authpassword) | 需老密码或重置 token，账号所有权操作 |
+| 重设密码（忘记密码） | `POST /auth/password/forgot` + `POST /auth/password/reset` | 匿名流程，发邮件 + 一次性 token |
+| （未来）启用 / 关闭 2FA | 待定 | 强身份验证步骤 |
+| （未来）查看登录历史 / 主动下线设备 | 待定 | 跨站点 session 管理 |
+| （未来）绑定 / 解绑第三方登录 | 待定 | 身份联邦 |
+| （未来）注销账号 | 待定 | 不可逆，需冷静期 + 二次验证 |
+| （未来）管理已授权 OAuth Client（"撤销 kungal 访问权限"） | 待定 | OAuth 元操作；下游无权也无法管理别人的授权 |
+
+**下游正确做法**：在账号设置页放一个"跳转到 OAuth 账号中心"按钮，附带 `return` 参数让用户改完跳回：
+
+```vue
+<NuxtLink
+  :to="`https://oauth.kungal.com/profile?return=${encodeURIComponent(currentUrl)}`"
+  external
+  class="..."
+>
+  修改邮箱 / 密码
+  <Icon name="lucide:external-link" class="ml-1 size-3" />
+</NuxtLink>
+```
+
+下面那些端点的文档保留为**完整性**目的——OAuth 自己的前端 (apps/web) 是唯一应该调用它们的客户端。**kungal / moyu / wiki 前端不要直接 fetch 这些路径**。
+
+### 🎨 展示层（任何接入站都可以代理 / 自己实现 UI）
+
+| 操作 | 端点 | 说明 |
+|------|------|------|
+| 改显示名 | `PATCH /auth/me { name }` | 全局唯一，OAuth 后端拒重 |
+| 改头像（URL 或 hash） | `PATCH /auth/me` 或 `POST /auth/me/avatar` | 后者一步走完上传 + 写库 |
+| 改简介 | `PATCH /auth/me { bio }` | 纯展示，无安全性 |
+
+这些可以站内提供 UI（"代理模式"），也可以跳转（"跳转模式"，更一致），任选。`PATCH /auth/me` 和 `POST /auth/me/avatar` 要求带终端用户 JWT，**不是** OAuth Client Basic Auth。
+
+---
+
+## 端点速览
+
+| 端点 | 方法 | 层级 | 鉴权 | 用途 |
+|------|------|------|------|------|
+| `/auth/me` | GET | — | Bearer | 读自己完整资料 |
+| `/auth/me` | PATCH | 🎨 展示 | Bearer | 改 name / avatar / bio |
+| `/auth/me/avatar` | POST | 🎨 展示 | Bearer | 上传头像 multipart |
+| `/auth/email/send-code` | POST | 🔒 身份 | Bearer（仅 OAuth 前端） | 发送邮箱变更验证码到**旧**邮箱 |
+| `/auth/email` | PUT | 🔒 身份 | Bearer（仅 OAuth 前端） | 用验证码确认改邮箱 |
+| `/auth/password` | PUT | 🔒 身份 | Bearer（仅 OAuth 前端） | 改密码（需旧密码） |
 
 ---
 
@@ -173,6 +223,125 @@ const r = await fetch('https://oauth.kungal.com/api/v1/auth/me/avatar', {
 const { data } = await r.json()
 // data.hash 已经被 OAuth 写入了用户记录，下一次 GET /auth/me 就能看到新头像
 ```
+
+---
+
+# 🔒 身份层端点
+
+> 下面三个端点**仅供 OAuth 自己的前端（apps/web）使用**。kungal / moyu / wiki 等下游接入站**不应直接调用**，应该跳转到 OAuth profile 让用户在那里完成。原因和跳转示例见本文档开头的"身份操作 vs 展示操作"小节。
+
+## POST /auth/email/send-code
+
+发送邮箱变更验证码。**验证码寄到用户当前的旧邮箱**（不是新邮箱）—— 这是关键的安全设计：JWT 被窃后，攻击者也无法收到验证码完成劫持。
+
+**请求头**：`Authorization: Bearer <access_token>`
+
+**请求体**：
+
+```json
+{ "new_email": "newaddress@example.com" }
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| new_email | string | 合法邮箱格式 | 想换成的新邮箱 |
+
+**成功响应**：
+
+```json
+{ "code": 0, "message": "验证码已发送到当前邮箱", "data": null }
+```
+
+验证码 6 位数字，有效期 **10 分钟**。
+
+**错误响应**：
+
+| HTTP | code | 触发条件 |
+|------|------|----------|
+| 400  | 1    | JSON 格式错误 |
+| 400  | 7    | new_email 不是合法邮箱格式 |
+| 400  | 10006 | 新邮箱已被其他账号使用 |
+| 400  | 10012 | 上一次发送距今不足限流间隔，请稍后重试 |
+| 400  | 10013 | 新邮箱与当前邮箱相同 |
+| 401  | 10001/10002/10003 | 未提供 / 无效 / 过期 token |
+| 404  | 10005 | token 对应的用户不存在 |
+
+---
+
+## PUT /auth/email
+
+用旧邮箱收到的验证码确认换邮箱。
+
+**请求头**：`Authorization: Bearer <access_token>`
+
+**请求体**：
+
+```json
+{
+  "code": "123456",
+  "new_email": "newaddress@example.com"
+}
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| code | string | 长度必须为 6 | 旧邮箱收到的验证码 |
+| new_email | string | 合法邮箱格式；必须与 send-code 时提交的一致 | 新邮箱 |
+
+**成功响应**：返回更新后的完整 `UserResponse`（同 GET /auth/me）。
+
+**错误响应**：
+
+| HTTP | code | 触发条件 |
+|------|------|----------|
+| 400  | 1    | JSON 格式错误 |
+| 400  | 7    | code 长度不对 / new_email 不是合法邮箱格式 |
+| 400  | 10006 | 新邮箱已被其他账号使用（极少：并发竞争） |
+| 400  | 10010 | 验证码错误 |
+| 400  | 10011 | 验证码已过期（>10 分钟）或从未请求 |
+| 401  | 10001/10002/10003 | 未提供 / 无效 / 过期 token |
+
+> **不一致检测**：如果用户在 send-code 时填的 new_email 是 `A@example.com`，但 PUT /auth/email 提交 `B@example.com`，会按 10010（验证码错误）拒绝——验证码绑定的是 send-code 当时的新邮箱。
+
+---
+
+## PUT /auth/password
+
+改密码。
+
+**请求头**：`Authorization: Bearer <access_token>`
+
+**请求体**：
+
+```json
+{
+  "old_password": "oldpass123",
+  "new_password": "newpass456"
+}
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| old_password | string | — | 当前密码。**仅当账号已设密码时必填**（从其他平台迁移过来还没设密码的账号可留空） |
+| new_password | string | 6..100 字符 | 新密码 |
+
+**成功响应**：
+
+```json
+{ "code": 0, "message": "密码修改成功", "data": null }
+```
+
+> **不会自动登出其他设备**——其他 access_token 直到自然过期（15 分钟）才失效，refresh_token 直到自然过期（7 天）才失效。要立即下线所有设备需要走"撤销 refresh_token"流程（未来加），或 admin 手动 `DELETE /admin/users/:uuid/sessions`。
+
+**错误响应**：
+
+| HTTP | code | 触发条件 |
+|------|------|----------|
+| 400  | 1    | JSON 格式错误 |
+| 400  | 7    | new_password 长度不在 6..100 |
+| 400  | 10004 | 旧密码错误（"邮箱或密码错误"——code 复用） |
+| 401  | 10001/10002/10003 | 未提供 / 无效 / 过期 token |
+| 404  | 10005 | 用户不存在 |
 
 ---
 
