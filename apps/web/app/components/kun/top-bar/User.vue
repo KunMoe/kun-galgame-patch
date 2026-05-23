@@ -10,15 +10,12 @@ import type { UserState } from '~/stores/userStore'
 
 const userStore = useUserStore()
 const api = useApi()
-const config = useRuntimeConfig()
 
-// 注册 points at the OAuth server's register page; the local backend has no
-// /auth/register endpoint (identity is owned by OAuth).
-const oauthRegisterUrl = computed(
-  () =>
-    (config.public.oauthServerUrl || '').replace(/\/api\/v\d+\/?$/, '') +
-    '/register'
-)
+// Top-bar surfaces a single solid "登录" button (registration is offered
+// inside the LoginForm via a link, so an extra top-bar entry would be
+// redundant). Clicking the button pops the existing LoginForm in a modal —
+// no need to navigate away from the current page just to log in.
+const loginOpen = ref(false)
 
 const unreadMessageTypes = ref<string[]>([])
 
@@ -49,17 +46,14 @@ onMounted(async () => {
 <template>
   <div class="ml-auto flex items-center gap-2">
     <template v-if="!userStore.isLoggedIn">
-      <KunButton size="sm" color="primary" variant="flat" href="/login">
+      <KunButton
+        size="sm"
+        color="primary"
+        variant="solid"
+        @click="loginOpen = true"
+      >
         登录
       </KunButton>
-      <a
-        :href="oauthRegisterUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="hidden lg:inline-flex"
-      >
-        <KunButton size="sm" color="primary">注册</KunButton>
-      </a>
     </template>
 
     <KunTopBarNSFWSwitcher />
@@ -82,4 +76,11 @@ onMounted(async () => {
       <KunTopBarUserDropdown />
     </template>
   </div>
+
+  <KunModal v-model="loginOpen" inner-class-name="max-w-sm">
+    <div class="flex flex-col items-center gap-6 py-4">
+      <h2 class="text-2xl font-bold">登录</h2>
+      <LoginForm />
+    </div>
+  </KunModal>
 </template>

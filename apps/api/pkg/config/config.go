@@ -121,7 +121,16 @@ func Load() *Config {
 			ClientSecret: getEnv("KUN_IMAGE_OAUTH_CLIENT_SECRET", ""),
 		},
 		CORS: CORSConfig{
-			AllowOrigins: getEnv("CORS_ALLOW_ORIGINS", "http://127.0.0.1:5213"),
+			// Default covers both dev frontends: 5213 = legacy next-web
+			// (deprecated but kept during transition), 6969 = current
+			// Nuxt apps/web. .env / .env.example also list both — keep
+			// in sync if a port changes. Without 6969 the browser fails
+			// `/auth/me` with "No 'Access-Control-Allow-Origin' header"
+			// any time the server boots without .env loaded.
+			AllowOrigins: getEnv(
+				"CORS_ALLOW_ORIGINS",
+				"http://127.0.0.1:5213,http://127.0.0.1:6969",
+			),
 		},
 		About: AboutConfig{
 			PostsDir: getEnv("KUN_POSTS_DIR", "../web/posts"),

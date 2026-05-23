@@ -17,9 +17,13 @@ const bannerSrc = computed(
 </script>
 
 <template>
+  <!-- `p-0` removes KunCard's default outer padding so the banner image is
+       flush with the card edges; the inner info section keeps its own p-3
+       so text doesn't touch the rounded corners. `content-class="gap-0 p-0"`
+       likewise zeroes the wrapper KunCard puts around <slot />. -->
   <KunCard
     :href="`/patch/${props.patch.id}/introduction`"
-    class-name="w-full"
+    class-name="w-full p-0"
     content-class="gap-0 p-0"
   >
     <div
