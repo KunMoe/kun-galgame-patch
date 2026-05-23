@@ -24,7 +24,18 @@ const fetchUserStatus = async () => {
   if (res.code === 0) {
     // setUser merges into existing state and preserves muted_message_types.
     userStore.setUser(res.data)
-  } else {
+    return
+  }
+  // Only wipe the pinia store on signals the server-side session is truly
+  // dead — auth-expired (40101) means the middleware refresh permanently
+  // failed and the cookie was cleared; unauthorized (40100) means no cookie
+  // was sent. Any OTHER non-zero code (5xx, network blip, OAuth slow during
+  // background refresh, transient transport error → middleware returns 401
+  // but KEEPS the cookie for the next-request retry) must NOT wipe the
+  // store, or a single bad request silently logs the user out while the
+  // server still considers them authenticated. Previous behavior (logout
+  // on ANY non-zero) was the "登录之后过一会自动退出" bug.
+  if (res.code === 40100 || res.code === 40101) {
     userStore.logout()
   }
 }

@@ -48,17 +48,17 @@ const handleCheckIn = async () => {
 <template>
   <KunPopover position="bottom-end" inner-class="p-2 min-w-64">
     <template #trigger>
-      <KunButton
-        variant="light"
-        color="default"
+      <!-- Avatar is its own clickable affordance — wrapping it in a
+           KunButton + colored ring/border felt foreign next to the rest
+           of the top bar. KunAvatar already renders a rounded image with
+           hover/cursor styling; the popover trigger fires from clicking
+           anywhere on it. -->
+      <KunAvatar
+        :user="userStore.user"
+        :is-navigation="false"
         size="sm"
-        is-icon-only
-        rounded="full"
-        class-name="border-secondary ring-secondary/20 border-2 hover:scale-105"
-        aria-label="用户菜单"
-      >
-        <KunAvatar :user="userStore.user" :is-navigation="false" size="sm" />
-      </KunButton>
+        class-name="cursor-pointer"
+      />
     </template>
 
     <div class="space-y-1">
