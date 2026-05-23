@@ -55,13 +55,14 @@ const stickers = chatStickerArray()
           class-name="p-1"
           @click="emit('sticker', url)"
         >
-          <img
+          <KunImage
             :src="url"
             alt="sticker"
-            width="64"
-            height="64"
+            :width="64"
+            :height="64"
             loading="lazy"
-            class="size-16 object-contain"
+            object-fit="contain"
+            class-name="size-16"
           />
         </KunButton>
       </div>

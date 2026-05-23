@@ -17,19 +17,19 @@ const post = computed(() => props.posts[props.currentSlide])
     class="h-full border-none bg-transparent shadow-none sm:hidden"
   >
     <div class="relative h-1/2">
-      <img
-        :alt="post.title"
-        class="h-full w-full rounded-2xl object-cover"
+      <KunImage
         :src="post.banner"
+        :alt="post.title"
+        class-name="h-full w-full rounded-2xl"
       />
     </div>
     <div class="h-1/2 py-3">
       <div class="mb-2 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <img
+          <KunImage
             :src="post.authorAvatar"
             :alt="post.authorName"
-            class="h-8 w-8 rounded-full"
+            class-name="h-8 w-8 rounded-full"
           />
           <span class="text-foreground/80 text-sm">
             {{ post.authorName }}

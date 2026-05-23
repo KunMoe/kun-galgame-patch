@@ -13,10 +13,11 @@ const post = computed(() => props.posts[props.currentSlide])
 
 <template>
   <div v-if="post" class="group hidden h-full sm:block">
-    <img
-      :alt="post.title"
-      class="h-full w-full rounded-2xl object-cover brightness-75"
+    <KunImage
       :src="post.banner"
+      :alt="post.title"
+      class-name="h-full w-full rounded-2xl"
+      image-class-name="brightness-75"
     />
     <div
       class="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/30 via-black/10 to-transparent"
@@ -30,10 +31,10 @@ const post = computed(() => props.posts[props.currentSlide])
       <div class="flex justify-between">
         <div>
           <div class="mb-2 flex items-center gap-3">
-            <img
+            <KunImage
               :src="post.authorAvatar"
               :alt="post.authorName"
-              class="h-6 w-6 rounded-full"
+              class-name="h-6 w-6 rounded-full"
             />
             <span class="text-foreground/80 text-sm">
               {{ post.authorName }}

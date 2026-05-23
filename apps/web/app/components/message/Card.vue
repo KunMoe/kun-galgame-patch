@@ -29,11 +29,11 @@ const iconName = computed(
         :user="props.msg.sender"
         :is-navigation="false"
       />
-      <img
+      <KunImage
         v-else
         src="/favicon.webp"
         alt="系统"
-        class="size-8 rounded-full"
+        class-name="size-8 rounded-full"
       />
 
       <div class="flex-1 space-y-1">

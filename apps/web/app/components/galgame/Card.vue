@@ -9,8 +9,6 @@ const props = defineProps<Props>()
 
 const galgameName = computed(() => getPreferredLanguageText(props.patch.name))
 
-const imageLoaded = ref(false)
-
 const bannerSrc = computed(
   () => resolveBannerUrl(props.patch, 'mini') || '/kungalgame-trans.webp'
 )
@@ -26,30 +24,16 @@ const bannerSrc = computed(
     class-name="w-full p-0"
     content-class="gap-0 p-0"
   >
-    <div
-      class="relative mx-auto w-full overflow-hidden rounded-t-lg text-center opacity-90"
-    >
-      <div
-        :class="
-          cn(
-            'bg-default-100 absolute inset-0 animate-pulse',
-            imageLoaded ? 'opacity-0' : 'opacity-90',
-            'transition-opacity duration-300'
-          )
-        "
-        style="aspect-ratio: 16 / 9"
-      />
+    <div class="relative mx-auto w-full text-center">
+      <!-- KunImage owns the skeleton + fade-in via useImageLoadingStatus.
+           Don't add a sibling skeleton or `@load` listener on the component
+           root — KunImage doesn't emit `load`, and any opacity class
+           fall-through to the wrapper hides the whole image stack. -->
       <KunImage
-        :alt="galgameName"
         :src="bannerSrc"
-        :class="
-          cn(
-            'size-full object-cover transition-all duration-300',
-            imageLoaded ? 'scale-100 opacity-90' : 'scale-105 opacity-0'
-          )
-        "
-        style="aspect-ratio: 16 / 9"
-        @load="imageLoaded = true"
+        :alt="galgameName"
+        aspect-ratio="16 / 9"
+        class-name="rounded-t-lg"
       />
 
       <div class="bg-background absolute top-2 left-2 z-10 rounded-full">

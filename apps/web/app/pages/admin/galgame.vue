@@ -51,11 +51,11 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
     <div v-else class="space-y-3">
       <KunCard v-for="g in data?.items" :key="g.id" :bordered="true">
         <div class="flex flex-wrap items-center gap-3">
-          <img
+          <KunImage
             v-if="resolveBannerUrl(g, 'mini')"
             :src="resolveBannerUrl(g, 'mini')"
             :alt="getPreferredLanguageText(g.name)"
-            class="bg-default-100 h-16 w-28 rounded object-cover"
+            class-name="bg-default-100 h-16 w-28 rounded"
           />
           <div class="flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2">

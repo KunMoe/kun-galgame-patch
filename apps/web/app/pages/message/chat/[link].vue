@@ -361,11 +361,11 @@ onBeforeUnmount(() => pause())
         <NuxtLink to="/message/chat" class="md:hidden">
           <KunIcon name="lucide:chevron-left" class="size-5" />
         </NuxtLink>
-        <img
+        <KunImage
           v-if="room.avatar"
           :src="room.avatar"
           :alt="room.name"
-          class="bg-default-100 size-10 rounded-full object-cover"
+          class-name="bg-default-100 size-10 rounded-full"
         />
         <div
           v-else
@@ -491,11 +491,12 @@ onBeforeUnmount(() => pause())
                     @click="toggleReaction(m, r.emoji)"
                   >
                     <span>{{ r.emoji }}</span>
-                    <img
+                    <KunImage
                       v-if="r.user?.avatar"
                       :src="r.user.avatar"
                       :alt="r.user?.name"
-                      class="size-4 rounded-full"
+                      :skeleton="false"
+                      class-name="size-4 rounded-full"
                     />
                   </KunButton>
                 </div>

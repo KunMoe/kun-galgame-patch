@@ -28,11 +28,11 @@ const { data: rooms, pending } = await useAsyncData<ChatRoomSummary[]>(
         :to="`/message/chat/${room.link}`"
         class="border-default/20 bg-background hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"
       >
-        <img
+        <KunImage
           v-if="room.avatar"
           :src="room.avatar"
           :alt="room.name"
-          class="bg-default-100 size-12 shrink-0 rounded-full object-cover"
+          class-name="bg-default-100 size-12 shrink-0 rounded-full"
         />
         <div
           v-else

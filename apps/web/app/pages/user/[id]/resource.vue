@@ -40,10 +40,10 @@ const patchBanner = (r: UserResourceItem) =>
         :to="`/patch/${r.galgame_id}/resource`"
         class="border-default/20 bg-background hover:bg-default-100 flex gap-4 rounded-lg border p-4 transition-colors"
       >
-        <img
+        <KunImage
           :src="patchBanner(r)"
           :alt="patchName(r)"
-          class="bg-default-100 h-24 w-40 shrink-0 rounded object-cover"
+          class-name="bg-default-100 h-24 w-40 shrink-0 rounded"
         />
         <div class="flex-1 space-y-2">
           <div class="flex flex-wrap items-center justify-between gap-2">

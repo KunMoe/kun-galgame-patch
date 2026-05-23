@@ -66,10 +66,11 @@ const remove = async (hash: string) => {
         :key="c.image_hash"
         class="border-default/20 relative rounded-lg border p-2"
       >
-        <img
+        <KunImage
           :src="imageServiceUrl(c.image_hash, 'mini') || imageServiceUrl(c.image_hash)"
           :alt="c.image_hash.slice(0, 8)"
-          class="bg-default-100 aspect-video w-full rounded object-cover"
+          aspect-ratio="16 / 9"
+          class-name="bg-default-100 rounded"
         />
         <div class="mt-2 flex items-center justify-between">
           <span

@@ -245,14 +245,14 @@ const currentAvatarUrl = computed(() => {
         </template>
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div class="flex shrink-0 flex-col items-center gap-2">
-            <img
+            <KunImage
               :src="
                 avatarPreview ||
                 currentAvatarUrl ||
                 '/kungalgame-trans.webp'
               "
               alt="当前头像"
-              class="bg-default-100 size-24 rounded-full object-cover"
+              class-name="bg-default-100 size-24 rounded-full"
             />
             <span v-if="avatarPreview" class="text-default-500 text-xs">
               预览

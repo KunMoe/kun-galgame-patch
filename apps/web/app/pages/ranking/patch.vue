@@ -79,11 +79,11 @@ const onChangeSort = async (v: string | number) => {
         >
           {{ index + 1 }}
         </span>
-        <img
+        <KunImage
           v-if="resolveBannerUrl(patch, 'mini')"
           :src="resolveBannerUrl(patch, 'mini')"
           :alt="getPreferredLanguageText(patch.name)"
-          class="bg-default-100 h-14 w-24 rounded object-cover"
+          class-name="bg-default-100 h-14 w-24 rounded"
         />
         <div class="flex-1">
           <div class="font-semibold line-clamp-1">

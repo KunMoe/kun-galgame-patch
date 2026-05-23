@@ -36,11 +36,11 @@ const props = defineProps<Props>()
     </p>
 
     <div class="text-default-500 flex items-center gap-3 text-sm">
-      <img
+      <KunImage
         v-if="props.frontmatter.author_avatar"
         :src="props.frontmatter.author_avatar"
         :alt="props.frontmatter.author_name"
-        class="size-8 rounded-full"
+        class-name="size-8 rounded-full"
       />
       <span>{{ props.frontmatter.author_name }}</span>
       <span v-if="props.frontmatter.date">

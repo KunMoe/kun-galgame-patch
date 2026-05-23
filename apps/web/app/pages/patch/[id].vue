@@ -59,11 +59,12 @@ const tabs = computed(() => [
       class="border-default/20 relative overflow-hidden rounded-3xl border"
     >
       <div class="absolute inset-0">
-        <img
+        <KunImage
           v-if="resolveBannerUrl(patch)"
           :src="resolveBannerUrl(patch)"
           :alt="displayName"
-          class="size-full scale-110 object-cover blur-2xl"
+          class-name="block size-full"
+          image-class-name="scale-110 blur-2xl"
         />
         <div
           class="from-background via-background/85 to-background/55 absolute inset-0 bg-gradient-to-t"
@@ -74,10 +75,11 @@ const tabs = computed(() => [
         <div
           class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
         >
-          <img
+          <KunImage
             :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
             :alt="displayName"
-            class="size-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+            class-name="block size-full"
+            image-class-name="transition-transform duration-300 hover:scale-[1.03]"
           />
         </div>
 

@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	userModel "kun-galgame-patch-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -181,11 +182,18 @@ func writeWikiNotification(tx *gorm.DB, m *galgameClient.WikiMessage, name, form
 }
 
 func writeWikiNotificationRaw(tx *gorm.DB, m *galgameClient.WikiMessage, text string) error {
+	// Use GORM Create so the model's autoCreateTime / autoUpdateTime tags
+	// populate `created` / `updated`. Raw tx.Exec bypasses those hooks and
+	// the DB rejects the insert (both columns are NOT NULL without DEFAULT).
 	link := fmt.Sprintf("/patch/%d/introduction", m.GalgameID)
-	return tx.Exec(`
-		INSERT INTO user_message(type, content, status, link, sender_id, recipient_id)
-		VALUES ('system', ?, 0, ?, NULL, ?)
-	`, text, link, m.TargetUserID).Error
+	return tx.Create(&userModel.UserMessage{
+		Type:        "system",
+		Content:     text,
+		Status:      0,
+		Link:        link,
+		SenderID:    nil,
+		RecipientID: m.TargetUserID,
+	}).Error
 }
 
 // payloadString pulls a scalar string field out of the Wiki message payload

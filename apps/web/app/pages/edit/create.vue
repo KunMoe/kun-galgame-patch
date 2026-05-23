@@ -486,10 +486,11 @@ const handleSubmit = async () => {
             @error-pick="useKunMessage($event, 'error')"
           />
           <div v-if="bannerPreview" class="mt-2">
-            <img
+            <KunImage
               :src="bannerPreview"
               alt="banner 预览"
-              class="bg-default-100 max-h-48 w-full rounded object-contain"
+              object-fit="contain"
+              class-name="bg-default-100 block max-h-48 w-full rounded"
             />
           </div>
         </section>

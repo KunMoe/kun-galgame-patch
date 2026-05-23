@@ -159,11 +159,12 @@ useKunSeoMeta({
         class="border-default/20 relative mb-6 overflow-hidden rounded-3xl border"
       >
         <div class="absolute inset-0">
-          <img
+          <KunImage
             v-if="bannerSrc"
             :src="bannerSrc"
             :alt="patchName"
-            class="size-full scale-110 object-cover blur-2xl"
+            class-name="block size-full"
+            image-class-name="scale-110 blur-2xl"
           />
           <div
             class="from-background via-background/85 to-background/60 absolute inset-0 bg-gradient-to-t"
@@ -176,11 +177,13 @@ useKunSeoMeta({
             :to="`/patch/${detail.patch.id}/introduction`"
             class="group shrink-0"
           >
-            <img
+            <KunImage
               v-if="bannerSrc"
               :src="bannerSrc"
               :alt="patchName"
-              class="border-default/20 bg-default-100 aspect-video w-full rounded-2xl border object-cover shadow-lg transition-transform duration-300 group-hover:scale-[1.02] sm:w-64"
+              aspect-ratio="16 / 9"
+              class-name="border-default/20 bg-default-100 w-full rounded-2xl border shadow-lg sm:w-64"
+              image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
             />
           </NuxtLink>
 

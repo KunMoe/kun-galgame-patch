@@ -24,10 +24,10 @@ const { data: posts } = await useAsyncData<HomeCarouselMetadata[]>(
           欢迎来到 {{ kunMoyuMoe.titleShort }}
         </div>
       </KunChip>
-      <img
-        :alt="kunMoyuMoe.titleShort"
-        class="rounded-2xl"
+      <KunImage
         src="/kungalgame-trans.webp"
+        :alt="kunMoyuMoe.titleShort"
+        class-name="rounded-2xl"
       />
     </div>
 

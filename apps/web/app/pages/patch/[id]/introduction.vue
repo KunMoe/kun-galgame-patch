@@ -282,11 +282,12 @@ const wikiOrigin =
           :key="s.image_hash"
           class="border-default/20 overflow-hidden rounded-lg border"
         >
-          <img
+          <KunImage
             :src="imageServiceUrl(s.image_hash)"
             :alt="s.caption || s.image_hash.slice(0, 8)"
             loading="lazy"
-            class="bg-default-100 aspect-video w-full object-cover"
+            aspect-ratio="16 / 9"
+            class-name="bg-default-100"
           />
           <figcaption
             v-if="s.caption"
