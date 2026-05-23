@@ -10,6 +10,13 @@ import { setDiff } from '~/utils/lcs-diff'
 const props = defineProps<{
   old: unknown
   new: unknown
+  // K-PR 2026-05-22: optional id → display-name map for *_ids arrays
+  // (tag_ids / official_ids / engine_ids / series_id). When provided, we
+  // render each id as its display name; missing keys (entity deleted
+  // Wiki-side) fall back to `已删除 #<id>`. For non-id arrays (aliases,
+  // links, covers, screenshots) the parent omits this prop and we keep
+  // the JSON-shape display.
+  nameMap?: Record<string, string>
 }>()
 
 // Normalize each row to a string key for set diff; preserve original for display.
@@ -20,6 +27,14 @@ const toKey = (x: unknown): string => {
 }
 const display = (x: unknown): string => {
   if (x === null || x === undefined) return '（空）'
+  // *_ids array branch: parent passed a names map keyed by id → name.
+  // Look up; fall back to `已删除 #<id>` per Wiki spec when the entity is
+  // gone (id present in the snapshot but not in the names map).
+  if (props.nameMap && (typeof x === 'number' || typeof x === 'string')) {
+    const key = String(x)
+    const name = props.nameMap[key]
+    return name ?? `已删除 #${key}`
+  }
   if (typeof x === 'object') {
     // Compact common object shapes for readability.
     const o = x as Record<string, unknown>

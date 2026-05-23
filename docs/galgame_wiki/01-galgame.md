@@ -231,9 +231,47 @@ return r2.data.galgame
       "user_id": 1,
       "series_id": null,
       "alias": [{"id": 1, "name": "别名"}],
-      "tag": [{"galgame_id": 1, "tag_id": 2, "spoiler_level": 0, "tag": {"id": 2, "name": "RPG"}}],
-      "official": [{"galgame_id": 1, "official_id": 3, "official": {"id": 3, "name": "开发商"}}],
-      "engine": [...],
+      "tag": [
+        {
+          "galgame_id": 1,
+          "tag_id": 2,
+          "spoiler_level": 0,
+          "tag": {
+            "id": 2,
+            "name": "RPG",
+            "category": "content",
+            "alias": [{"name": "角色扮演"}],
+            "galgame_count": 1234
+          }
+        }
+      ],
+      "official": [
+        {
+          "galgame_id": 1,
+          "official_id": 3,
+          "official": {
+            "id": 3,
+            "name": "开发商",
+            "link": "https://...",
+            "category": "company",
+            "lang": "ja-jp",
+            "alias": [{"name": "别名"}],
+            "galgame_count": 12
+          }
+        }
+      ],
+      "engine": [
+        {
+          "galgame_id": 1,
+          "engine_id": 5,
+          "engine": {
+            "id": 5,
+            "name": "KiriKiri",
+            "alias": ["KiriKiri2", "KAG"],
+            "galgame_count": 87
+          }
+        }
+      ],
       "link": [{"id": 1, "name": "VNDB", "link": "https://vndb.org/v12345"}],
       "contributor": [{"id": 1, "user_id": 1}],
       "created": "...",
@@ -247,6 +285,10 @@ return r2.data.galgame
 ```
 
 `users` 是一个 user_id → 用户信息的 map，包含 galgame 创建者和所有贡献者的信息。
+
+> 🆕 **2026-05-22 (K-PR)**：每个 `tag.tag`、`official.official` 和 `engine.engine` 对象**新增 `galgame_count` 字段**，表示该 tag / 开发商 / 引擎下已发布（`status = 0`）的 galgame 数。这与独立的 `GET /tag`、`GET /official` 和 `GET /engine` 列表端点使用的计数口径一致（同款 `LEFT JOIN ... COUNT(*)` 子查询，drafts 不计入）。下游可直接在 galgame 详情页面渲染"标签名 +N / 会社名 +N / 引擎名 +N" badge，**不再需要为每个嵌入实体各发一次单独的 `GET /tag/:id`、`GET /official/:id`、`GET /engine/:id` 请求**。
+>
+> 字段为 `int`，**没有 `omitempty`**：值为 0 是"该实体当前 0 部已发布作品"的有效语义，不应被序列化省略。
 
 ---
 

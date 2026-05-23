@@ -13,6 +13,8 @@
 | page | int | 1 | 页码 |
 | limit | int | 50 | 每页数量（max 100） |
 
+> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `tag.tag` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游可在 galgame 详情页直接渲染"标签 +N" badge，**不再需要为每个嵌入 tag 单独发 `GET /tag/:name` 请求**。同款扩展也加到了 `official` 和 `engine`，见下文。
+
 ### GET /tag/search
 
 搜索标签。**由 Meilisearch 驱动**，替代原 DB LIKE 实现。详见 [搜索 (Search)](#搜索-search) 章节。
@@ -120,6 +122,8 @@
 
 开发商列表。**查询参数**：`page`, `limit`
 
+> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `official` / `engine` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游不再需要为渲染"会社名 +N 部作品" badge 而对每个嵌入的 official 单独发一次 `GET /official/:name` 请求。
+
 ### GET /official/search
 
 搜索会社。**由 Meilisearch 驱动**，详见 [搜索 (Search)](#搜索-search)。
@@ -195,6 +199,8 @@
 ### GET /engine
 
 全量列表（数据量小，不分页）。
+
+> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 同时也会出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应里每个 `engine.engine` 对象上，见上面 "GET /official" 同款说明。
 
 ### GET /engine/:name
 

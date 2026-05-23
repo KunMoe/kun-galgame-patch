@@ -121,12 +121,24 @@
     "new": {
       "name_zh_cn": "新标题",
       "tag_ids": [1, 2, 3]
+    },
+    "names": {
+      "tags": { "1": "校园", "2": "治愈", "3": "RPG" },
+      "officials": {},
+      "engines": {},
+      "series": {}
     }
   }
 }
 ```
 
 `old` 和 `new` 是完整的 snapshot 对象，前端可以只展示 `changed_keys` 中标记的字段。对于大文本字段（intro_*），前端可以用 diff 库展示行级差异。
+
+> 🆕 **2026-05-22 (K-PR)**：响应新增 `names` 字段。包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园, 治愈"而不是"tag added: 1, 2"，避免 N+1 后续请求。
+>
+> **被删除的实体**：如果某个 ID 在 snapshot 里存在但 DB 里已被 soft-delete / 硬删，对应 key **不会出现在 names 里**。前端应该 fallback 渲染成 `已删除 #<id>`。
+>
+> **性能**：union(old.ids + new.ids) 去重后做 4 次 `WHERE id IN (...)` PK 查询（每次 ~1ms）。典型 galgame ≤30 tags + ≤5 officials + ≤2 engines + ≤1 series，每次 diff 请求增加 ~5ms DB 时间 + ~5KB 响应体。可忽略。
 
 ---
 
@@ -187,12 +199,20 @@ PR 详情，包含与 base revision 的差异。
     },
     "changed_keys": {
       "name_zh_cn": true
+    },
+    "names": {
+      "tags": { "1": "校园", "3": "RPG" },
+      "officials": { "5": "Key" },
+      "engines": {},
+      "series": {}
     }
   }
 }
 ```
 
 `status`：`0` = pending, `1` = merged, `2` = declined
+
+> 🆕 **2026-05-22 (K-PR)**：响应同样新增 `names` 字段，覆盖 base + pr snapshot 涉及的 tag / official / engine / series ID。语义和性能详见 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff) 末尾 callout。
 
 ---
 

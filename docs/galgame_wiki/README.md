@@ -28,6 +28,8 @@
 > - **PR1**：`released` 字符串拆为 `release_date` (`YYYY-MM-DD` 或 `""`) + `release_date_tba` (bool)。两者均参与 revision/PR diff。详见 [01-galgame.md PUT 端点](./01-galgame.md#put-galgamegid)。
 > - **PR2 / PR5**：新增 `galgame_cover` / `galgame_screenshot` 关联表（hash 化的 image_service 资源）；`banner_image_hash` **字段已退役**，banner 由 `covers[sort_order=0]` 唯一表达；响应里有派生只读字段 `effective_banner_hash`。详见 [03-relations.md 封面/截图段](./03-relations.md#封面--截图pr2-新增) 与 [00-handbook §15 PR5 BREAKING](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 > - **PR4**：tag / official / engine / series 4 种 taxonomy 实体获得**完整版本历史 + 回滚**，端点形态与 galgame 修订完全对齐（`GET /tag/:id/revisions`, `POST /tag/:id/revert` 等共 12 个新端点）。详见 [04-taxonomy.md §修订与回滚](./04-taxonomy.md#修订与回滚-pr4-新增4-实体同款)。
+> - **K-PR（2026-05-22，非破坏性）**：`GET /galgame/:gid` 详情响应里嵌入的每个 `tag.tag`、`official.official` 和 `engine.engine` **新增 `galgame_count` 字段**（已发布作品数，口径与独立的 `GET /tag` / `GET /official` / `GET /engine` 列表一致）。下游可直接在 galgame 详情页面渲染"标签 +N / 会社 +N / 引擎 +N" badge，**不再需要为每个嵌入实体单独发 `GET /tag/:name` / `GET /official/:name` 请求**。详见 [01-galgame.md GET /galgame/:gid](./01-galgame.md#get-galgamegid) 与 [04-taxonomy.md GET /official](./04-taxonomy.md#get-official)。
+> - **K-PR（2026-05-22，非破坏性）**：`GET /galgame/:gid/revisions/:rev/diff` 和 `GET /galgame/:gid/prs/:id` 响应**新增 `names` 字段**，包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园"而不是"tag added: 42"，避免 N+1 后续查询。被删除的实体 key 不出现在 names 里，前端 fallback 渲染 `已删除 #<id>` 即可。详见 [02-revisions-and-prs.md](./02-revisions-and-prs.md#get-galgamegidrevisionsrevdiff)。
 
 ---
 
@@ -59,7 +61,7 @@
 Authorization: Bearer <access_token>
 ```
 
-access_token 由 KUN OAuth 系统签发，JWT claims 中包含 `uid`（integer user ID）和 `roles`。
+access_token 由 鲲 Galgame OAuth 系统签发，JWT claims 中包含 `uid`（integer user ID）和 `roles`。
 
 ---
 

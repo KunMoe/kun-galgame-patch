@@ -4,7 +4,10 @@
 // intro_*, aliases, tag_ids, official_ids, engine_ids, links, ...) so values
 // are formatted generically. See docs/galgame_wiki/02-revisions-and-prs.md.
 
-import type { GalgameSnapshot } from '~/composables/useGalgameEdit'
+import type {
+  GalgameDiffNames,
+  GalgameSnapshot
+} from '~/composables/useGalgameEdit'
 
 const props = defineProps<{
   changedKeys: Record<string, boolean>
@@ -14,6 +17,10 @@ const props = defineProps<{
   // proposed snapshot, with no "old" baseline — render a single 提案值 column
   // instead of a misleading empty 旧 column. (02-revisions-and-prs.md)
   proposalOnly?: boolean
+  // K-PR 2026-05-22: taxonomy id → display-name map from the Wiki diff/PR
+  // response (see GalgameDiffNames). Routed down to ArrayDiff for the
+  // matching field so users see "校园, 治愈" instead of "1, 2".
+  names?: GalgameDiffNames
 }>()
 
 const KEY_LABEL: Record<string, string> = {
@@ -94,6 +101,21 @@ const isLongStringKey = (k: string, o: unknown, n: unknown): boolean => {
   if (oLen === 0 && nLen === 0) return false
   return oLen + nLen >= LONG_STRING_THRESHOLD
 }
+
+// Field key → which slot of the names map to pass to ArrayDiff. Each
+// taxonomy id array maps to one named bucket; non-id arrays (aliases /
+// links / covers / screenshots) get no map and keep their JSON-shape
+// rendering.
+const NAMES_SLOT: Record<string, keyof GalgameDiffNames> = {
+  tag_ids: 'tags',
+  official_ids: 'officials',
+  engine_ids: 'engines',
+  series_id: 'series'
+}
+const nameMapFor = (k: string): Record<string, string> | undefined => {
+  const slot = NAMES_SLOT[k]
+  return slot ? props.names?.[slot] : undefined
+}
 </script>
 
 <template>
@@ -117,11 +139,15 @@ const isLongStringKey = (k: string, o: unknown, n: unknown): boolean => {
         >
       </div>
       <!-- Array fields (aliases / *_ids / links / covers / screenshots) →
-           set-level "+ added / − removed / = kept" collapse. -->
+           set-level "+ added / − removed / = kept" collapse. `name-map`
+           is the matching slot of `names` for *_ids arrays so each id
+           renders as a human-readable taxonomy name; non-id arrays get
+           no map and keep their JSON-shape display. -->
       <GalgameEditArrayDiff
         v-else-if="isArrayKey(k, valOf(k, oldSnap), valOf(k, newSnap))"
         :old="valOf(k, oldSnap)"
         :new="valOf(k, newSnap)"
+        :name-map="nameMapFor(k)"
       />
       <!-- Long strings (intro_*, or any string ≥ 200 chars) → line-level
            LCS with shared-edge trim + optional inline char highlight. -->

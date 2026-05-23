@@ -349,6 +349,7 @@ const doDecline = async () => {
             :changed-keys="detail.changed_keys"
             :new-snap="detail.pr.snapshot"
             :proposal-only="true"
+            :names="detail.names"
           />
 
           <div

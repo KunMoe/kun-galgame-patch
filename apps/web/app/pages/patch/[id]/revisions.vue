@@ -223,6 +223,7 @@ const snapshotEntries = computed(() =>
           :changed-keys="diff.changed_keys"
           :old-snap="diff.old"
           :new-snap="diff.new"
+          :names="diff.names"
         />
 
         <div

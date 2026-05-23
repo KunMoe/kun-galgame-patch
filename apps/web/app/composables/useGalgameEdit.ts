@@ -36,10 +36,24 @@ export interface GalgameRevisionDetail extends GalgameRevision {
   snapshot: GalgameSnapshot
 }
 
+// K-PR 2026-05-22: diff / PR detail responses now include a `names` map of
+// taxonomy id → display name covering every tag / official / engine / series
+// referenced in either snapshot. Missing keys = the entity was soft/hard-
+// deleted Wiki-side; consumers should fall back to `已删除 #<id>`. Avoids
+// the previous N+1 follow-up to resolve display names.
+// See docs/galgame_wiki/02-revisions-and-prs.md §names callout.
+export interface GalgameDiffNames {
+  tags: Record<string, string>
+  officials: Record<string, string>
+  engines: Record<string, string>
+  series: Record<string, string>
+}
+
 export interface GalgameDiff {
   changed_keys: Record<string, boolean>
   old: GalgameSnapshot
   new: GalgameSnapshot
+  names?: GalgameDiffNames
 }
 
 export interface GalgamePR {
@@ -58,6 +72,9 @@ export interface GalgamePR {
 export interface GalgamePRDetail {
   pr: GalgamePR
   changed_keys: Record<string, boolean>
+  // K-PR 2026-05-22: same names map as GalgameDiff.names, covering both
+  // the base revision and the PR snapshot. See GalgameDiffNames docstring.
+  names?: GalgameDiffNames
 }
 
 export interface GalgameLink {
