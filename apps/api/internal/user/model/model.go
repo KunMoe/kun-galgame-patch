@@ -44,3 +44,15 @@ type UserBasic struct {
 	Name   string `json:"name"`
 	Avatar string `json:"avatar"`
 }
+
+// UserFollowItem is UserBasic + a viewer-relative is_followed flag, used
+// by the follower / following list modals so each row can render its own
+// follow / unfollow button without a per-row round-trip. When the viewer
+// is anonymous (or the listed row is the viewer themselves), is_followed
+// is false.
+type UserFollowItem struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Avatar     string `json:"avatar"`
+	IsFollowed bool   `json:"is_followed"`
+}

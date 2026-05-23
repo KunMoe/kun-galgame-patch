@@ -159,21 +159,44 @@ func (s *UserService) Unfollow(followerID, followingID int) error {
 }
 
 // GetFollowers returns follower user briefs, batch-resolved from OAuth.
-func (s *UserService) GetFollowers(ctx context.Context, userID, page, limit int) ([]model.UserBasic, int64, error) {
+// `viewerID` (0 for anonymous) is used to stamp each row with the viewer-
+// relative is_followed flag so the FE can render per-row follow buttons
+// without per-row round-trips.
+func (s *UserService) GetFollowers(ctx context.Context, userID, viewerID, page, limit int) ([]model.UserFollowItem, int64, error) {
 	ids, total, err := s.repo.GetFollowerIDs(userID, (page-1)*limit, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.briefsToUserBasic(ctx, ids), total, nil
+	return s.briefsToFollowItems(ctx, ids, viewerID), total, nil
 }
 
 // GetFollowing returns followee user briefs, batch-resolved from OAuth.
-func (s *UserService) GetFollowing(ctx context.Context, userID, page, limit int) ([]model.UserBasic, int64, error) {
+// See GetFollowers for `viewerID` semantics.
+func (s *UserService) GetFollowing(ctx context.Context, userID, viewerID, page, limit int) ([]model.UserFollowItem, int64, error) {
 	ids, total, err := s.repo.GetFollowingIDs(userID, (page-1)*limit, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.briefsToUserBasic(ctx, ids), total, nil
+	return s.briefsToFollowItems(ctx, ids, viewerID), total, nil
+}
+
+// briefsToFollowItems is briefsToUserBasic + per-row is_followed stamp.
+// One follow-set lookup covers the whole page.
+func (s *UserService) briefsToFollowItems(ctx context.Context, ids []int, viewerID int) []model.UserFollowItem {
+	briefs := userclient.BriefMapByInt(ctx, s.users, ids)
+	followed, _ := s.repo.WhichFollowed(viewerID, ids) // nil on error → empty map → all false
+	out := make([]model.UserFollowItem, 0, len(ids))
+	for _, id := range ids {
+		if b := briefs[id]; b != nil {
+			out = append(out, model.UserFollowItem{
+				ID:         int(b.ID),
+				Name:       b.Name,
+				Avatar:     b.Avatar,
+				IsFollowed: followed[int(b.ID)],
+			})
+		}
+	}
+	return out
 }
 
 // SearchUsers proxies OAuth /users/search and returns the slim wire shape.

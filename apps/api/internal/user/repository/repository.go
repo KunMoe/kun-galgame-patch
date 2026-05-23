@@ -170,6 +170,29 @@ func (r *UserRepository) GetFollowingIDs(userID, offset, limit int) ([]int, int6
 	return ids, total, err
 }
 
+// WhichFollowed returns a set of candidateIDs that the viewer currently
+// follows. One query for the whole page; used by GetFollowers /
+// GetFollowing to stamp each row's is_followed flag without per-row
+// round-trips. Anonymous viewer (viewerID <= 0) or empty input returns
+// an empty map.
+func (r *UserRepository) WhichFollowed(viewerID int, candidateIDs []int) (map[int]bool, error) {
+	out := make(map[int]bool, len(candidateIDs))
+	if viewerID <= 0 || len(candidateIDs) == 0 {
+		return out, nil
+	}
+	var rows []int
+	err := r.db.Table("user_follow_relation").
+		Where("follower_id = ? AND following_id IN ?", viewerID, candidateIDs).
+		Pluck("following_id", &rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range rows {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // ===== Daily =====
 
 func (r *UserRepository) CheckIn(userID int, points int) error {

@@ -260,7 +260,9 @@ func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowers(c.Context(), userID, req.Page, req.Limit)
+	// viewerID (0 = anonymous) lets the service stamp per-row is_followed
+	// so the FE follow-list modal can render the correct button state.
+	users, total, err := h.service.GetFollowers(c.Context(), userID, middleware.GetUserID(c), req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -285,7 +287,7 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 		req.Limit = 20
 	}
 
-	users, total, err := h.service.GetFollowing(c.Context(), userID, req.Page, req.Limit)
+	users, total, err := h.service.GetFollowing(c.Context(), userID, middleware.GetUserID(c), req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}

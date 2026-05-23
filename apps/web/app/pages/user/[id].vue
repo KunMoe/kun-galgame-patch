@@ -40,6 +40,18 @@ const currentTab = computed({
   set: () => {}
 })
 
+// Follower / following modal. One modal driven by `followMode` so the two
+// triggers share state and only one is open at a time. After a follow /
+// unfollow inside the modal, refresh the profile so the counts in the
+// sidebar are accurate (backend updates follower_count / following_count
+// in PUT/DELETE /:id/follow per repository.UpdateFollowCounts).
+const followOpen = ref(false)
+const followMode = ref<'follower' | 'following'>('follower')
+const openFollowList = (mode: 'follower' | 'following') => {
+  followMode.value = mode
+  followOpen.value = true
+}
+
 // 发消息: resolves or creates the private chat room between the current
 // user and the profile owner, then navigates to its transcript. Backend
 // endpoint is POST /chat/room/private (link format "<minUID>-<maxUID>"
@@ -107,9 +119,27 @@ const toggleFollow = async () => {
                 {{ pickRoleLabel(user.roles) }}
               </KunChip>
 
-              <div class="text-default-500 mt-2 flex gap-4 text-sm">
-                <span>粉丝 {{ user.follower_count }}</span>
-                <span>关注 {{ user.following_count }}</span>
+              <div class="text-default-500 mt-2 flex gap-3 text-sm">
+                <button
+                  type="button"
+                  class="hover:text-primary inline-flex items-center gap-1 rounded transition-colors"
+                  @click="openFollowList('follower')"
+                >
+                  粉丝
+                  <span class="text-foreground font-semibold">
+                    {{ user.follower_count }}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="hover:text-primary inline-flex items-center gap-1 rounded transition-colors"
+                  @click="openFollowList('following')"
+                >
+                  关注
+                  <span class="text-foreground font-semibold">
+                    {{ user.following_count }}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -228,6 +258,13 @@ const toggleFollow = async () => {
         <NuxtPage />
       </div>
     </div>
+    <UserFollowListModal
+      v-if="user"
+      v-model:open="followOpen"
+      :user-id="user.id"
+      :mode="followMode"
+      @follow-changed="refresh()"
+    />
   </div>
   <KunNull v-else description="用户不存在" />
 </template>
