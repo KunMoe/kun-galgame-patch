@@ -217,8 +217,16 @@ const onKeydown = (e: KeyboardEvent, idx: number) => {
 
 const selectTab = async (item: KunTabItem, _idx: number) => {
   if (props.disabled || item.disabled) return
-  value.value = item.value
-  emit('change', item.value)
+  // `change` only fires when value actually changes — matches the
+  // semantic of RadioGroup / Select (an idempotent re-click is not a
+  // "change"). Href navigation still happens on every click, so re-
+  // tapping a routed tab still triggers Nuxt's router (which can be
+  // configured per scrollBehavior to scroll back to top, the typical
+  // mobile-app "tap active tab to return to root" behaviour).
+  if (value.value !== item.value) {
+    value.value = item.value
+    emit('change', item.value)
+  }
   if (item.href) {
     await navigateTo(item.href)
   }

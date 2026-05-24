@@ -15,7 +15,7 @@
 |---|---|---|
 | **Wiki**（`:9280`） | galgame、tag、official、engine、series、revision、PR、**galgame_message** | 服务端 |
 | **kungal / moyu**（各自后端） | 本地交互数据：`galgame_stats`、`galgame_like`、`galgame_comment`、`galgame_resource`、`galgame_rating` | 上游消费者 |
-| **鲲 Galgame OAuth**（前端 `:9420`、API `:9277`） | users、roles、oauth_client | 身份提供方 |
+| **OAuth**（`:9277`） | users、roles、oauth_client | 身份提供方 |
 
 **三库 user_id 已全局对齐**（migrate-users 完成），不需要 ID 映射；移交过来的 user_id 直接是 OAuth 全局 user_id。
 

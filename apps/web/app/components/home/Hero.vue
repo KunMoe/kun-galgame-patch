@@ -24,9 +24,14 @@ const { data: posts } = await useAsyncData<HomeCarouselMetadata[]>(
           欢迎来到 {{ kunMoyuMoe.titleShort }}
         </div>
       </KunChip>
+      <!-- aspect-ratio reserves the box pre-load so the absolute chip above
+           still anchors to the right position, and the sibling carousel
+           column (grid stretch + md:h-full) doesn't collapse on slow loads.
+           Asset is 1920×1080. -->
       <KunImage
         src="/kungalgame-trans.webp"
         :alt="kunMoyuMoe.titleShort"
+        aspect-ratio="16 / 9"
         class-name="rounded-2xl"
       />
     </div>

@@ -17,10 +17,11 @@ const post = computed(() => props.posts[props.currentSlide])
     class="h-full border-none bg-transparent shadow-none sm:hidden"
   >
     <div class="relative h-1/2">
+      <!-- See DesktopCard.vue: `block` overrides inline-block so h-full works. -->
       <KunImage
         :src="post.banner"
         :alt="post.title"
-        class-name="h-full w-full rounded-2xl"
+        class-name="block h-full w-full rounded-2xl"
       />
     </div>
     <div class="h-1/2 py-3">

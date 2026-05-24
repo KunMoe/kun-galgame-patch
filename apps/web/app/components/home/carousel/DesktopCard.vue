@@ -13,10 +13,14 @@ const post = computed(() => props.posts[props.currentSlide])
 
 <template>
   <div v-if="post" class="group hidden h-full sm:block">
+    <!-- `block` overrides KunImage's default inline-block wrapper so the
+         carousel's h-full chain (parent h-[300px] / md:h-full → this h-full)
+         can actually take effect. Without it the wrapper is inline-block
+         0×0 pre-load and the whole carousel column collapses. -->
     <KunImage
       :src="post.banner"
       :alt="post.title"
-      class-name="h-full w-full rounded-2xl"
+      class-name="block h-full w-full rounded-2xl"
       image-class-name="brightness-75"
     />
     <div

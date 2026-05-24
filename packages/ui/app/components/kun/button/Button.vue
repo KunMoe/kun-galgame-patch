@@ -102,10 +102,27 @@ const isIconOnlyClasses = computed(() => {
 
 const { ripples, onClick } = useRipple()
 
+// Disabled-state guard must run in JS, NOT only via the :disabled
+// attribute — the latter is a no-op when the button renders as
+// NuxtLink (which becomes <a>, and `disabled` on <a> means nothing:
+// the link still navigates, the click still fires). preventDefault
+// blocks NuxtLink's navigation; the early-return blocks emit + ripple.
+// The native <button :disabled> path also passes through here cleanly
+// since the browser never fires click on a disabled button anyway.
 const handleKunButtonClick = (event: MouseEvent) => {
+  if (props.disabled || props.loading) {
+    event.preventDefault()
+    return
+  }
   onClick(event)
   emits('click', event)
 }
+
+// `disabled:` Tailwind modifier only matches the CSS `:disabled`
+// pseudo-class, which is form-control-only — it does nothing on <a>.
+// Pair the JS guard above with a JS-driven class so href-mode
+// buttons also visually advertise their disabled state.
+const isInactive = computed(() => props.disabled || props.loading)
 </script>
 
 <template>
@@ -113,13 +130,13 @@ const handleKunButtonClick = (event: MouseEvent) => {
     :is="props.href ? defineNuxtLink({}) : 'button'"
     :class="
       cn(
-        'relative inline-flex cursor-pointer items-center justify-center gap-1 overflow-hidden font-medium transition-all hover:opacity-80 active:scale-[0.97] disabled:opacity-50',
+        'relative inline-flex cursor-pointer items-center justify-center gap-1 overflow-hidden font-medium transition-all hover:opacity-80 active:scale-[0.97]',
         sizeClasses,
         colorClasses,
         roundedClass,
         fullWidth ? 'w-full' : '',
         isIconOnlyClasses,
-        disabled && 'cursor-not-allowed hover:bg-none',
+        isInactive && 'pointer-events-none cursor-not-allowed opacity-50 hover:bg-none',
         className
       )
     "

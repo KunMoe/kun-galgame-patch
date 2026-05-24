@@ -25,7 +25,10 @@ const generateState = (): string => {
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export const startOAuthLogin = async (): Promise<void> => {
+// Build the standard OAuth authorize URL + sessionStorage-stash PKCE/state.
+// Shared between login and register flows — only the OAuth web entry
+// point differs (see startOAuthLogin / startOAuthRegister below).
+const prepareAuthorizeUrl = async (): Promise<string> => {
   const config = useRuntimeConfig()
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
@@ -52,7 +55,25 @@ export const startOAuthLogin = async (): Promise<void> => {
     code_challenge_method: 'S256'
   })
 
-  window.location.href = `${oauthWebUrl}/oauth/authorize?${params}`
+  return `${oauthWebUrl}/oauth/authorize?${params}`
+}
+
+export const startOAuthLogin = async (): Promise<void> => {
+  window.location.href = await prepareAuthorizeUrl()
+}
+
+// Unified-registration entry: bounce the user to OAuth web's /auth/register
+// with the full authorize URL stashed as ?redirect=. After registration
+// completes, OAuth web auto-logs-in (the Register endpoint issues tokens)
+// and window.location.href's to the redirect URL, which restarts the
+// standard authorize flow. First-party moyu (auto_consent=true) skips
+// the consent UI, code lands on /auth/callback, moyu session created.
+// See docs/integration/oauth/05-registration.md.
+export const startOAuthRegister = async (): Promise<void> => {
+  const config = useRuntimeConfig()
+  const oauthWebUrl = config.public.oauthWebUrl as string
+  const authorizeUrl = await prepareAuthorizeUrl()
+  window.location.href = `${oauthWebUrl}/auth/register?redirect=${encodeURIComponent(authorizeUrl)}`
 }
 
 export const verifyOAuthCallback = (): {

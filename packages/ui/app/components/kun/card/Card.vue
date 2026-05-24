@@ -6,8 +6,17 @@ import type { KunUIColor, KunUIRounded } from '../ui/type'
 // KunCard renders as one of three elements depending on which props
 // are present (priority: href > clickable > div):
 //   1. `href`      → <NuxtLink>
-//   2. `clickable` → <button> (emits @click)
+//   2. `clickable` → <button> (visual cursor/active-scale + ripple)
 //   3. neither     → static <div>
+//
+// `@click` is emitted in ALL three modes — see handleKunCardClick.
+// Earlier versions short-circuited the emit on non-interactive cards,
+// which broke the imperative pattern `<KunCard @click="navigateTo(...)">`
+// used to avoid `<a>`-inside-`<a>` hydration mismatches (e.g. comment
+// cards rendering markdown that may contain @-mention links). Only the
+// ripple effect + cursor/scale styling remain gated on isInteractive —
+// those are visual cues that imply "this is a primary nav target",
+// which a pure event listener shouldn't claim.
 interface Props {
   isHoverable?: boolean
   clickable?: boolean
@@ -48,8 +57,15 @@ const renderAs = computed(() => {
 })
 
 const handleKunCardClick = (event: MouseEvent) => {
-  if (!isInteractive.value) return
-  onClick(event)
+  // Ripple is a visual affordance for "primary nav target" cards — only
+  // run it when the card is rendered as <NuxtLink>/<button>, i.e. when
+  // it visually advertises clickability via cursor-pointer + active-scale.
+  if (isInteractive.value) onClick(event)
+  // Emit unconditionally so plain `<KunCard @click="...">` works. The
+  // declared `click` emit means Vue stops auto-forwarding the native
+  // click from the root element, so we have to fire it ourselves —
+  // a missing emit here silently swallows the listener (the bug this
+  // file's top comment describes).
   emit('click', event)
 }
 
