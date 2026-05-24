@@ -14,8 +14,8 @@ const route = useRoute()
 const userStore = useUserStore()
 const api = useApi()
 
-if (!userStore.isLoggedIn) {
-  await navigateTo({ path: '/login', query: { from: route.fullPath } })
+if (!userStore.isLoggedIn && import.meta.client) {
+  await startOAuthLogin()
 }
 
 const gid = computed(() => Number(route.query.id))

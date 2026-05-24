@@ -15,7 +15,7 @@ const handleLogout = async () => {
     logoutOpen.value = false
     userStore.logout()
     useKunMessage('您已经成功登出!', 'success')
-    await navigateTo('/login')
+    await navigateTo('/')
   }
 }
 

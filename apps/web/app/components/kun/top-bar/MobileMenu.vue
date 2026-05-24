@@ -50,8 +50,9 @@ const primaryItems = computed(() => kunMobileNavItem.slice(0, 4))
 const utilityItems = computed(() => kunMobileNavItem.slice(4))
 const adminItems = computed(() => (userStore.isAdmin ? kunMobileAdminItem : []))
 
-// Login modal trigger — same UX as the top-bar Login button so users
-// don't get bounced to a separate page.
+// "登录" button → open the shared AuthEntry modal (same one the desktop
+// top-bar uses). closeMenu first so the slide-out animation runs cleanly
+// before the modal opens on top.
 const loginOpen = ref(false)
 const handleLoginClick = () => {
   closeMenu()
@@ -69,7 +70,7 @@ const handleLogout = async () => {
     userStore.logout()
     useKunMessage('您已经成功登出!', 'success')
     closeMenu()
-    await navigateTo('/login')
+    await navigateTo('/')
   }
 }
 
@@ -337,8 +338,8 @@ onUnmounted(() => {
        unmount the modal mid-transition; v-model is independent of isOpen. -->
   <KunModal v-model="loginOpen" inner-class-name="max-w-sm">
     <div class="flex flex-col items-center gap-6 py-4">
-      <h2 class="text-2xl font-bold">登录</h2>
-      <LoginForm />
+      <h2 class="text-2xl font-bold">登录或注册</h2>
+      <AuthEntry />
     </div>
   </KunModal>
 </template>

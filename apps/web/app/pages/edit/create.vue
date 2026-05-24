@@ -20,8 +20,8 @@ const api = useApi()
 const userStore = useUserStore()
 const route = useRoute()
 
-if (!userStore.isLoggedIn) {
-  await navigateTo({ path: '/login', query: { from: route.fullPath } })
+if (!userStore.isLoggedIn && import.meta.client) {
+  await startOAuthLogin()
 }
 
 type WizardMode = 'search' | 'submit'

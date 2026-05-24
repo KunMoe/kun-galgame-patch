@@ -11,10 +11,11 @@ import type { UserState } from '~/stores/userStore'
 const userStore = useUserStore()
 const api = useApi()
 
-// Top-bar surfaces a single solid "登录" button (registration is offered
-// inside the LoginForm via a link, so an extra top-bar entry would be
-// redundant). Clicking the button pops the existing LoginForm in a modal —
-// no need to navigate away from the current page just to log in.
+// Top-bar surfaces a single solid "登录" button. Clicking opens a small modal
+// (AuthEntry) with two buttons — 登录 and 注册 — both bounce to OAuth web.
+// The local /login + /register pages were deleted (L1 unified registration);
+// the modal is the only entry point now, so users don't get bounced to a
+// separate page just to start auth.
 const loginOpen = ref(false)
 
 const unreadMessageTypes = ref<string[]>([])
@@ -90,8 +91,8 @@ onMounted(async () => {
 
   <KunModal v-model="loginOpen" inner-class-name="max-w-sm">
     <div class="flex flex-col items-center gap-6 py-4">
-      <h2 class="text-2xl font-bold">登录</h2>
-      <LoginForm />
+      <h2 class="text-2xl font-bold">登录或注册</h2>
+      <AuthEntry />
     </div>
   </KunModal>
 </template>

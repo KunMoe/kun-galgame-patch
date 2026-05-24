@@ -21,8 +21,8 @@ const route = useRoute()
 const userStore = useUserStore()
 const api = useApi()
 
-if (!userStore.user.id) {
-  await navigateTo({ path: '/login', query: { from: route.fullPath } })
+if (!userStore.user.id && import.meta.client) {
+  await startOAuthLogin()
 }
 
 const galgameId = computed(() => Number(route.query.id))

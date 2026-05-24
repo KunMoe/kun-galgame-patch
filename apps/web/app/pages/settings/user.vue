@@ -169,7 +169,7 @@ const handleReset = async () => {
     resetOpen.value = false
     useKunMessage('您已成功清除网站所有数据, 请重新登录', 'success')
     setTimeout(() => {
-      window.location.href = '/login'
+      window.location.href = '/'
     }, 1500)
   } finally {
     resetting.value = false

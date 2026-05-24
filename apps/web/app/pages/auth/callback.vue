@@ -23,7 +23,7 @@ onMounted(async () => {
   const params = verifyOAuthCallback()
   if (!params) {
     error.value = 'OAuth callback verification failed'
-    setTimeout(() => navigateTo('/login'), 2000)
+    setTimeout(() => navigateTo('/'), 2000)
     return
   }
 
@@ -45,7 +45,7 @@ onMounted(async () => {
       return
     }
     useKunMessage(res.message || '登录失败', 'error')
-    setTimeout(() => navigateTo('/login'), 2000)
+    setTimeout(() => navigateTo('/'), 2000)
     return
   }
 
@@ -61,7 +61,7 @@ onMounted(async () => {
       <div class="flex flex-col items-center gap-4 py-8">
         <template v-if="error">
           <p class="text-danger text-center">{{ error }}</p>
-          <p class="text-default-400 text-sm">Redirecting to login...</p>
+          <p class="text-default-400 text-sm">Redirecting to home...</p>
         </template>
         <template v-else>
           <KunIcon

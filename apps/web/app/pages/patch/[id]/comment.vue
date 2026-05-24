@@ -123,9 +123,13 @@ const toggleLike = async (c: PatchPageComment) => {
       class="border-default/20 bg-default-50 rounded-2xl border p-5 text-center text-sm"
     >
       请
-      <NuxtLink to="/login" class="text-primary font-medium hover:underline">
+      <button
+        type="button"
+        class="text-primary font-medium hover:underline"
+        @click="startOAuthLogin"
+      >
         登录
-      </NuxtLink>
+      </button>
       后发表评论
     </div>
 

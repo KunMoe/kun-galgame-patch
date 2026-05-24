@@ -37,9 +37,13 @@ const prepareAuthorizeUrl = async (): Promise<string> => {
   sessionStorage.setItem('oauth_code_verifier', codeVerifier)
   sessionStorage.setItem('oauth_state', state)
 
-  // Authorize endpoint is a user-facing consent screen — it lives on the OAuth
-  // frontend (dev :9420, prod oauth.kungal.com), NOT the API base (:9277/api/v1).
-  const oauthWebUrl = config.public.oauthWebUrl as string
+  // `/oauth/authorize` is an API endpoint (lives under oauthServerUrl =
+  // dev :9277/api/v1, prod oauth.kungal.com/api/v1). The user-facing
+  // pages (/auth/register, /forgot, /profile) live on oauthWebUrl
+  // (dev :9420, prod oauth.kungal.com) and the API server 302-redirects
+  // to those when its consent flow needs UI. Earlier this used oauthWebUrl
+  // and produced `:9420/oauth/authorize` which doesn't exist.
+  const oauthServerUrl = config.public.oauthServerUrl as string
   const clientId = config.public.oauthClientId as string
   const redirectUri =
     (config.public.oauthRedirectUri as string) ||
@@ -55,7 +59,7 @@ const prepareAuthorizeUrl = async (): Promise<string> => {
     code_challenge_method: 'S256'
   })
 
-  return `${oauthWebUrl}/oauth/authorize?${params}`
+  return `${oauthServerUrl}/oauth/authorize?${params}`
 }
 
 export const startOAuthLogin = async (): Promise<void> => {
