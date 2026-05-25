@@ -41,6 +41,43 @@ const handlePublishSuccess = (created: PatchResource) => {
   }
 }
 
+// ─── 删除资源 (owner / moderator) ───────────────────
+// Backend DELETE /patch/resource/:resourceId enforces UserID == caller (or
+// admin via /admin/resource/:id). We gate the button visibility client-side
+// so non-owners don't even see the affordance; the server still verifies.
+const canDelete = (r: PatchResource) =>
+  userStore.isModerator || r.user_id === userStore.user.id
+
+const deleteOpen = ref(false)
+const deleting = ref(false)
+const pendingDelete = ref<PatchResource | null>(null)
+
+const askDelete = (r: PatchResource) => {
+  pendingDelete.value = r
+  deleteOpen.value = true
+}
+
+const confirmDelete = async () => {
+  const r = pendingDelete.value
+  if (!r) return
+  deleting.value = true
+  try {
+    const res = await api.delete(`/patch/resource/${r.id}`)
+    if (res.code === 0) {
+      useKunMessage('已删除资源', 'success')
+      if (resources.value) {
+        resources.value = resources.value.filter((x) => x.id !== r.id)
+      }
+      deleteOpen.value = false
+      pendingDelete.value = null
+    } else {
+      useKunMessage(res.message || '删除失败', 'error')
+    }
+  } finally {
+    deleting.value = false
+  }
+}
+
 // ─── Sorter ───────────────────────────────────────────
 // Client-side (the list endpoint returns the whole set unpaginated).
 type SortField = 'update_time' | 'created' | 'download' | 'like_count'
@@ -303,6 +340,21 @@ const toggleLike = async (r: PatchResource) => {
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
             </span>
+            <!-- Owner / moderator: delete affordance. Backend re-checks the
+                 same predicate (UserID == caller / admin route) so a hostile
+                 client can't bypass by forging visibility. -->
+            <KunButton
+              v-if="canDelete(r)"
+              variant="light"
+              color="danger"
+              size="xs"
+              rounded="full"
+              aria-label="删除资源"
+              @click="askDelete(r)"
+            >
+              <KunIcon name="lucide:trash-2" class="size-4" />
+              删除
+            </KunButton>
           </div>
           <KunButton
             color="primary"
@@ -413,6 +465,41 @@ const toggleLike = async (r: PatchResource) => {
         @close="publishOpen = false"
         @success="handlePublishSuccess"
       />
+    </KunModal>
+
+    <KunModal v-model="deleteOpen" inner-class-name="max-w-md">
+      <div class="space-y-4 py-2">
+        <h3 class="text-lg font-bold">删除补丁资源？</h3>
+        <p class="text-default-600 text-sm">
+          此操作不可撤销。资源记录会从数据库移除，对应的 S3 文件也会被删除。
+        </p>
+        <p
+          v-if="pendingDelete?.name"
+          class="text-default-500 text-sm"
+        >
+          <span class="text-default-400">资源名称：</span>
+          <strong class="text-foreground">{{ pendingDelete.name }}</strong>
+        </p>
+        <div class="flex justify-end gap-2">
+          <KunButton
+            variant="light"
+            color="default"
+            :disabled="deleting"
+            @click="deleteOpen = false"
+          >
+            取消
+          </KunButton>
+          <KunButton
+            color="danger"
+            :loading="deleting"
+            :disabled="deleting"
+            @click="confirmDelete"
+          >
+            <KunIcon v-if="!deleting" name="lucide:trash-2" class="size-4" />
+            确认删除
+          </KunButton>
+        </div>
+      </div>
     </KunModal>
   </div>
 </template>

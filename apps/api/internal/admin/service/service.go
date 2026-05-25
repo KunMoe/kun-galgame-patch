@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"kun-galgame-patch-api/internal/admin/dto"
 	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/repository"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
+	"kun-galgame-patch-api/internal/infrastructure/storage"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 
 	"github.com/redis/go-redis/v9"
@@ -16,10 +18,11 @@ import (
 type AdminService struct {
 	repo *repository.AdminRepository
 	rdb  *redis.Client
+	s3   *storage.S3Client
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb}
+func New(repo *repository.AdminRepository, rdb *redis.Client, s3 *storage.S3Client) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, s3: s3}
 }
 
 // ===== Comments =====
@@ -69,9 +72,23 @@ func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int)
 }
 
 func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
+	// Snapshot Storage + S3Key BEFORE deleting the row so we can clean up the
+	// S3 object afterwards. Read failure isn't fatal — fall through and let the
+	// DB delete still happen (matches the patch-side DeleteResource: deleting
+	// the row is the primary operation, S3 cleanup is best-effort).
+	resource, readErr := s.repo.GetResourceByID(resourceID)
 	if err := s.repo.DeleteResource(resourceID); err != nil {
 		return err
 	}
+
+	if readErr == nil && resource.Storage == "s3" && resource.S3Key != "" && s.s3 != nil && s.s3.Ready() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
+			slog.Warn("admin DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+		}
+	}
+
 	s.repo.CreateLog(adminUID, "deleteResource", map[string]any{"resource_id": resourceID})
 	return nil
 }

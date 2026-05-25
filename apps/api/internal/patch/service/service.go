@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -712,6 +713,19 @@ func (s *PatchService) DeleteResource(resourceID, userID int) error {
 
 	if err := s.repo.DeleteResource(resourceID); err != nil {
 		return err
+	}
+
+	// Best-effort S3 cleanup. We deliberately do NOT fail the whole op if this
+	// errors — the DB row is already gone, the user-facing operation is "done",
+	// and a left-over object is recoverable later (manual sweep / a future
+	// orphan-scrub cron — cron currently only catches in-flight multiparts via
+	// cleanupAbortedMultiparts, not completed-but-unreferenced small uploads).
+	if resource.Storage == "s3" && resource.S3Key != "" && s.s3.Ready() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
+			slog.Warn("DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+		}
 	}
 
 	s.repo.UpdateCount(resource.GalgameID, "resource_count", -1)

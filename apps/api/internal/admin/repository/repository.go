@@ -75,6 +75,16 @@ func (r *AdminRepository) DeleteResource(resourceID int) error {
 	return r.db.Delete(&patchModel.PatchResource{}, resourceID).Error
 }
 
+// GetResourceByID exposes the resource row so the service layer can read
+// Storage / S3Key before DELETE (admin needs them to clean up the S3 object,
+// see AdminService.DeleteResource). Mirrors PatchRepository.GetResourceByID
+// rather than calling across modules so admin keeps its own narrow surface.
+func (r *AdminRepository) GetResourceByID(resourceID int) (*patchModel.PatchResource, error) {
+	var resource patchModel.PatchResource
+	err := r.db.First(&resource, resourceID).Error
+	return &resource, err
+}
+
 // User management & creator-application repo methods are gone with the
 // migration: identity is owned by OAuth, and the creator role was retired.
 

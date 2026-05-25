@@ -108,7 +108,7 @@ func New(cfg *config.Config) *App {
 
 	// Admin module
 	adminRepository := adminRepo.New(db)
-	adminSvc := adminService.New(adminRepository, rdb)
+	adminSvc := adminService.New(adminRepository, rdb, s3)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
 	// Common handler (direct DB access for simple aggregation endpoints)
