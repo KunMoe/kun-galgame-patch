@@ -26,8 +26,9 @@ const route = useRoute()
 const userStore = useUserStore()
 const ge = useGalgameEdit()
 
-if (!userStore.isLoggedIn && import.meta.client) {
-  await startOAuthLogin()
+// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
+if (!userStore.isLoggedIn) {
+  await navigateTo('/')
 }
 
 type Kind = 'tag' | 'official' | 'engine' | 'series'

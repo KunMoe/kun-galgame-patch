@@ -14,8 +14,9 @@ const route = useRoute()
 const userStore = useUserStore()
 const api = useApi()
 
-if (!userStore.isLoggedIn && import.meta.client) {
-  await startOAuthLogin()
+// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
+if (!userStore.isLoggedIn) {
+  await navigateTo('/')
 }
 
 const gid = computed(() => Number(route.query.id))

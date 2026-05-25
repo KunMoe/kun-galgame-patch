@@ -20,8 +20,12 @@ const api = useApi()
 const userStore = useUserStore()
 const route = useRoute()
 
-if (!userStore.isLoggedIn && import.meta.client) {
-  await startOAuthLogin()
+// Unauthed → bounce to home (NOT auto-startOAuthLogin). Reason: if we
+// auto-OAuth, the user gets stuck at OAuth login and pressing browser-back
+// returns them here, where this guard fires again and re-bounces — infinite
+// loop. From home they can click the top-bar 登录 button manually.
+if (!userStore.isLoggedIn) {
+  await navigateTo('/')
 }
 
 type WizardMode = 'search' | 'submit'

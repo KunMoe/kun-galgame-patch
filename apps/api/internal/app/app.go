@@ -154,9 +154,17 @@ func New(cfg *config.Config) *App {
 	middleware.SecureCookies = cfg.Server.Mode == "prod"
 
 	// Fiber app
+	//
+	// ReadBufferSize raised from the 4 KB default to 32 KB to survive the dev
+	// environment's shared 127.0.0.1 cookie jar — browsers don't isolate cookies
+	// by port, so OAuth (9277 + 9420) + moyu (5214 + 6969) all accumulate into
+	// one jar and the combined Cookie header trips Fiber's request header limit
+	// (logs: `Request Header Fields Too Large`). 32 KB is well under fasthttp's
+	// hard limit and inert in prod where the services live on separate domains.
 	app := fiber.New(fiber.Config{
-		BodyLimit:    10 * 1024 * 1024, // 10MB
-		ErrorHandler: globalErrorHandler,
+		BodyLimit:      10 * 1024 * 1024, // 10MB
+		ReadBufferSize: 32 * 1024,        // 32KB headers, see comment above
+		ErrorHandler:   globalErrorHandler,
 	})
 
 	app.Use(recover.New())
