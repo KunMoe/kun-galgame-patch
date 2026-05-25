@@ -22,6 +22,25 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   { default: () => [] }
 )
 
+// ─── 发布资源 (modal) ─────────────────────────────
+// Login-gated entry; AuthEntry modal already lives in top-bar so we don't
+// duplicate it here — just nudge the user to log in.
+const publishOpen = ref(false)
+const handlePublishClick = () => {
+  if (!userStore.isLoggedIn) {
+    useKunMessage('请先登录后再发布资源', 'warn')
+    return
+  }
+  publishOpen.value = true
+}
+const handlePublishSuccess = (created: PatchResource) => {
+  // Optimistic prepend so the new row appears immediately. The list is
+  // unpaginated so we don't need to refetch.
+  if (resources.value) {
+    resources.value = [created, ...resources.value]
+  }
+}
+
 // ─── Sorter ───────────────────────────────────────────
 // Client-side (the list endpoint returns the whole set unpaginated).
 type SortField = 'update_time' | 'created' | 'download' | 'like_count'
@@ -132,6 +151,14 @@ const toggleLike = async (r: PatchResource) => {
 
 <template>
   <div class="space-y-4">
+    <!-- 发布按钮 -->
+    <div class="flex justify-end">
+      <KunButton color="primary" @click="handlePublishClick">
+        <KunIcon name="lucide:plus" class="size-4" />
+        发布资源
+      </KunButton>
+    </div>
+
     <!-- sorter -->
     <div
       v-if="!pending && resources && resources.length"
@@ -378,5 +405,14 @@ const toggleLike = async (r: PatchResource) => {
       </div>
     </div>
     <KunNull v-else description="该 Galgame 暂无补丁资源" />
+
+    <KunModal v-model="publishOpen" inner-class-name="max-w-3xl">
+      <ResourcePublish
+        v-if="publishOpen"
+        :patch-id="galgameId"
+        @close="publishOpen = false"
+        @success="handlePublishSuccess"
+      />
+    </KunModal>
   </div>
 </template>
