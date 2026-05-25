@@ -102,10 +102,10 @@ const handleFilePicked = async (files: File[]) => {
   try {
     const result = await uploader.upload(f, props.patchId)
     form.s3_key = result.s3Key
-    // Marker so submit serializes a non-empty content; backend ignores the
-    // value for storage='s3' (it serves a presigned GET via /link instead),
-    // but PatchResourceCreateRequest validation still requires content.min=1.
-    form.content = `s3://${result.s3Key}`
+    // For storage="s3" the server normalizes Content = s3_key on CreateResource
+    // and materializes the user-facing download URL at GET /resource/:id/link
+    // time (PatchService.GetResourceDownloadInfo). We just leave content empty
+    // here — the DTO no longer requires it.
     form.size = `${(result.size / (1024 * 1024)).toFixed(3)} MB`
   } catch (e) {
     uploadError.value = e instanceof Error ? e.message : '上传失败'

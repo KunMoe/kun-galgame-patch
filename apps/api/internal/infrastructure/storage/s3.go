@@ -53,13 +53,22 @@ func NewS3(cfg config.S3Config) *S3Client {
 		panic("minio client 初始化失败: " + err.Error())
 	}
 
-	slog.Info("S3 客户端就绪", "endpoint", host, "bucket", cfg.Bucket, "tls", secure)
+	// PublicURL fronts the bucket for downloads (CDN / reverse proxy with our
+	// own domain, e.g. https://oss.moyu.moe). Falling back to Endpoint+Bucket
+	// works for dev (direct B2 download) but in prod it would leak the raw B2
+	// host and bypass the CDN — see S3Config doc comment.
+	publicURL := strings.TrimRight(cfg.PublicURL, "/")
+	if publicURL == "" {
+		publicURL = strings.TrimRight(cfg.Endpoint, "/") + "/" + cfg.Bucket
+	}
+
+	slog.Info("S3 客户端就绪", "endpoint", host, "bucket", cfg.Bucket, "public_url", publicURL, "tls", secure)
 
 	return &S3Client{
 		client:    mc,
 		core:      &minio.Core{Client: mc},
 		bucket:    cfg.Bucket,
-		publicURL: strings.TrimRight(cfg.Endpoint, "/") + "/" + cfg.Bucket,
+		publicURL: publicURL,
 	}
 }
 

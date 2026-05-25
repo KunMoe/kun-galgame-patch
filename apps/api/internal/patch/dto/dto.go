@@ -39,14 +39,24 @@ type PatchCommentUpdateRequest struct {
 // D10 change (2026-04-21): the Hash (BLAKE3) field is gone.
 // After uploading the S3 resource, the frontend receives s3_key (full object key)
 // and submits it here; the server verifies via HeadObject.
-// For external-link resources (storage != "s3") leave s3_key empty and put the link in content.
+//
+// Content semantics by storage type:
+//   - storage="s3"   : frontend may leave Content empty; the service overwrites
+//                      it with s3_key. Download is materialized at fetch time
+//                      by GetResourceDownloadInfo (S3Client.PublicURL + s3_key)
+//                      so the bucket's public domain can change without DB
+//                      backfill. validate has no required/min so the FE doesn't
+//                      have to send a placeholder string just to pass schema.
+//   - storage="user" : frontend supplies the user's own download links here,
+//                      comma-separated. min=1 is enforced at the service layer
+//                      below for this branch.
 type PatchResourceCreateRequest struct {
 	GalgameID int      `json:"galgame_id" validate:"required,min=1"`
 	Storage   string   `json:"storage" validate:"required"`
 	Name      string   `json:"name" validate:"max=300"`
 	ModelName string   `json:"model_name" validate:"max=1007"`
 	S3Key     string   `json:"s3_key" validate:"max=2048"`
-	Content   string   `json:"content" validate:"required,min=1,max=1007"`
+	Content   string   `json:"content" validate:"max=1007"`
 	Size      string   `json:"size" validate:"required"`
 	Code      string   `json:"code" validate:"max=1007"`
 	Password  string   `json:"password" validate:"max=1007"`

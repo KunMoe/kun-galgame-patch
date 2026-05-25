@@ -564,6 +564,19 @@ func (s *PatchService) CreateResource(resource *model.PatchResource, userID int)
 		if !strings.HasPrefix(resource.S3Key, prefix) {
 			return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
 		}
+		// For s3 storage the canonical Content payload is just the s3_key — the
+		// public download URL is rebuilt at GET /resource/:id/link time via
+		// S3Client.PublicURL so a CDN/domain switch needs no DB backfill.
+		// The frontend can leave Content empty (DTO has no `required` for it
+		// any more) and we fill it here.
+		resource.Content = resource.S3Key
+	} else {
+		// "user" mode: the frontend supplied the user's own download link(s).
+		// Require at least one — DTO-level validation is intentionally relaxed
+		// (no min=1) since it would also reject the s3 branch above.
+		if strings.TrimSpace(resource.Content) == "" {
+			return fmt.Errorf("请填写资源链接")
+		}
 	}
 
 	if err := s.repo.CreateResource(resource); err != nil {
@@ -618,6 +631,21 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	}
 	if existing.UserID != userID {
 		return fmt.Errorf("can only edit your own resources")
+	}
+
+	// Mirror CreateResource's storage-aware Content normalization so updates
+	// follow the same invariant: storage="s3" → Content = S3Key (download URL
+	// is derived at fetch time); storage="user" → Content is the user's link.
+	if update.Storage == "s3" {
+		prefix := fmt.Sprintf("patch/%d/", existing.GalgameID)
+		if !strings.HasPrefix(update.S3Key, prefix) {
+			return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+		}
+		update.Content = update.S3Key
+	} else {
+		if strings.TrimSpace(update.Content) == "" {
+			return fmt.Errorf("请填写资源链接")
+		}
 	}
 
 	// File-substantive change detection. We compare update vs existing on
@@ -719,6 +747,13 @@ func (s *PatchService) GetResourceDownloadInfo(resourceID int) (*model.PatchReso
 	r, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return nil, fmt.Errorf("resource not found")
+	}
+	// storage="s3" stores the s3_key in Content (CreateResource invariant);
+	// materialize the public download URL at read time so a CDN/domain change
+	// (KUN_VISUAL_NOVEL_S3_STORAGE_URL) takes effect for old rows without DB
+	// backfill. storage="user" rows already carry the raw link list.
+	if r.Storage == "s3" && r.S3Key != "" {
+		r.Content = s.s3.PublicURL(r.S3Key)
 	}
 	return r, nil
 }
