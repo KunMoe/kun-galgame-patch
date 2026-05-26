@@ -353,7 +353,7 @@ func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
 		Platform:  model.JSONArray(req.Platform),
 	}
 
-	if err := h.service.CreateResource(resource, user.ID); err != nil {
+	if err := h.service.CreateResource(c.Context(), resource, user.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 

@@ -543,7 +543,7 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 	}
 }
 
-func (s *PatchService) CreateResource(resource *model.PatchResource, userID int) error {
+func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
 
 	// MOYU-PR7 / M5 — upload-handle integrity.
@@ -611,6 +611,17 @@ func (s *PatchService) CreateResource(resource *model.PatchResource, userID int)
 
 	// Pre-render note_html for the immediate POST response.
 	resource.NoteHTML = markdown.MustRender(resource.Note)
+
+	// Attach publisher brief so the response shape matches GetResources (which
+	// renders r.user.name on the resource card). Without this the frontend's
+	// optimistic prepend onto the list would render undefined → "Cannot read
+	// properties of undefined (reading 'name')" NPE. Reuses the same OAuth
+	// /users/batch path the list endpoint uses so failures degrade identically.
+	if s.users != nil {
+		one := []model.PatchResource{*resource}
+		attachUsersToResources(ctx, s.users, one)
+		resource.User = one[0].User
+	}
 
 	return nil
 }

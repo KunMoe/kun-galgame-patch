@@ -268,7 +268,7 @@ const toggleLike = async (r: PatchResource) => {
               <KunAvatar :user="r.user" size="xs" />
               <span>
                 由 <span class="text-foreground font-medium">{{
-                  r.user.name
+                  r.user?.name ?? '未知用户'
                 }}</span> 发布于
                 {{
                   formatDate(r.created, { isShowYear: true, isPrecise: true })
