@@ -458,7 +458,14 @@ const fmtSnapshotValue = (v: unknown): string => {
       </KunCard>
     </div>
 
-    <KunModal v-model="modalOpen" :is-show-close-button="true">
+    <!-- isDismissable=false: edit form with name + category + description
+         fields; accidental backdrop click would lose unsaved input. The
+         history modal below stays dismissable — it's read-only. -->
+    <KunModal
+      v-model="modalOpen"
+      :is-show-close-button="true"
+      :is-dismissable="false"
+    >
       <div class="w-[92vw] max-w-md space-y-3 p-5">
         <h3 class="text-lg font-semibold">
           {{ editing ? '编辑' : '新建'

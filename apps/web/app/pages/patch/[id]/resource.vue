@@ -518,7 +518,14 @@ const toggleLike = async (r: PatchResource) => {
     </div>
     <KunNull v-else description="该 Galgame 暂无补丁资源" />
 
-    <KunModal v-model="publishOpen" inner-class-name="max-w-3xl">
+    <!-- isDismissable=false: form holds an uploaded file + many fields;
+         click-outside / ESC would silently throw it all away. User must
+         click 取消 / 确认 to leave. Same pattern on the edit modal. -->
+    <KunModal
+      v-model="publishOpen"
+      inner-class-name="max-w-3xl"
+      :is-dismissable="false"
+    >
       <ResourcePublish
         v-if="publishOpen"
         :patch-id="galgameId"
@@ -527,7 +534,11 @@ const toggleLike = async (r: PatchResource) => {
       />
     </KunModal>
 
-    <KunModal v-model="editOpen" inner-class-name="max-w-3xl">
+    <KunModal
+      v-model="editOpen"
+      inner-class-name="max-w-3xl"
+      :is-dismissable="false"
+    >
       <ResourcePublish
         v-if="editOpen && editingResource"
         :patch-id="galgameId"

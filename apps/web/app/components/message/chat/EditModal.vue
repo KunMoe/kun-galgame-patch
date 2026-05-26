@@ -28,9 +28,13 @@ const save = () => {
 </script>
 
 <template>
+  <!-- isDismissable=false: user is mid-typing a markdown edit; backdrop
+       click / ESC would discard the draft silently. Use 取消 / 保存 to
+       leave the modal explicitly. -->
   <KunModal
     :model-value="open"
     inner-class-name="max-w-lg"
+    :is-dismissable="false"
     @update:model-value="(v) => emit('update:open', v)"
   >
     <div class="space-y-4">
