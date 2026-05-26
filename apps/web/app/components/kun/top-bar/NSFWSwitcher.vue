@@ -3,6 +3,7 @@ import {
   KUN_CONTENT_LIMIT_LABEL,
   KUN_CONTENT_LIMIT_MAP
 } from '~/constants/top-bar'
+import type { KunNsfwPreference } from '~/stores/settingStore'
 
 const settingStore = useSettingStore()
 
@@ -10,15 +11,21 @@ const options = [
   { key: 'sfw', icon: 'lucide:shield-check' },
   { key: 'nsfw', icon: 'lucide:ban' },
   { key: 'all', icon: 'lucide:circle-slash' }
-] as const
+] as const satisfies ReadonlyArray<{ key: KunNsfwPreference; icon: string }>
 
 const isDanger = computed(() => {
   const v = settingStore.data.kunNsfwEnable
   return !!v && v !== 'sfw'
 })
 
-const onSelect = (key: string) => {
-  settingStore.setData({ kunNsfwEnable: key })
+// onSelect takes the narrowed KunNsfwPreference (not raw string) so the
+// store mutation type-checks against the recently-tightened store schema.
+// location.reload() is intentional: every useApi composable captures the
+// content_limit at setup time, so an in-place store update would only take
+// effect on the *next* page navigation. A hard reload guarantees the
+// switch takes effect immediately on the current page.
+const onSelect = (key: KunNsfwPreference) => {
+  settingStore.setNsfwPreference(key)
   if (import.meta.client) location.reload()
 }
 </script>

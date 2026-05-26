@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -47,6 +48,24 @@ func (h *PatchHandler) WikiEditProxy(c *fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if method != fiber.MethodGet && accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
+	}
+
+	// NSFW gate for GET on :gid-scoped sub-resources (revisions / prs / links
+	// / aliases). Wiki's content_limit protocol (docs/galgame_wiki/00-handbook
+	// §16.2) only lists main list / search / taxonomy / batch / detail — these
+	// sub-resources fall outside the matrix, so wiki won't filter them. An
+	// anonymous caller hitting /galgame/<nsfw-gid>/revisions would otherwise
+	// receive a stream of diffs containing the NSFW name / banner / intro.
+	// Mutating GETs don't exist on these routes; mutating methods require
+	// auth above and are wiki-side authz'd, so they bypass the gate.
+	if method == fiber.MethodGet {
+		if gidStr := c.Params("gid"); gidStr != "" {
+			if gid, err := strconv.Atoi(gidStr); err == nil && gid > 0 {
+				if !h.gatePatchByContentLimit(c, gid) {
+					return response.Error(c, errors.ErrNotFound("patch not found"))
+				}
+			}
+		}
 	}
 
 	var body []byte

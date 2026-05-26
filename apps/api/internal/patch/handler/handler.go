@@ -43,6 +43,32 @@ func getIDParam(c *fiber.Ctx, name string) (int, error) {
 	return id, nil
 }
 
+// gatePatchByContentLimit checks whether `patchID`'s owning galgame passes the
+// caller's content_limit filter. Returns true → handler may serve the data;
+// false → handler MUST respond 404 (mirrors how /api/patch/:id itself handles
+// the NSFW miss).
+//
+// Used by sub-endpoints (/comment, /resource, /contributor, comment/:id/markdown)
+// that don't go through the main enricher but still expose patch-coupled data
+// — comment text, resource notes, contributor list, etc. A direct call to e.g.
+// /api/patch/<nsfw-id>/comment must not list comments from anonymous (sfw)
+// callers, even though the parent detail endpoint already 404s for them.
+//
+// Defaults to sfw via ContentLimitForListBrowse: an anonymous crawler with no
+// content_limit query gets the SEO-safe path. Wiki transient failure fails
+// closed (return false) — same SEO-safety reasoning as enricher / FilterBy.
+func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
+	cl := utils.ContentLimitForListBrowse(c)
+	if cl == "" || h.wiki == nil {
+		return true
+	}
+	briefs, err := h.wiki.GalgameBatch(c.Context(), []int{patchID}, cl)
+	if err != nil {
+		return false
+	}
+	return len(briefs) > 0
+}
+
 // ===== Patch CRUD =====
 
 // CreatePatch POST /api/patch
@@ -211,10 +237,17 @@ func (h *PatchHandler) IncrementView(c *fiber.Ctx) error {
 // ===== Comments =====
 
 // GetComments GET /api/patch/:id/comment
+//
+// NSFW gate: same shape as GetPatch — anonymous (sfw) callers see 404 on a
+// NSFW patch's comment list, so direct hits to /patch/<nsfw>/comment can't
+// bypass the SEO filter that already protects the parent detail endpoint.
 func (h *PatchHandler) GetComments(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
+	}
+	if !h.gatePatchByContentLimit(c, id) {
+		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
 	var req dto.GetPatchCommentRequest
@@ -312,10 +345,23 @@ func (h *PatchHandler) ToggleCommentLike(c *fiber.Ctx) error {
 }
 
 // GetCommentMarkdown GET /api/patch/comment/:commentId/markdown
+//
+// NSFW gate: look up the comment's owning patch and apply the same
+// content_limit check the parent /patch/:id/comment list applies. Without
+// this an anonymous caller who knows a NSFW comment id could fetch its raw
+// markdown — same exfiltration surface as GetComments itself.
 func (h *PatchHandler) GetCommentMarkdown(c *fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
+	}
+
+	patchID, pErr := h.service.GetCommentPatchID(commentID)
+	if pErr != nil {
+		return response.Error(c, errors.ErrNotFound("comment not found"))
+	}
+	if !h.gatePatchByContentLimit(c, patchID) {
+		return response.Error(c, errors.ErrNotFound("comment not found"))
 	}
 
 	md, err := h.service.GetCommentMarkdown(commentID)
@@ -329,10 +375,18 @@ func (h *PatchHandler) GetCommentMarkdown(c *fiber.Ctx) error {
 // ===== Resources =====
 
 // GetResources GET /api/patch/:id/resource
+//
+// NSFW gate: same as GetComments. Resource notes / titles may describe NSFW
+// content explicitly, so listing them under a NSFW patch must 404 for sfw
+// callers — even though the resource rows themselves don't carry
+// content_limit (the field lives on the owning patch via wiki).
 func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
+	}
+	if !h.gatePatchByContentLimit(c, id) {
+		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
 	currentUID := middleware.GetUserID(c)
@@ -480,6 +534,13 @@ func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
 	if gErr != nil {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
+	// NSFW gate: matches the resource-list endpoint's gate so an anonymous
+	// caller can't hop directly to the download link of a NSFW patch's
+	// resource by knowing its id. The download URL itself (B2 / user link)
+	// would otherwise be leaked even though no patch metadata is.
+	if !h.gatePatchByContentLimit(c, r.GalgameID) {
+		return response.Error(c, errors.ErrNotFound("resource not found"))
+	}
 	return response.OK(c, fiber.Map{
 		"storage":  r.Storage,
 		"content":  r.Content,
@@ -545,6 +606,9 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
+	}
+	if !h.gatePatchByContentLimit(c, id) {
+		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
 	ids, err := h.service.GetContributorIDs(id)

@@ -202,6 +202,21 @@ func (r *PatchRepository) GetCommentMarkdown(commentID int) (string, error) {
 	return content, err
 }
 
+// GetCommentPatchID returns the comment's owning patch.id — used by handlers
+// that need to NSFW-gate the comment's content (markdown view, etc.). Returns
+// 0 + ErrRecordNotFound when the comment doesn't exist.
+func (r *PatchRepository) GetCommentPatchID(commentID int) (int, error) {
+	var patchID int
+	err := r.db.Model(&model.PatchComment{}).Where("id = ?", commentID).Pluck("galgame_id", &patchID).Error
+	if err != nil {
+		return 0, err
+	}
+	if patchID == 0 {
+		return 0, gorm.ErrRecordNotFound
+	}
+	return patchID, nil
+}
+
 // ===== Comment Likes =====
 
 func (r *PatchRepository) FindCommentLike(userID, commentID int) (*model.UserPatchCommentLikeRelation, error) {

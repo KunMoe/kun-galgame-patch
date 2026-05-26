@@ -571,6 +571,12 @@ func (s *PatchService) GetCommentMarkdown(commentID int) (string, error) {
 	return s.repo.GetCommentMarkdown(commentID)
 }
 
+// GetCommentPatchID returns the comment's owning patch.id so the handler can
+// NSFW-gate it before serving the markdown body.
+func (s *PatchService) GetCommentPatchID(commentID int) (int, error) {
+	return s.repo.GetCommentPatchID(commentID)
+}
+
 // ===== Resources =====
 
 func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int) ([]model.PatchResource, error) {

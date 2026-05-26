@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { kunMoyuMoe } from '~/config/moyu-moe'
-import { kunMobileAdminItem, kunMobileNavItem } from '~/constants/top-bar'
+import {
+  kunMobileAdminItem,
+  kunMobileNavItem,
+  KUN_CONTENT_LIMIT_MAP
+} from '~/constants/top-bar'
+import type { KunNsfwPreference } from '~/stores/settingStore'
 import { useBodyScrollLock } from '@kun/ui/app/composables/useBodyScrollLock'
 
 interface Props {
@@ -25,6 +30,22 @@ const themes = [
 ] as const
 const setTheme = (key: 'light' | 'dark' | 'system') => {
   colorMode.preference = key
+}
+
+// NSFW content_limit picker (mobile mirror of KunTopBarNSFWSwitcher — that
+// component is a popover that's awkward on touch; the inline 3-tile control
+// matches the theme picker above). location.reload() on change for the same
+// reason as the desktop switcher: useApi captures content_limit at setup
+// time, so an in-place update only takes effect on the next navigation.
+const settingStore = useSettingStore()
+const nsfwOptions = [
+  { key: 'sfw', icon: 'lucide:shield-check' },
+  { key: 'all', icon: 'lucide:circle-slash' },
+  { key: 'nsfw', icon: 'lucide:ban' }
+] as const satisfies ReadonlyArray<{ key: KunNsfwPreference; icon: string }>
+const setNsfw = (key: KunNsfwPreference) => {
+  settingStore.setNsfwPreference(key)
+  if (import.meta.client) location.reload()
 }
 
 // Icon map. Kept in this file (not in constants/top-bar.ts) so the icon
@@ -322,6 +343,40 @@ onUnmounted(() => {
               >
                 <KunIcon :name="t.icon" class="size-5" />
                 <span class="text-xs">{{ t.label }}</span>
+              </KunButton>
+            </div>
+          </section>
+
+          <!-- ── Content / NSFW switcher ── -->
+          <section class="space-y-3">
+            <p
+              class="text-default-400 px-3 text-xs font-semibold tracking-wider uppercase"
+            >
+              内容显示
+            </p>
+            <div
+              class="border-default/20 bg-default-50/40 grid grid-cols-3 gap-1 rounded-xl border p-1"
+            >
+              <KunButton
+                v-for="opt in nsfwOptions"
+                :key="opt.key"
+                :variant="
+                  settingStore.data.kunNsfwEnable === opt.key ? 'flat' : 'light'
+                "
+                :color="
+                  settingStore.data.kunNsfwEnable === opt.key
+                    ? 'primary'
+                    : 'default'
+                "
+                size="sm"
+                full-width
+                rounded="lg"
+                class-name="flex-col gap-1 py-3"
+                :aria-label="`切换内容模式: ${KUN_CONTENT_LIMIT_MAP[opt.key]}`"
+                @click="setNsfw(opt.key)"
+              >
+                <KunIcon :name="opt.icon" class="size-5" />
+                <span class="text-xs">{{ KUN_CONTENT_LIMIT_MAP[opt.key] }}</span>
               </KunButton>
             </div>
           </section>
