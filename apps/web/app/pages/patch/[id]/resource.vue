@@ -61,9 +61,26 @@ const askEdit = (r: PatchResource) => {
 }
 const handleEditSuccess = (updated: PatchResource) => {
   if (!resources.value) return
+  // Server returns the canonical, fully-rendered row — drop it straight in.
+  // No more hand-rolled spread merge: the previous version kept old fields
+  // the form doesn't send (e.g. update_time was stale), which surfaced as
+  // "edited row doesn't bubble to top" + "description stuck on old html".
   resources.value = resources.value.map((r) =>
-    r.id === updated.id ? { ...r, ...updated } : r
+    r.id === updated.id ? updated : r
   )
+}
+
+// True when the row has been edited at least once. Backend stamps
+// UpdateTime = time.Now() on every UpdateResource and leaves it equal to
+// `created` on insert, so a string diff is a reliable "ever edited" signal.
+// Both fields may arrive as Date | string; normalize via getTime for safety.
+const hasBeenEdited = (r: PatchResource) => {
+  if (!r.update_time) return false
+  const u = new Date(r.update_time as string | Date).getTime()
+  const c = new Date(r.created).getTime()
+  // Same-millisecond inserts have u === c; treat anything > 1s apart as edit
+  // to avoid a millisecond-jitter false positive on freshly-inserted rows.
+  return Number.isFinite(u) && Number.isFinite(c) && u - c > 1000
 }
 
 const deleteOpen = ref(false)
@@ -264,7 +281,7 @@ const toggleLike = async (r: PatchResource) => {
             <h3 class="text-lg font-semibold line-clamp-2">
               {{ r.name || '补丁资源' }}
             </h3>
-            <div class="text-default-500 mt-1 flex items-center gap-2 text-xs">
+            <div class="text-default-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
               <KunAvatar :user="r.user" size="xs" />
               <span>
                 由 <span class="text-foreground font-medium">{{
@@ -274,6 +291,19 @@ const toggleLike = async (r: PatchResource) => {
                   formatDate(r.created, { isShowYear: true, isPrecise: true })
                 }}
               </span>
+              <!-- "编辑时间" chip — only show when update_time > created (i.e.
+                   the row has been edited at least once). Backend stamps
+                   UpdateTime = time.Now() on every UpdateResource and leaves
+                   it = created on insert, so the !== check is reliable. -->
+              <KunChip
+                v-if="hasBeenEdited(r)"
+                color="default"
+                variant="flat"
+                size="xs"
+              >
+                <KunIcon name="lucide:pencil-line" class="size-3" />
+                {{ formatDistanceToNow(r.update_time!) }}更新
+              </KunChip>
             </div>
           </div>
           <KunChip color="warning" size="sm" variant="flat">

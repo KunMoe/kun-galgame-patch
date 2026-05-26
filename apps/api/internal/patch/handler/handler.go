@@ -398,11 +398,16 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 		actorRole = 2
 	}
 
-	if err := h.service.UpdateResource(resourceID, user.ID, update, req.Reason, actorRole); err != nil {
+	updated, err := h.service.UpdateResource(c.Context(), resourceID, user.ID, update, req.Reason, actorRole)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	return response.OKMessage(c, "Resource updated")
+	// Return the fully-rendered row (with new note_html, update_time, user
+	// brief) so the frontend can replace its local list entry directly
+	// instead of patching together a partial merge — that path used to keep
+	// the old note_html and confused the user ("note 改了但简介没变").
+	return response.OK(c, updated)
 }
 
 // DeleteResource DELETE /api/patch/resource/:resourceId

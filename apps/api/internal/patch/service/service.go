@@ -636,10 +636,10 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 // .Reason, max 500 chars). actorRole is the role-snapshot integer (3=admin,
 // 2=moderator, 1=user, 0=unknown) so the audit row records the privilege at
 // time of edit.
-func (s *PatchService) UpdateResource(resourceID, userID int, update *model.PatchResource, reason string, actorRole int) error {
+func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID int, update *model.PatchResource, reason string, actorRole int) (*model.PatchResource, error) {
 	existing, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
-		return fmt.Errorf("resource not found")
+		return nil, fmt.Errorf("resource not found")
 	}
 	// Moderators / admins bypass the owner check so they can edit any
 	// resource from the public resource page (option B per the spec —
@@ -648,7 +648,7 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	// / 1=user / 0=unknown). The bypass also flows into the file-history
 	// row's ActorRole field so audit shows it was a mod/admin edit.
 	if existing.UserID != userID && actorRole < 2 {
-		return fmt.Errorf("can only edit your own resources")
+		return nil, fmt.Errorf("can only edit your own resources")
 	}
 
 	// Mirror CreateResource's storage-aware Content normalization so updates
@@ -679,13 +679,13 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 		if update.S3Key != existing.S3Key {
 			prefix := fmt.Sprintf("patch/%d/", existing.GalgameID)
 			if !strings.HasPrefix(update.S3Key, prefix) {
-				return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+				return nil, fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
 			}
 		}
 		update.Content = update.S3Key
 	} else {
 		if strings.TrimSpace(update.Content) == "" {
-			return fmt.Errorf("请填写资源链接")
+			return nil, fmt.Errorf("请填写资源链接")
 		}
 	}
 
@@ -746,7 +746,7 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 
 		return tx.Save(existing).Error
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Best-effort old-object cleanup, AFTER the txn so we don't hold a DB
@@ -756,9 +756,9 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	// old key so support can recover the object out-of-band if needed.
 	// Mirrors DeleteResource's S3 cleanup so update + delete paths agree.
 	if orphanS3Key != "" && s.s3.Ready() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := s.s3.DeleteObject(ctx, orphanS3Key); err != nil {
+		if err := s.s3.DeleteObject(cleanupCtx, orphanS3Key); err != nil {
 			slog.Warn("UpdateResource: 删除旧 S3 对象失败", "s3_key", orphanS3Key, "resource_id", resourceID, "error", err)
 		}
 	}
@@ -766,7 +766,19 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	// Aggregate refresh outside the transaction — it's a derived counter
 	// touching the parent patch row; doesn't need to share the txn.
 	s.repo.RecalculatePatchAggregates(galgameID)
-	return nil
+
+	// Re-render note_html + attach publisher brief so the response shape
+	// matches GetResources / CreateResource. Without this the frontend's
+	// optimistic list-row replacement would keep showing the OLD note_html
+	// (form only sends raw markdown `note`, not rendered HTML) → "note 改了
+	// 但简介不更新" bug. Same OAuth /users/batch hop the list endpoint uses.
+	existing.NoteHTML = markdown.MustRender(existing.Note)
+	if s.users != nil {
+		one := []model.PatchResource{*existing}
+		attachUsersToResources(ctx, s.users, one)
+		existing.User = one[0].User
+	}
+	return existing, nil
 }
 
 func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool) error {

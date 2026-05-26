@@ -304,22 +304,17 @@ const handleSubmit = async () => {
     }
 
     if (isEdit.value && props.resource) {
-      const res = await api.put<{ message?: string }>(
+      // Server returns the fully-rendered row (note_html, update_time, user
+      // brief all re-resolved server-side) — use it directly. The previous
+      // hand-rolled merge kept the old note_html so the resource description
+      // appeared "stuck" until a full page refetch.
+      const res = await api.put<PatchResource>(
         `/patch/resource/${props.resource.id}`,
         { ...basePayload, reason: reason.value }
       )
-      if (res.code === 0) {
+      if (res.code === 0 && res.data) {
         useKunMessage('资源已更新', 'success')
-        // Build the updated row locally; the server only returns OKMessage
-        // (no body), so we merge form state onto the original. This is enough
-        // for the parent's optimistic list update — note_html for re-render
-        // will be regenerated next time the page refetches.
-        const merged: PatchResource = {
-          ...props.resource,
-          ...basePayload,
-          note_html: props.resource.note_html
-        }
-        emit('success', merged)
+        emit('success', res.data)
         emit('close')
       } else {
         useKunMessage(res.message || '更新失败', 'error')
