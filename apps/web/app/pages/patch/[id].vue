@@ -59,9 +59,13 @@ const tabs = computed(() => [
       class="border-default/20 relative overflow-hidden rounded-3xl border"
     >
       <div class="absolute inset-0">
+        <!-- Use the 'mini' variant (460×259) for this decorative blurred
+             backdrop. Saves 100-350 KB per page load vs the 1920×1080 main
+             image — `blur-2xl scale-110` makes the resolution drop invisible.
+             Matches the pattern resource/[id].vue already uses. -->
         <KunImage
-          v-if="resolveBannerUrl(patch)"
-          :src="resolveBannerUrl(patch)"
+          v-if="resolveBannerUrl(patch, 'mini')"
+          :src="resolveBannerUrl(patch, 'mini')"
           :alt="displayName"
           class-name="block size-full"
           image-class-name="scale-110 blur-2xl"
