@@ -14,15 +14,25 @@
 //     from the owner-side actions (edit / delete) without spending a
 //     whole new row on grouping
 //
-// Endpoint contracts unchanged:
+// Endpoint contracts:
 //   - favorite: PUT /patch/:id/favorite — local-only state, optimistic UI
 //   - share:    copy direct URL to clipboard
 //   - edit:     navigates to /edit/rewrite?id=:id (in-site form, proxies to
 //               PUT /api/v1/galgame/:gid → Wiki Service per
 //               integration-guide.md §6).
-//   - delete:   intentionally unimplemented — DELETE /patch/:id exists but
-//               the surrounding cleanup (resources / comments / contributor
-//               history) needs more design before this is wired up.
+//   - delete:   DELETE /patch/:id — wipes the moyu patch row plus all child
+//               tables (resources / comments / contributor / favorite / pr /
+//               link / resource_file_history via FK CASCADE) and best-effort
+//               purges the S3 objects snapshotted from patch_resource.s3_key.
+//               Does NOT touch the wiki galgame entity — wiki considers
+//               status=0 published rows un-deletable (only admin can flip
+//               status to 1 via /admin/galgame/:gid/status). This button is
+//               about removing moyu's local patch carrier, not the upstream
+//               galgame metadata.
+//
+// Gating: backend enforces patch.user_id == caller OR role==admin
+// (PatchService.DeletePatch). UI hides the button otherwise so it doesn't
+// look interactive to viewers who'd just get a 400.
 
 interface Props {
   patch: PatchHeader
@@ -78,8 +88,32 @@ const handleShare = () => {
 
 const editHref = computed(() => `/edit/rewrite?id=${props.patch.id}`)
 
-const handleDelete = () => {
-  useKunMessage('暂未实现删除功能', 'warn')
+const canDelete = computed(() => {
+  if (!userStore.user.id) return false
+  return userStore.isAdmin || props.patch.user?.id === userStore.user.id
+})
+
+const deleteOpen = ref(false)
+const deleting = ref(false)
+
+const askDelete = () => {
+  deleteOpen.value = true
+}
+
+const confirmDelete = async () => {
+  deleting.value = true
+  try {
+    const res = await api.delete(`/patch/${props.patch.id}`)
+    if (res.code === 0) {
+      useKunMessage('已删除游戏', 'success')
+      deleteOpen.value = false
+      await navigateTo('/')
+    } else {
+      useKunMessage(res.message || '删除失败', 'error')
+    }
+  } finally {
+    deleting.value = false
+  }
 }
 </script>
 
@@ -140,14 +174,15 @@ const handleDelete = () => {
         </NuxtLink>
       </KunTooltip>
 
-      <KunTooltip text="删除游戏 (暂未实现)">
+      <KunTooltip v-if="canDelete" text="删除游戏 (不可恢复)">
         <KunButton
           variant="light"
           color="danger"
           size="sm"
           is-icon-only
           aria-label="删除游戏"
-          @click="handleDelete"
+          :disabled="deleting"
+          @click="askDelete"
         >
           <KunIcon name="lucide:trash-2" class="size-4" />
         </KunButton>
@@ -167,4 +202,40 @@ const handleDelete = () => {
       统一维护
     </p>
   </div>
+
+  <!-- isDismissable=false: destructive irreversible action — backdrop click
+       must not silently close the confirm. Force explicit 取消 / 删除. -->
+  <KunModal
+    v-model="deleteOpen"
+    inner-class-name="max-w-md"
+    :is-dismissable="false"
+  >
+    <div class="space-y-4 py-2">
+      <h3 class="text-lg font-bold">删除该游戏？</h3>
+      <p class="text-default-600 text-sm">
+        此操作不可撤销。本站会删除该游戏的所有补丁资源、评论、贡献者记录、收藏关系，对应的 S3 文件也会被清理。
+      </p>
+      <p class="text-default-500 text-xs">
+        这只会删除本站记录，不会影响 Galgame Wiki 上的游戏条目。
+      </p>
+      <div class="flex justify-end gap-2">
+        <KunButton
+          variant="light"
+          color="default"
+          :disabled="deleting"
+          @click="deleteOpen = false"
+        >
+          取消
+        </KunButton>
+        <KunButton
+          color="danger"
+          :loading="deleting"
+          :disabled="deleting"
+          @click="confirmDelete"
+        >
+          删除
+        </KunButton>
+      </div>
+    </div>
+  </KunModal>
 </template>

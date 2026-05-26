@@ -85,6 +85,19 @@ func (r *AdminRepository) GetResourceByID(resourceID int) (*patchModel.PatchReso
 	return &resource, err
 }
 
+// GetResourceFileHistoryS3Keys mirrors PatchRepository's same-named helper
+// (kept here so admin doesn't reach across modules into the patch repo).
+// Needed for the same reason: patch_resource_file_history is CASCADE'd when
+// the resource is deleted, so the old_s3_key must be snapshotted first or
+// the corresponding B2 objects strand.
+func (r *AdminRepository) GetResourceFileHistoryS3Keys(resourceID int) ([]string, error) {
+	var keys []string
+	err := r.db.Model(&patchModel.PatchResourceFileHistory{}).
+		Where("resource_id = ? AND old_storage = ? AND old_s3_key <> ''", resourceID, "s3").
+		Pluck("old_s3_key", &keys).Error
+	return keys, err
+}
+
 // User management & creator-application repo methods are gone with the
 // migration: identity is owned by OAuth, and the creator role was retired.
 

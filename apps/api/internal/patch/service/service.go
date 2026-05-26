@@ -303,20 +303,30 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 	}
 
 	// Snapshot the patch's S3 keys BEFORE the row goes away. The DB-level
-	// FK CASCADE wipes all child patch_resource rows when we DELETE the
-	// patch — but PostgreSQL only deletes rows, it doesn't know about the
-	// B2 objects those s3_key columns point to. Without this step the
-	// bucket accumulates unreferenced files indefinitely.
+	// FK CASCADE wipes all child patch_resource and history rows when we
+	// DELETE the patch — but PostgreSQL only deletes rows, it doesn't know
+	// about the B2 objects those s3_key columns point to. Without this step
+	// the bucket accumulates unreferenced files indefinitely.
 	//
-	// Mirrors the pattern in DeleteResource (single-resource deletion). We
-	// log+continue on enumeration error rather than abort: a stale enum
+	// Two disjoint sources to drain:
+	//   1. patch_resource.s3_key                       — live objects
+	//   2. patch_resource_file_history.old_s3_key      — superseded objects
+	//      from prior UpdateResource file substitutions (also CASCADE'd via
+	//      patch_resource → history)
+	//
+	// Log+continue on enumeration error rather than abort: a stale enum
 	// shouldn't block deleting the patch, and a periodic offline scrub can
 	// always sweep stragglers later. Read failure here is exceedingly rare
-	// (it's just a SELECT on a single index).
-	s3Keys, kErr := s.repo.GetPatchResourceS3Keys(id)
+	// (each call is a SELECT on a single index).
+	liveKeys, kErr := s.repo.GetPatchResourceS3Keys(id)
 	if kErr != nil {
-		slog.Warn("DeletePatch: failed to enumerate s3_keys for cleanup", "patch_id", id, "error", kErr)
-		s3Keys = nil
+		slog.Warn("DeletePatch: failed to enumerate live s3_keys for cleanup", "patch_id", id, "error", kErr)
+		liveKeys = nil
+	}
+	historyKeys, hErr := s.repo.GetPatchResourceFileHistoryS3Keys(id)
+	if hErr != nil {
+		slog.Warn("DeletePatch: failed to enumerate history old_s3_keys for cleanup", "patch_id", id, "error", hErr)
+		historyKeys = nil
 	}
 
 	if err := s.repo.DeletePatch(id); err != nil {
@@ -325,14 +335,14 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 
 	// Best-effort B2 cleanup AFTER the DB delete. Same philosophy as
 	// DeleteResource: row already gone (no rollback path), S3 failures
-	// only WARN. Stranded objects can be reconciled later from
-	// patch_resource_file_history (also CASCADE'd — so a full reconcile
-	// would also need a parallel snapshot for those, but that's a
-	// separate concern).
-	if s.s3.Ready() && len(s3Keys) > 0 {
+	// only WARN. The two key sets are disjoint by construction (history
+	// only records keys that have already been replaced by a newer one),
+	// so a plain loop suffices — no dedup needed.
+	allKeys := append(liveKeys, historyKeys...)
+	if s.s3.Ready() && len(allKeys) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		for _, key := range s3Keys {
+		for _, key := range allKeys {
 			if err := s.s3.DeleteObject(ctx, key); err != nil {
 				slog.Warn("DeletePatch: 删除 S3 对象失败", "s3_key", key, "patch_id", id, "error", err)
 			}
@@ -831,6 +841,15 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 		return fmt.Errorf("can only delete your own resources")
 	}
 
+	// Snapshot history old_s3_keys BEFORE DELETE — patch_resource_file_history
+	// CASCADE's away with the resource row, taking its old_s3_key references
+	// with it. See DeletePatch's drain pattern for the rationale.
+	historyKeys, hErr := s.repo.GetResourceFileHistoryS3Keys(resourceID)
+	if hErr != nil {
+		slog.Warn("DeleteResource: failed to enumerate history old_s3_keys for cleanup", "resource_id", resourceID, "error", hErr)
+		historyKeys = nil
+	}
+
 	if err := s.repo.DeleteResource(resourceID); err != nil {
 		return err
 	}
@@ -840,11 +859,22 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 	// and a left-over object is recoverable later (manual sweep / a future
 	// orphan-scrub cron — cron currently only catches in-flight multiparts via
 	// cleanupAbortedMultiparts, not completed-but-unreferenced small uploads).
-	if resource.Storage == "s3" && resource.S3Key != "" && s.s3.Ready() {
+	//
+	// Drain both the current s3_key and the history's old_s3_keys (the two
+	// sets are disjoint by construction — history rows record only keys
+	// previously replaced by a newer one).
+	if s.s3.Ready() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
-			slog.Warn("DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+		if resource.Storage == "s3" && resource.S3Key != "" {
+			if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
+				slog.Warn("DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+			}
+		}
+		for _, key := range historyKeys {
+			if err := s.s3.DeleteObject(ctx, key); err != nil {
+				slog.Warn("DeleteResource: 删除 S3 历史对象失败", "s3_key", key, "resource_id", resourceID, "error", err)
+			}
 		}
 	}
 

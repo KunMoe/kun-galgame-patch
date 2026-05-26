@@ -72,20 +72,37 @@ func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int)
 }
 
 func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
-	// Snapshot Storage + S3Key BEFORE deleting the row so we can clean up the
-	// S3 object afterwards. Read failure isn't fatal — fall through and let the
-	// DB delete still happen (matches the patch-side DeleteResource: deleting
-	// the row is the primary operation, S3 cleanup is best-effort).
+	// Snapshot Storage + S3Key AND the file_history's old_s3_keys BEFORE
+	// deleting the row so we can clean up the S3 objects afterwards. Read
+	// failures aren't fatal — fall through and let the DB delete still
+	// happen (matches the patch-side DeleteResource: deleting the row is
+	// the primary operation, S3 cleanup is best-effort).
 	resource, readErr := s.repo.GetResourceByID(resourceID)
+	historyKeys, hErr := s.repo.GetResourceFileHistoryS3Keys(resourceID)
+	if hErr != nil {
+		slog.Warn("admin DeleteResource: failed to enumerate history old_s3_keys for cleanup", "resource_id", resourceID, "error", hErr)
+		historyKeys = nil
+	}
+
 	if err := s.repo.DeleteResource(resourceID); err != nil {
 		return err
 	}
 
-	if readErr == nil && resource.Storage == "s3" && resource.S3Key != "" && s.s3 != nil && s.s3.Ready() {
+	// Drain both sources. The two key sets are disjoint by construction —
+	// history rows only record keys that have already been replaced by a
+	// newer one, so they never overlap with the live resource.S3Key.
+	if s.s3 != nil && s.s3.Ready() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
-			slog.Warn("admin DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+		if readErr == nil && resource.Storage == "s3" && resource.S3Key != "" {
+			if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
+				slog.Warn("admin DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
+			}
+		}
+		for _, key := range historyKeys {
+			if err := s.s3.DeleteObject(ctx, key); err != nil {
+				slog.Warn("admin DeleteResource: 删除 S3 历史对象失败", "s3_key", key, "resource_id", resourceID, "error", err)
+			}
 		}
 	}
 
