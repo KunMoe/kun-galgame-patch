@@ -644,9 +644,32 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	// follow the same invariant: storage="s3" → Content = S3Key (download URL
 	// is derived at fetch time); storage="user" → Content is the user's link.
 	if update.Storage == "s3" {
-		prefix := fmt.Sprintf("patch/%d/", existing.GalgameID)
-		if !strings.HasPrefix(update.S3Key, prefix) {
-			return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+		// Prefix check only runs when the s3_key actually changes (i.e. the
+		// user replaced the file). Two reasons:
+		//
+		//   (1) Cross-row anti-tamper is already enforced by the UserID
+		//       == caller check above (or moderator bypass) and the partial
+		//       UNIQUE INDEX `idx_patch_resource_s3_key_unique` (MOYU-PR7 /
+		//       M5) — a user can't redirect their row to someone else's
+		//       upload because they don't own the target row, and they
+		//       can't claim a key already attached to another row.
+		//
+		//   (2) Legacy data has s3_keys shaped as "patch/{legacy_patch_id}/..."
+		//       where legacy_patch_id != current galgame_id (because
+		//       remap-patch-ids rewrote galgame_id but did not touch the
+		//       string-immutable s3_key). Pure-metadata edits on those rows
+		//       must not be rejected — the s3_key isn't changing, there's
+		//       nothing to validate.
+		//
+		// When the user DOES replace the file, the new s3_key comes from
+		// buildPatchResourceKey(galgame_id, filename) on the upload path,
+		// which always produces "patch/{current_galgame_id}/...", so the
+		// strict prefix check still passes — and catches forged keys.
+		if update.S3Key != existing.S3Key {
+			prefix := fmt.Sprintf("patch/%d/", existing.GalgameID)
+			if !strings.HasPrefix(update.S3Key, prefix) {
+				return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+			}
 		}
 		update.Content = update.S3Key
 	} else {
@@ -663,6 +686,19 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	fileChanged := update.Storage != existing.Storage ||
 		update.S3Key != existing.S3Key ||
 		update.Content != existing.Content
+
+	// Snapshot the s3_key we'll need to delete AFTER the transaction commits.
+	// Taken pre-transaction because the txn body overwrites `existing` in
+	// place. Only set when the old row had an S3 object whose key is NOT
+	// reused by the new state — covers both "replaced file (s3→s3 new key)"
+	// and "switched away from s3 (s3→user)".
+	var orphanS3Key string
+	if existing.Storage == "s3" && existing.S3Key != "" {
+		stillSameObject := update.Storage == "s3" && update.S3Key == existing.S3Key
+		if !stillSameObject {
+			orphanS3Key = existing.S3Key
+		}
+	}
 
 	galgameID := existing.GalgameID
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -700,6 +736,20 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 		return tx.Save(existing).Error
 	}); err != nil {
 		return err
+	}
+
+	// Best-effort old-object cleanup, AFTER the txn so we don't hold a DB
+	// connection during an external IO call. Failure only warn — the row
+	// already points at the new file (no user-facing impact), and the
+	// patch_resource_file_history.old_s3_key audit trail still records the
+	// old key so support can recover the object out-of-band if needed.
+	// Mirrors DeleteResource's S3 cleanup so update + delete paths agree.
+	if orphanS3Key != "" && s.s3.Ready() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.s3.DeleteObject(ctx, orphanS3Key); err != nil {
+			slog.Warn("UpdateResource: 删除旧 S3 对象失败", "s3_key", orphanS3Key, "resource_id", resourceID, "error", err)
+		}
 	}
 
 	// Aggregate refresh outside the transaction — it's a derived counter
