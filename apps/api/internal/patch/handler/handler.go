@@ -413,7 +413,11 @@ func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.DeleteResource(resourceID, user.ID); err != nil {
+	// Option B: privileged users (moderator / admin) can delete any resource
+	// from the public page; non-privileged callers fall through to the
+	// owner check inside the service.
+	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	if err := h.service.DeleteResource(resourceID, user.ID, isPrivileged); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 

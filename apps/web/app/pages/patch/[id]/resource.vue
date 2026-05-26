@@ -41,12 +41,30 @@ const handlePublishSuccess = (created: PatchResource) => {
   }
 }
 
-// ─── 删除资源 (owner / moderator) ───────────────────
-// Backend DELETE /patch/resource/:resourceId enforces UserID == caller (or
-// admin via /admin/resource/:id). We gate the button visibility client-side
-// so non-owners don't even see the affordance; the server still verifies.
+// ─── 编辑 / 删除 (owner / moderator) ────────────────
+// Front-end gates the button so non-owners don't see the affordance, but the
+// server's PatchService.UpdateResource + DeleteResource enforce the same
+// predicate (`UserID == caller || isPrivileged`) — UI is for noise reduction
+// only, not security.
+const canEdit = (r: PatchResource) =>
+  userStore.isModerator || r.user_id === userStore.user.id
 const canDelete = (r: PatchResource) =>
   userStore.isModerator || r.user_id === userStore.user.id
+
+// Edit modal state. ResourcePublish handles both create + edit via the
+// `resource` prop; success returns a merged row we splice into the list.
+const editOpen = ref(false)
+const editingResource = ref<PatchResource | null>(null)
+const askEdit = (r: PatchResource) => {
+  editingResource.value = r
+  editOpen.value = true
+}
+const handleEditSuccess = (updated: PatchResource) => {
+  if (!resources.value) return
+  resources.value = resources.value.map((r) =>
+    r.id === updated.id ? { ...r, ...updated } : r
+  )
+}
 
 const deleteOpen = ref(false)
 const deleting = ref(false)
@@ -340,9 +358,21 @@ const toggleLike = async (r: PatchResource) => {
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
             </span>
-            <!-- Owner / moderator: delete affordance. Backend re-checks the
-                 same predicate (UserID == caller / admin route) so a hostile
-                 client can't bypass by forging visibility. -->
+            <!-- Owner / moderator: edit + delete. Backend re-checks the
+                 same predicate so a hostile client can't bypass by forging
+                 visibility. -->
+            <KunButton
+              v-if="canEdit(r)"
+              variant="light"
+              color="default"
+              size="xs"
+              rounded="full"
+              aria-label="编辑资源"
+              @click="askEdit(r)"
+            >
+              <KunIcon name="lucide:pencil" class="size-4" />
+              编辑
+            </KunButton>
             <KunButton
               v-if="canDelete(r)"
               variant="light"
@@ -464,6 +494,16 @@ const toggleLike = async (r: PatchResource) => {
         :patch-id="galgameId"
         @close="publishOpen = false"
         @success="handlePublishSuccess"
+      />
+    </KunModal>
+
+    <KunModal v-model="editOpen" inner-class-name="max-w-3xl">
+      <ResourcePublish
+        v-if="editOpen && editingResource"
+        :patch-id="galgameId"
+        :resource="editingResource"
+        @close="editOpen = false"
+        @success="handleEditSuccess"
       />
     </KunModal>
 

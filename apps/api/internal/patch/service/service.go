@@ -630,7 +630,13 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	if err != nil {
 		return fmt.Errorf("resource not found")
 	}
-	if existing.UserID != userID {
+	// Moderators / admins bypass the owner check so they can edit any
+	// resource from the public resource page (option B per the spec —
+	// "admin can edit in-place on the front-end"). actorRole is already
+	// resolved by the handler from the OAuth roles claim (3=admin / 2=mod
+	// / 1=user / 0=unknown). The bypass also flows into the file-history
+	// row's ActorRole field so audit shows it was a mod/admin edit.
+	if existing.UserID != userID && actorRole < 2 {
 		return fmt.Errorf("can only edit your own resources")
 	}
 
@@ -702,12 +708,16 @@ func (s *PatchService) UpdateResource(resourceID, userID int, update *model.Patc
 	return nil
 }
 
-func (s *PatchService) DeleteResource(resourceID, userID int) error {
+func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool) error {
 	resource, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return fmt.Errorf("resource not found")
 	}
-	if resource.UserID != userID {
+	// Same option-B bypass as UpdateResource: moderators / admins can delete
+	// any resource from the front-end public page without round-tripping
+	// through /admin/resource/:id. The admin route still exists for audit /
+	// management; both code paths converge on best-effort S3 cleanup below.
+	if resource.UserID != userID && !isPrivileged {
 		return fmt.Errorf("can only delete your own resources")
 	}
 
@@ -730,7 +740,10 @@ func (s *PatchService) DeleteResource(resourceID, userID int) error {
 
 	s.repo.UpdateCount(resource.GalgameID, "resource_count", -1)
 	s.repo.RecalculatePatchAggregates(resource.GalgameID)
-	s.repo.UpdateMoemoepoint(userID, -3)
+	// Moemoepoint always decremented from the resource OWNER, not the caller.
+	// When a mod/admin deletes someone else's resource the owner still loses
+	// the +3 they earned at upload time (same convention as legacy next-api).
+	s.repo.UpdateMoemoepoint(resource.UserID, -3)
 	return nil
 }
 

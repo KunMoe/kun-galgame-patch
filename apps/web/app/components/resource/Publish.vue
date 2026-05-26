@@ -1,19 +1,29 @@
 <script setup lang="ts">
-// Patch-resource publish modal.
+// Patch-resource publish / edit modal.
 //
-// Ported from apps/next-web/components/patch/resource/publish/PublishResource.tsx
-// to Nuxt + KunUI. The form-state shape mirrors the backend DTO
-// (apps/api/internal/patch/dto/dto.go PatchResourceCreateRequest) exactly so
-// CreateResource consumes our POST body without translation. Upload itself is
-// the D10 presigned-URL flow encapsulated in useResourceUpload.
+// Same component covers both create and edit modes so layout + validation +
+// upload code don't fork. Mode is decided by whether `resource` prop is
+// supplied:
+//   - create: POST /patch/:id/resource         — fresh row
+//   - edit:   PUT  /patch/resource/:resourceId — mutate existing
 //
 // Two storage modes (mutually exclusive form shapes):
-//   storage='s3'   : file required; on upload completion we stamp s3_key and
-//                    derive `content` = "s3://" + s3_key (presentation marker;
-//                    GET /resource/:id/link replaces it with a presigned GET
-//                    when the user clicks 获取资源链接).
-//   storage='user' : no file; `content` is the user's own list of links,
-//                    comma-separated. ResourceLinksInput handles the UX.
+//   storage='s3'   : a file is uploaded; server stamps content = s3_key and
+//                    materializes the download URL at /resource/:id/link time
+//                    via S3Client.PublicURL.
+//   storage='user' : `content` is the user's own comma-separated link list.
+//
+// Edit-mode niceties:
+//   - existing s3 file is shown as-is; user must click "替换文件" to enter
+//     the upload flow (otherwise PUT carries the unchanged s3_key/content and
+//     server skips the file-history audit row — pure metadata edit).
+//   - a "修改原因 / reason" field appears, gets serialized into the
+//     PatchResourceFileHistory.reason when the file actually changes.
+//
+// Drag-and-drop: the drop zone wraps the upload section. When the user is
+// dragging a file over the modal, the zone highlights; on drop we feed the
+// File through the same handleFilePicked path as the click-to-pick button.
+// KunFileInput itself has no DnD support, so we implement it locally.
 import {
   resourceTypes,
   storageTypes,
@@ -26,15 +36,18 @@ import {
 
 interface Props {
   patchId: number
+  // When supplied → edit mode; the form is pre-populated from this row and
+  // submit goes via PUT instead of POST. Pass the same PatchResource shape
+  // the list endpoint returns.
+  resource?: PatchResource | null
 }
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { resource: null })
 
 const emit = defineEmits<{
-  // Parent owns the modal v-model; emit close so it can flip the ref.
   close: []
-  // Resource row from the server response (composeResource shape). Parent
-  // typically pushes this into the list it already has so the new row appears
-  // without a full refetch.
+  // create mode: full new row (composeResource shape).
+  // edit mode:   the locally-mutated row (server returns OKMessage, no body,
+  //              so we hand back the form state merged onto the original).
   success: [resource: PatchResource]
 }>()
 
@@ -42,29 +55,34 @@ const api = useApi()
 const userStore = useUserStore()
 const uploader = useResourceUpload()
 
-// ─── Form state ───────────────────────────────────────────
-//
-// Shape is the wire-format we'll POST — no separate "view model". Keeps the
-// component free of mapping code and means the validation rules below double
-// as documentation for what the server requires.
-const form = reactive({
-  storage: 's3' as 's3' | 'user',
-  name: '',
-  model_name: '',
-  s3_key: '',
-  content: '',
-  size: '',
-  code: '',
-  password: '',
-  note: '',
-  type: [] as string[],
-  language: [] as string[],
-  platform: [] as string[]
-})
+const isEdit = computed(() => props.resource !== null)
 
-// Multi-select via toggle-chip pattern (KunUI has no MultiSelect yet; chips
-// give the same UX as next-web's HeroUI Select selectionMode="multiple"
-// without the dropdown overhead).
+// ─── Form state ───────────────────────────────────────────
+const form = reactive({
+  storage: (props.resource?.storage as 's3' | 'user') ?? 's3',
+  name: props.resource?.name ?? '',
+  model_name: props.resource?.model_name ?? '',
+  // edit-mode pre-fills with the existing s3_key (kept as-is unless user
+  // replaces the file via the "替换文件" affordance below).
+  s3_key: props.resource?.s3_key ?? '',
+  // For storage='user' content is the link list; for storage='s3' the server
+  // overwrites Content = S3Key on submit, so this field is informational only.
+  // Pre-fill with the raw stored value (it's the s3_key, not the public URL).
+  content: props.resource?.content ?? '',
+  size: props.resource?.size ?? '',
+  code: props.resource?.code ?? '',
+  password: props.resource?.password ?? '',
+  note: props.resource?.note ?? '',
+  type: [...(props.resource?.type ?? [])],
+  language: [...(props.resource?.language ?? [])],
+  platform: [...(props.resource?.platform ?? [])]
+})
+// Reason memo — only meaningful in edit mode + only persisted into the
+// patch_resource_file_history row when the file substantively changed
+// (storage / s3_key / content differs from current). Pure metadata edits
+// don't write history regardless of whether reason was filled.
+const reason = ref('')
+
 const toggle = (list: string[], v: string) => {
   const i = list.indexOf(v)
   if (i >= 0) list.splice(i, 1)
@@ -76,36 +94,100 @@ const storageOptions = storageTypes.map((t) => ({
   label: t.label
 }))
 
-// Reset the upload-related fields when switching storage mode so e.g.
-// flipping s3 → user → s3 doesn't carry over a stale s3_key from the
-// first upload attempt.
 watch(
   () => form.storage,
   () => {
+    // Switching storage type invalidates any in-progress upload state and
+    // the previous file pointer — fresh start in both create and edit.
     form.s3_key = ''
-    form.content = form.storage === 'user' ? '' : ''
+    form.content = ''
     form.size = ''
     uploader.reset()
     pickedFile.value = null
+    replaceMode.value = false
   }
 )
 
 // ─── File picker + upload ──────────────────────────────────
 const pickedFile = ref<File | null>(null)
 const uploadError = ref('')
+// In edit mode the original file is shown until the user clicks "替换文件".
+// replaceMode flips the UI from "file summary card" to "drop zone + picker".
+const replaceMode = ref(false)
+// True iff we're showing the existing file with no replacement chosen.
+// Used to lock the file-card affordances to a read-only summary.
+const showingExistingFile = computed(
+  () =>
+    isEdit.value &&
+    form.storage === 's3' &&
+    !replaceMode.value &&
+    !pickedFile.value
+)
 
-const handleFilePicked = async (files: File[]) => {
+// ─── Drag and drop ────────────────────────────────────────
+// Counter (not boolean) so nested children's dragenter/dragleave don't flicker
+// the highlight off — every enter is matched by exactly one leave per element.
+const dragDepth = ref(0)
+const isDragging = computed(() => dragDepth.value > 0)
+const onDragEnter = (e: DragEvent) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  e.preventDefault()
+  dragDepth.value++
+}
+const onDragOver = (e: DragEvent) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  e.preventDefault()
+  // dropEffect=copy gives the OS-level "+" cursor; UX cue that drop is allowed.
+  e.dataTransfer.dropEffect = 'copy'
+}
+const onDragLeave = (e: DragEvent) => {
+  e.preventDefault()
+  if (dragDepth.value > 0) dragDepth.value--
+}
+const onDrop = (e: DragEvent) => {
+  e.preventDefault()
+  dragDepth.value = 0
+  const file = e.dataTransfer?.files?.[0]
+  if (!file) return
+  // In edit mode dropping a file always enters replaceMode — matches the
+  // click-to-pick path's semantics.
+  if (showingExistingFile.value) replaceMode.value = true
+  handleFilePicked([file])
+}
+
+const isValidExt = (name: string) => {
+  const lower = name.toLowerCase()
+  return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))
+}
+
+// Stage-then-confirm flow:
+//   handleFilePicked  → validate ext + setPickedFile (no upload, instant)
+//   confirmUpload     → user-initiated; only now do we hit the upload API
+//
+// Reading File.name / size / type is O(1) metadata — even a 5 GB drop is
+// instant. Bytes aren't touched until xhr.send(blob) inside the composable,
+// and that's stream-read by the browser one chunk at a time (multipart caps
+// at 10 MiB × 4 parallel = ~40 MiB resident).
+const handleFilePicked = (files: File[]) => {
   const f = files[0]
   if (!f) return
+  if (!isValidExt(f.name)) {
+    useKunMessage(`仅支持 ${ALLOWED_EXTENSIONS.join(' ')} 格式`, 'warn')
+    return
+  }
   uploadError.value = ''
+  // Drop / re-pick after an aborted or errored upload: reset uploader state
+  // so the new file's confirm button starts clean (no stale progress %).
+  uploader.reset()
   pickedFile.value = f
+}
+
+const confirmUpload = async () => {
+  if (!pickedFile.value) return
+  uploadError.value = ''
   try {
-    const result = await uploader.upload(f, props.patchId)
+    const result = await uploader.upload(pickedFile.value, props.patchId)
     form.s3_key = result.s3Key
-    // For storage="s3" the server normalizes Content = s3_key on CreateResource
-    // and materializes the user-facing download URL at GET /resource/:id/link
-    // time (PatchService.GetResourceDownloadInfo). We just leave content empty
-    // here — the DTO no longer requires it.
     form.size = `${(result.size / (1024 * 1024)).toFixed(3)} MB`
   } catch (e) {
     uploadError.value = e instanceof Error ? e.message : '上传失败'
@@ -113,12 +195,21 @@ const handleFilePicked = async (files: File[]) => {
 }
 
 const removeFile = () => {
+  // Cancel covers in-flight uploads (xhr.abort + multipart abort); for staged
+  // files it's a no-op since uploader.status is still 'idle'.
   uploader.cancel()
-  pickedFile.value = null
-  form.s3_key = ''
-  form.content = ''
-  form.size = ''
   uploader.reset()
+  pickedFile.value = null
+  if (isEdit.value && props.resource) {
+    // Restore the existing-file summary so the user can submit without
+    // changing the file (treat "移除" in edit mode as "cancel my replacement").
+    form.s3_key = props.resource.s3_key ?? ''
+    form.size = props.resource.size ?? ''
+    replaceMode.value = false
+  } else {
+    form.s3_key = ''
+    form.size = ''
+  }
 }
 
 const uploadingNow = computed(
@@ -127,6 +218,18 @@ const uploadingNow = computed(
     uploader.status.value === 'uploading' ||
     uploader.status.value === 'completing'
 )
+
+// Staged = file picked but upload not yet started (or failed/aborted, ready
+// to retry). Distinguished from `uploadingNow` and `uploadedOk` so the UI
+// can offer the appropriate primary action.
+const uploadedOk = computed(() => uploader.status.value === 'done')
+const stagedNotUploaded = computed(
+  () => pickedFile.value !== null && !uploadingNow.value && !uploadedOk.value
+)
+
+// Format File.size (bytes) — used pre-upload while we only have the local
+// File. After upload completes the server-verified size lands in form.size.
+const formatBytesMB = (n: number) => `${(n / (1024 * 1024)).toFixed(3)} MB`
 
 // ─── User-link mode (storage='user') ────────────────────────
 const userLinks = computed<string[]>({
@@ -141,7 +244,6 @@ const userLinks = computed<string[]>({
     form.content = v.join(',')
   }
 })
-
 const addUserLink = () => {
   const next = [...userLinks.value, '']
   form.content = next.join(',')
@@ -156,22 +258,19 @@ const removeUserLink = (i: number) => {
   const next = userLinks.value.filter((_, idx) => idx !== i)
   form.content = next.join(',')
 }
-onMounted(() => {
-  // Initialize at least one empty row so the user sees the input on first
-  // switch to 'user' mode; cheaper than rendering an Add-link CTA empty state.
-  if (form.storage === 'user' && form.content === '') form.content = ''
-})
 
 // ─── Validation + submit ───────────────────────────────────
 const submitting = ref(false)
-// Mirror the DTO's required predicates (apps/api/.../dto.go) so submit guards
-// surface errors next to the field instead of relying on a 400 round-trip.
 const validate = (): string | null => {
   if (form.type.length === 0) return '请选择资源类型'
   if (form.language.length === 0) return '请选择语言'
   if (form.platform.length === 0) return '请选择平台'
   if (!form.size.trim()) return '请填写资源大小'
   if (form.storage === 's3') {
+    // staged-but-not-uploaded: distinct message vs no-file-at-all so the
+    // user knows the next step is "点击确认上传" rather than "重选文件".
+    if (stagedNotUploaded.value) return '请点击 "确认上传" 完成文件上传'
+    if (uploadingNow.value) return '文件正在上传中，请稍候'
     if (!form.s3_key) return '请上传补丁文件'
   } else {
     if (userLinks.value.filter((l) => l.trim()).length === 0)
@@ -188,30 +287,55 @@ const handleSubmit = async () => {
   }
   submitting.value = true
   try {
-    const res = await api.post<PatchResource>(
-      `/patch/${props.patchId}/resource`,
-      {
-        galgame_id: props.patchId,
-        storage: form.storage,
-        name: form.name,
-        model_name: form.model_name,
-        s3_key: form.s3_key,
-        content: form.content,
-        size: form.size,
-        code: form.code,
-        password: form.password,
-        note: form.note,
-        type: form.type,
-        language: form.language,
-        platform: form.platform
+    const basePayload = {
+      galgame_id: props.patchId,
+      storage: form.storage,
+      name: form.name,
+      model_name: form.model_name,
+      s3_key: form.s3_key,
+      content: form.content,
+      size: form.size,
+      code: form.code,
+      password: form.password,
+      note: form.note,
+      type: form.type,
+      language: form.language,
+      platform: form.platform
+    }
+
+    if (isEdit.value && props.resource) {
+      const res = await api.put<{ message?: string }>(
+        `/patch/resource/${props.resource.id}`,
+        { ...basePayload, reason: reason.value }
+      )
+      if (res.code === 0) {
+        useKunMessage('资源已更新', 'success')
+        // Build the updated row locally; the server only returns OKMessage
+        // (no body), so we merge form state onto the original. This is enough
+        // for the parent's optimistic list update — note_html for re-render
+        // will be regenerated next time the page refetches.
+        const merged: PatchResource = {
+          ...props.resource,
+          ...basePayload,
+          note_html: props.resource.note_html
+        }
+        emit('success', merged)
+        emit('close')
+      } else {
+        useKunMessage(res.message || '更新失败', 'error')
       }
-    )
-    if (res.code === 0 && res.data) {
-      useKunMessage('资源发布成功', 'success')
-      emit('success', res.data)
-      emit('close')
     } else {
-      useKunMessage(res.message || '发布失败', 'error')
+      const res = await api.post<PatchResource>(
+        `/patch/${props.patchId}/resource`,
+        basePayload
+      )
+      if (res.code === 0 && res.data) {
+        useKunMessage('资源发布成功', 'success')
+        emit('success', res.data)
+        emit('close')
+      } else {
+        useKunMessage(res.message || '发布失败', 'error')
+      }
     }
   } finally {
     submitting.value = false
@@ -219,10 +343,6 @@ const handleSubmit = async () => {
 }
 
 // ─── Display helpers ───────────────────────────────────────
-const fileSizeLabel = computed(() => {
-  if (!pickedFile.value) return ''
-  return `${(pickedFile.value.size / (1024 * 1024)).toFixed(3)} MB`
-})
 
 const STATUS_LABEL: Record<string, string> = {
   preparing: '正在准备上传...',
@@ -236,8 +356,6 @@ const uploadStatusLabel = computed(
   () => STATUS_LABEL[uploader.status.value] ?? ''
 )
 
-// Daily upload quota — read straight from the user store (set by /auth/me).
-// 5GB for moderator/admin, 100MB otherwise (mirrors backend dailyLimit()).
 const quotaLimitBytes = computed(() =>
   userStore.isModerator ? 5 * 1024 * 1024 * 1024 : 100 * 1024 * 1024
 )
@@ -255,13 +373,39 @@ const quotaPercent = computed(() =>
     )
   )
 )
+
+// File name to display in the "existing file" summary card. We don't have the
+// original filename in the row (s3_key is sanitized path); show the trailing
+// segment so the user at least recognizes it.
+const existingFileName = computed(() => {
+  if (!props.resource?.s3_key) return ''
+  const parts = props.resource.s3_key.split('/')
+  return parts[parts.length - 1] ?? props.resource.s3_key
+})
 </script>
 
 <template>
-  <div class="flex max-h-[80vh] w-full max-w-2xl flex-col gap-4">
+  <!-- Outer wrapper owns drag-and-drop listeners so a file dropped anywhere
+       inside the modal (not just on the picker button) is captured. The
+       highlight ring on `isDragging` is a UX cue. -->
+  <div
+    class="flex max-h-[80vh] w-full max-w-2xl flex-col gap-4"
+    :class="
+      cn(
+        'ring-2 ring-transparent transition',
+        isDragging && 'ring-primary/60 ring-offset-2'
+      )
+    "
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <!-- header -->
     <div class="space-y-2">
-      <h2 class="text-xl font-bold">创建补丁资源</h2>
+      <h2 class="text-xl font-bold">
+        {{ isEdit ? '编辑补丁资源' : '创建补丁资源' }}
+      </h2>
       <div class="text-default-500 space-y-1 text-sm">
         <div class="flex flex-wrap gap-x-4">
           <NuxtLink
@@ -305,24 +449,100 @@ const quotaPercent = computed(() =>
 
         <!-- file uploader (s3 mode) ----------------------- -->
         <section v-if="form.storage === 's3'" class="space-y-2">
-          <h3 class="text-lg font-medium">上传资源</h3>
+          <h3 class="text-lg font-medium">
+            {{ isEdit ? '补丁文件' : '上传资源' }}
+          </h3>
           <p class="text-default-500 text-sm">
-            我们支持 {{ ALLOWED_EXTENSIONS.join(' ') }} 压缩格式，单文件最大 1
-            GB。文件名中的特殊字符会被自动去除，仅保留下划线（_）连字符（-）和后缀。
+            支持 {{ ALLOWED_EXTENSIONS.join(' ') }} 压缩格式，单文件最大 1 GB。
+            <span v-if="isDragging" class="text-primary font-medium">
+              松开鼠标以上传文件
+            </span>
+            <span v-else>
+              支持点击选择或直接拖拽到此处。
+            </span>
           </p>
 
-          <div v-if="!pickedFile" class="space-y-2">
-            <KunFileInput
-              :accept="ALLOWED_EXTENSIONS.join(',')"
-              :max-size="1024 * 1024 * 1024"
-              trigger-text="选择补丁文件"
-              trigger-icon="lucide:file-up"
-              :error="uploadError"
-              @change="handleFilePicked"
-              @error-pick="(msg) => (uploadError = msg)"
-            />
+          <!-- Existing file summary (edit mode, no replacement chosen) -->
+          <div
+            v-if="showingExistingFile"
+            class="border-default/20 bg-default-50 flex items-center justify-between gap-3 rounded-lg border p-4"
+          >
+            <div class="flex min-w-0 items-center gap-2">
+              <KunIcon
+                name="lucide:file-check"
+                class="text-success size-6 shrink-0"
+              />
+              <div class="min-w-0">
+                <p class="truncate font-medium">{{ existingFileName }}</p>
+                <p class="text-default-500 text-sm">
+                  当前文件 · {{ form.size }}
+                </p>
+              </div>
+            </div>
+            <KunButton
+              color="primary"
+              variant="flat"
+              size="sm"
+              @click="replaceMode = true"
+            >
+              <KunIcon name="lucide:refresh-cw" class="size-4" />
+              替换文件
+            </KunButton>
           </div>
 
+          <!-- Picker (create mode, or edit-mode replacement chosen) -->
+          <div v-else-if="!pickedFile" class="space-y-2">
+            <div
+              :class="
+                cn(
+                  'border-default-200 rounded-lg border-2 border-dashed p-6 text-center transition-colors',
+                  isDragging && 'border-primary bg-primary/10'
+                )
+              "
+            >
+              <KunIcon
+                name="lucide:upload-cloud"
+                class="text-default-400 mx-auto mb-2 size-10"
+              />
+              <p class="text-default-600 mb-3 text-sm">
+                {{ isDragging ? '松开鼠标放下文件' : '拖拽文件到此处，或点击下方按钮选择' }}
+              </p>
+              <KunFileInput
+                :accept="ALLOWED_EXTENSIONS.join(',')"
+                :max-size="1024 * 1024 * 1024"
+                :trigger-text="isEdit ? '选择替换文件' : '选择补丁文件'"
+                trigger-icon="lucide:file-up"
+                :error="uploadError"
+                @change="handleFilePicked"
+                @error-pick="(msg) => (uploadError = msg)"
+              />
+              <KunButton
+                v-if="isEdit && replaceMode"
+                variant="light"
+                color="default"
+                size="sm"
+                class-name="mt-2"
+                @click="
+                  () => {
+                    replaceMode = false
+                    if (props.resource) {
+                      form.s3_key = props.resource.s3_key ?? ''
+                      form.size = props.resource.size ?? ''
+                    }
+                  }
+                "
+              >
+                取消替换，保留原文件
+              </KunButton>
+            </div>
+          </div>
+
+          <!-- File card — three states stacked vertically depending on the
+               uploader's status:
+                 staged       : show "确认上传" (primary) + "移除"
+                 uploading    : show progress bar + "取消上传"
+                 uploaded     : show success badge + "重新选择"
+                 error/aborted: show error + "重试上传" / "移除" -->
           <div
             v-else
             class="border-default/20 bg-default-50 space-y-3 rounded-lg border p-4"
@@ -330,35 +550,56 @@ const quotaPercent = computed(() =>
             <div class="flex items-center justify-between gap-3">
               <div class="flex min-w-0 items-center gap-2">
                 <KunIcon
-                  name="lucide:file"
-                  class="text-primary size-6 shrink-0"
+                  :name="uploadedOk ? 'lucide:file-check' : 'lucide:file'"
+                  :class="
+                    cn('size-6 shrink-0', uploadedOk ? 'text-success' : 'text-primary')
+                  "
                 />
                 <div class="min-w-0">
                   <p class="truncate font-medium">{{ pickedFile.name }}</p>
-                  <p class="text-default-500 text-sm">{{ fileSizeLabel }}</p>
+                  <p class="text-default-500 text-sm">
+                    {{ formatBytesMB(pickedFile.size) }}
+                    <span v-if="uploadedOk" class="text-success ml-1">· 已上传</span>
+                    <span v-else-if="stagedNotUploaded" class="text-default-400 ml-1">· 等待上传</span>
+                  </p>
                 </div>
               </div>
-              <KunButton
-                v-if="uploadingNow"
-                color="danger"
-                variant="light"
-                size="sm"
-                @click="removeFile"
-              >
-                取消
-              </KunButton>
-              <KunButton
-                v-else
-                color="danger"
-                variant="flat"
-                size="sm"
-                @click="removeFile"
-              >
-                移除
-              </KunButton>
+
+              <!-- Primary action button — semantics vary by state -->
+              <div class="flex gap-2">
+                <!-- staged: 确认上传 -->
+                <KunButton
+                  v-if="stagedNotUploaded && uploader.status.value !== 'error'"
+                  color="primary"
+                  size="sm"
+                  @click="confirmUpload"
+                >
+                  <KunIcon name="lucide:cloud-upload" class="size-4" />
+                  确认上传
+                </KunButton>
+                <!-- error: 重试 -->
+                <KunButton
+                  v-else-if="uploader.status.value === 'error'"
+                  color="warning"
+                  size="sm"
+                  @click="confirmUpload"
+                >
+                  <KunIcon name="lucide:rotate-cw" class="size-4" />
+                  重试上传
+                </KunButton>
+                <!-- Remove / cancel — label changes by state -->
+                <KunButton
+                  color="danger"
+                  :variant="uploadingNow ? 'light' : 'flat'"
+                  size="sm"
+                  @click="removeFile"
+                >
+                  {{ uploadingNow ? '取消上传' : uploadedOk ? '重新选择' : '移除' }}
+                </KunButton>
+              </div>
             </div>
 
-            <div v-if="uploadingNow || uploader.status.value === 'done'">
+            <div v-if="uploadingNow || uploadedOk">
               <p class="text-default-500 mb-1 text-sm">
                 {{ uploadStatusLabel }}
                 <span v-if="uploadingNow">{{ uploader.progressPercent.value }}%</span>
@@ -366,7 +607,7 @@ const quotaPercent = computed(() =>
               <KunProgress
                 :value="uploader.progressPercent.value"
                 size="sm"
-                :color="uploader.status.value === 'done' ? 'success' : 'primary'"
+                :color="uploadedOk ? 'success' : 'primary'"
               />
             </div>
 
@@ -379,73 +620,49 @@ const quotaPercent = computed(() =>
           </div>
         </section>
 
-        <!-- resource links (user mode + s3 stub view) --------- -->
-        <section
-          v-if="form.storage === 'user' || form.content"
-          class="space-y-2"
-        >
+        <!-- resource links (user mode) ---------------------- -->
+        <section v-if="form.storage === 'user'" class="space-y-2">
           <h3 class="text-lg font-medium">资源链接</h3>
           <p class="text-default-500 text-sm">
-            {{
-              form.storage === 'user'
-                ? '请添加您的资源链接，建议每条单独添加，以便后续维护'
-                : '已为您自动创建对象存储下载链接 ✓'
-            }}
+            请添加您的资源链接，建议每条单独添加，以便后续维护
           </p>
 
-          <template v-if="form.storage === 'user'">
-            <div
-              v-for="(link, i) in (userLinks.length === 0 ? [''] : userLinks)"
-              :key="i"
-              class="flex items-center gap-2"
-            >
-              <KunChip color="primary" variant="flat" size="sm">
-                自定义链接
-              </KunChip>
-              <div class="flex-1">
-                <KunInput
-                  :model-value="link"
-                  placeholder="请输入资源链接（http(s):// 开头）"
-                  @update:model-value="
-                    updateUserLink(i, String($event))
-                  "
-                />
-              </div>
-              <KunButton
-                v-if="i === (userLinks.length === 0 ? 0 : userLinks.length - 1)"
-                is-icon-only
-                variant="flat"
-                color="primary"
-                @click="addUserLink"
-                aria-label="新增链接"
-              >
-                <KunIcon name="lucide:plus" class="size-4" />
-              </KunButton>
-              <KunButton
-                v-else
-                is-icon-only
-                variant="flat"
-                color="danger"
-                @click="removeUserLink(i)"
-                aria-label="删除该链接"
-              >
-                <KunIcon name="lucide:x" class="size-4" />
-              </KunButton>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="flex items-center gap-2">
-              <KunChip color="primary" variant="flat" size="sm">
-                对象存储下载
-              </KunChip>
+          <div
+            v-for="(link, i) in (userLinks.length === 0 ? [''] : userLinks)"
+            :key="i"
+            class="flex items-center gap-2"
+          >
+            <KunChip color="primary" variant="flat" size="sm">
+              自定义链接
+            </KunChip>
+            <div class="flex-1">
               <KunInput
-                :model-value="form.content"
-                disabled
-                placeholder="（上传成功后自动生成）"
+                :model-value="link"
+                placeholder="请输入资源链接（http(s):// 开头）"
+                @update:model-value="updateUserLink(i, String($event))"
               />
             </div>
-          </template>
+            <KunButton
+              v-if="i === (userLinks.length === 0 ? 0 : userLinks.length - 1)"
+              is-icon-only
+              variant="flat"
+              color="primary"
+              @click="addUserLink"
+              aria-label="新增链接"
+            >
+              <KunIcon name="lucide:plus" class="size-4" />
+            </KunButton>
+            <KunButton
+              v-else
+              is-icon-only
+              variant="flat"
+              color="danger"
+              @click="removeUserLink(i)"
+              aria-label="删除该链接"
+            >
+              <KunIcon name="lucide:x" class="size-4" />
+            </KunButton>
+          </div>
         </section>
 
         <!-- type / language / platform / size --------------- -->
@@ -453,7 +670,9 @@ const quotaPercent = computed(() =>
           <h3 class="text-lg font-medium">资源详情</h3>
 
           <div>
-            <p class="mb-2 text-sm font-medium">类型 <span class="text-danger">*</span></p>
+            <p class="mb-2 text-sm font-medium">
+              类型 <span class="text-danger">*</span>
+            </p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="t in resourceTypes"
@@ -473,7 +692,9 @@ const quotaPercent = computed(() =>
           </div>
 
           <div>
-            <p class="mb-2 text-sm font-medium">语言 <span class="text-danger">*</span></p>
+            <p class="mb-2 text-sm font-medium">
+              语言 <span class="text-danger">*</span>
+            </p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="l in SUPPORTED_LANGUAGE"
@@ -493,7 +714,9 @@ const quotaPercent = computed(() =>
           </div>
 
           <div>
-            <p class="mb-2 text-sm font-medium">平台 <span class="text-danger">*</span></p>
+            <p class="mb-2 text-sm font-medium">
+              平台 <span class="text-danger">*</span>
+            </p>
             <div class="flex flex-wrap gap-2">
               <button
                 v-for="p in SUPPORTED_PLATFORM"
@@ -527,19 +750,16 @@ const quotaPercent = computed(() =>
             label="资源名称（可选）"
             placeholder="例如：枯れない世界と終わる花 翻译补丁"
           />
-
           <KunInput
             v-model="form.model_name"
             label="AI 模型名称（可选）"
             placeholder="若为 AI 翻译，建议填写模型名，例如 claude-3-7-sonnet-20250219"
           />
-
           <KunInput
             v-model="form.code"
             label="提取码"
             placeholder="如资源链接需要密码，请填写"
           />
-
           <KunInput
             v-model="form.password"
             label="解压码"
@@ -559,6 +779,18 @@ const quotaPercent = computed(() =>
             :rows="6"
           />
         </section>
+
+        <!-- edit-mode: reason memo for audit trail -->
+        <section v-if="isEdit" class="space-y-2">
+          <h3 class="text-lg font-medium">修改原因（可选）</h3>
+          <p class="text-default-500 text-sm">
+            仅当替换文件时会写入审计日志（patch_resource_file_history）；纯改备注/分类则不记录。
+          </p>
+          <KunInput
+            v-model="reason"
+            placeholder="例如：修复某段翻译 / 升级到 v1.1"
+          />
+        </section>
       </form>
     </div>
 
@@ -573,13 +805,21 @@ const quotaPercent = computed(() =>
         :disabled="submitting || uploadingNow"
         @click="handleSubmit"
       >
-        <KunIcon v-if="!submitting && !uploadingNow" name="lucide:upload" class="size-4" />
+        <KunIcon
+          v-if="!submitting && !uploadingNow"
+          :name="isEdit ? 'lucide:save' : 'lucide:upload'"
+          class="size-4"
+        />
         {{
           submitting
-            ? '发布中...'
+            ? isEdit
+              ? '保存中...'
+              : '发布中...'
             : uploadingNow
               ? '正在上传补丁资源...'
-              : '发布资源'
+              : isEdit
+                ? '保存修改'
+                : '发布资源'
         }}
       </KunButton>
     </div>
