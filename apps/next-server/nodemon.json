@@ -1,5 +1,0 @@
-{
-  "watch": ["server.ts", "socket/"],
-  "ext": "ts,json",
-  "exec": "ts-node ./server.ts"
-}
