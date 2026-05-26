@@ -6,6 +6,8 @@ import {
 
 const route = useRoute()
 const api = useApi()
+const userStore = useUserStore()
+const settingStore = useSettingStore()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -16,6 +18,36 @@ const { data: patch } = await useAsyncData<PatchHeader | null>(
     return res.code === 0 ? res.data : null
   }
 )
+
+// Distinguish "real 404" from "NSFW gate" when patch is null.
+//
+// The backend returns 404 for both cases (intentional: a distinguishing
+// error code would itself be NSFW signal for crawlers). On the frontend we
+// can still distinguish reliably because *useApi* already applied the
+// caller's effective content_limit:
+//   - logged-in user        → useApi sent 'all', a 404 means truly missing
+//   - global NSFW mode on   → useApi sent 'all', same
+//   - this id already acked → useApi sent 'all', same
+// So the only branch where a NSFW patch can produce a null is:
+//   anonymous + sfw mode + not yet acked.
+// That branch is exactly the "show NSFW confirm" UI path. Anything else
+// falls through to KunNull's generic "patch not found".
+const shouldShowNsfwConfirm = computed(() => {
+  if (patch.value) return false
+  if (userStore.user.id > 0) return false
+  if (settingStore.data.kunNsfwEnable !== 'sfw') return false
+  if (settingStore.isNsfwAcked(galgameId.value)) return false
+  return true
+})
+
+const confirmNsfw = () => {
+  settingStore.ackNsfw(galgameId.value)
+  // Hard reload so the SSR pass re-runs useApi with the new ack state
+  // baked into the URL — purely client-side refetch would also work, but
+  // a reload guarantees every child route (resource / comment tab data
+  // pre-fetched via useAsyncData) gets the new gate value too.
+  if (import.meta.client) location.reload()
+}
 
 const displayName = computed(() =>
   patch.value ? getPreferredLanguageText(patch.value.name) : ''
@@ -159,6 +191,40 @@ const tabs = computed(() => [
 
     <div>
       <NuxtPage />
+    </div>
+  </div>
+
+  <!-- NSFW confirm placeholder. Rendered by SSR with no actual NSFW data
+       embedded (intentionally generic text + warning icon) so it's safe to
+       index — search engines see "this content needs confirmation", not
+       the game's name/banner/intro. Visible only on the
+       (anonymous + sfw mode + not acked) branch; everyone else either has
+       the data or sees the real "not found" state. -->
+  <div
+    v-else-if="shouldShowNsfwConfirm"
+    class="mx-auto flex w-full max-w-xl flex-col items-center gap-6 px-4 py-16 text-center"
+  >
+    <div
+      class="bg-danger/10 text-danger flex size-16 items-center justify-center rounded-full"
+    >
+      <KunIcon name="lucide:shield-alert" class="size-8" />
+    </div>
+    <div class="space-y-2">
+      <h1 class="text-2xl font-bold">该 Galgame 含有 NSFW 内容</h1>
+      <p class="text-default-500 text-sm leading-relaxed">
+        您需要点击下方按钮以确认查看。<br />
+        登录后无需每次确认。
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row">
+      <KunButton color="danger" size="md" @click="confirmNsfw">
+        我已知晓，仍要查看
+      </KunButton>
+      <NuxtLink to="/">
+        <KunButton variant="light" color="default" size="md">
+          返回首页
+        </KunButton>
+      </NuxtLink>
     </div>
   </div>
 

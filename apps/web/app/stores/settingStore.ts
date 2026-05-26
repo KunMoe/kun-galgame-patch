@@ -13,10 +13,29 @@ export type KunNsfwPreference = 'sfw' | 'nsfw' | 'all'
 
 export interface KunSettingData {
   kunNsfwEnable: KunNsfwPreference
+  // Per-patch NSFW acknowledgements for anonymous callers.
+  //
+  // Background: anonymous + 'sfw' callers get a 404 from /patch/:id when the
+  // patch is NSFW (SEO safe-by-default). Product rule: such users should be
+  // able to opt-in *per patch* via a "this game contains NSFW, click to
+  // continue" confirm — without flipping the global NSFW mode.
+  //
+  // When the user clicks confirm on a NSFW patch detail, we push that
+  // patch.id into this array (cookie-persisted). useApi reads route.params.id
+  // and if the route's id is in here, it sends content_limit=all for the
+  // current request — exactly that patch (and its sub-endpoints sharing
+  // :id) becomes visible, others stay gated.
+  //
+  // Logged-in users bypass this entirely via useApi's userStore.id > 0
+  // check, so this array is essentially anonymous-only state; clearing it
+  // on logout would be incorrect (an anonymous browser that logged in then
+  // out should keep its prior NSFW acks).
+  nsfwAckedIds: number[]
 }
 
 const initialState: KunSettingData = {
-  kunNsfwEnable: 'sfw'
+  kunNsfwEnable: 'sfw',
+  nsfwAckedIds: []
 }
 
 export const useSettingStore = defineStore('setting', {
@@ -29,6 +48,16 @@ export const useSettingStore = defineStore('setting', {
     },
     setNsfwPreference(v: KunNsfwPreference) {
       this.data.kunNsfwEnable = v
+    },
+    ackNsfw(id: number) {
+      if (id > 0 && !this.data.nsfwAckedIds.includes(id)) {
+        // Replace the array (don't .push) so pinia's reactivity tracks the
+        // mutation and the cookie-persist plugin writes the new value.
+        this.data.nsfwAckedIds = [...this.data.nsfwAckedIds, id]
+      }
+    },
+    isNsfwAcked(id: number): boolean {
+      return id > 0 && this.data.nsfwAckedIds.includes(id)
     },
     resetData() {
       this.data = { ...initialState }

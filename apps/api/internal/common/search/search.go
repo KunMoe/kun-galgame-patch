@@ -62,13 +62,16 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	// NSFW filter via wiki content_limit protocol — read from URL query, not
-	// from a custom header. The legacy X-NSFW-Header path was wrong per
-	// docs/galgame_wiki/00-handbook §16.6: wiki spec explicitly forbids
-	// custom headers / JSON-as-header for the NSFW gate. Frontend now appends
-	// ?content_limit=all when the user has opted in to NSFW; missing /
-	// unrecognised falls back to "sfw".
-	contentLimit := utils.ContentLimitForListBrowse(c)
+	// Search is intentionally exempt from the global content_limit gate:
+	// it's a *user-initiated* action (someone typed a query), so by product
+	// rule it should always surface the full result set — both sfw and nsfw.
+	// SEO safety isn't at stake here because crawlers don't submit search
+	// queries, so there's no "passive scrape" surface that needs sfw
+	// safe-by-default. The NSFW chip on each result card lets users see what
+	// they're about to click; the per-patch detail endpoint still applies
+	// the regular gate, so clicking through to a NSFW result will trigger
+	// the confirm-to-view flow for anonymous-and-not-acked callers.
+	contentLimit := utils.ContentLimitAll
 
 	// Call Wiki search
 	params := galgameClient.SearchGalgameParams{
