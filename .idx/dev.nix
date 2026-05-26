@@ -33,7 +33,7 @@
       onCreate = {
         # Example: install JS dependencies from NPM
         # npm-install = "npm install";
-        "setup" = "pnpm i; cp .env.example .env; pnpm prisma:push; pnpm dev;";
+        "setup" = "pnpm i; cp .env.example .env; pnpm dev;";
       };
       # Runs when the workspace is (re)started
       onStart = {

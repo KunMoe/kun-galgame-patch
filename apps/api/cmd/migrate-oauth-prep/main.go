@@ -20,9 +20,11 @@
 //   - It runs exactly once per database. Idempotency is handled by checking
 //     the existing _migrations tracker for the marker `oauth_prep_20260409`.
 //
-// Replaces:
-//
-//	psql -h <host> -U <user> -d <db> -f apps/next-web/prisma/migrations/20260409_oauth_integration/migration.sql
+// History: this began as a hand-rolled psql script that ran before the legacy
+// Nitro/Prisma backend's `prisma db push`. The Go rewrite replaced both the
+// runner and the upstream backend; the embedded migration.sql is the same
+// SQL, now driven through database/sql with a marker row in _migrations so
+// CI can run it non-interactively.
 //
 // Usage:
 //

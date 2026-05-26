@@ -40,9 +40,6 @@
 #       - name: Copy .env.example to .env
 #         run: cp .env.example .env
 
-#       - name: Generate prisma client
-#         run: pnpm run prisma:generate
-
 #       - name: Run ESLint
 #         run: pnpm run lint
 

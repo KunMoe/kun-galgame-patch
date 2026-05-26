@@ -23,5 +23,5 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "forwardPorts": [3000, 5432, 6379],
-  "postCreateCommand": "pnpm install && pnpm prisma:push"
+  "postCreateCommand": "pnpm install"
 }

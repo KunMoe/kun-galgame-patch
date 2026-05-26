@@ -20,8 +20,6 @@
     "typecheck": "pnpm -F @apps/web run typecheck",
     "vet": "pnpm -F @apps/api run vet",
     "test:api": "pnpm -F @apps/api run test",
-    "prisma:generate": "pnpm -F @apps/web run prisma:generate",
-    "prisma:push": "pnpm -F @apps/web run prisma:push",
     "sitemap": "esno apps/web/scripts/generateKunSitemap.ts",
     "prod:deploy": "./scripts/deploy.sh",
     "prod:start": "./scripts/start.sh",
@@ -42,13 +40,10 @@
     "onlyBuiltDependencies": [
       "@heroui/shared-utils",
       "@parcel/watcher",
-      "@prisma/client",
-      "@prisma/engines",
       "@tailwindcss/oxide",
       "aws-sdk",
       "bcrypt",
       "esbuild",
-      "prisma",
       "sharp",
       "unrs-resolver"
     ]

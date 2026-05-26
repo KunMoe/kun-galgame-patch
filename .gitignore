@@ -50,7 +50,6 @@ gitignore
 apps/web/public/sitemap.xml
 apps/web/public/urls.txt
 public/*.xml
-prisma/generated
 
 # Docs
 docs/milkdown
