@@ -6,11 +6,27 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 )
 
-// UserFollowRelation represents a follow relationship
+// UserFollowRelation represents a follow relationship.
+//
+// FK behavior is asymmetric — inherited from the original Prisma schema and
+// preserved as-is when the Go API took over (see 000_baseline.up.sql):
+//
+//   follower_id  → user(id)   ON DELETE CASCADE   (default — deleting a
+//                                                   user wipes their outgoing
+//                                                   follows)
+//   following_id → user(id)   ON DELETE RESTRICT  (a user who is followed
+//                                                   by anyone cannot be
+//                                                   deleted; SQLSTATE 23503)
+//
+// The asymmetry is a historical quirk — there's no business reason
+// "removing a popular user" should be harder than "removing an unfollowed
+// one", and the patch.user_id RESTRICT (see patch model) already gates user
+// deletion. Leaving as-is to avoid silent semantic changes; revisit when /
+// if the user-delete flow is reworked.
 type UserFollowRelation struct {
 	ID          int `gorm:"primaryKey;autoIncrement" json:"id"`
 	FollowerID  int `gorm:"uniqueIndex:idx_follow;not null" json:"follower_id"`
-	FollowingID int `gorm:"uniqueIndex:idx_follow;not null" json:"following_id"`
+	FollowingID int `gorm:"uniqueIndex:idx_follow;not null;constraint:OnDelete:RESTRICT" json:"following_id"`
 }
 
 func (UserFollowRelation) TableName() string { return "user_follow_relation" }

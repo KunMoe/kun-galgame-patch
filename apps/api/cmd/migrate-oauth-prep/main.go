@@ -116,7 +116,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ oauth-prep applied")
+	// Mark 000_baseline as applied on the Prisma-restore path too.
+	//
+	// Reasoning: 000_baseline is a `pg_dump -s` snapshot of the *post-009*
+	// schema. It's idempotent vs the post-009 state (CREATE ... IF NOT
+	// EXISTS, DO/EXCEPTION wrappers), but on a Prisma-era restore it would
+	// reference columns that 002/004 haven't created yet (s3_key,
+	// galgame_id) — CREATE INDEX IF NOT EXISTS doesn't pre-check column
+	// presence, so the migration aborts mid-baseline.
+	//
+	// migrate-oauth-prep is by definition the Prisma-path bootstrap step:
+	// it only ever runs against a Prisma-era schema (asserts pre-002
+	// columns like `hash`, pre-005 columns like `user.email`). So if
+	// oauth-prep just succeeded, we KNOW we're on the Prisma path and
+	// baseline is a no-op — the schema baseline would build already
+	// exists (post-Prisma-create) in a different shape that 001-009 will
+	// reshape into the post-009 form. Marking baseline applied skips it
+	// in the upcoming `cmd/migrate` run.
+	//
+	// The fresh-DB path (no Prisma backup, no oauth-prep) is unaffected:
+	// it goes straight to `cmd/migrate`, baseline runs first as designed,
+	// then 001-009 are all idempotent no-ops on top.
+	if _, err := sqlDB.Exec(
+		`INSERT INTO _migrations (name) VALUES ('000_baseline') ON CONFLICT (name) DO NOTHING`,
+	); err != nil {
+		slog.Error("write baseline marker failed", "error", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("✅ oauth-prep applied (and 000_baseline marked as applied)")
 }
 
 func ensureTracker(db *sql.DB) error {

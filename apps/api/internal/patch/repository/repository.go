@@ -74,6 +74,19 @@ func (r *PatchRepository) DeletePatch(id int) error {
 	return r.db.Delete(&model.Patch{}, id).Error
 }
 
+// GetPatchResourceS3Keys returns every non-empty s3_key on patch_resource
+// rows owned by the patch. Used by DeletePatch right before the row goes
+// away — we need the keys in hand BEFORE the FK CASCADE wipes the rows,
+// because once the rows are gone we have no way to enumerate which B2
+// objects to clean up. storage='s3' guard skips user-link rows.
+func (r *PatchRepository) GetPatchResourceS3Keys(patchID int) ([]string, error) {
+	var keys []string
+	err := r.db.Model(&model.PatchResource{}).
+		Where("galgame_id = ? AND storage = ? AND s3_key <> ''", patchID, "s3").
+		Pluck("s3_key", &keys).Error
+	return keys, err
+}
+
 func (r *PatchRepository) FindPatchByVndbID(vndbID string) (*model.Patch, error) {
 	var patch model.Patch
 	err := r.db.Where("vndb_id = ?", vndbID).First(&patch).Error

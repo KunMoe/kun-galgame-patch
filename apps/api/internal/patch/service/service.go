@@ -301,7 +301,44 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 	if patch.UserID != userID && !isAdmin {
 		return fmt.Errorf("no permission to delete this patch")
 	}
-	return s.repo.DeletePatch(id)
+
+	// Snapshot the patch's S3 keys BEFORE the row goes away. The DB-level
+	// FK CASCADE wipes all child patch_resource rows when we DELETE the
+	// patch — but PostgreSQL only deletes rows, it doesn't know about the
+	// B2 objects those s3_key columns point to. Without this step the
+	// bucket accumulates unreferenced files indefinitely.
+	//
+	// Mirrors the pattern in DeleteResource (single-resource deletion). We
+	// log+continue on enumeration error rather than abort: a stale enum
+	// shouldn't block deleting the patch, and a periodic offline scrub can
+	// always sweep stragglers later. Read failure here is exceedingly rare
+	// (it's just a SELECT on a single index).
+	s3Keys, kErr := s.repo.GetPatchResourceS3Keys(id)
+	if kErr != nil {
+		slog.Warn("DeletePatch: failed to enumerate s3_keys for cleanup", "patch_id", id, "error", kErr)
+		s3Keys = nil
+	}
+
+	if err := s.repo.DeletePatch(id); err != nil {
+		return err
+	}
+
+	// Best-effort B2 cleanup AFTER the DB delete. Same philosophy as
+	// DeleteResource: row already gone (no rollback path), S3 failures
+	// only WARN. Stranded objects can be reconciled later from
+	// patch_resource_file_history (also CASCADE'd — so a full reconcile
+	// would also need a parallel snapshot for those, but that's a
+	// separate concern).
+	if s.s3.Ready() && len(s3Keys) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		for _, key := range s3Keys {
+			if err := s.s3.DeleteObject(ctx, key); err != nil {
+				slog.Warn("DeletePatch: 删除 S3 对象失败", "s3_key", key, "patch_id", id, "error", err)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *PatchService) CheckDuplicate(vndbID string) (bool, error) {

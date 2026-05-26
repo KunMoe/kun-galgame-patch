@@ -93,9 +93,22 @@ type Patch struct {
 	ContributeCount    int       `gorm:"default:0" json:"contribute_count"`
 	CommentCount       int       `gorm:"default:0" json:"comment_count"`
 	ResourceCount      int       `gorm:"default:0" json:"resource_count"`
-	UserID             int       `gorm:"not null" json:"user_id"`
-	Created            time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated            time.Time `gorm:"autoUpdateTime" json:"updated"`
+
+	// FK behavior (declared in migrations/000_baseline.up.sql, NOT enforced
+	// by GORM AutoMigrate which we don't run — the `constraint:OnDelete:X`
+	// tag here is documentation only):
+	//
+	//   patch.user_id → user(id)   ON DELETE RESTRICT
+	//
+	// Attempting to delete a user who still has patch rows will fail with
+	// SQLSTATE 23503 (foreign_key_violation). This is intentional: patches
+	// are user-authored content with downstream consequences (favorites,
+	// comments, resources, moemoepoint), so the user-delete path must
+	// explicitly handle (reassign / soft-delete / orphan-confirm) the
+	// patches first instead of silently nuking everything via CASCADE.
+	UserID  int       `gorm:"not null;constraint:OnDelete:RESTRICT" json:"user_id"`
+	Created time.Time `gorm:"autoCreateTime" json:"created"`
+	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
 
 	// User is the publisher's brief, attached by the handler/service layer
 	// from OAuth /users/batch (pkg/userclient). NOT a GORM relation -- after

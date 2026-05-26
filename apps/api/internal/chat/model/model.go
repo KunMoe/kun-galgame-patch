@@ -60,16 +60,35 @@ type ChatMember struct {
 func (ChatMember) TableName() string { return "chat_member" }
 
 // ChatMessage is a chat message.
+//
+// FK behavior (declared in migrations/000_baseline.up.sql, NOT enforced by
+// GORM AutoMigrate which we don't run — the `constraint:OnDelete:X` tags
+// below are documentation only):
+//
+//   - deleted_by_id → user(id)   ON DELETE SET NULL
+//     A moderator/admin who soft-deletes a message gets their pointer cleared
+//     when they themselves are deleted; the deletion record (DeletedAt) is
+//     preserved so the audit trail "this was deleted, by someone, at X time"
+//     survives losing the actor. PG does this transparently — Go code must
+//     NOT manually null the column before deleting the user.
+//
+//   - reply_to_id → chat_message(id)   ON DELETE SET NULL
+//     When the message a reply quotes is itself deleted, the reply survives
+//     but its quote pointer goes nil. QuoteMessage rendering already handles
+//     the nil case (see field doc below). Same DB-transparent behavior.
+//
+// Everything else (chat_room_id, sender_id) is the default CASCADE — see
+// docs/proj/schema-ownership.md for the per-table breakdown.
 type ChatMessage struct {
 	ID          int        `gorm:"primaryKey;autoIncrement" json:"id"`
 	Content     string     `gorm:"type:varchar(2000);default:''" json:"content"`
 	FileURL     string     `gorm:"type:varchar(1007);default:''" json:"file_url"`
 	Status      string     `gorm:"default:'SENT'" json:"status"` // SENT / EDITED / DELETED
 	DeletedAt   *time.Time `json:"deleted_at"`
-	DeletedByID *int       `json:"deleted_by_id"`
+	DeletedByID *int       `gorm:"constraint:OnDelete:SET NULL" json:"deleted_by_id"`
 	ChatRoomID  int        `gorm:"index;not null" json:"chat_room_id"`
 	SenderID    int        `gorm:"not null" json:"sender_id"`
-	ReplyToID   *int       `json:"reply_to_id"`
+	ReplyToID   *int       `gorm:"constraint:OnDelete:SET NULL" json:"reply_to_id"`
 	Created     time.Time  `gorm:"autoCreateTime" json:"created"`
 	Updated     time.Time  `gorm:"autoUpdateTime" json:"updated"`
 
