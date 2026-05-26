@@ -141,7 +141,13 @@ func (h *PatchHandler) WikiTaxonomyDetailProxy(c *fiber.Ctx) error {
 		slog.Warn("拉本地 patch 失败，将走 Wiki 仅元信息的降级路径",
 			"error", lerr, "count", len(ids))
 	}
-	enriched := enricher.EnrichPatches(c.Context(), h.wiki, h.users, localPatches)
+	// content_limit="" — the briefs slice was already content_limit-filtered
+	// by wiki itself at the /tag/:name level (wiki's taxonomy endpoints
+	// default to sfw per docs/galgame_wiki/00-handbook §16.2, and the query
+	// param if any was forwarded verbatim by the proxy above). Re-filtering
+	// here would double-call wiki for no semantic gain; the walk below
+	// preserves wiki's order and drops anything wiki excluded.
+	enriched := enricher.EnrichPatches(c.Context(), h.wiki, h.users, localPatches, "")
 	enrichedByID := make(map[int]enricher.GalgameCard, len(enriched))
 	for i := range enriched {
 		enrichedByID[enriched[i].ID] = enriched[i]

@@ -15,6 +15,7 @@
 | sort_field | string | 否 | created | 排序字段: `created`, `updated`, `view`, `resource_update_time` |
 | sort_order | string | 否 | desc | 排序方向: `asc`, `desc` |
 | search | string | 否 | | 搜索关键词（匹配四语言名称） |
+| content_limit | string | 否 | **sfw** | NSFW 过滤。`sfw` / `nsfw` / `all`。**省略 = sfw**（safe-by-default）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
 
 **成功响应**：
 
@@ -57,9 +58,10 @@
 
 **查询参数**：
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| ids | int[] | 是 | galgame ID 数组，最多 100 个 |
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| ids | int[] | 是 | — | galgame ID 数组，最多 100 个 |
+| content_limit | string | 否 | **（不过滤）** | NSFW 过滤。`sfw` / `nsfw` / `all`。**与 list/search 不同：batch 默认不过滤** — 调用方已经明确知道想要哪些 ID（如 patch.galgame_id、收藏列表），过滤会"静默丢失"调用方显式列出的条目。需要过滤时显式传 `content_limit=sfw`。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
 
 **请求示例**：`GET /galgame/batch?ids=1,2,3`
 
@@ -205,6 +207,12 @@ return r2.data.galgame
 ### GET /galgame/:gid
 
 获取详情（含全部关联数据 + 用户信息）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| content_limit | string | 否 | **（不过滤）** | NSFW 过滤。`sfw` / `nsfw` / `all`。**与 list/search 不同：详情默认不过滤** — 直接 URL 访问（书签、深链）是有意为之；如果想让详情访问也按 list 同样的过滤口径，前端调用时显式带上该参数。不匹配的条目返回 404（与 status 过滤同形）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
 
 **成功响应**：
 

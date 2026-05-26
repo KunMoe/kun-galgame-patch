@@ -78,7 +78,10 @@ watch(
         </NuxtLink>
       </div>
 
-      <KunTopBarUser />
+      <div class="ml-auto flex items-center gap-2">
+        <KunTopBarNSFWSwitcher />
+        <KunTopBarUser />
+      </div>
     </div>
 
     <KunTopBarMobileMenu v-model:is-open="isMenuOpen" />

@@ -42,14 +42,34 @@ export const useApi = () => {
     ? useRequestHeaders(['cookie']).cookie
     : undefined
 
+  // NSFW preference is encoded as the `content_limit` query parameter on
+  // every request, per docs/galgame_wiki/00-handbook §16. We append it
+  // here (not via header) because wiki's spec explicitly forbids custom
+  // headers / JSON-as-header for the NSFW gate. Endpoints that don't care
+  // about content_limit ignore the extra query — Fiber doesn't 400 on
+  // unknown params, and the moyu backend only reads it where applicable.
+  //
+  // Captured at setup time from the setting store so the closure sees a
+  // single snapshot per request — toggling NSFW after the request has
+  // started doesn't retroactively mutate the in-flight URL.
+  const setting = useSettingStore()
+  const contentLimit = setting.data.kunNsfwEnable
+
+  const appendContentLimit = (endpoint: string): string => {
+    if (!contentLimit) return endpoint
+    const sep = endpoint.includes('?') ? '&' : '?'
+    return `${endpoint}${sep}content_limit=${contentLimit}`
+  }
+
   const request = async <T>(
     endpoint: string,
     options: ApiOptions = {}
   ): Promise<ApiResponse<T>> => {
     const { method = 'GET', body, headers = {} } = options
+    const url = `${baseUrl}${appendContentLimit(endpoint)}`
 
     try {
-      const res = await $fetch<ApiResponse<T>>(`${baseUrl}${endpoint}`, {
+      const res = await $fetch<ApiResponse<T>>(url, {
         method,
         body: body ? JSON.stringify(body) : undefined,
         headers: {

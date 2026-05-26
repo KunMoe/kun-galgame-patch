@@ -198,7 +198,12 @@ func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	cards := enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches)
+	// Admin view sees everything by default — pass "all" so NSFW patches show
+	// up in the admin list regardless of any content_limit query param the
+	// admin's browser session happened to carry over from another page. The
+	// admin console is the canonical "manage every row" surface; filtering
+	// here would hide rows admins need to moderate.
+	cards := enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, "all")
 	return response.Paginated(c, cards, total)
 }
 

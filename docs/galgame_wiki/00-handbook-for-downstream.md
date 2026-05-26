@@ -679,7 +679,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 > - **新增 `screenshots[]`**：作品的画廊 / CG / 截图集，与 covers **同构但独立**：同一张图可在 A 作当 cover、在 B 作当 screenshot；同一作里两张表互不干涉。每条 `{image_hash, sort_order, caption, sexual, violence, source, source_key}`。
 > - **派生 `effective_banner_hash`**：响应里只读字段。规则 = covers 中 `sort_order=0` 那张的 `image_hash`，无则 `null`（PR5 起 `banner_image_hash` 已彻底退役，不再作为 fallback；展示链则继续 fallback 到 `banner` 老 URL，详见 PR5 BREAKING 段）。**前端展示封面建议读这个**——它在票选这些扩展演化中都保持稳定。
 > - **presence 语义同 `tag_ids` 一样**：`PUT /galgame/:gid` 的 `covers` / `screenshots` 字段 **不传** = 该集合保持不变；**传 `[]` 或非空数组** = 权威全量替换。和 tag_ids 同款的"不全量水合就误清空"陷阱——编辑表单**必须回传当前全量集合**。Create / Submit / PR 同款字段，非指针（首次提交时给空数组即可）。
-> - **`sexual` / `violence` 的当前定位**：schema 字段已落库（0..3 整型，0 = 未评定），但 v1 应用层**不基于这两个字段做 NSFW 门控**——展示门控仍按 `galgame.content_limit` + 用户年龄设置粗粒度判断（见 09 §4.2/§9.2）。下游 SDK 可以读但不强制消费。
+> - **`sexual` / `violence` 的当前定位**：schema 字段已落库（0..3 整型，0 = 未评定），但 v1 应用层**不基于这两个字段做 NSFW 门控**——展示门控按 `galgame.content_limit` 走 wiki 端的 `content_limit` 查询参数协议（见下方 §NSFW content_limit 协议）。下游 SDK 可以读 `sexual` / `violence` 但不强制消费。
 > - **image_service 与 wiki 之间的契约**：图片字节、宽高、文件级安全审核全在 image_service；wiki 只持有 `image_hash` 引用 + 关系属性（顺序 / caption / 本作品语境分级 / 导入来源）。下游编辑画廊 UI 调 wiki 时只需传 hash，不需要把图片 metadata 镜像过来。
 > - **TTL/refping**：wiki 侧（`internal/jobs.GalgameImageRefping`）每天 ping「当前 banner + 当前 cover + 当前 screenshot + 所有 revision/PR snapshot 中曾出现过的 hash」给 image_service 保活——保证 revert 到任何历史版本都不会出死图。下游**不需要**做任何 ping。
 > - **旧 `banner_image_hash` 字段的状态**：PR5 已完成（U2.c）—— 字段从响应/请求/快照/列定义中彻底移除；详见上方 PR5 BREAKING 段。
@@ -716,6 +716,81 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 - ❌ **跨站合并重复提交**：admin 在 wiki 后台手动 ban 或 decline，不做自动 dedupe
 
 > ⚠️ 历史版本曾把「PR 流程 / 修订 / 关系 / 分类编辑」列为下游不在范围内——**该结论已作废**，现按 §15 强制要求 kungal 与 moyu 各自完整实现。
+
+---
+
+## 16. NSFW content_limit 协议
+
+> **wiki 是 NSFW 门控的唯一可信源**。下游展示要 sfw / nsfw / 全部，唯一正确做法是把决策反映为 `content_limit` 查询参数发给 wiki，由 wiki SQL/Meilisearch 层过滤。**不要**在下游做客户端 filtering（wiki 端不过滤的 endpoint 即使你不展示，数据已经离开 wiki 边界）。
+
+### 16.1 参数语义
+
+所有接受 `content_limit` 的端点统一识别 4 种值：
+
+| 取值 | 含义 | 等效 SQL |
+|------|------|----------|
+| `sfw` | 仅 SFW | `WHERE content_limit = 'sfw'` |
+| `nsfw` | 仅 NSFW | `WHERE content_limit = 'nsfw'` |
+| `all` | 显式包含两者 | 无 WHERE 子句 |
+| 省略 / 空 / 未识别值 | 由 endpoint 自身的默认值决定 | 见 §16.2 |
+| `SFW` / `Nsfw` / 大写等 | **不识别**，按"未识别值"处理 → 落到端点默认 | — |
+
+未识别值落到端点默认（不会"穿透"成无过滤）是 safe-by-default 保证 —— 调用方拼错参数不会意外泄露 NSFW。
+
+### 16.2 各端点默认值矩阵
+
+| 端点 | 缺省值 | 设计动因 |
+|------|--------|----------|
+| `GET /galgame` (主列表) | **sfw** | 浏览语义，safe-by-default |
+| `GET /galgame/search` | **sfw** | 同上 |
+| `GET /tag/:name`（带 galgames） | **sfw** | 同上 |
+| `GET /official/:name`（带 galgames） | **sfw** | 同上 |
+| `GET /engine/:name`（带 galgames） | **sfw** | 同上 |
+| `GET /tag/multi` | **sfw** | 同上 |
+| `GET /series` (列表) | **sfw** | 系列卡片里预载前 5 个 galgame |
+| `GET /series/:id` (详情) | **sfw** | 系列详情页里展开所有关联 galgame |
+| **`GET /galgame/batch`** | **不过滤** | 调用方已知 IDs（patch.galgame_id、收藏列表、引用回链等）；默认过滤会"静默丢失"调用方显式列出的条目。需要过滤显式传 `?content_limit=sfw` |
+| **`GET /galgame/:gid`** (单条详情) | **不过滤** | 与 batch 同款反对称：直接 URL 访问是有意为之；调用方想让详情访问也按 list 口径过滤就显式传同样的 `content_limit`，不匹配时返回 404 |
+| `GET /galgame/mine` (我的提交) | 不应用此过滤 | 用户看自己提交的内容 |
+| `GET /galgame/user/:id/stats` | 不应用此过滤 | 仅返回聚合 counts，不含 per-entry 数据；不构成内容泄漏 |
+
+> **batch 默认不过滤是有意的反对称**：browse 默认 safe-by-default、batch 默认 explicit-only。原因是 batch 的调用方已经持有 ID（patch / 收藏 / 引用），过滤会让"我请求 5 个，wiki 只回 3 个"变成调用方的隐性问题。
+
+### 16.3 调用示例
+
+```http
+GET /galgame                          # sfw 列表（默认）
+GET /galgame?content_limit=all        # 含 NSFW 列表
+GET /galgame?content_limit=nsfw       # 仅 NSFW
+
+GET /galgame/batch?ids=1,2,3                       # 全部 3 条都返回，不论 sfw/nsfw
+GET /galgame/batch?ids=1,2,3&content_limit=sfw     # 仅返回 sfw 的子集
+
+GET /galgame/search?q=fate                          # 等价于 ?content_limit=sfw
+GET /galgame/search?q=fate&content_limit=all        # 含 NSFW 全文搜索
+
+GET /tag/魔法?content_limit=all                     # 该 tag 下所有 galgame，含 NSFW
+```
+
+### 16.4 与 `age_limit` 的关系（important）
+
+`galgame.age_limit` (`all` / `r18`) 在 v1 **仅作为响应里的元数据**，wiki 端**不依据它做服务端过滤**。门控完全走 `content_limit`。
+
+业务语义：`content_limit` 表达"内容是否涉性 / 暴力"，`age_limit` 表达"作品发行时的年龄分级"。理论上是两个维度，v1 退化成单维度。后续如要给 `age_limit` 加过滤逻辑，会拆一个独立 query 参数 + 文档化，不会突然让 `age_limit` 跟着 `content_limit` 一起被解释。
+
+### 16.5 写入的 content_limit（不在此协议内）
+
+`content_limit` 在 **写入 DTO**（POST/PUT/Submit/PR 的 body）中是该 galgame 的**属性**：枚举 `sfw` / `nsfw`，默认 `sfw`。和这里讨论的查询参数 `content_limit`（控制过滤行为）是**两件事**——同名只是巧合，前者是 row 字段，后者是 query filter。
+
+### 16.6 与 `include_pending` 的交互
+
+`GET /galgame/search?include_pending=true` 在主结果之外再跑一次窄查询返回当前用户的 pending（status=3/4）。**这次查询继承同样的 `content_limit` 过滤**——传 `content_limit=sfw` 时，pending 也只列 SFW 的 pending（即使是用户自己的 NSFW 草稿）。一致语义优先于"反正是自己的内容"。要拿全部 pending 显式传 `content_limit=all`。
+
+### 16.6 下游接入要点
+
+1. 用户在下游 UI 切换"显示 NSFW"开关 → 下游把该偏好转成查询参数 → 调 wiki 时拼到 URL 上。**不要**：客户端二次过滤、自定义 header、JSON-as-header。
+2. 下游可以为不同页面用不同策略（首页主流 sfw、用户偏好页 all、收藏页 batch 不过滤等）。
+3. 用户登出 / 未登录 / cookie 丢失等 fallback 场景下，下游应当不传 `content_limit`，让 wiki 按端点默认（即 sfw）兜底。
 
 ---
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -169,7 +170,12 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 
 	// No local row. Ask Wiki (anonymously → status=0 only) whether this is a
 	// publicly published galgame and grab its vndb_id + creator.
-	briefs, bErr := s.wiki.GalgameBatch(ctx, []int{id})
+	//
+	// content_limit="" — no NSFW filter at this layer. The detail-handler
+	// caller (GetPatch / GetPatchDetail) decides whether to surface this
+	// patch through *its* sfw default; lazy-creating the local row even for
+	// NSFW games is fine since the listing endpoints filter them out anyway.
+	briefs, bErr := s.wiki.GalgameBatch(ctx, []int{id}, "")
 	if bErr != nil {
 		return nil, err // surface as not-found; Wiki transient failure
 	}
@@ -366,8 +372,35 @@ func (s *PatchService) IncrementView(id int) error {
 	return s.repo.IncrementView(id)
 }
 
-func (s *PatchService) GetRandomPatchID() (int, error) {
-	return s.repo.GetRandomPatchID()
+// GetRandomPatchID returns a random patch id, optionally constrained by the
+// caller's content_limit. The single-row RANDOM() path can land on a NSFW
+// patch, which is fine for cl == "" but a SEO leak the moment the random
+// landing page renders. With a non-empty cl we sample a batch of candidates,
+// ask wiki to filter them, and pick from the survivors. Returns gorm's
+// ErrRecordNotFound (mapped to ErrInternal by the handler) when no candidate
+// passes the filter — extremely rare in practice (would need the entire
+// 60-row random sample to be NSFW).
+func (s *PatchService) GetRandomPatchID(ctx context.Context, contentLimit string) (int, error) {
+	if contentLimit == "" {
+		return s.repo.GetRandomPatchID()
+	}
+	const sampleSize = 60
+	ids, err := s.repo.GetRandomPatchIDs(sampleSize)
+	if err != nil || len(ids) == 0 {
+		return 0, err
+	}
+	briefs, bErr := s.wiki.GalgameBatch(ctx, ids, contentLimit)
+	if bErr != nil {
+		// Fail closed so we don't ship a NSFW landing page on wiki blip.
+		return 0, bErr
+	}
+	if len(briefs) == 0 {
+		return 0, gorm.ErrRecordNotFound
+	}
+	// Wiki returns matching briefs but in arbitrary order; pick a uniform
+	// random element of the filtered set. Don't reuse ids' order — that
+	// would bias toward the original RANDOM() pick when only one survives.
+	return briefs[rand.Intn(len(briefs))].ID, nil
 }
 
 // ===== Comments =====

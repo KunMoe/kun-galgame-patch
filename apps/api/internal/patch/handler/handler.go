@@ -87,6 +87,11 @@ type headerCard struct {
 //
 // D12: return the flat GalgameCard structure directly (no longer wrapped in patch / is_favorite layers).
 // Frontend PatchHeader = GalgameCard + isFavorite.
+//
+// NSFW: forwards content_limit to wiki (default sfw — moyu is stricter than
+// wiki's "detail default = no filter" because *moyu's* detail surface is what
+// the search engine indexes). When wiki filters this id out, the enricher
+// returns nil and we 404 — the same shape as a missing patch.
 func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
@@ -98,7 +103,12 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
-	card := headerCard{GalgameCard: enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch)}
+	enriched := enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch, utils.ContentLimitForListBrowse(c))
+	if enriched == nil {
+		return response.Error(c, errors.ErrNotFound("patch not found"))
+	}
+
+	card := headerCard{GalgameCard: *enriched}
 	if user := middleware.GetUser(c); user != nil {
 		card.IsFavorite = h.service.IsFavorited(user.ID, id)
 	}
@@ -108,6 +118,12 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 // GetPatchDetail GET /api/patch/:id/detail
 //
 // D12: detail enrichment goes through Wiki /galgame/:gid to additionally fetch intro / tag_ids / official_ids.
+//
+// NSFW: same gating as GetPatch — content_limit forwarded to wiki, default
+// sfw, nil from enricher → 404. The introduction_html / tags / officials this
+// endpoint emits are the biggest single NSFW surface in moyu's SSR output
+// (Google indexes the full intro text), so 404'ing on a filter miss matters
+// even more here than on GetPatch.
 func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
@@ -118,7 +134,11 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
-	return response.OK(c, enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch))
+	enriched := enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch, utils.ContentLimitForListBrowse(c))
+	if enriched == nil {
+		return response.Error(c, errors.ErrNotFound("patch not found"))
+	}
+	return response.OK(c, enriched)
 }
 
 // UpdatePatch PUT /api/patch/:id
@@ -543,8 +563,12 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 }
 
 // GetRandomPatch GET /api/home/random
+//
+// NSFW: forwards content_limit so the random landing page can't dump a NSFW
+// patch into an anonymous (sfw-default) browser session. Service drains a
+// 60-row random sample through wiki batch and picks from the survivors.
 func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
-	id, err := h.service.GetRandomPatchID()
+	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c))
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}

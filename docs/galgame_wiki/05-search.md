@@ -28,8 +28,8 @@ Galgame 全文搜索 + 多条件过滤。
 |------|------|------|------|
 | q | string | `""` | 搜索词；空时仅按 filter 返回 |
 | status | int (csv) | — | 不传即不过滤；可传 `0` / `0,1,2` 等 |
-| content_limit | `sfw` \| `nsfw` | — | 可选 |
-| age_limit | `all` \| `r18` | — | 可选 |
+| content_limit | `sfw` \| `nsfw` \| `all` | **`sfw`** | NSFW 过滤；**省略 = sfw**（safe-by-default）。`all` = 不过滤（显式 opt-in 含 NSFW）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
+| age_limit | `all` \| `r18` | — | 可选；当前与 `content_limit` 语义重复，仅作为元数据回传，wiki 端不做过滤 |
 | original_language | string (csv) | — | `ja-jp,en-us` 等；逗号分隔 OR |
 | tag_ids | int (csv) | — | AND：galgame 必须同时命中所有 tag |
 | official_ids | int (csv) | — | 同上 |

@@ -72,7 +72,19 @@ type GalgameCard struct {
 // If users is non-nil, publisher briefs are also batch-fetched from OAuth
 // /users/batch and attached to each card's User field. Pass nil from callers
 // that have no userclient handy or do not need publisher info.
-func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, patches []patchModel.Patch) []GalgameCard {
+//
+// contentLimit is the NSFW filter forwarded to wiki/batch per
+// docs/galgame_wiki/00-handbook-for-downstream.md §16 (sfw / nsfw / all).
+// Pass "" to keep the legacy "no filter, preserve every patch" behavior
+// (used by code paths that already hold a curated ID set — comment summaries,
+// favorites — where dropping rows would surprise the caller).
+// Pass "sfw" / "nsfw" / "all" for list/browse semantics: rows wiki filters out
+// are *removed* from the returned slice (length may be < len(patches)). On
+// wiki transient failure with a non-empty contentLimit we return nil rather
+// than the unfiltered fallback — SEO safety beats showing names, since the
+// fallback would surface NSFW patches that the caller explicitly tried to
+// exclude.
+func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, patches []patchModel.Patch, contentLimit string) []GalgameCard {
 	cards := make([]GalgameCard, len(patches))
 	for i := range patches {
 		cards[i] = baseCard(&patches[i])
@@ -84,6 +96,11 @@ func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, users *userc
 	attachUsersToCards(ctx, users, patches, cards)
 
 	if wiki == nil {
+		if contentLimit != "" {
+			// No wiki = can't verify content_limit on any row. Refuse rather
+			// than ship potentially NSFW names back to the caller.
+			return nil
+		}
 		return cards
 	}
 	ids := collectGalgameIDs(patches)
@@ -91,14 +108,33 @@ func EnrichPatches(ctx context.Context, wiki *galgameClient.Client, users *userc
 		return cards
 	}
 
-	briefs, err := wiki.GalgameBatch(ctx, ids)
+	briefs, err := wiki.GalgameBatch(ctx, ids, contentLimit)
 	if err != nil {
+		if contentLimit != "" {
+			slog.Warn("Wiki 富化失败 + 处于过滤模式：返回空列表以防 NSFW 泄漏", "error", err, "count", len(patches), "content_limit", contentLimit)
+			return nil
+		}
 		slog.Warn("Wiki 富化失败，返回无 galgame 的降级结果", "error", err, "count", len(patches))
 		return cards
 	}
 	byID := make(map[int]*galgameClient.GalgameBrief, len(briefs))
 	for i := range briefs {
 		byID[briefs[i].ID] = &briefs[i]
+	}
+
+	if contentLimit != "" {
+		// Filter mode: a patch.id missing from briefs means wiki filtered it
+		// out (or it doesn't exist / isn't visible). Drop it from the result
+		// rather than emitting a cardless row — list pages should show fewer
+		// items, not stub rows pointing at filtered content.
+		filtered := make([]GalgameCard, 0, len(briefs))
+		for i := range cards {
+			if g, ok := byID[patches[i].ID]; ok {
+				applyGalgame(&cards[i], g)
+				filtered = append(filtered, cards[i])
+			}
+		}
+		return filtered
 	}
 
 	for i := range cards {
@@ -162,7 +198,12 @@ func BuildPatchSummaryMap(ctx context.Context, wiki *galgameClient.Client, db Pa
 
 	briefByGID := map[int]*galgameClient.GalgameBrief{}
 	if wiki != nil && len(galgameIDs) > 0 {
-		if briefs, err := wiki.GalgameBatch(ctx, galgameIDs); err == nil {
+		// No content_limit filter — summaries are attached to objects the user
+		// is already viewing (their comments / favorited resources). The owning
+		// patch's NSFW gate is the originating page's responsibility, not this
+		// label-resolution helper. Matches wiki batch default per
+		// docs/galgame_wiki/00-handbook §16.
+		if briefs, err := wiki.GalgameBatch(ctx, galgameIDs, ""); err == nil {
 			for i := range briefs {
 				briefByGID[briefs[i].ID] = &briefs[i]
 			}
@@ -194,9 +235,19 @@ type PatchSummaryDB interface {
 
 // EnrichPatch enriches a single patch (for the header card; no intro/tag/official).
 // If users is non-nil, the publisher brief is also fetched and attached.
-func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch) GalgameCard {
+//
+// Returns nil when contentLimit filters this patch out (the row exists but
+// is the wrong content_limit) — the caller should translate that to a 404.
+// On wiki transient failure with a non-empty contentLimit we also return nil
+// rather than the unfiltered fallback (SEO safety beats fallback content).
+// contentLimit semantics match docs/galgame_wiki/00-handbook §16:
+//   - "" — no filter, wiki returns the row if it exists at all (legacy
+//     behaviour for cases where a missing wiki row should still render with
+//     local-only fields).
+//   - "sfw" / "nsfw" / "all" — explicit filter; on miss we hard-fail to nil.
+func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch, contentLimit string) *GalgameCard {
 	if p == nil {
-		return GalgameCard{}
+		return nil
 	}
 	card := baseCard(p)
 	if users != nil && p.UserID > 0 {
@@ -211,15 +262,25 @@ func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *usercli
 		}
 	}
 	if wiki == nil || p.ID <= 0 {
-		return card
+		if contentLimit != "" {
+			return nil
+		}
+		return &card
 	}
-	briefs, err := wiki.GalgameBatch(ctx, []int{p.ID})
-	if err != nil || len(briefs) == 0 {
+	briefs, err := wiki.GalgameBatch(ctx, []int{p.ID}, contentLimit)
+	if err != nil {
 		slog.Warn("Wiki 富化失败", "galgame_id", p.ID, "error", err)
-		return card
+		if contentLimit != "" {
+			return nil
+		}
+		return &card
+	}
+	if len(briefs) == 0 {
+		// Either filtered out or genuinely not visible to the caller.
+		return nil
 	}
 	applyGalgame(&card, &briefs[0])
-	return card
+	return &card
 }
 
 // PatchDetailTag is the lightweight tag shape surfaced to the patch detail page.
@@ -260,11 +321,15 @@ type PatchDetailCard struct {
 }
 
 // EnrichPatchDetail enriches the detail page: one extra /galgame/:gid call on top of EnrichPatch to get intro/associated IDs.
-func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch) PatchDetailCard {
-	base := PatchDetailCard{}
+//
+// Returns nil when contentLimit filters this patch out (wiki returns 404 for
+// the row at this content_limit) — caller should translate that to its own
+// 404. contentLimit semantics match EnrichPatch.
+func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, p *patchModel.Patch, contentLimit string) *PatchDetailCard {
 	if p == nil {
-		return base
+		return nil
 	}
+	base := &PatchDetailCard{}
 	base.GalgameCard = baseCard(p)
 	base.Updated = p.Updated
 
@@ -281,11 +346,21 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	}
 
 	if wiki == nil || p.ID <= 0 {
+		if contentLimit != "" {
+			return nil
+		}
 		return base
 	}
-	env, err := wiki.GetGalgame(ctx, p.ID)
+	env, err := wiki.GetGalgame(ctx, p.ID, contentLimit)
 	if err != nil {
+		// Wiki returns 404 for both "no such id" and "filtered out by
+		// content_limit" (per docs/galgame_wiki/01-galgame.md GET /galgame/:gid).
+		// In filter mode we hard-fail to nil — the caller can't disambiguate
+		// transient from filter, and either way the safe move is "don't render".
 		slog.Warn("Wiki 详情富化失败", "galgame_id", p.ID, "error", err)
+		if contentLimit != "" {
+			return nil
+		}
 		return base
 	}
 

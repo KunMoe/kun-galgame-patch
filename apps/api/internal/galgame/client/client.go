@@ -351,9 +351,20 @@ type GalgameDetailEnvelope struct {
 }
 
 // GetGalgame calls /galgame/:gid; used to enrich detail pages.
-func (c *Client) GetGalgame(ctx context.Context, gid int) (*GalgameDetailEnvelope, error) {
+//
+// contentLimit is the NSFW filter — pass "sfw" / "nsfw" / "all" to apply,
+// or "" to omit the param (wiki endpoint default for single is "no filter",
+// see docs/galgame_wiki/01-galgame.md GET /galgame/:gid + 00-handbook §16).
+// When the row exists but doesn't match the filter, wiki returns 404 (same
+// shape as a missing ID) — caller treats both as not-found.
+func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (*GalgameDetailEnvelope, error) {
+	var q url.Values
+	if contentLimit != "" {
+		q = url.Values{}
+		q.Set("content_limit", contentLimit)
+	}
 	var out GalgameDetailEnvelope
-	if err := c.get(ctx, fmt.Sprintf("/galgame/%d", gid), nil, &out); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/galgame/%d", gid), q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -376,12 +387,24 @@ func (c *Client) CheckGalgameByVndbID(ctx context.Context, vndbID string) (exist
 }
 
 // GalgameBatch calls /galgame/batch?ids=1,2,3 to fetch lightweight galgame info in bulk.
-func (c *Client) GalgameBatch(ctx context.Context, ids []int) ([]GalgameBrief, error) {
+//
+// contentLimit is the NSFW filter — pass "sfw" / "nsfw" / "all" to apply,
+// or "" to omit the param (wiki endpoint default for batch is "no filter",
+// see docs/galgame_wiki/01-galgame.md GET /galgame/batch + 00-handbook §16).
+// IMPORTANT: batch is intentionally permissive by default per wiki spec — the
+// caller (typically holding patch.galgame_id, favorites, etc.) gets back every
+// requested ID. When the moyu side wants list-style SFW filtering it MUST
+// explicitly pass "sfw"; the returned slice will then be shorter than ids and
+// the caller must reconcile (drop the filtered-out rows from its list).
+func (c *Client) GalgameBatch(ctx context.Context, ids []int, contentLimit string) ([]GalgameBrief, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	q := url.Values{}
 	q.Set("ids", joinInts(ids))
+	if contentLimit != "" {
+		q.Set("content_limit", contentLimit)
+	}
 
 	var out []GalgameBrief
 	if err := c.get(ctx, "/galgame/batch", q, &out); err != nil {

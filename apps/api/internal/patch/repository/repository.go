@@ -134,6 +134,19 @@ func (r *PatchRepository) GetRandomPatchID() (int, error) {
 	return id, err
 }
 
+// GetRandomPatchIDs returns up to n random patch ids. Used by the random-patch
+// endpoint so the service layer can ask wiki to filter the candidate set by
+// content_limit before picking one — a single RANDOM() pick has no way to
+// "retry" if it lands on a NSFW row under a sfw caller.
+func (r *PatchRepository) GetRandomPatchIDs(n int) ([]int, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	var ids []int
+	err := r.db.Model(&model.Patch{}).Select("id").Order("RANDOM()").Limit(n).Scan(&ids).Error
+	return ids, err
+}
+
 // NOTE: ReplaceAliases is deprecated per D12 (2026-04-21). Aliases are owned by Wiki /galgame/:gid/aliases.
 
 // ===== Comments =====

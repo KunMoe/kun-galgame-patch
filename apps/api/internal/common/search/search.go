@@ -8,7 +8,6 @@
 package search
 
 import (
-	"encoding/json"
 	"log/slog"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -63,8 +62,13 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	// NSFW filter: align with common/handler.go rules
-	contentLimit := getNSFWFilter(c)
+	// NSFW filter via wiki content_limit protocol — read from URL query, not
+	// from a custom header. The legacy X-NSFW-Header path was wrong per
+	// docs/galgame_wiki/00-handbook §16.6: wiki spec explicitly forbids
+	// custom headers / JSON-as-header for the NSFW gate. Frontend now appends
+	// ?content_limit=all when the user has opted in to NSFW; missing /
+	// unrecognised falls back to "sfw".
+	contentLimit := utils.ContentLimitForListBrowse(c)
 
 	// Call Wiki search
 	params := galgameClient.SearchGalgameParams{
@@ -129,15 +133,3 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return response.Paginated(c, hits, wikiResult.Total)
 }
 
-// getNSFWFilter aligns with the parsing in common/handler.go.
-func getNSFWFilter(c *fiber.Ctx) string {
-	nsfw := c.Get("x-nsfw-header", "{}")
-	var opt struct {
-		ShowNSFW bool `json:"show_nsfw"`
-	}
-	_ = json.Unmarshal([]byte(nsfw), &opt)
-	if !opt.ShowNSFW {
-		return "sfw"
-	}
-	return ""
-}

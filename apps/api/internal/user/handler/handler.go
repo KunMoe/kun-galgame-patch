@@ -7,6 +7,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
 	"kun-galgame-patch-api/internal/user/service"
 	"kun-galgame-patch-api/pkg/errors"
@@ -105,7 +106,7 @@ func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // GetUserResources GET /api/user/:id/resource
@@ -130,6 +131,10 @@ func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	// NSFW filter: each resource carries the owning patch summary via the
+	// service's attachPatchSummaries — drop rows whose owning patch wiki
+	// excludes under content_limit before they reach the response.
+	data = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, data, func(r patchModel.PatchResource) int { return r.GalgameID }, utils.ContentLimitForListBrowse(c))
 	return response.Paginated(c, data, total)
 }
 
@@ -155,7 +160,7 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // GetUserComments GET /api/user/:id/comment
@@ -180,6 +185,7 @@ func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	data = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, data, func(m patchModel.PatchComment) int { return m.GalgameID }, utils.ContentLimitForListBrowse(c))
 	return response.Paginated(c, data, total)
 }
 
@@ -205,7 +211,7 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // Profile mutations (username / bio / password / email / avatar) live on

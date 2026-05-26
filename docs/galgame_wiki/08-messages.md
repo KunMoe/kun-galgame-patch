@@ -82,7 +82,7 @@ WHERE `target_user_id = JWT.uid AND id > since_id`，按 id 倒序。
 
 ### GET /galgame/messages/feed
 
-服务到服务批量拉。**认证**：OAuth Client Basic Auth（同 [/users/batch](../oauth/api-reference.md#get-usersbatch)）。
+服务到服务批量拉。**认证**：OAuth Client Basic Auth（同 [/users/batch](../oauth/03-cross-service.md#get-usersbatch)）。
 
 WHERE `target_user_id IS NOT NULL AND id > since_id`，按 id **正序**（保证 cron 单调推进）。
 

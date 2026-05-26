@@ -90,10 +90,15 @@ type homeResponse struct {
 
 // GetHome GET /api/home
 //
-// D12: NSFW filtering has moved to Wiki (via /api/search). This endpoint only
-// shows "recent patches on this service"; the enriched galgame objects carry
-// a content_limit field for the frontend to filter on the client.
+// Returns "recent activity on this service" (latest 12 patches + 6 resources
+// + 6 comments). NSFW filtering follows the wiki content_limit protocol
+// (docs/galgame_wiki/00-handbook §16): the `content_limit` query parameter
+// is forwarded to wiki via the enricher; missing / invalid query falls back
+// to "sfw" — the home page is the single biggest SEO surface and must be
+// safe-by-default for anonymous crawlers.
 func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+
 	var patches []patchModel.Patch
 	var resources []patchModel.PatchResource
 	var comments []patchModel.PatchComment
@@ -101,6 +106,13 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12).Find(&patches)
 	h.db.Model(&patchModel.PatchResource{}).Order("created DESC, id DESC").Limit(6).Find(&resources)
 	h.db.Model(&patchModel.PatchComment{}).Order("created DESC, id DESC").Limit(6).Find(&comments)
+
+	// NSFW filter for the secondary slices BEFORE we render/attach anything —
+	// no point rendering a resource note whose owning patch is about to be
+	// hidden, and the attach step would otherwise leak the NSFW patch's name
+	// into the response payload via comment.Patch / resource.Patch summaries.
+	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
+	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
 
 	patchModel.RenderResourceNotes(resources)
 	for i := range comments {
@@ -111,7 +123,7 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	h.attachPatchSummaries(c, comments, resources)
 
 	return response.OK(c, homeResponse{
-		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches),
+		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl),
 		Resources: resources,
 		Comments:  comments,
 	})
@@ -129,14 +141,19 @@ type galgameListRequest struct {
 
 // GetGalgameList GET /api/galgame
 //
-// D12: Filtering by release date/NSFW has moved to Wiki (via /api/search). This
-// endpoint only filters by patch-local fields (translation type) and sorts,
-// then enriches the result via Wiki before returning.
+// Local-side filters: translation type + sort. NSFW filter follows the wiki
+// content_limit protocol (docs/galgame_wiki/00-handbook §16): forwarded to
+// wiki during enrichment, default "sfw" when unspecified (safe-by-default
+// for anonymous browse). The reported `total` is the pre-filter local row
+// count — filtering happens after the page slice is drawn, so the trailing
+// pages can return a short slice when many rows in that range are NSFW.
+// Callers should not rely on `total == sum(len(galgames))`.
 func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	var req galgameListRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	cl := utils.ContentLimitForListBrowse(c)
 
 	// Independent statements for Count vs Find — see gorm v2 reuse footgun
 	// documented in message/repository.go GetMessages.
@@ -157,7 +174,7 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, map[string]any{
-		"galgames": enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches),
+		"galgames": enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl),
 		"total":    total,
 	})
 }
@@ -177,6 +194,7 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	cl := utils.ContentLimitForListBrowse(c)
 
 	var comments []patchModel.PatchComment
 	var total int64
@@ -191,6 +209,11 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+
+	// Drop comments whose owning patch is NSFW (under the caller's
+	// content_limit). attachPatchSummaries would otherwise leak the NSFW
+	// patch's name/banner via the comment.Patch summary field.
+	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
 
 	for i := range comments {
 		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
@@ -249,12 +272,17 @@ type resourceListRequest struct {
 
 // GetGlobalResources GET /api/resource
 //
-// D12: patch.content_limit has been removed; NSFW filtering is provided by Wiki. This endpoint no longer does local NSFW filtering.
+// NSFW filter follows the wiki content_limit protocol (default sfw). Filtered
+// AFTER the page slice is drawn: `total` is the unfiltered local count, so a
+// page can return fewer rows than the limit when many in that range belong to
+// NSFW patches. Acceptable trade-off — alternative would be a per-page wiki
+// pre-pass that doesn't scale.
 func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	var req resourceListRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	cl := utils.ContentLimitForListBrowse(c)
 
 	var resources []patchModel.PatchResource
 	var total int64
@@ -274,6 +302,7 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
+	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 	patchModel.RenderResourceNotes(resources)
 	h.attachResourceUsers(c.Context(), resources)
 	h.attachPatchSummaries(c, nil, resources)
@@ -285,7 +314,14 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 // Returns the resource with its owning patch enriched via Wiki, plus up to 5
 // recommended resources from the same patch. The frontend renders the patch
 // header (name / banner / vndb_id) from the `patch` field.
+//
+// NSFW: forwards content_limit to wiki for the owning patch (default sfw).
+// If the owning patch is filtered out → 404, so a NSFW resource never leaks
+// out via this detail surface. Recommendations are filtered the same way:
+// any rec whose galgame_id wiki doesn't return is dropped.
 func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+
 	resourceID := c.Params("id")
 	var resource patchModel.PatchResource
 	if dbErr := h.db.First(&resource, resourceID).Error; dbErr != nil {
@@ -297,8 +333,14 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	var patch patchModel.Patch
 	var patchCard *enricher.GalgameCard
 	if err := h.db.First(&patch, resource.GalgameID).Error; err == nil {
-		card := enricher.EnrichPatch(c.Context(), h.wiki, h.users, &patch)
-		patchCard = &card
+		patchCard = enricher.EnrichPatch(c.Context(), h.wiki, h.users, &patch, cl)
+	}
+	if patchCard == nil {
+		// Owning patch is missing / filtered (NSFW under a sfw caller). Don't
+		// surface the resource on its own — it would mean "here's a NSFW
+		// patch's resource link minus the cover image", which is still data
+		// exfiltration. 404 mirrors what wiki itself does for a filtered :gid.
+		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
 
 	// Recommendations — mirrors next-web /resource/detail:
@@ -335,6 +377,11 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 			recs = append(recs, extras[:need]...)
 		}
 	}
+
+	// NSFW-filter the recommendations: the cross-patch top-up bucket can
+	// include NSFW games unrelated to the resource's own patch. Same-patch
+	// recs share resource.GalgameID which already passed the patchCard check.
+	recs = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, recs, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 	patchModel.RenderResourceNotes(recs)
@@ -389,6 +436,11 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 // ===== Hikari External API =====
 
 // GetHikari GET /api/hikari
+//
+// NSFW: same gate as the detail endpoints — content_limit query (default
+// sfw) is forwarded to wiki; a NSFW patch returns 404 to anonymous callers
+// so this endpoint can't be used as a vndb_id-based bypass for the SEO
+// filter on /api/patch/:id.
 func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
@@ -398,6 +450,16 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	var patch patchModel.Patch
 	if err := h.db.Where("vndb_id = ?", vndbID).First(&patch).Error; err != nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
+	}
+
+	// Verify the patch passes the caller's content_limit before exposing
+	// either it or its resources. Same shape as common detail endpoints:
+	// a wiki miss (filtered or not-visible) collapses to 404.
+	if cl := utils.ContentLimitForListBrowse(c); cl != "" {
+		briefs, bErr := h.wiki.GalgameBatch(c.Context(), []int{patch.ID}, cl)
+		if bErr != nil || len(briefs) == 0 {
+			return response.Error(c, errors.ErrNotFound("patch not found"))
+		}
 	}
 
 	// Get resources but strip S3 download content
@@ -513,8 +575,11 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 //
 // Top 60 patches sorted by view / download / favorite. Results are passed
 // through the enricher so each row carries the same shape the frontend uses
-// elsewhere on the site.
+// elsewhere on the site. NSFW filter follows the wiki content_limit protocol
+// (default sfw for SEO safety); the returned slice may have fewer than 60
+// rows when NSFW games dominate the top of the ranking.
 func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
 	sortBy := c.Query("sort_by", c.Query("sortBy", "view"))
 
 	column := "view"
@@ -534,7 +599,7 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches))
+	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl))
 }
 
 // GetMoyuHasPatch GET /api/moyu/patch/has-patch
