@@ -58,14 +58,15 @@ const tree = computed(() =>
     <section class="space-y-6">
       <AboutHeader />
 
-      <!-- Skip the 3-col tier entirely: 1 → 2 → 4. The previous
-           md:grid-cols-3 produced cramped cards at common laptop widths;
-           this matches the next-web masonry intent (4-up at desktop). -->
-      <div
-        class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        <AboutCard v-for="post in posts" :key="post.slug" :post="post" />
-      </div>
+      <!-- Masonry — col-min-width 256 + gap 24 mirrors the legacy
+           Next.js KunMasonryGrid so card layout is visually identical to
+           the original (1 col mobile → 4 col wide desktop, balanced fill).
+           Each card goes into the shortest column at distribution time. -->
+      <KunMasonry :items="posts" :col-min-width="256" :gap="24">
+        <template #default="{ item }">
+          <AboutCard :post="item" />
+        </template>
+      </KunMasonry>
 
       <KunNull v-if="!posts.length" description="暂无文章" />
     </section>
