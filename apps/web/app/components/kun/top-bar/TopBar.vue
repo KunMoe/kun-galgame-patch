@@ -78,10 +78,10 @@ watch(
         </NuxtLink>
       </div>
 
-      <div class="ml-auto flex items-center gap-2">
-        <KunTopBarNSFWSwitcher />
-        <KunTopBarUser />
-      </div>
+      <!-- KunTopBarUser already groups NSFW switcher + search + random +
+           theme + bell + avatar (see User.vue). Don't add NSFWSwitcher here
+           in parallel — that would render two copies on desktop. -->
+      <KunTopBarUser />
     </div>
 
     <KunTopBarMobileMenu v-model:is-open="isMenuOpen" />
