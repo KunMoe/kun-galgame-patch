@@ -143,10 +143,36 @@ const toggleFavorite = async () => {
 const recName = (r: PatchResource) =>
   r.name || (r.patch ? getPreferredLanguageText(r.patch.name) : '补丁资源')
 
-useKunSeoMeta({
-  title: composedTitle.value,
-  description: resource.value?.name ?? ''
-})
+// SEO contract (same shape as patch/[id].vue):
+//   - loaded + sfw owning patch → full SEO (composed title carries
+//     game+platform+language+model+type for long-tail keywords; banner as
+//     og image; description from note_html stripped to plain text)
+//   - loaded + nsfw owning patch → disable (resource page exposes patch
+//     name + note → must not index)
+//   - null / not-found → disable
+//
+// detail.patch.content_limit is wiki-sourced via the resource detail enricher
+// (see common/handler.go GetResourceDetail → enricher.EnrichPatch which calls
+// applyGalgame). content_limit was D12-moved off the local patch row, but
+// the enricher restamps it on GalgameCard so this field IS current.
+const noteText = computed(() =>
+  noteHtml.value ? noteHtml.value.replace(/<[^>]+>/g, '').slice(0, 140) : ''
+)
+if (
+  detail.value &&
+  resource.value &&
+  detail.value.patch &&
+  detail.value.patch.content_limit === 'sfw'
+) {
+  useKunSeoMeta({
+    title: composedTitle.value,
+    description: noteText.value || `${patchName.value} 的补丁资源下载`,
+    ogType: 'article',
+    ogImage: bannerSrc.value || undefined
+  })
+} else {
+  useKunDisableSeo(composedTitle.value || '补丁资源')
+}
 </script>
 
 <template>

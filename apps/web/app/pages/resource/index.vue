@@ -3,9 +3,13 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
+// SFW-only listing for anonymous crawlers (resources whose owning patch is
+// NSFW are filtered out by enricher.FilterByGalgameContentLimit on the
+// /api/resource endpoint).
 useKunSeoMeta({
-  title: '资源下载',
-  description: '浏览 鲲 Galgame 补丁 的最新补丁资源'
+  title: '最新补丁资源',
+  description:
+    '鲲 Galgame 补丁站的全站最新补丁资源列表，覆盖 Windows / 安卓 / KRKR / Tyranor 平台的中文汉化、官方中文、AI 翻译等 Galgame 补丁资源，免费下载。'
 })
 
 const page = ref(Number(route.query.page ?? 1))

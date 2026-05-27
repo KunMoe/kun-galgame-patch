@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({ title: '评论管理' })
+useKunDisableSeo('评论管理')
 
 const api = useApi()
 const page = ref(1)

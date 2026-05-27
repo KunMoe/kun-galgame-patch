@@ -53,10 +53,32 @@ const displayName = computed(() =>
   patch.value ? getPreferredLanguageText(patch.value.name) : ''
 )
 
-useKunSeoMeta({
-  title: displayName.value || `补丁 ${galgameId.value}`,
-  description: displayName.value ? `${displayName.value} 的补丁下载` : ''
-})
+// SEO contract for this route:
+//   - patch loaded + sfw     → full SEO (title / desc / og image with banner)
+//   - patch loaded + nsfw    → disable SEO. The patch *is* visible to the
+//     viewer (they got here because they're logged-in / acked / opted-in),
+//     but we must not let search engines index a NSFW page.
+//   - patch null + NSFW gate → disable SEO (the confirm placeholder is
+//     intentionally generic; an indexable title would itself be a NSFW
+//     signal: "X 不存在" vs "X 含 NSFW 内容确认页" are distinguishable).
+//   - patch null + truly missing → disable SEO (404 stub shouldn't index).
+//
+// patch.banner survived the D12 metadata move because the enricher writes
+// the wiki galgame.banner verbatim onto GalgameCard — see
+// apps/api/internal/galgame/enricher/enricher.go applyGalgame.
+if (patch.value && patch.value.content_limit === 'sfw') {
+  const cover = resolveBannerUrl(patch.value) || undefined
+  useKunSeoMeta({
+    title: displayName.value || `补丁 ${galgameId.value}`,
+    description: displayName.value
+      ? `${displayName.value} 的中文补丁、汉化补丁、AI 翻译补丁等资源下载`
+      : '',
+    ogType: 'article',
+    ogImage: cover
+  })
+} else {
+  useKunDisableSeo(displayName.value || `补丁 ${galgameId.value}`)
+}
 
 onMounted(async () => {
   await api.put(`/patch/${galgameId.value}/view`).catch(() => {})

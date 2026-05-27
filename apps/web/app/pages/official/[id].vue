@@ -43,12 +43,17 @@ const galgames = computed<GalgameCard[]>(
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
-useKunSeoMeta({
-  title: official.value ? `会社 · ${official.value.name}` : '会社详情',
-  description: official.value
-    ? `${official.value.name}（${official.value.galgame_count ?? '0'} 个 Galgame）`
-    : ''
-})
+// Same gate shape as tag/[id].vue — wiki /official/:name end has sfw
+// default by §16.2 protocol, so the loaded path is SEO-safe; null path
+// disables to avoid indexing a missing-entity stub.
+if (official.value) {
+  useKunSeoMeta({
+    title: `会社 · ${official.value.name}`,
+    description: `${official.value.name}（${official.value.galgame_count ?? '0'} 个 Galgame）的汉化补丁、中文补丁资源下载合集`
+  })
+} else {
+  useKunDisableSeo('会社详情')
+}
 
 watch(official, () => refresh(), { flush: 'post' })
 </script>

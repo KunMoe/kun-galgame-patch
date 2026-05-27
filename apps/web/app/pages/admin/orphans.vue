@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({ title: '孤儿补丁 - 管理面板' })
+useKunDisableSeo('孤儿补丁 - 管理面板')
 
 const api = useApi()
 const page = ref(1)

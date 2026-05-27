@@ -5,10 +5,7 @@
 // declined draft re-enters the review queue on save). See
 // docs/galgame_wiki/07-submission.md §PATCH /galgame/:gid.
 
-useKunSeoMeta({
-  title: '编辑草稿',
-  description: '修改您提交到 Galgame Wiki 但尚未通过审核的作品'
-})
+useKunDisableSeo('编辑草稿')
 
 const route = useRoute()
 const userStore = useUserStore()

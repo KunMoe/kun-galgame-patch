@@ -1,8 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({
-  title: '系统消息',
-  description: '查看系统消息'
-})
+useKunDisableSeo('系统消息')
 
 interface ListResponse {
   items: Message[]

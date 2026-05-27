@@ -42,9 +42,16 @@ if (!detail.value) {
   })
 }
 
+// detail nullness is already handled by the createError(404) above — if we
+// reach here we have frontmatter. About posts are project-authored mdx
+// content (intro / changelog / FAQ / feedback) — fully SEO-safe.
 useKunSeoMeta({
   title: detail.value.frontmatter.title,
-  description: detail.value.frontmatter.description
+  description:
+    detail.value.frontmatter.description ||
+    `${detail.value.frontmatter.title} - 鲲 Galgame 补丁站`,
+  ogType: 'article',
+  ogImage: (detail.value.frontmatter as { banner?: string }).banner || undefined
 })
 
 // Sidebar uses the tree fetched by /about/posts. Cached under the same key so

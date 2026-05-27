@@ -53,12 +53,19 @@ const galgames = computed<GalgameCard[]>(
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
-useKunSeoMeta({
-  title: tag.value ? `标签 · ${tag.value.name}` : '标签详情',
-  description: tag.value
-    ? `${tag.value.name}（${tag.value.galgame_count ?? '0'} 个 Galgame）`
-    : ''
-})
+// Wiki end already applies sfw default at /tag/:name (see
+// docs/galgame_wiki/00-handbook §16.2), so by construction the tag
+// detail's galgame list never leaks NSFW entries to the SSR HTML. SEO is
+// safe to enable on the loaded path. Disable when tag is missing /
+// wiki call failed (avoid indexing a 404 stub).
+if (tag.value) {
+  useKunSeoMeta({
+    title: `标签 · ${tag.value.name}`,
+    description: `${tag.value.name}（${tag.value.galgame_count ?? '0'} 个 Galgame）汉化补丁、中文补丁资源下载合集`
+  })
+} else {
+  useKunDisableSeo('标签详情')
+}
 
 watch(tag, () => refresh(), { flush: 'post' })
 </script>

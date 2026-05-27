@@ -9,7 +9,7 @@ import DOMPurify from 'isomorphic-dompurify'
 // context menu, reply (banner + quote + jump), edit modal, delete tombstone,
 // emoji reactions, emoji/sticker picker.
 
-useKunSeoMeta({ title: '聊天', description: '聊天会话' })
+useKunDisableSeo('聊天')
 
 const route = useRoute()
 const api = useApi()

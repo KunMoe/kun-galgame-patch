@@ -4,7 +4,8 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 
 useKunSeoMeta({
   title: '友情链接',
-  description: '鲲 Galgame 补丁的友情链接, 您可以点击以访问这些网站'
+  description:
+    '鲲 Galgame 补丁站的友情链接，汇集 Galgame 资讯、汉化补丁、轻小说翻译、二次元社区等同好站点。'
 })
 </script>
 

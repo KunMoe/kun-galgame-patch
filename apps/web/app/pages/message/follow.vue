@@ -1,8 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({
-  title: '关注消息',
-  description: '查看关注相关的消息'
-})
+useKunDisableSeo('关注消息')
 
 interface ListResponse {
   items: Message[]

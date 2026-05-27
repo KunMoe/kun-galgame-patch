@@ -12,10 +12,7 @@
 // follow presence semantics — prefilled with the current full set, only
 // resent when changed (see buildPayload).
 
-useKunSeoMeta({
-  title: '编辑 Galgame',
-  description: '编辑 Galgame 元数据'
-})
+useKunDisableSeo('编辑 Galgame')
 
 const route = useRoute()
 const userStore = useUserStore()

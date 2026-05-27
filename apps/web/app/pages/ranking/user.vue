@@ -9,7 +9,8 @@ const sortBy = ref(
 
 useKunSeoMeta({
   title: '用户排行榜',
-  description: '鲲 Galgame 补丁用户排行榜'
+  description:
+    '鲲 Galgame 补丁站用户排行榜，按萌萌点、发布的 Galgame / 补丁资源数量、评论数排名，了解社区最活跃的汉化补丁贡献者。'
 })
 
 const { data, pending, refresh } = await useAsyncData<RankingUser[]>(

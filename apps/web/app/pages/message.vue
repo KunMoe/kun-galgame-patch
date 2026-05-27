@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// Message center shell + every nested message/* page disables SEO —
+// these surfaces are per-user inboxes, no public content.
+useKunDisableSeo('消息中心')
+
 const route = useRoute()
 
 const navItems = [

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 useKunSeoMeta({
   title: '关于我们',
-  description: '鲲 Galgame 补丁的关于页面、公告与帮助文档'
+  description:
+    '鲲 Galgame 补丁站的项目介绍、团队成员、公告、更新日志、用户协议、使用帮助、隐私政策、反馈与联系方式。'
 })
 
 // /about/posts returns both the flat list (rendered as cards on this page) and

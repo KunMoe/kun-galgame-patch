@@ -17,10 +17,9 @@ import type {
 } from '~/composables/useGalgameEdit'
 import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 
-useKunSeoMeta({
-  title: 'Galgame 分类管理',
-  description: '管理 Galgame Wiki 的标签 / 开发商 / 引擎 / 系列'
-})
+// Admin/editor-only write surface (wiki §15.1: PUT/DELETE require
+// role > 1). No public content — disable SEO.
+useKunDisableSeo('Galgame 分类管理')
 
 const route = useRoute()
 const userStore = useUserStore()

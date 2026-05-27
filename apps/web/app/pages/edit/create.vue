@@ -11,10 +11,9 @@
 // the Bearer token + include_pending=true so the wiki surfaces both public
 // items and the caller's own pending entries.
 
-useKunSeoMeta({
-  title: '发布 Galgame',
-  description: '搜索现有条目或提交新的 Galgame 元数据'
-})
+// Write-side page (publish wizard). Not a content surface — disable SEO
+// so search engines don't index our edit forms.
+useKunDisableSeo('发布 Galgame')
 
 const api = useApi()
 const userStore = useUserStore()

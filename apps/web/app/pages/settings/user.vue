@@ -19,10 +19,10 @@
 import { MESSAGE_TYPE, MESSAGE_TYPE_MAP } from '~/constants/message'
 import type { UserState } from '~/stores/userStore'
 
-useKunSeoMeta({
-  title: '账户设置',
-  description: '管理您的账户'
-})
+// Personal settings — owner-only by design (the page only renders for
+// the logged-in user's own profile), so no SEO value and indexing would
+// be a privacy risk.
+useKunDisableSeo('账户设置')
 
 const userStore = useUserStore()
 const api = useApi()

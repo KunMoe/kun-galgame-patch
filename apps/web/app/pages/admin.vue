@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ADMIN_MENU } from '~/constants/admin'
 
-useKunSeoMeta({
-  title: '管理面板',
-  description: '鲲 Galgame 补丁 管理后台'
-})
+// Admin shell + every nested admin/* page disables SEO — backend route
+// is moderator-gated, and indexing internal counts / audit logs would
+// be both useless and a data leak.
+useKunDisableSeo('管理面板')
 
 const route = useRoute()
 // Writable computed for KunTab v-model — `set` is a no-op; KunTab.href

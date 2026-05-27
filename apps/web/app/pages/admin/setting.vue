@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({ title: '网站设置' })
+useKunDisableSeo('网站设置')
 
 const api = useApi()
 

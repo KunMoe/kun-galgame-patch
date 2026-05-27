@@ -3,9 +3,13 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
+// SFW-only listing for anonymous crawlers (comments whose owning patch is
+// NSFW are filtered out by enricher.FilterByGalgameContentLimit on the
+// /api/comment endpoint). Safe to give a descriptive SEO blurb.
 useKunSeoMeta({
-  title: '评论',
-  description: '浏览 鲲 Galgame 补丁 的最新评论'
+  title: '最新评论',
+  description:
+    '鲲 Galgame 补丁站的全站最新评论流，看其他玩家对各款 Galgame 中文汉化补丁的安装体验、剧情讨论和评分反馈。'
 })
 
 const page = ref(Number(route.query.page ?? 1))

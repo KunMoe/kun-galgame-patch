@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ADMIN_STATS_SUM_MAP, ADMIN_STATS_MAP } from '~/constants/admin'
 
+// Stats dashboard — internal numbers; never index.
+useKunDisableSeo('管理面板首页')
+
 const api = useApi()
 
 const emptySum: SumData = {

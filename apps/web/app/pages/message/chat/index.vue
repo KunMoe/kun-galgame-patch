@@ -1,8 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({
-  title: '私聊',
-  description: '您的私聊与群聊列表'
-})
+useKunDisableSeo('私聊')
 
 const api = useApi()
 

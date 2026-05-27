@@ -13,9 +13,12 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
+// SFW-by-default per useApi resolution — listing only contains sfw rows
+// for anonymous crawlers, so a rich keyword-laden description is safe.
 useKunSeoMeta({
   title: 'Galgame 列表',
-  description: '浏览鲲 Galgame 补丁的 Galgame 列表'
+  description:
+    '鲲 Galgame 补丁站收录的全部 Galgame 列表，按发布时间、资源更新时间、浏览量、下载量排序，支持按平台 / 语言 / 翻译类型筛选，免费下载 Windows / 安卓 / KRKR / Tyranor 等平台的 Galgame 中文汉化补丁。'
 })
 
 const page = ref(Number(route.query.page ?? 1))

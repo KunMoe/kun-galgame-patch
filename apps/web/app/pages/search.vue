@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 
-useKunSeoMeta({
-  title: '搜索',
-  description: '搜索 鲲 Galgame 补丁 的 Galgame'
-})
+// The /search endpoint is intentionally exempt from the global content_limit
+// gate (returns sfw + nsfw together — it's a user-initiated action), which
+// means a crawler hitting /search?q=<nsfw-term> WOULD see NSFW result names
+// in the SSR HTML. Disable SEO on this surface so:
+//   1. /search?q=... URLs don't get indexed at all (avoids polluting search
+//      results with our internal search pages)
+//   2. crawlers ignore the dynamic NSFW-bearing payload regardless of query
+useKunDisableSeo('搜索')
 
 const route = useRoute()
 const router = useRouter()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ADMIN_LOG_TYPE_MAP } from '~/constants/admin'
 
-useKunSeoMeta({ title: '管理日志' })
+useKunDisableSeo('管理日志')
 
 const api = useApi()
 const page = ref(1)

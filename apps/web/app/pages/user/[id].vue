@@ -15,10 +15,25 @@ const { data: user, refresh } = await useAsyncData<UserInfo | null>(
   }
 )
 
-useKunSeoMeta({
-  title: user.value?.name ?? `用户 ${userId.value}`,
-  description: user.value?.bio ?? ''
-})
+// User profile pages are safe to index when the user exists (no NSFW
+// content on the user shell itself — the per-tab patch/resource listings
+// already pass through the same NSFW filter as elsewhere). Disable when
+// the user wasn't found so we don't index a 404 stub.
+//
+// avatar/bio are wiki-OAuth fields kept up to date by the user/handler
+// enricher (see internal/user/service/service.go GetUserInfo); name+bio
+// stays correct post-D12.
+if (user.value && user.value.name) {
+  useKunSeoMeta({
+    title: `${user.value.name} 的主页`,
+    description:
+      user.value.bio ||
+      `${user.value.name} 在鲲 Galgame 补丁站发布的补丁资源、Galgame 与评论`,
+    ogImage: user.value.avatar || undefined
+  })
+} else {
+  useKunDisableSeo(`用户 ${userId.value}`)
+}
 
 const isSelf = computed(
   () => user.value && user.value.id === userStore.user.id

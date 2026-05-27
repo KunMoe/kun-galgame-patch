@@ -1,8 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({
-  title: '新补丁通知',
-  description: '订阅的补丁新资源通知'
-})
+useKunDisableSeo('新补丁通知')
 
 interface ListResponse {
   items: Message[]

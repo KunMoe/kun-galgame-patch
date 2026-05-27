@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({ title: '补丁资源管理' })
+useKunDisableSeo('补丁资源管理')
 
 const api = useApi()
 const page = ref(1)

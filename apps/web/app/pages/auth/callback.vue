@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { UserState } from '~/stores/userStore'
 
-useKunSeoMeta({
-  title: 'OAuth 回调',
-  description: '正在完成 OAuth 登录'
-})
+// OAuth callback is a pure transit page (exchanges the code for a session
+// then redirects). Nothing to index — disable SEO so the URL doesn't show
+// up in search results, and the noindex/nofollow stop crawlers from
+// following the redirect chain.
+useKunDisableSeo('OAuth 回调')
 
 definePageMeta({
   ssr: false

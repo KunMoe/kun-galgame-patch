@@ -6,8 +6,9 @@ const api = useApi()
 const sortBy = ref(String(route.query.sort_by ?? route.query.sortBy ?? 'view'))
 
 useKunSeoMeta({
-  title: '补丁排行榜',
-  description: '鲲 Galgame 补丁排行榜'
+  title: 'Galgame 补丁排行榜',
+  description:
+    '鲲 Galgame 补丁站按浏览量 / 下载量 / 收藏数排序的 Galgame 补丁排行榜，发现当前最热门的中文汉化 Galgame 与最受欢迎的补丁资源。'
 })
 
 // /api/v1/ranking/patch returns enricher GalgameCard rows directly.

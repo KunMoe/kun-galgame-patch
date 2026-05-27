@@ -9,10 +9,10 @@ import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 //
 // See docs/galgame_wiki/07-submission.md §GET /galgame/mine.
 
-useKunSeoMeta({
-  title: '我的提交',
-  description: '查看您提交到 Galgame Wiki 的作品审核进度'
-})
+// Private listing of the caller's own wiki submissions (includes pending /
+// declined drafts). Nothing here that anyone but the owner should see, so
+// disable SEO.
+useKunDisableSeo('我的提交')
 
 const route = useRoute()
 const userStore = useUserStore()

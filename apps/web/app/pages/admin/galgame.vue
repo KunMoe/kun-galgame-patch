@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useDebounceFn } from '@vueuse/core'
 
-useKunSeoMeta({ title: 'Galgame 列表 - 管理面板' })
+useKunDisableSeo('Galgame 列表 - 管理面板')
 
 const api = useApi()
 const page = ref(1)

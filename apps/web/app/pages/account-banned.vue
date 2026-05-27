@@ -3,10 +3,10 @@
 // the frontend MUST NOT redirect banned users back to /login — re-logging in
 // hits the same 10014. They should see a static "联系管理员" message instead.
 
-useKunSeoMeta({
-  title: '账号已被封禁',
-  description: '账号已被封禁，无法登录'
-})
+// Error landing page — there's nothing here a search engine should index,
+// and surfacing "账号被封禁" snippets in search results would be a poor
+// look for the site.
+useKunDisableSeo('账号已被封禁')
 
 definePageMeta({
   ssr: false

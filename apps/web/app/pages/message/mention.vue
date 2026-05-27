@@ -1,8 +1,5 @@
 <script setup lang="ts">
-useKunSeoMeta({
-  title: '@ 消息',
-  description: '查看提到您的消息'
-})
+useKunDisableSeo('@ 消息')
 
 const api = useApi()
 const { data, pending } = await useAsyncData<Message[]>(
