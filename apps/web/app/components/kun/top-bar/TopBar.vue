@@ -35,9 +35,20 @@ watch(
       <KunTopBarBrand />
 
       <div class="hidden items-center gap-6 md:flex">
-        <KunTooltip position="bottom">
+        <!-- Hover-revealed nav menu for "下载补丁". KunTooltip is wrong
+             for this (its body is non-interactive by design — pointer
+             leaves trigger → body disappears immediately). KunHoverMenu
+             handles the trigger ↔ body handoff so the user can actually
+             move into the menu to click a category. -->
+        <KunHoverMenu
+          position="bottom"
+          :active="route.path === '/galgame'"
+          class-name="shrink-0 text-base"
+        >
+          <NuxtLink to="/galgame">下载补丁</NuxtLink>
+
           <template #content>
-            <nav class="space-y-1 p-2">
+            <nav class="min-w-44 space-y-1 p-2">
               <NuxtLink
                 v-for="it in kunTopBarCategories"
                 :key="it.href"
@@ -49,19 +60,7 @@ watch(
               </NuxtLink>
             </nav>
           </template>
-
-          <NuxtLink
-            to="/galgame"
-            :class="
-              cn(
-                'shrink-0 text-base',
-                route.path === '/galgame' ? 'text-primary' : 'text-foreground'
-              )
-            "
-          >
-            下载补丁
-          </NuxtLink>
-        </KunTooltip>
+        </KunHoverMenu>
 
         <NuxtLink
           v-for="item in kunNavItemDesktop"

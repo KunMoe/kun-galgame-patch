@@ -1,5 +1,11 @@
 <template>
   <div class="bg-radial relative flex min-h-screen flex-col items-center">
+    <!-- Global NSFW mode indicator. Sits above the (sticky) top bar so it
+         scrolls away naturally; doesn't compete with the nav for the top
+         edge while the user is browsing. Always rendered — danger colour
+         when SFW (content hidden), success colour when "show all" is on. -->
+    <KunTopBarNSFWBanner />
+
     <KunTopBar />
 
     <!-- Padding scheme mirrors the top bar: `px-3` sits on the OUTER full-

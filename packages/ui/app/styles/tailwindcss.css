@@ -25,6 +25,21 @@
 
 :root {
   --kun-global-opacity: 0.7;
+
+  /*
+   * Background blur strength for "glass" surfaces (KunCard / KunModal /
+   * sticky topbar etc.). Referenced as `backdrop-blur-[var(--kun-background-blur)]`
+   * in those components. Default 0 = no blur, matching kungal-legacy's
+   * Pinia default (`apps/web/app/store/modules/settings.ts`).
+   *
+   * Pre-fix: this var was referenced but never defined → `blur()` with
+   * an empty value invalidated backdrop-filter entirely, so KunCard's
+   * `isTransparent` prop appeared inert (blur-on vs blur-off were both
+   * blur-off). Defining it here gives the prop a real visual difference
+   * and lets downstream apps override (e.g. via Pinia `setProperty`) if
+   * they want a per-user adjustable glass-blur knob.
+   */
+  --kun-background-blur: 0px;
 }
 
 @theme {

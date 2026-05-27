@@ -6,7 +6,6 @@ import {
   offset,
   flip,
   shift,
-  arrow,
   type Placement,
 } from '@floating-ui/vue'
 import { kunRoundedClasses, useResolvedRounded } from '../ui/rounded'
@@ -17,8 +16,13 @@ interface Props {
   position?: 'top' | 'bottom' | 'left' | 'right'
   className?: string
   // Hover delay-in / delay-out (ms). delay-in prevents flicker on
-  // fast pointer travel; delay-out gives time to move into the tooltip
-  // body if interactive content is in the slot.
+  // fast pointer travel; delay-out is rarely useful for pure tooltip
+  // content (the body itself isn't interactive).
+  //
+  // Do NOT try to make Tooltip carry interactive content (a clickable
+  // dropdown menu, etc.) — there's a dedicated hover-menu component for
+  // that pattern. Tooltips have always-true semantics: trigger hover →
+  // info appears, pointer leaves trigger → info disappears.
   delayShow?: number
   delayHide?: number
   // Hide entirely below the sm breakpoint — tooltips on mobile are
@@ -42,7 +46,6 @@ const roundedClass = computed(() => kunRoundedClasses[rounded.value])
 
 const triggerRef = ref<HTMLElement | null>(null)
 const tooltipRef = ref<HTMLElement | null>(null)
-const arrowRef = ref<HTMLElement | null>(null)
 const isVisible = ref(false)
 
 let showTimer: ReturnType<typeof setTimeout> | null = null
@@ -50,42 +53,11 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 const placement = computed<Placement>(() => props.position)
 
-const { floatingStyles, middlewareData, placement: actualPlacement } = useFloating(
-  triggerRef,
-  tooltipRef,
-  {
-    placement,
-    open: isVisible,
-    whileElementsMounted: autoUpdate,
-    middleware: [
-      offset(8),
-      flip(),
-      shift({ padding: 8 }),
-      arrow({ element: arrowRef, padding: 4 }),
-    ],
-  }
-)
-
-// Arrow sits on the opposite side of the tooltip's placement axis.
-const arrowStyles = computed(() => {
-  const data = middlewareData.value.arrow
-  if (!data) return {}
-  const side = actualPlacement.value.split('-')[0] as
-    | 'top'
-    | 'bottom'
-    | 'left'
-    | 'right'
-  const staticSide = {
-    top: 'bottom',
-    bottom: 'top',
-    left: 'right',
-    right: 'left',
-  }[side]
-  return {
-    left: data.x != null ? `${data.x}px` : '',
-    top: data.y != null ? `${data.y}px` : '',
-    [staticSide]: '-4px',
-  }
+const { floatingStyles } = useFloating(triggerRef, tooltipRef, {
+  placement,
+  open: isVisible,
+  whileElementsMounted: autoUpdate,
+  middleware: [offset(8), flip(), shift({ padding: 8 })],
 })
 
 const clearTimers = () => {
@@ -124,8 +96,6 @@ const hide = () => {
     :class="cn('relative inline-block', className)"
     @mouseenter="show"
     @mouseleave="hide"
-    @focusin="show"
-    @focusout="hide"
   >
     <slot />
 
@@ -152,11 +122,6 @@ const hide = () => {
           :style="floatingStyles"
         >
           <slot name="content">{{ text }}</slot>
-          <div
-            ref="arrowRef"
-            class="bg-content1 border-default-200 absolute h-2 w-2 rotate-45 border-r border-b"
-            :style="arrowStyles"
-          />
         </div>
       </Transition>
     </Teleport>
