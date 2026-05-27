@@ -3,11 +3,7 @@ import {
   ALL_SUPPORTED_TYPE,
   SUPPORTED_TYPE_MAP
 } from '~/constants/resource'
-import {
-  GALGAME_SORT_FIELD_LABEL_MAP,
-  GALGAME_SORT_YEARS,
-  GALGAME_SORT_YEARS_MAP
-} from '~/constants/galgame'
+import { GALGAME_SORT_FIELD_LABEL_MAP } from '~/constants/galgame'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,9 +21,6 @@ const page = ref(Number(route.query.page ?? 1))
 const selectedType = ref(String(route.query.type ?? 'all'))
 const sortField = ref(String(route.query.sort_field ?? 'resource_update_time'))
 const sortOrder = ref(String(route.query.sort_order ?? 'desc'))
-// `year` is reserved for a future Wiki-side filter; the patch backend's
-// galgameListRequest currently only filters by translation type and sorts.
-const selectedYear = ref(String(route.query.year ?? 'all'))
 
 const limit = 24
 
@@ -40,7 +33,10 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
   'galgame-list',
   async () => {
     // Query params are snake_case to match apps/api/internal/common/handler.go
-    // galgameListRequest.
+    // galgameListRequest. Year filtering would live here too, but the backend
+    // (galgameListRequest) doesn't currently support it — wiki-side year
+    // filter is on the search endpoint only. If/when /api/galgame grows year
+    // support, add the same chip row pattern below.
     const params = new URLSearchParams({
       selected_type: selectedType.value,
       sort_field: sortField.value,
@@ -69,43 +65,33 @@ const sortFieldOptions = computed(() =>
   }))
 )
 
-const yearOptions = computed(() =>
-  GALGAME_SORT_YEARS.map((y) => ({
-    value: y,
-    label: GALGAME_SORT_YEARS_MAP[y] ?? y
-  }))
-)
-
 const updateQuery = async () => {
   await router.replace({
     query: {
       page: page.value,
       type: selectedType.value,
       sort_field: sortField.value,
-      sort_order: sortOrder.value,
-      year: selectedYear.value
+      sort_order: sortOrder.value
     }
   })
   await refresh()
 }
 
-const onChangeType = (v: string | number) => {
-  selectedType.value = String(v)
+const setType = (v: string) => {
+  if (selectedType.value === v) return
+  selectedType.value = v
   page.value = 1
   updateQuery()
 }
-const onChangeSortField = (v: string | number) => {
-  sortField.value = String(v)
+const setSortField = (v: string) => {
+  if (sortField.value === v) return
+  sortField.value = v
   page.value = 1
   updateQuery()
 }
-const onChangeYear = (v: string | number) => {
-  selectedYear.value = String(v)
-  page.value = 1
-  updateQuery()
-}
-const toggleSortOrder = () => {
-  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+const setSortOrder = (v: 'asc' | 'desc') => {
+  if (sortOrder.value === v) return
+  sortOrder.value = v
   page.value = 1
   updateQuery()
 }
@@ -125,44 +111,80 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
       description="本页面默认仅显示了 SFW (内容安全) 的补丁, 您可以在网站右上角切换显示全部补丁 (包括 NSFW, 也就是显示可能带有涩涩的补丁)"
     />
 
-    <KunCard :bordered="true">
-      <div
-        class="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
-      >
-        <KunSelect
-          label="类型筛选"
-          placeholder="选择类型"
-          :model-value="selectedType"
-          :options="typeOptions"
-          class-name="flex-1 min-w-48"
-          @update:model-value="onChangeType"
-        />
-        <KunSelect
-          label="发售年份"
-          placeholder="选择年份"
-          :model-value="selectedYear"
-          :options="yearOptions"
-          class-name="flex-1 min-w-48"
-          @update:model-value="onChangeYear"
-        />
-        <KunSelect
-          label="排序字段"
-          :model-value="sortField"
-          :options="sortFieldOptions"
-          class-name="flex-1 min-w-48"
-          @update:model-value="onChangeSortField"
-        />
-        <KunButton variant="flat" color="default" @click="toggleSortOrder">
-          <KunIcon
-            :name="
-              sortOrder === 'asc' ? 'lucide:arrow-up-az' : 'lucide:arrow-down-az'
-            "
-            class="size-4"
-          />
-          {{ sortOrder === 'asc' ? '升序' : '降序' }}
-        </KunButton>
+    <!-- Filter chip rows — modelled on kungal's GalgameCardNav. Each
+         dimension is one horizontally-scrollable row of buttons, active
+         option lit primary, inactive muted. Much faster than dropdown
+         selects (one click vs two), and visually matches kungal so a user
+         hopping between the two sites doesn't have to relearn the
+         filter language. overflow-x-auto + flex-nowrap handles cases
+         where translation-type options exceed the row width on mobile;
+         no extra KunScrollShadow component needed. -->
+    <div class="space-y-1.5">
+      <div class="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+        <button
+          v-for="opt in typeOptions"
+          :key="opt.value"
+          type="button"
+          :class="[
+            'shrink-0 cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors',
+            selectedType === opt.value
+              ? 'bg-primary/15 text-primary font-medium'
+              : 'text-default-600 hover:bg-default-100'
+          ]"
+          @click="setType(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
       </div>
-    </KunCard>
+
+      <div class="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+        <button
+          v-for="opt in sortFieldOptions"
+          :key="opt.value"
+          type="button"
+          :class="[
+            'shrink-0 cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors',
+            sortField === opt.value
+              ? 'bg-primary/15 text-primary font-medium'
+              : 'text-default-600 hover:bg-default-100'
+          ]"
+          @click="setSortField(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Sort direction = explicit pair (not toggle) so the user always
+           sees what the alternative would be. Matches kungal's icon pair. -->
+      <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-label="降序"
+          :class="[
+            'cursor-pointer rounded-md p-1 transition-colors',
+            sortOrder === 'desc'
+              ? 'bg-primary/15 text-primary'
+              : 'text-default-500 hover:bg-default-100'
+          ]"
+          @click="setSortOrder('desc')"
+        >
+          <KunIcon name="lucide:arrow-down" class="size-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="升序"
+          :class="[
+            'cursor-pointer rounded-md p-1 transition-colors',
+            sortOrder === 'asc'
+              ? 'bg-primary/15 text-primary'
+              : 'text-default-500 hover:bg-default-100'
+          ]"
+          @click="setSortOrder('asc')"
+        >
+          <KunIcon name="lucide:arrow-up" class="size-4" />
+        </button>
+      </div>
+    </div>
 
     <KunLoading v-if="pending" description="正在获取 Galgame 数据..." />
     <div
