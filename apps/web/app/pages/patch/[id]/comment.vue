@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
-
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
 
-// DOMPurify allows <a> by default but strips data-* attrs unless we whitelist
-// them. The mention renderer emits data-id so the frontend can wire up
-// click-to-profile behaviour later.
-const sanitize = (html: string) =>
-  DOMPurify.sanitize(html, { ADD_ATTR: ['data-id'] })
+// Comment / reply bodies render via <KunContent>, which handles sanitize +
+// spoiler + per-block inline-image lightbox internally. Each <KunContent>
+// in the v-for is its own component instance with its own lightbox, so
+// images are scoped to that comment and newly-posted / paginated comments
+// get clickable images for free (delegated click + live img scan).
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -149,7 +147,7 @@ const toggleLike = async (c: PatchPageComment) => {
                 {{ formatDate(c.created, { isPrecise: true, isShowYear: true }) }}
               </span>
             </div>
-            <div class="kun-prose text-sm" v-html="sanitize(c.content_html)" />
+            <KunContent :content="c.content_html" class-name="text-sm" />
             <KunButton
               :variant="c.is_liked ? 'flat' : 'light'"
               color="danger"
@@ -183,7 +181,7 @@ const toggleLike = async (c: PatchPageComment) => {
                     }}
                   </span>
                 </div>
-                <div class="kun-prose mt-1.5" v-html="sanitize(r.content_html)" />
+                <KunContent :content="r.content_html" class-name="mt-1.5" />
                 <KunButton
                   :variant="r.is_liked ? 'flat' : 'light'"
                   color="danger"

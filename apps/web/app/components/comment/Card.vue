@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
-
 interface Props {
   comment: PatchComment
 }
@@ -22,12 +20,6 @@ const patchName = computed(() =>
   props.comment.patch?.name
     ? getPreferredLanguageText(props.comment.patch.name)
     : `补丁 #${props.comment.galgame_id}`
-)
-
-const contentHtml = computed(() =>
-  DOMPurify.sanitize(props.comment.content_html || '', {
-    ADD_ATTR: ['data-id']
-  })
 )
 
 const target = computed(
@@ -73,7 +65,10 @@ const handleKeydown = async (event: KeyboardEvent) => {
             <span class="text-primary-500">{{ patchName }}</span>
           </span>
         </div>
-        <div class="kun-prose mt-1" v-html="contentHtml" />
+        <!-- KunContent: sanitize + spoiler + inline-image lightbox built in.
+             Its lightbox click stops propagation, so tapping an image opens
+             the viewer without triggering this card's handleCardClick. -->
+        <KunContent :content="props.comment.content_html || ''" class-name="mt-1" />
         <div class="mt-2 flex items-center gap-4">
           <div class="text-small text-default-500 flex items-center gap-1">
             <KunIcon name="lucide:thumbs-up" class="size-3.5" />

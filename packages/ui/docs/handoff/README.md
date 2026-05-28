@@ -30,6 +30,7 @@ pnpm -F your-app exec nuxt build   # 通过
 
 | 版本 | 性质 | 同步页 |
 |---|---|---|
+| v0.6.1 | 新增功能 + drift 收口 | [per-version/v0.6.1.md](./per-version/v0.6.1.md)（含删除本地 useKunLightbox 副本 + 手搓 prose → KunContent 迁移）|
 | v0.6.0 | 重大重构 + 2 个新组件 | 同步指令直接看 [changelog/v0.6.0.md §7](../changelog/v0.6.0.md#7-下游-handoff-简表) |
 | v0.5.2 | 新增 prop | [per-version/v0.5.2.md](./per-version/v0.5.2.md) |
 | v0.5.1 | 新增组件 KunDrawer | [per-version/v0.5.1.md](./per-version/v0.5.1.md) |

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DOMPurify from 'isomorphic-dompurify'
 import { useSpoilerContent } from '../../../composables/topic/useSpoilerContent'
+import { useContentLightbox } from '../../../composables/topic/useContentLightbox'
 import 'katex/dist/katex.min.css'
 
 withDefaults(
@@ -17,6 +18,14 @@ const articleRef = ref<HTMLElement | null>(null)
 
 useSpoilerContent(articleRef)
 
+// Inline-image lightbox. Delegated click on the prose container → opens
+// KunLightbox at the clicked image, cycling through this block's images.
+// Works for images added after mount (pagination / async render) because
+// the img set is scanned live on each click. Every <KunContent> gets this
+// for free — no per-consumer wiring.
+const { isLightboxOpen, images, currentImageIndex } =
+  useContentLightbox(articleRef)
+
 const sanitizeConfig = {
   ADD_TAGS: ['div', 'span', 'button'],
   ADD_ATTR: ['class', 'title', 'line']
@@ -30,11 +39,22 @@ const sanitizeConfig = {
       :class="cn('kun-prose', className)"
       v-html="DOMPurify.sanitize(content, sanitizeConfig)"
     />
+    <KunLightbox
+      v-model:is-open="isLightboxOpen"
+      :images="images"
+      :initial-index="currentImageIndex"
+    />
   </div>
 </template>
 
 <style scoped>
 .kun-prose {
+  /* Inline images are clickable (open the lightbox) — hint it. Excludes
+   * images inside a spoiler (those are gated by the spoiler reveal first). */
+  & :deep(img) {
+    cursor: zoom-in;
+  }
+
   & :deep(.kun-spoiler) {
     position: relative;
     display: inline-block;

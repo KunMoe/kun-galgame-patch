@@ -14,7 +14,7 @@ KunUI 是 `packages/ui` 下的 Nuxt 4 组件库 layer，被 `apps/web`（鲲 Gal
 
 ## 当前版本
 
-**v0.6.0**（2026-05-27）—— 图片查看器（KunLightbox + 新增 Gallery/Item 子组件）重写 + KunTooltip 精简 + `--kun-background-blur` glass-blur token 修复
+**v0.6.1**（2026-05-27）—— KunContent 内置图片 lightbox（markdown 评论/正文图片点击放大，事件委托支持翻页新增图）；新增 `useContentLightbox`，删除 broken `useKunLightbox`
 
 详细看 [`changelog/README.md`](./changelog/README.md) 的版本时间表。
 

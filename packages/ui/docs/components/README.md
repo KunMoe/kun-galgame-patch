@@ -23,3 +23,7 @@
 - KunButton / KunChip / KunBadge / KunCard / KunInput / KunTextarea / KunCheckBox / KunSwitch / KunSlider / KunAvatar / KunPopover / KunTooltip / KunDatePicker / KunUpload / KunProgress / KunInfo / KunAlert / KunPagination / KunContextMenu / KunHeader / KunBrand / KunLink / KunDivider / KunIcon / KunCopy
 
 这些组件在 [changelog/](../changelog/) 各版本文件里有具体改动记录。
+
+## KunContent（markdown prose 渲染入口）
+
+`KunContent` 是所有 markdown HTML 的统一渲染组件：DOMPurify sanitize + `kun-prose` class + 注入 DOM 级交互（spoiler 揭示 `useSpoilerContent` / 图片 lightbox `useContentLightbox`）。下游论坛的评论 / 回复 / 正文应统一走 `<KunContent :content="html" />` 而非手搓 `<div class="kun-prose" v-html>` —— 后者拿不到 spoiler + lightbox。详见 [changelog/v0.6.1.md](../changelog/v0.6.1.md)。
