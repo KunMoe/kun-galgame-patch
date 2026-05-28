@@ -16,13 +16,8 @@ interface Props {
   position?: 'top' | 'bottom' | 'left' | 'right'
   className?: string
   // Hover delay-in / delay-out (ms). delay-in prevents flicker on
-  // fast pointer travel; delay-out is rarely useful for pure tooltip
-  // content (the body itself isn't interactive).
-  //
-  // Do NOT try to make Tooltip carry interactive content (a clickable
-  // dropdown menu, etc.) — there's a dedicated hover-menu component for
-  // that pattern. Tooltips have always-true semantics: trigger hover →
-  // info appears, pointer leaves trigger → info disappears.
+  // fast pointer travel; delay-out gives time to move into the tooltip
+  // body if interactive content is in the slot.
   delayShow?: number
   delayHide?: number
   // Hide entirely below the sm breakpoint — tooltips on mobile are

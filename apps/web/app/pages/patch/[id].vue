@@ -130,16 +130,30 @@ const tabs = computed(() => [
       </div>
 
       <div class="relative flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
-        <div
-          class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
-        >
-          <KunImage
+        <!-- Single-item Gallery: lets the user click the hero cover to
+             open it full-screen with zoom/pan/download. Single item
+             still benefits from the toolbar (zoom into details), which
+             is the whole point on mobile where the inline cover is small.
+             `as="div"` keeps the existing aspect-video container; the
+             cursor-zoom-in cue tells users the cover is interactive.
+             We deliberately do NOT wrap the resource cover in
+             resource/[id].vue with this — that thumbnail is a
+             <NuxtLink> to the patch detail page (different intent). -->
+        <KunLightboxGallery>
+          <KunLightboxGalleryItem
             :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
             :alt="displayName"
-            class-name="block size-full"
-            image-class-name="transition-transform duration-300 hover:scale-[1.03]"
-          />
-        </div>
+            as="div"
+            class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
+          >
+            <KunImage
+              :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
+              :alt="displayName"
+              class-name="block size-full"
+              image-class-name="transition-transform duration-300 hover:scale-[1.03]"
+            />
+          </KunLightboxGalleryItem>
+        </KunLightboxGallery>
 
         <div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
           <div class="space-y-2">

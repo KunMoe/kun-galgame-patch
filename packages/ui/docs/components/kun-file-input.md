@@ -1,0 +1,144 @@
+# KunFileInput
+
+KunFileInput 是 v0.4.2 新增的中层文件交互组件，跟 v0.4.0 的 `useFilePicker` composable 和 v0.0.1 起就有的 KunUpload 组件一起，构成 KunUI 文件交互的三层 API。
+
+## v0.4.2 — KunFileInput：补齐文件交互三层（2026-05-21）（§13）
+
+moyu 反馈了 7 处仍在用 native `<input type="file">` 的场景（banner / 截图 / patch hash 校验 / 头像 cropper bridge）。原本提案 "加一个 KunFileInput 组件"，但若不与 v0.4.0 已铺好的 `useFilePicker` 协同就会造重复实现，所以本节按**分层架构**收口。
+
+### 文件交互的三层 API（终态）
+
+| 层 | 名字 | 用途 | 起源 |
+|---|---|---|---|
+| 高层 | `KunUpload` | 图片上传 + 裁剪 + 拖拽预览（重型） | v0.0.1 |
+| **中层** | **`KunFileInput`** | **声明式按钮 + v-model 文件选择（轻量）** | **v0.4.2 ⭐** |
+| 低层 | `useFilePicker` | 程序化选择，触发器自由 | v0.4.0 |
+
+三者明确分工：
+
+- **要做图片裁剪 / 拖放 / 预览** → KunUpload
+- **要简单的"按钮 + 选文件 + v-model"** → KunFileInput
+- **触发器是任意自定义元素 / 不需要 DOM 节点** → useFilePicker
+
+KunFileInput 内部**直接复用 useFilePicker**，零重复实现 —— 这点很重要：未来扩展（mime 校验、size formatter、多文件 dedup 等）只改 composable 一处。
+
+### 设计要点
+
+#### 1. 双命名 v-model 区分单 / 多文件
+
+```vue
+<!-- 单文件：v-model = File | null -->
+<KunFileInput v-model="bannerFile" accept="image/*" />
+
+<!-- 多文件：v-model:files = File[]，加 `multiple` 启用 -->
+<KunFileInput v-model:files="screenshots" multiple accept="image/*" />
+```
+
+为什么不用 union `File | File[] | null`：消费者每次都要 narrow，TS 表达力损失大。两个命名 model（Vue 3.4+ 原生支持）让单 / 多场景的类型各自干净，约定"用 `multiple` 时只用 `v-model:files`"即可。
+
+#### 2. 默认 trigger 是 KunButton；slot 完全自定义
+
+```vue
+<!-- 80% 用例：默认按钮 -->
+<KunFileInput
+  v-model="bannerFile"
+  accept="image/*"
+  :max-size="10 * 1024 * 1024"
+  trigger-text="选择 banner"
+  trigger-icon="lucide:image-up"
+  hint="JPEG / PNG / WebP，最大 10 MB"
+/>
+
+<!-- 20% 用例：卡片 / 头像 / 任意元素当触发器 -->
+<KunFileInput v-model="patchFile" accept=".zip" v-slot="{ pick, fileName }">
+  <KunCard clickable @click="pick">
+    <Icon name="lucide:file-archive" />
+    <p>{{ fileName ?? '点击选择 patch 包' }}</p>
+  </KunCard>
+</KunFileInput>
+```
+
+slot 暴露 `pick / fileName / disabled` 三个状态，让自定义触发器无需 ref 或 expose 就能完整控制。这是 Vue 的标准 "render-prop / scoped slot" 模式。
+
+#### 3. `@change` 始终发数组
+
+```ts
+@change="(files: File[]) => { /* files[0] 单文件场景 / files.forEach 多文件 */ }"
+```
+
+单文件模式发 `[file]`、多文件发 `[f1, f2, ...]`。统一数组让消费者无需 `isArray` 分支，逻辑同构。
+
+#### 4. 用户取消保留旧选择
+
+`useFilePicker` 在取消时不清空 `files`，KunFileInput 的 watch 里 `if (next.length === 0) return` 保留 v-model 旧值。与 native `<input type="file">` 的取消语义对齐 —— 取消不丢之前的选择。
+
+#### 5. 默认按钮 vs slot 触发器的视觉一致性
+
+默认按钮直接长成 KunButton 的样子（继承 KunUI 全套 variant / color / size / rounded 系统）。slot 触发器完全由消费者决定。两条路径下，"已选文件名"行（`showFileName` prop 控制）始终在统一位置展示。
+
+### 实施
+
+#### 新增文件
+
+```
+packages/ui/app/components/kun/file-input/FileInput.vue   ← 新组件
+packages/ui/app/components/kun/file-input/type.d.ts       ← 类型
+```
+
+#### 本仓采用情况
+
+galgame/Create.vue 和 galgame/EditModal.vue 之前用 `useFilePicker` 写得有点啰嗦（手写 `pickedBannerFiles` watch + 状态同步），改用 KunFileInput 后**单文件场景减少 8 行代码**：
+
+```vue
+<!-- 之前：useFilePicker（v0.4.0） -->
+<script setup>
+const { pickFiles: pickBanner, files: pickedBannerFiles } = useFilePicker({
+  accept: 'image/jpeg,image/png,image/webp',
+  maxSize: 10 * 1024 * 1024,
+  onError: (msg) => useKunMessage(msg, 'warn')
+})
+watch(pickedBannerFiles, ([f]) => {
+  if (!f) return
+  bannerFile.value = f
+  bannerObjectUrl.value = URL.createObjectURL(f)
+})
+</script>
+<template>
+  <KunButton size="sm" variant="flat" @click="pickBanner">
+    <Icon name="lucide:image-up" class="mr-1 size-4" />
+    选择 banner
+  </KunButton>
+</template>
+
+<!-- 之后：KunFileInput（v0.4.2） -->
+<script setup>
+watch(bannerFile, (f) => {
+  bannerObjectUrl.value = f ? URL.createObjectURL(f) : ''
+})
+</script>
+<template>
+  <KunFileInput
+    v-model="bannerFile"
+    accept="image/jpeg,image/png,image/webp"
+    :max-size="10 * 1024 * 1024"
+    trigger-text="选择 banner"
+    trigger-icon="lucide:image-up"
+    trigger-size="sm"
+    @error-pick="(msg) => useKunMessage(msg, 'warn')"
+  />
+</template>
+```
+
+### 兼容性
+
+完全非破坏性。`useFilePicker` 接口不变，老代码继续工作；想要更简洁的写法时切到 KunFileInput。
+
+### 验证
+
+- `pnpm -F web exec nuxt build` ✅
+- `pnpm -F wiki exec nuxt build` ✅
+- 本仓 2 处 banner 上传跑通：选文件 → 预览 → 清空，三态切换正常
+
+### 这一步封口了什么
+
+KunUI 至此对"文件交互"主题给出完整三层方案，**没有任何 native `<input type="file">` 是合理的留存**（除非是 KunUI 内部实现细节，比如 KunUpload 自己的实现）。下游消费方仓库（kungal / moyu / wiki / oauth）的每一个 file input 都应该对应到三层之一。
