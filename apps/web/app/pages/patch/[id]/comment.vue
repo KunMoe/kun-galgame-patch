@@ -34,6 +34,9 @@ const comments = computed(() => data.value?.items ?? [])
 
 const content = ref('')
 const submitting = ref(false)
+// KunMilkdownDualEditorProvider is uncontrolled (valueMarkdown is the initial
+// value only), so bump this key to remount it empty after a successful post.
+const composerKey = ref(0)
 
 const submit = async () => {
   if (!userStore.user.id) {
@@ -52,6 +55,7 @@ const submit = async () => {
     )
     if (res.code === 0) {
       content.value = ''
+      composerKey.value++
       useKunMessage('评论发布成功', 'success')
       await refresh()
     } else {
@@ -97,10 +101,10 @@ const toggleLike = async (c: PatchPageComment) => {
     >
       <KunAvatar :user="userStore.user" size="sm" :is-navigation="false" />
       <div class="min-w-0 flex-1 space-y-3">
-        <KunTextarea
-          v-model="content"
-          placeholder="写下你的评论..."
-          :rows="3"
+        <KunMilkdownDualEditorProvider
+          :key="composerKey"
+          :value-markdown="content"
+          @set-markdown="(val) => (content = val)"
         />
         <div class="flex justify-end">
           <KunButton

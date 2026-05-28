@@ -57,6 +57,80 @@ const LANG_TABS: { value: LangKey; textValue: string }[] = [
 ]
 const activeLang = ref<LangKey>('zh-cn')
 
+// One name input + one milkdown editor serve all 4 languages: the editor is
+// reused, and switching activeLang drives its `:language` prop, which makes
+// the editor replaceAll() its content with the new language's intro. We expose
+// the active language's name/intro as proxies so the single controls read and
+// write the right form field.
+const activeName = computed<string>({
+  get() {
+    switch (activeLang.value) {
+      case 'zh-tw':
+        return form.name_zh_tw
+      case 'ja-jp':
+        return form.name_ja_jp
+      case 'en-us':
+        return form.name_en_us
+      default:
+        return form.name_zh_cn
+    }
+  },
+  set(v) {
+    switch (activeLang.value) {
+      case 'zh-tw':
+        form.name_zh_tw = v
+        break
+      case 'ja-jp':
+        form.name_ja_jp = v
+        break
+      case 'en-us':
+        form.name_en_us = v
+        break
+      default:
+        form.name_zh_cn = v
+    }
+  }
+})
+const activeIntro = computed(() => {
+  switch (activeLang.value) {
+    case 'zh-tw':
+      return form.intro_zh_tw
+    case 'ja-jp':
+      return form.intro_ja_jp
+    case 'en-us':
+      return form.intro_en_us
+    default:
+      return form.intro_zh_cn
+  }
+})
+const setActiveIntro = (val: string) => {
+  switch (activeLang.value) {
+    case 'zh-tw':
+      form.intro_zh_tw = val
+      break
+    case 'ja-jp':
+      form.intro_ja_jp = val
+      break
+    case 'en-us':
+      form.intro_en_us = val
+      break
+    default:
+      form.intro_zh_cn = val
+  }
+}
+const namePlaceholder = computed(() => {
+  switch (activeLang.value) {
+    case 'zh-tw':
+      return '繁體中文名稱'
+    case 'ja-jp':
+      return '日本語タイトル'
+    case 'en-us':
+      return 'English title'
+    default:
+      return '例如：你和她和她的恋爱'
+  }
+})
+
 interface FormState {
   name_en_us: string
   name_ja_jp: string
@@ -400,53 +474,18 @@ const handleSubmit = async () => {
             color="primary"
             size="sm"
           />
-          <div v-for="lang in LANG_TABS" :key="lang.value">
-            <div v-show="activeLang === lang.value" class="space-y-3">
-              <label class="block">
-                <span class="text-default-700 text-sm">标题</span>
-                <KunInput
-                  v-if="lang.value === 'zh-cn'"
-                  v-model="form.name_zh_cn"
-                  placeholder="例如：你和她和她的恋爱"
-                />
-                <KunInput
-                  v-else-if="lang.value === 'zh-tw'"
-                  v-model="form.name_zh_tw"
-                  placeholder="繁體中文名稱"
-                />
-                <KunInput
-                  v-else-if="lang.value === 'ja-jp'"
-                  v-model="form.name_ja_jp"
-                  placeholder="日本語タイトル"
-                />
-                <KunInput
-                  v-else
-                  v-model="form.name_en_us"
-                  placeholder="English title"
-                />
-              </label>
-              <label class="block">
-                <span class="text-default-700 text-sm">简介 (Markdown)</span>
-                <KunTextarea
-                  v-if="lang.value === 'zh-cn'"
-                  v-model="form.intro_zh_cn"
-                  :rows="10"
-                  placeholder="支持 Markdown 语法"
-                />
-                <KunTextarea
-                  v-else-if="lang.value === 'zh-tw'"
-                  v-model="form.intro_zh_tw"
-                  :rows="10"
-                />
-                <KunTextarea
-                  v-else-if="lang.value === 'ja-jp'"
-                  v-model="form.intro_ja_jp"
-                  :rows="10"
-                />
-                <KunTextarea v-else v-model="form.intro_en_us" :rows="10" />
-              </label>
-            </div>
-          </div>
+          <label class="block space-y-1">
+            <span class="text-default-700 text-sm">标题</span>
+            <KunInput v-model="activeName" :placeholder="namePlaceholder" />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-default-700 text-sm">简介 (Markdown)</span>
+            <KunMilkdownDualEditorProvider
+              :value-markdown="activeIntro"
+              :language="activeLang"
+              @set-markdown="setActiveIntro"
+            />
+          </label>
         </div>
 
         <!-- ─── 基本信息：rating + language + aliases + is_minor ────── -->

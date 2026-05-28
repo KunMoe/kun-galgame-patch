@@ -219,10 +219,9 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">简介（简体中文）</h3>
-          <KunTextarea
-            v-model="form.intro_zh_cn"
-            :rows="5"
-            placeholder="支持 Markdown"
+          <KunMilkdownDualEditorProvider
+            :value-markdown="form.intro_zh_cn"
+            @set-markdown="(val) => (form.intro_zh_cn = val)"
           />
         </section>
 
