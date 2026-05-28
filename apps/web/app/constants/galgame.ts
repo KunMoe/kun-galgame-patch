@@ -10,7 +10,9 @@ export const GALGAME_AGE_LIMIT_DETAIL: Record<string, string> = {
 
 export const GALGAME_SORT_FIELD_LABEL_MAP: Record<string, string> = {
   resource_update_time: '补丁更新时间',
-  created: '游戏创建时间',
+  // `created` is the patch ROW's creation timestamp (when the entry was added
+  // to moyu), not when the game was made — hence "条目创建时间", not "游戏…".
+  created: '条目创建时间',
   view: '浏览量',
   download: '下载量',
   // 按游戏发售日期排序（本地镜像 patch.release_date，wiki §17）。
