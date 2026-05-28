@@ -10,6 +10,8 @@
  */
 @import './prose.css';
 @import './editor.css';
+@import './editor/code-mirror.css';
+@import './editor/katex.css';
 @import './code-theme.css';
 
 @layer base {
