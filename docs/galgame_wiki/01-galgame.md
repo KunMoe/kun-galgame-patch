@@ -12,10 +12,12 @@
 |------|------|------|--------|------|
 | page | int | 否 | 1 | 页码 |
 | limit | int | 否 | 24 | 每页数量 (1-50) |
-| sort_field | string | 否 | created | 排序字段: `created`, `updated`, `view`, `resource_update_time` |
+| sort_field | string | 否 | created | 排序字段: `created`, `updated`, `view`, `resource_update_time`, `release_date` |
 | sort_order | string | 否 | desc | 排序方向: `asc`, `desc` |
 | search | string | 否 | | 搜索关键词（匹配四语言名称） |
 | content_limit | string | 否 | **sfw** | NSFW 过滤。`sfw` / `nsfw` / `all`。**省略 = sfw**（safe-by-default）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
+| released_from | string | 否 | | 发售日期下限（含）。支持 `YYYY`（按年）或 `YYYY-MM`（按月）。详见 [00-handbook §17 日期筛选](./00-handbook-for-downstream.md#17-发售日期-release_date-筛选协议) |
+| released_to | string | 否 | | 发售日期上限（含）。同上格式。 |
 
 **成功响应**：
 
@@ -55,6 +57,12 @@
 ### GET /galgame/batch
 
 批量获取 galgame 轻量信息（跨服务展示用，不加载关联数据）。
+
+> ⚠️ **batch 是轻量 DTO，字段是白名单的**。返回**只有**下方响应示例里那些字段（id / vndb_id / name_* / banner / effective_banner_hash / content_limit / status / user_id / resource_update_time / original_language / age_limit）。
+>
+> **不包含**：`release_date` / `release_date_tba` / `intro_*` / `tag` / `official` / `engine` / `series` / `cover` / `screenshot` / `alias` 等。要这些字段请用 **`GET /galgame/:gid`**（单条详情）、**`GET /galgame`**（列表）或 **`GET /galgame/search`**（搜索）—— 这三个端点都带 `release_date`。
+>
+> 典型踩坑：想按发售日期做本地镜像/筛选的下游，**不能**从 batch 拿 `release_date`（它压根不在 batch 里），必须走 `/galgame/:gid` 或列表/搜索端点。
 
 **查询参数**：
 

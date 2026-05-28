@@ -2,7 +2,6 @@
 import DOMPurify from 'isomorphic-dompurify'
 import { useSpoilerContent } from '../../../composables/topic/useSpoilerContent'
 import { useContentLightbox } from '../../../composables/topic/useContentLightbox'
-import 'katex/dist/katex.min.css'
 
 withDefaults(
   defineProps<{

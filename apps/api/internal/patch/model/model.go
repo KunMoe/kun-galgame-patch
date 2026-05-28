@@ -94,6 +94,13 @@ type Patch struct {
 	CommentCount       int       `gorm:"default:0" json:"comment_count"`
 	ResourceCount      int       `gorm:"default:0" json:"resource_count"`
 
+	// Local mirror of Wiki galgame.release_date (PG `date`, day precision).
+	// Populated on patch creation + a one-time backfill (A-lite sync). Drives
+	// sort/filter by 发售日期 on GET /api/galgame — see migration 010 +
+	// docs/galgame_wiki/00-handbook §17. Nullable: many galgames have no
+	// known release date; a date-range filter auto-excludes NULL rows.
+	ReleaseDate *time.Time `gorm:"type:date;index" json:"release_date"`
+
 	// FK behavior (declared in migrations/000_baseline.up.sql, NOT enforced
 	// by GORM AutoMigrate which we don't run — the `constraint:OnDelete:X`
 	// tag here is documentation only):

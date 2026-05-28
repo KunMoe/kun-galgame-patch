@@ -35,8 +35,8 @@ Galgame 全文搜索 + 多条件过滤。
 | official_ids | int (csv) | — | 同上 |
 | engine_ids | int (csv) | — | 同上 |
 | series_id | int | — | 精确 |
-| released_from | int | — | 年（含）|
-| released_to | int | — | 年（含）|
+| released_from | string | — | 发售日期下限（含）。`YYYY`（按年，向后兼容）或 `YYYY-MM`（按月）。详见 [00-handbook §17 日期筛选](./00-handbook-for-downstream.md#17-发售日期-release_date-筛选协议) |
+| released_to | string | — | 发售日期上限（含）。同上格式。 |
 | include_intro | bool | `false` | `true` 时把 `intro_*` 四语言简介也纳入搜索 |
 | include_pending | bool | `false` | `true` 且带 Bearer JWT 时，响应额外包含 `pending` 数组，列出当前用户的 status ∈ {3,4} 命中条目。详见 [07 — 投稿](./07-submission.md#get-galgamesearch-增量参数) |
 | sort | string | `relevance` | `relevance` / `released_desc` / `released_asc` / `view` / `updated` |

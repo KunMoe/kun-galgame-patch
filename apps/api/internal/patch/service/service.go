@@ -15,6 +15,7 @@ import (
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/pkg/userclient"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -74,6 +75,21 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 		return 0, fmt.Errorf("该 VNDB ID 已经存在对应的补丁")
 	}
 
+	// Mirror Wiki's release_date locally so /api/galgame can sort/filter by
+	// 发售日期 (the local patch table is what that endpoint paginates over;
+	// see migration 010 + docs/galgame_wiki/00-handbook §17). Best-effort —
+	// a wiki blip just leaves release_date NULL; the one-time backfill cmd
+	// or a later re-sync fills it in. Never blocks patch creation.
+	//
+	// MUST use GetGalgame (/galgame/:gid), NOT GalgameBatch — the lightweight
+	// batch endpoint does NOT include release_date (it returns only id / name
+	// / banner / content_limit / status / user_id / resource_update_time /
+	// original_language / age_limit). The single-detail endpoint does.
+	var releaseDate *time.Time
+	if env, gErr := s.wiki.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
+		releaseDate = utils.ParseWikiReleaseDate(*env.Galgame.ReleaseDate)
+	}
+
 	// 3. Transaction
 	//
 	// D13: patch.id IS the Wiki galgame_id. We assign it explicitly here
@@ -84,9 +100,10 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		p := &model.Patch{
-			ID:     galgameID,
-			VndbID: vndbID,
-			UserID: userID,
+			ID:          galgameID,
+			VndbID:      vndbID,
+			UserID:      userID,
+			ReleaseDate: releaseDate,
 		}
 		if err := tx.Create(p).Error; err != nil {
 			return fmt.Errorf("创建 patch 失败: %w", err)

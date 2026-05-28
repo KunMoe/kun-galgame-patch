@@ -12,7 +12,9 @@ export const GALGAME_SORT_FIELD_LABEL_MAP: Record<string, string> = {
   resource_update_time: '补丁更新时间',
   created: '游戏创建时间',
   view: '浏览量',
-  download: '下载量'
+  download: '下载量',
+  // 按游戏发售日期排序（本地镜像 patch.release_date，wiki §17）。
+  release_date: '发售日期'
 }
 
 const currentYear = new Date().getFullYear()

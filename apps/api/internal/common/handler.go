@@ -133,10 +133,15 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 
 type galgameListRequest struct {
 	SelectedType string `query:"selected_type" validate:"required,min=1,max=107"`
-	SortField    string `query:"sort_field" validate:"required,oneof=resource_update_time created view download"`
+	SortField    string `query:"sort_field" validate:"required,oneof=resource_update_time created view download release_date"`
 	SortOrder    string `query:"sort_order" validate:"required,oneof=asc desc"`
 	Page         int    `query:"page" validate:"required,min=1"`
 	Limit        int    `query:"limit" validate:"required,min=1,max=24"`
+	// 发售日期筛选 (YYYY / YYYY-MM)。格式不在 validator 里校验（YYYY vs
+	// YYYY-MM 二选一不好用 oneof 表达）——交给 utils.ParseRelease*Bound，
+	// 非法输入在 handler 里返回 400（对齐 wiki §17.1 的 loud-reject）。
+	ReleasedFrom string `query:"released_from"`
+	ReleasedTo   string `query:"released_to"`
 }
 
 // GetGalgameList GET /api/galgame
@@ -155,21 +160,40 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	}
 	cl := utils.ContentLimitForListBrowse(c)
 
+	// 发售日期边界 (YYYY / YYYY-MM → date)。malformed → 400 per wiki §17.1.
+	lower, err := utils.ParseReleaseLowerBound(req.ReleasedFrom)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	upper, err := utils.ParseReleaseUpperBound(req.ReleasedTo)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+
 	// Independent statements for Count vs Find — see gorm v2 reuse footgun
 	// documented in message/repository.go GetMessages.
 	base := h.db.Model(&patchModel.Patch{})
 	if req.SelectedType != "all" {
 		base = base.Where("type @> ?", fmt.Sprintf(`["%s"]`, req.SelectedType))
 	}
+	// release_date filter. Setting either bound auto-excludes NULL rows (PG
+	// >= / <= against NULL is UNKNOWN → dropped), which matches §17.4: "筛
+	// 2024 年" means games with a *known* 2024 date. Both Count and Find see
+	// these WHEREs because they're applied to `base` before the Session fork.
+	if lower != nil {
+		base = base.Where("release_date >= ?", *lower)
+	}
+	if upper != nil {
+		base = base.Where("release_date <= ?", *upper)
+	}
 
 	var total int64
 	base.Session(&gorm.Session{}).Count(&total)
 
 	var patches []patchModel.Patch
-	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).
+	if err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).
 		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Find(&patches).Error
-	if err != nil {
+		Find(&patches).Error; err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 

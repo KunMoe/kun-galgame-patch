@@ -794,6 +794,89 @@ GET /tag/魔法?content_limit=all                     # 该 tag 下所有 galgam
 
 ---
 
+## 17. 发售日期 (release_date) 筛选协议
+
+galgame 的发售日期字段（`galgame.release_date`，PG `date` 类型）覆盖率 **91%**（截至 2026-05，55 525 / 61 002 条有日期）；其中 status=2 VNDB 草稿 95%，status=0 用户已发布 70%。数据本身**月份精度真实**（只有 2.85% 落在每年 1月1日，不是"年精度伪装成月日"）。前端可以放心做按年份 / 按月份的筛选 chip。
+
+### 17.1 协议
+
+接受 `released_from` + `released_to` 两个查询参数，**字符串**类型，三种格式：
+
+| 输入 | 含义 | 边界（inclusive） |
+|------|------|------|
+| `YYYY`（如 `2024`） | 整年 | from = Jan 1 00:00:00 UTC / to = Dec 31 23:59:59 UTC |
+| `YYYY-MM`（如 `2024-03`） | 整月 | from = 月 1 日 00:00:00 UTC / to = 月末 23:59:59 UTC（自动处理 28/29/30/31 天）|
+| 空 / 省略 | 不过滤该端 | 该端不施加 WHERE |
+
+非法输入（`24` / `2024-3` 缺前导零 / `2024-13` 月份越界 / `garbage`）→ **400 ErrValidationFailed**，不会被静默忽略。
+
+### 17.2 应用端点
+
+| 端点 | 实现 | 索引 |
+|------|------|------|
+| `GET /galgame` | SQL `WHERE release_date >= ? AND release_date <= ?`（PG `date` 列）| `galgame.release_date` btree index（model gorm tag 声明）|
+| `GET /galgame/search` | Meilisearch `released_ts >= X AND released_ts <= Y`（Unix 秒）| `released_ts` filterable + indexer 已写入 |
+
+两套实现都通过 `pkg/utils.ParseReleaseLowerBound` / `ParseReleaseUpperBound` 统一解析。
+
+### 17.3 与 sort 的联动
+
+`GET /galgame` 的 `sort_field` 新增 `release_date` 选项 — 按发售日期升/降序排。常见组合：
+- 浏览「2024 年所有游戏，按发售时间倒序」：
+  ```
+  GET /galgame?released_from=2024&released_to=2024&sort_field=release_date&sort_order=desc
+  ```
+- 浏览「2024 年 3 月发售的」：
+  ```
+  GET /galgame?released_from=2024-03&released_to=2024-03
+  ```
+
+`GET /galgame/search` 的 `sort` 维持 `released_desc` / `released_asc` 选项不变。
+
+### 17.4 NULL 处理
+
+设了任一端边界 → `release_date IS NULL` 的行**自动排除**（PG 的 `>=` / `<=` 对 NULL 求 UNKNOWN，自动 drop）。这符合用户期望：「我筛 2024 年的」就是只看知道发售日期的 2024 年游戏。
+
+排序时（`sort_field=release_date`）PG 默认 NULLS LAST on ASC、NULLS FIRST on DESC — 可接受，NULL 行少（status=0 才 30% 是 NULL，且大多是用户提交时漏填）。
+
+### 17.5 向后兼容
+
+`/galgame/search` 历史上 `released_from/to` 是 int（年）。新协议升级成 string 仍接受 `2024` 这种纯数字字符串（4 字符 = 年）→ **kungal / moyu 这种历史调用方零改动**。下游升级到月份精度只需把 `2024` 改成 `2024-03` 即可。
+
+### 17.6 时区
+
+`release_date` 是 PG `date` 类型，无时区。helper 解析 `YYYY-MM` 时按 UTC 计算边界 ts。日期只到日级精度 — 跨时区显示语义清晰（"2024 年 3 月发售"对全球用户都是同一组游戏，不会因时区切换跑出 1 天差异）。
+
+### 17.7 响应里 release_date 的格式：`YYYY-MM-DD`（不是 RFC3339）
+
+galgame 实体响应里 `release_date` 字段一律是 **`"2019-08-16"`** 这种纯日期串（或 `null` = 未知），**不带** `T00:00:00Z`。GET /galgame/:gid、GET /galgame 列表、GET /galgame/search、revision/PR snapshot 全部一致。
+
+> 历史注记：早期 wiki 把 `release_date`（PG `date` 列）用 Go `*time.Time` 裸序列化，REST 详情/列表端点会吐 RFC3339 `"2019-08-16T00:00:00Z"`，与文档承诺的 `YYYY-MM-DD` 不符，且给 date-only 值塞了幻影 `T00:00:00Z`（消费方做时区转换会 off-by-one-day）。已用自定义 `Date` 类型修复 —— 现在三条序列化路径（REST live / snapshot / search index）统一输出 `YYYY-MM-DD`。
+>
+> **下游 parser 建议**：用 `YYYY-MM-DD` layout 解析即可。想对老数据/缓存鲁棒可同时容错 RFC3339，但 canonical wiki 现在保证纯日期。
+
+### 17.8 batch 端点不含 release_date（重要）
+
+`GET /galgame/batch` 是轻量 DTO，**不返回 `release_date`**（也不返回 intro / tag / cover / screenshot 等）。要 `release_date` 用 `GET /galgame/:gid`、`GET /galgame`、`GET /galgame/search`。字段白名单见 [01-galgame.md GET /galgame/batch](./01-galgame.md#get-galgamebatch)。
+
+想"本地镜像 release_date 再按发售日期排序/筛选"的下游（典型 moyu patch 表）务必从 `/galgame/:gid` 或列表/搜索端点取，**不要**指望 batch。
+
+### 17.9 所有 timestamp 字段：统一 UTC RFC3339（`...Z`）
+
+galgame 实体 + DTO 里的所有**时间戳**字段（`created` / `updated` / `resource_update_time` / `created_at` / `completed_time` 等）一律序列化为 **UTC RFC3339 + 字面 Z**，如 `"2026-05-10T16:24:28Z"`。**不会**出现带本地偏移的形式（`...+08:00` / `...-07:00`）。
+
+> 历史注记：早期这些字段用 Go 裸 `time.Time` 序列化。DB 驱动按**进程本地时区**返回 time.Time（实测 -0700），导致:
+> - raw-model 端点（GET /galgame/:gid 等）吐出带本地 offset 的串（`...-07:00`），形状随部署机器时区漂移
+> - DTO 端点曾用硬编码 `Format("...Z")` 但 time.Time 非 UTC → **标 Z 却是本地钟面，差一个偏移量**
+>
+> 已用自定义 `Timestamp` 类型（`MarshalJSON` 强制 `.UTC()`）统一修复。现在无论服务器跑在什么时区，所有 timestamp 都是真 UTC 的 `...Z`。区分：
+> - **timestamp**（有具体时刻）→ `2026-05-10T16:24:28Z`（UTC RFC3339）
+> - **date-only**（`release_date`，只到天）→ `2019-08-16`（无时间无时区，见 §17.7）
+>
+> **下游 parser 建议**：标准 RFC3339 解析即可（`Z` 后缀,UTC）。不要假设带本地 offset。
+
+---
+
 ## 联系人
 
 - wiki API 变更：通知此文档对应 owner
