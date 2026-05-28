@@ -21,9 +21,22 @@ const page = ref(Number(route.query.page ?? 1))
 const selectedType = ref(String(route.query.type ?? 'all'))
 const sortField = ref(String(route.query.sort_field ?? 'resource_update_time'))
 const sortOrder = ref(String(route.query.sort_order ?? 'desc'))
-// 发售日期两级筛选：先选年，再（可选）选月。'all' = 不限。
+// 发售日期筛选：年份单选（'all' | YYYY）+ 月份多选集合（不连续月份，wiki
+// §17.10 released_months）。两者正交组合：
+//   年=all  + 月集合空   → 不筛
+//   年=all  + 月集合     → 历年这些月（released_months）
+//   年=YYYY + 月集合空   → 该年整年（released_from/to）
+//   年=YYYY + 月集合     → 该年这些月（区间 + released_months 叠加）
 const selectedYear = ref(String(route.query.year ?? 'all'))
-const selectedMonth = ref(String(route.query.month ?? 'all'))
+const parseMonthsQuery = (q: unknown): number[] => {
+  const s = String(q ?? '').trim()
+  if (!s) return []
+  return s
+    .split(',')
+    .map((x) => Number(x.trim()))
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12)
+}
+const selectedMonths = ref<number[]>(parseMonthsQuery(route.query.months))
 
 const limit = 24
 
@@ -32,18 +45,20 @@ interface ListResponse {
   total: number
 }
 
-// Turn the (year, month) chip selection into the backend's released_from /
-// released_to bounds (wiki §17 format):
-//   全部年份         → 不传（不过滤）
-//   某年 + 全年      → released_from=YYYY & released_to=YYYY（整年）
-//   某年 + 某月      → released_from=YYYY-MM & released_to=YYYY-MM（整月）
-const releaseBounds = (): { from: string; to: string } => {
-  if (selectedYear.value === 'all') return { from: '', to: '' }
-  if (selectedMonth.value === 'all') {
-    return { from: selectedYear.value, to: selectedYear.value }
+// Compose the year + months selection into backend query params
+// (released_from/to per §17, released_months per §17.10).
+const releaseQuery = (): Record<string, string> => {
+  const q: Record<string, string> = {}
+  if (selectedYear.value !== 'all') {
+    q.released_from = selectedYear.value
+    q.released_to = selectedYear.value
   }
-  const ym = `${selectedYear.value}-${selectedMonth.value}`
-  return { from: ym, to: ym }
+  if (selectedMonths.value.length > 0) {
+    q.released_months = [...selectedMonths.value]
+      .sort((a, b) => a - b)
+      .join(',')
+  }
+  return q
 }
 
 const { data, pending, refresh } = await useAsyncData<ListResponse>(
@@ -58,9 +73,7 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
       page: String(page.value),
       limit: String(limit)
     })
-    const { from, to } = releaseBounds()
-    if (from) params.set('released_from', from)
-    if (to) params.set('released_to', to)
+    for (const [k, v] of Object.entries(releaseQuery())) params.set(k, v)
 
     const res = await api.get<ListResponse>(`/galgame?${params.toString()}`)
     if (res.code !== 0) return { galgames: [], total: 0 }
@@ -93,14 +106,11 @@ const yearOptions = computed(() => [
   })
 ])
 
-// 月份: 全年 + 1–12 月（值是 zero-pad 的 MM，拼 YYYY-MM 给后端）。
-const monthOptions = computed(() => [
-  { value: 'all', label: '全年' },
-  ...Array.from({ length: 12 }, (_, i) => ({
-    value: String(i + 1).padStart(2, '0'),
-    label: `${i + 1} 月`
-  }))
-])
+// 月份多选 1–12（空集合 = 不限月，无需 "全年" 选项）。
+const monthOptions = Array.from({ length: 12 }, (_, i) => ({
+  value: i + 1,
+  label: `${i + 1} 月`
+}))
 
 const updateQuery = async () => {
   await router.replace({
@@ -110,7 +120,7 @@ const updateQuery = async () => {
       sort_field: sortField.value,
       sort_order: sortOrder.value,
       year: selectedYear.value,
-      month: selectedMonth.value
+      months: selectedMonths.value.join(',')
     }
   })
   await refresh()
@@ -137,14 +147,14 @@ const setSortOrder = (v: 'asc' | 'desc') => {
 const setYear = (v: string) => {
   if (selectedYear.value === v) return
   selectedYear.value = v
-  // 换年后旧的月选择语义失效，重置为全年。
-  selectedMonth.value = 'all'
+  // 月份集合独立于年（跨年也有意义，如"历年三月"），换年不重置。
   page.value = 1
   updateQuery()
 }
-const setMonth = (v: string) => {
-  if (selectedMonth.value === v) return
-  selectedMonth.value = v
+const toggleMonth = (m: number) => {
+  selectedMonths.value = selectedMonths.value.includes(m)
+    ? selectedMonths.value.filter((x) => x !== m)
+    : [...selectedMonths.value, m]
   page.value = 1
   updateQuery()
 }
@@ -211,8 +221,10 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
         </div>
       </div>
 
-      <!-- 发售月份：仅当选定了具体年份时出现（两级筛选的第二级）。 -->
-      <div v-if="selectedYear !== 'all'" class="flex items-center gap-2">
+      <!-- 发售月份：多选集合（点多个月可叠加），始终可见。年=全部 +
+           选若干月 = "历年这些月发售"；年=某年 + 选若干月 = 该年这些月。
+           空集合 = 不限月。 -->
+      <div class="flex items-center gap-2">
         <span class="text-default-400 w-12 shrink-0 text-xs">发售月</span>
         <div class="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
           <button
@@ -221,11 +233,11 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
             type="button"
             :class="[
               'shrink-0 cursor-pointer rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors',
-              selectedMonth === opt.value
+              selectedMonths.includes(opt.value)
                 ? 'bg-primary/15 text-primary font-medium'
                 : 'text-default-600 hover:bg-default-100'
             ]"
-            @click="setMonth(opt.value)"
+            @click="toggleMonth(opt.value)"
           >
             {{ opt.label }}
           </button>

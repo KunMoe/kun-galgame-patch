@@ -3,11 +3,16 @@ import { kunNavItemDesktop, kunTopBarCategories } from '~/constants/top-bar'
 
 const route = useRoute()
 const isMenuOpen = ref(false)
+const isGalgameMenuOpen = ref(false)
 
 watch(
   () => route.path,
   () => {
     isMenuOpen.value = false
+    // Close the hover menu after a category click. NuxtLink navigates
+    // client-side (no reload), so without this the menu would linger open
+    // on the destination page until the pointer left it.
+    isGalgameMenuOpen.value = false
   }
 )
 </script>
@@ -35,32 +40,60 @@ watch(
       <KunTopBarBrand />
 
       <div class="hidden items-center gap-6 md:flex">
-        <!-- Hover-revealed nav menu for "下载补丁". KunTooltip is wrong
-             for this (its body is non-interactive by design — pointer
-             leaves trigger → body disappears immediately). KunHoverMenu
-             handles the trigger ↔ body handoff so the user can actually
-             move into the menu to click a category. -->
-        <KunHoverMenu
-          position="bottom"
-          :active="route.path === '/galgame'"
-          class-name="shrink-0 text-base"
+        <!-- Hover-revealed "下载补丁" nav menu. Inlined on purpose, not built
+             on a KunUI component: KunDropdown is click-only by design (its
+             changelog deliberately omits hover as non-WAI-ARIA) and renders
+             items as action <button>s, but this menu must reveal on hover and
+             keep its trigger + entries as real <NuxtLink>s (middle-click /
+             new-tab / SEO). Open-state is JS-controlled (not CSS :hover) so a
+             category click can close it immediately via the route watch above;
+             the menu's pt-2 is a hover bridge across the trigger→menu gap so
+             the pointer can cross without mouseleave firing. -->
+        <div
+          class="relative"
+          @mouseenter="isGalgameMenuOpen = true"
+          @mouseleave="isGalgameMenuOpen = false"
         >
-          <NuxtLink to="/galgame">下载补丁</NuxtLink>
+          <NuxtLink
+            to="/galgame"
+            :class="
+              cn(
+                'shrink-0 text-base',
+                route.path === '/galgame' ? 'text-primary' : 'text-foreground'
+              )
+            "
+          >
+            下载补丁
+          </NuxtLink>
 
-          <template #content>
-            <nav class="min-w-44 space-y-1 p-2">
-              <NuxtLink
-                v-for="it in kunTopBarCategories"
-                :key="it.href"
-                :to="it.href"
-                class="text-default-700 hover:bg-default-100 flex items-center gap-3 rounded-lg px-3 py-2 text-sm"
+          <Transition
+            enter-active-class="transition duration-150 ease-out"
+            enter-from-class="opacity-0 scale-95"
+            enter-to-class="opacity-100 scale-100"
+            leave-active-class="transition duration-100 ease-in"
+            leave-from-class="opacity-100 scale-100"
+            leave-to-class="opacity-0 scale-95"
+          >
+            <div
+              v-if="isGalgameMenuOpen"
+              class="absolute top-full left-0 z-kun-popover origin-top pt-2"
+            >
+              <nav
+                class="border-default-200 bg-background/95 min-w-44 space-y-1 rounded-xl border p-2 shadow-lg backdrop-blur"
               >
-                <KunIcon :name="it.icon" class="text-default-600 size-4" />
-                <span class="truncate">{{ it.label }}</span>
-              </NuxtLink>
-            </nav>
-          </template>
-        </KunHoverMenu>
+                <NuxtLink
+                  v-for="it in kunTopBarCategories"
+                  :key="it.href"
+                  :to="it.href"
+                  class="text-default-700 hover:bg-default-100 flex items-center gap-3 rounded-lg px-3 py-2 text-sm"
+                >
+                  <KunIcon :name="it.icon" class="text-default-600 size-4" />
+                  <span class="truncate">{{ it.label }}</span>
+                </NuxtLink>
+              </nav>
+            </div>
+          </Transition>
+        </div>
 
         <NuxtLink
           v-for="item in kunNavItemDesktop"

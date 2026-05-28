@@ -12,6 +12,11 @@ const galgameName = computed(() => getPreferredLanguageText(props.patch.name))
 const bannerSrc = computed(
   () => resolveBannerUrl(props.patch, 'mini') || '/kungalgame-trans.webp'
 )
+
+// Release date as YYYY-MM-DD. Backend sends RFC3339 ("2016-11-25T00:00:00Z");
+// slicing the first 10 chars is enough for a day-precision date and avoids a
+// date-lib dependency + timezone shift. Null/absent → not shown.
+const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
 </script>
 
 <template>
@@ -58,6 +63,13 @@ const bannerSrc = computed(
           {{ formatDistanceToNow(props.patch.created) }}
         </span>
       </h2>
+      <div
+        v-if="releaseDate"
+        class="text-default-500 flex items-center gap-1 text-xs"
+      >
+        <KunIcon name="lucide:calendar" class="size-3.5" />
+        <span>{{ releaseDate }} 发售</span>
+      </div>
       <KunCardStats :patch="props.patch" />
     </div>
 

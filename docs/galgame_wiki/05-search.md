@@ -37,6 +37,7 @@ Galgame 全文搜索 + 多条件过滤。
 | series_id | int | — | 精确 |
 | released_from | string | — | 发售日期下限（含）。`YYYY`（按年，向后兼容）或 `YYYY-MM`（按月）。详见 [00-handbook §17 日期筛选](./00-handbook-for-downstream.md#17-发售日期-release_date-筛选协议) |
 | released_to | string | — | 发售日期上限（含）。同上格式。 |
+| released_months | int (csv) | — | 不连续月份集合（1–12），叠加在年份区间上的 AND 过滤。如 `3,7,12`。详见 [00-handbook §17.10](./00-handbook-for-downstream.md#1710-不连续月份筛选released_months2026-05-28-新增) |
 | include_intro | bool | `false` | `true` 时把 `intro_*` 四语言简介也纳入搜索 |
 | include_pending | bool | `false` | `true` 且带 Bearer JWT 时，响应额外包含 `pending` 数组，列出当前用户的 status ∈ {3,4} 命中条目。详见 [07 — 投稿](./07-submission.md#get-galgamesearch-增量参数) |
 | sort | string | `relevance` | `relevance` / `released_desc` / `released_asc` / `view` / `updated` |
@@ -62,7 +63,7 @@ GET /galgame/search?q=fate&fields=id,vndb_id,name_zh_cn,name_ja_jp,name_en_us,ba
 GET /galgame/search?q=fate&fields=id,name_zh_cn,intro_zh_cn,tag_names,official_names
 ```
 
-可投影的字段就是索引文档的 [Galgame schema 全部字段](./01-galgame.md#get-galgamegid)（`id`, `vndb_id`, `name_*`, `banner`, `effective_banner_hash`, `intro_*`, `content_limit`, `age_limit`, `original_language`, `view`, `release_date`, `release_date_tba`, `released_year`, `released_ts`, `tag_ids`, `tag_names`, `official_ids`, `official_names`, `engine_ids`, `engine_names`, `series_id`, `created_ts`, `updated_ts` 等）。
+可投影的字段就是索引文档的 [Galgame schema 全部字段](./01-galgame.md#get-galgamegid)（`id`, `vndb_id`, `name_*`, `banner`, `effective_banner_hash`, `intro_*`, `content_limit`, `age_limit`, `original_language`, `view`, `release_date`, `release_date_tba`, `released_year`, `released_month`, `released_ts`, `tag_ids`, `tag_names`, `official_ids`, `official_names`, `engine_ids`, `engine_names`, `series_id`, `created_ts`, `updated_ts` 等）。
 
 > 注：本字段只控制**返回**的 attributes，不影响搜索 / 过滤范围。比如 `fields=id` 仍然会按全文匹配（不会因为 `name_*` 没在 `fields` 里就跳过 name 匹配）。
 

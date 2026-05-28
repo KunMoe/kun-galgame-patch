@@ -60,9 +60,15 @@ type GalgameCard struct {
 	Status             int                         `json:"status"`
 	Created            time.Time                   `json:"created"`
 	ResourceUpdateTime time.Time                   `json:"resource_update_time"`
-	Count              Counts                      `json:"count"`
-	User               *patchModel.PatchUser       `json:"user,omitempty"`
-	Galgame            *galgameClient.GalgameBrief `json:"galgame,omitempty"`
+	// ReleaseDate is the locally-mirrored wiki galgame.release_date (date
+	// only; see migration 010 + backfill). Null when unknown. Surfaced so
+	// list cards can render the release month and the date filter result is
+	// legible. Day-precision time.Time → JSON RFC3339; the frontend formats
+	// to YYYY-MM / YYYY-MM-DD.
+	ReleaseDate *time.Time                  `json:"release_date,omitempty"`
+	Count       Counts                      `json:"count"`
+	User        *patchModel.PatchUser       `json:"user,omitempty"`
+	Galgame     *galgameClient.GalgameBrief `json:"galgame,omitempty"`
 }
 
 // EnrichPatches enriches a batch of local patches with Wiki data into GalgameCards the frontend can render directly.
@@ -466,6 +472,7 @@ func baseCard(p *patchModel.Patch) GalgameCard {
 		Status:             p.Status,
 		Created:            p.Created,
 		ResourceUpdateTime: p.ResourceUpdateTime,
+		ReleaseDate:        p.ReleaseDate,
 		Count: Counts{
 			FavoriteBy:   p.FavoriteCount,
 			ContributeBy: p.ContributeCount,

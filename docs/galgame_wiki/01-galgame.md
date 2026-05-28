@@ -18,6 +18,7 @@
 | content_limit | string | 否 | **sfw** | NSFW 过滤。`sfw` / `nsfw` / `all`。**省略 = sfw**（safe-by-default）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
 | released_from | string | 否 | | 发售日期下限（含）。支持 `YYYY`（按年）或 `YYYY-MM`（按月）。详见 [00-handbook §17 日期筛选](./00-handbook-for-downstream.md#17-发售日期-release_date-筛选协议) |
 | released_to | string | 否 | | 发售日期上限（含）。同上格式。 |
+| released_months | int (csv) | 否 | | 不连续月份集合（1–12），叠加在年份区间上的 AND 过滤。如 `3,7,12`。详见 [00-handbook §17.10](./00-handbook-for-downstream.md#1710-不连续月份筛选released_months2026-05-28-新增) |
 
 **成功响应**：
 

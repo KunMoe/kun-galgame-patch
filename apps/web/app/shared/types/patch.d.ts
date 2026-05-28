@@ -21,6 +21,10 @@ interface GalgameCard {
   status: number
   created: Date | string
   resource_update_time: Date | string
+  // Locally-mirrored wiki galgame.release_date (RFC3339 from backend, or
+  // null/absent when unknown). Used to render the release month on cards and
+  // make the release-date sort/filter result legible. Format at render.
+  release_date?: string | null
   count: {
     favorite_by: number
     contribute_by: number

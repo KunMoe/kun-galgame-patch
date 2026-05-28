@@ -142,6 +142,9 @@ type galgameListRequest struct {
 	// 非法输入在 handler 里返回 400（对齐 wiki §17.1 的 loud-reject）。
 	ReleasedFrom string `query:"released_from"`
 	ReleasedTo   string `query:"released_to"`
+	// 不连续月份集合 (CSV 1-12，如 "3,7,12")，叠加在年份区间上的 AND 过滤
+	// (wiki §17.10)。本地 SQL: EXTRACT(MONTH FROM release_date) IN (...)。
+	ReleasedMonths string `query:"released_months"`
 }
 
 // GetGalgameList GET /api/galgame
@@ -169,6 +172,11 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	// 不连续月份集合 (CSV 1-12)。malformed → 400 per wiki §17.10.
+	months, err := utils.ParseMonthSet(req.ReleasedMonths)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
 
 	// Independent statements for Count vs Find — see gorm v2 reuse footgun
 	// documented in message/repository.go GetMessages.
@@ -185,6 +193,13 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	}
 	if upper != nil {
 		base = base.Where("release_date <= ?", *upper)
+	}
+	// released_months: orthogonal AND filter on top of the year range (§17.10).
+	// EXTRACT(MONTH FROM NULL) is NULL → not IN → NULL rows drop, same as the
+	// range filter. Non-sargable but only re-checks the candidate set the
+	// release_date btree range already narrowed.
+	if len(months) > 0 {
+		base = base.Where("EXTRACT(MONTH FROM release_date)::int IN ?", months)
 	}
 
 	var total int64

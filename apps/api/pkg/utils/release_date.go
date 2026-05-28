@@ -3,7 +3,9 @@ package utils
 import (
 	"errors"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,6 +20,40 @@ import (
 // (e.g. "24", "2024-3" missing zero-pad, "2024-13", "garbage"). The handler
 // maps it to a 400 — §17.1 mandates loud rejection, not silent ignore.
 var ErrInvalidReleaseBound = errors.New("invalid release date bound (expect YYYY or YYYY-MM)")
+
+// ErrInvalidMonthSet is returned for malformed released_months input
+// (element outside 1-12, non-numeric, or empty element like "3,,7"). 400.
+var ErrInvalidMonthSet = errors.New("invalid released_months (expect comma-separated 1-12)")
+
+// ParseMonthSet parses the released_months CSV (e.g. "3,7,12") into a sorted,
+// deduped []int of months 1-12, per docs/galgame_wiki/00-handbook §17.10. It's
+// an AND filter layered on top of the year range: keep only games whose
+// release month ∈ the set. "" / whitespace → (nil, nil) = no month filter.
+//
+// Used by GET /api/galgame as `EXTRACT(MONTH FROM release_date)::int IN (...)`.
+// NULL release_date rows drop automatically (EXTRACT(NULL) → NULL → not IN),
+// matching the §17.4 year-range NULL semantics.
+func ParseMonthSet(s string) ([]int, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	seen := make(map[int]struct{})
+	months := make([]int, 0, 12)
+	for _, part := range strings.Split(s, ",") {
+		p := strings.TrimSpace(part)
+		m, err := strconv.Atoi(p)
+		if err != nil || m < 1 || m > 12 {
+			return nil, ErrInvalidMonthSet
+		}
+		if _, dup := seen[m]; dup {
+			continue
+		}
+		seen[m] = struct{}{}
+		months = append(months, m)
+	}
+	sort.Ints(months)
+	return months, nil
+}
 
 var (
 	releaseYearRe  = regexp.MustCompile(`^\d{4}$`)
