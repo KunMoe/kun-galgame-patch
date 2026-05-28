@@ -25,33 +25,58 @@ const navItems = [
   { key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }
 ]
 
-// Writable computed for KunTab v-model — setter is a no-op since item.href
-// drives the navigation via navigateTo(), and the route change re-runs
-// the getter to update the active indicator.
-const currentKey = computed({
-  get: () => route.path.split('/').filter(Boolean)[1] ?? '',
-  set: () => {}
-})
+// Active category = 2nd path segment (/message/<key>[/...]). Matching the
+// segment rather than the exact path keeps 私聊 lit on a transcript page
+// (/message/chat/<link>), not just the chat index.
+const currentKey = computed(
+  () => route.path.split('/').filter(Boolean)[1] ?? ''
+)
+
+// Returns a :class array (no `cn` dependency in <script>). Shared by both the
+// mobile strip and the desktop sidebar so the active styling stays identical.
+const navLinkClass = (key: string) => [
+  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+  currentKey.value === key
+    ? 'bg-primary text-white'
+    : 'text-default-600 hover:bg-default-100'
+]
 </script>
 
 <template>
   <div class="container mx-auto my-4">
+    <!-- Mobile (<lg): horizontal scrollable strip on top. The desktop sidebar
+         would otherwise collapse into a 7-item vertical wall above the
+         content on a single-column layout. -->
+    <nav
+      class="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 lg:hidden"
+      aria-label="消息分类"
+    >
+      <NuxtLink
+        v-for="item in navItems"
+        :key="item.key"
+        :to="item.href"
+        :class="[navLinkClass(item.key), 'shrink-0 whitespace-nowrap']"
+      >
+        <KunIcon :name="item.icon" class="size-4 shrink-0" />
+        {{ item.title }}
+      </NuxtLink>
+    </nav>
+
     <div class="grid gap-4 lg:grid-cols-4">
-      <aside class="lg:col-span-1">
+      <!-- Desktop (lg+): persistent vertical sidebar. -->
+      <aside class="hidden lg:col-span-1 lg:block">
         <KunCard :bordered="true">
-          <KunTab
-            v-model="currentKey"
-            :items="navItems.map((n) => ({
-              value: n.key,
-              textValue: n.title,
-              icon: n.icon,
-              href: n.href
-            }))"
-            variant="light"
-            color="primary"
-            size="md"
-            orientation="vertical"
-          />
+          <nav class="flex flex-col gap-1" aria-label="消息分类">
+            <NuxtLink
+              v-for="item in navItems"
+              :key="item.key"
+              :to="item.href"
+              :class="navLinkClass(item.key)"
+            >
+              <KunIcon :name="item.icon" class="size-4 shrink-0" />
+              {{ item.title }}
+            </NuxtLink>
+          </nav>
         </KunCard>
       </aside>
 
