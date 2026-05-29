@@ -218,6 +218,12 @@ func (s *AdminService) GetAllPatches(search string, page, limit int) ([]patchMod
 	return s.repo.GetAllPatches(search, (page-1)*limit, limit)
 }
 
+// LookupPatchesByIDs makes AdminService satisfy enricher.PatchSummaryDB, so the
+// handler can attach galgame name/banner summaries to comment/resource lists.
+func (s *AdminService) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, error) {
+	return s.repo.LookupPatchesByIDs(ids)
+}
+
 // ===== Settings =====
 //
 // Source of truth is the site_setting table via settingService (durable +

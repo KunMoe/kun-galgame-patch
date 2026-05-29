@@ -59,7 +59,11 @@ const visibleMenu = computed(() =>
         </KunCard>
       </aside>
 
-      <div class="lg:col-span-4">
+      <!-- min-w-0: without it this grid cell defaults to min-width:auto and a
+           wide child (e.g. the resource table, long content) forces the whole
+           page past the viewport instead of letting the child's own
+           overflow-x-auto / wrapping contain it. The mobile-overflow fix. -->
+      <div class="min-w-0 lg:col-span-4">
         <NuxtPage />
       </div>
     </div>

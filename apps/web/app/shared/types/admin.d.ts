@@ -37,6 +37,10 @@ interface AdminResourceItem {
   like_count: number
   created: string
   user: KunUser
+  // Owning galgame summary (name/banner), attached by the admin endpoint so the
+  // UI can show the game name instead of "补丁 #<id>". null when Wiki can't
+  // resolve it (e.g. orphan vndb_id).
+  patch?: PatchSummary | null
 }
 
 interface AdminLog {

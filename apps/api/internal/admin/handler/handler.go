@@ -59,6 +59,42 @@ func (h *AdminHandler) attachResourceUsers(ctx context.Context, rs []patchModel.
 	}
 }
 
+// attachPatchSummaries fills the owning-galgame summary (name / banner / vndb_id)
+// on comment / resource rows so the admin UI can show the game's NAME instead of
+// a bare "补丁 #<id>". Names live in Wiki, so this resolves them in one batch via
+// the enricher (AdminService satisfies enricher.PatchSummaryDB). Either slice
+// may be nil. Best-effort: rows whose galgame Wiki can't resolve keep Patch=nil
+// and the frontend falls back to the id.
+func (h *AdminHandler) attachPatchSummaries(ctx context.Context, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
+	idSet := make(map[int]struct{}, len(comments)+len(resources))
+	for _, m := range comments {
+		idSet[m.GalgameID] = struct{}{}
+	}
+	for _, r := range resources {
+		idSet[r.GalgameID] = struct{}{}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	summaries := enricher.BuildPatchSummaryMap(ctx, h.wiki, h.service, ids)
+	for i := range comments {
+		if s, ok := summaries[comments[i].GalgameID]; ok {
+			summary := s
+			comments[i].Patch = &summary
+		}
+	}
+	for i := range resources {
+		if s, ok := summaries[resources[i].GalgameID]; ok {
+			summary := s
+			resources[i].Patch = &summary
+		}
+	}
+}
+
 func (h *AdminHandler) attachLogUsers(ctx context.Context, ls []adminModel.AdminLog) {
 	uids := make([]int, 0, len(ls))
 	for _, l := range ls {
@@ -94,6 +130,7 @@ func (h *AdminHandler) GetComments(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	h.attachCommentUsers(c.Context(), comments)
+	h.attachPatchSummaries(c.Context(), comments, nil)
 	return response.Paginated(c, comments, total)
 }
 
@@ -144,6 +181,7 @@ func (h *AdminHandler) GetResources(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	h.attachResourceUsers(c.Context(), resources)
+	h.attachPatchSummaries(c.Context(), nil, resources)
 	return response.Paginated(c, resources, total)
 }
 

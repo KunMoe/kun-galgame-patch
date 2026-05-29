@@ -206,6 +206,19 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 	return patches, total, err
 }
 
+// LookupPatchesByIDs returns the minimal patch projection (id + vndb_id) for a
+// set of ids. Satisfies enricher.PatchSummaryDB so admin list endpoints can
+// attach the owning galgame's name/banner (resolved from Wiki) to comment /
+// resource rows — same mechanism the global lists use.
+func (r *AdminRepository) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []patchModel.Patch
+	err := r.db.Select("id", "vndb_id").Where("id IN ?", ids).Find(&rows).Error
+	return rows, err
+}
+
 // ===== Orphan Patches (D12 cleanup) =====
 
 // orphanCond is the SQL predicate for an "orphan" patch — one whose vndb_id is

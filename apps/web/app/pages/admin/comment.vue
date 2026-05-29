@@ -95,7 +95,7 @@ const chipClass = (active: boolean) => [
       <KunCard v-for="c in data?.items" :key="c.id" :bordered="true">
         <div class="flex items-start gap-3">
           <KunAvatar :user="c.user" size="sm" />
-          <div class="flex-1 space-y-1">
+          <div class="min-w-0 flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2 text-sm">
               <span class="font-semibold">{{ c.user.name }}</span>
               <KunChip v-if="c.status === 1" size="sm" variant="flat" color="warning">
@@ -107,7 +107,11 @@ const chipClass = (active: boolean) => [
                   :to="`/patch/${c.galgame_id}/comment`"
                   class="text-primary hover:underline"
                 >
-                  补丁 #{{ c.galgame_id }}
+                  {{
+                    c.patch?.name
+                      ? getPreferredLanguageText(c.patch.name)
+                      : `补丁 #${c.galgame_id}`
+                  }}
                 </NuxtLink>
               </span>
               <span class="text-default-400 text-xs">
@@ -116,7 +120,7 @@ const chipClass = (active: boolean) => [
                 }}
               </span>
             </div>
-            <p class="whitespace-pre-wrap">{{ c.content }}</p>
+            <p class="break-words whitespace-pre-wrap">{{ c.content }}</p>
           </div>
           <div class="flex shrink-0 gap-2">
             <KunButton
