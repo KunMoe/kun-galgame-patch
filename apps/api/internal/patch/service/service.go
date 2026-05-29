@@ -14,10 +14,10 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
+	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -29,16 +29,16 @@ import (
 var ErrWikiGalgameMissing = errors.New("wiki galgame missing for vndb_id")
 
 type PatchService struct {
-	repo  *repository.PatchRepository
-	rdb   *redis.Client
-	db    *gorm.DB
-	s3    *storage.S3Client
-	wiki  *galgameClient.Client
-	users *userclient.Client
+	repo    *repository.PatchRepository
+	setting *settingService.Service
+	db      *gorm.DB
+	s3      *storage.S3Client
+	wiki    *galgameClient.Client
+	users   *userclient.Client
 }
 
-func New(repo *repository.PatchRepository, rdb *redis.Client, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client) *PatchService {
-	return &PatchService{repo: repo, rdb: rdb, db: db, s3: s3, wiki: wiki, users: users}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users}
 }
 
 // ===== Patch =====
@@ -1165,16 +1165,16 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 }
 
 // ===== Admin Settings Check =====
+//
+// Source of truth is the site_setting table via settingService (durable +
+// audited), read directly — see internal/setting.
 
 func (s *PatchService) IsCommentVerifyEnabled() bool {
-	val, err := s.rdb.Get(context.Background(), "admin:enable_comment_verify").Result()
-	return err == nil && val == "true"
+	return s.setting.GetBool(settingService.KeyCommentVerify)
 }
 
 // IsCreatorOnlyEnabled reports the admin "仅创作者(role>2)可发布 Galgame" toggle.
-// When on, the publish handlers reject non-moderator/admin users. Stored in
-// Redis under admin:enable_creator_only (mirrors the comment-verify flag).
+// When on, the publish handlers reject non-moderator/admin users.
 func (s *PatchService) IsCreatorOnlyEnabled() bool {
-	val, err := s.rdb.Get(context.Background(), "admin:enable_creator_only").Result()
-	return err == nil && val == "true"
+	return s.setting.GetBool(settingService.KeyCreatorOnly)
 }

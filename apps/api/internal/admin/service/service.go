@@ -13,19 +13,21 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/pkg/errors"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type AdminService struct {
-	repo *repository.AdminRepository
-	rdb  *redis.Client
-	s3   *storage.S3Client
+	repo    *repository.AdminRepository
+	rdb     *redis.Client // sessions only (user-purge revocation); settings now live in `setting`
+	setting *settingService.Service
+	s3      *storage.S3Client
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, s3 *storage.S3Client) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, s3: s3}
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, s3 *storage.S3Client) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, s3: s3}
 }
 
 // ===== Comments =====
@@ -217,18 +219,16 @@ func (s *AdminService) GetAllPatches(search string, page, limit int) ([]patchMod
 }
 
 // ===== Settings =====
+//
+// Source of truth is the site_setting table via settingService (durable +
+// audited), NOT Redis. SetSetting records the acting admin for the audit trail.
 
 func (s *AdminService) GetSetting(key string) bool {
-	val, err := s.rdb.Get(context.Background(), key).Result()
-	return err == nil && val == "true"
+	return s.setting.GetBool(key)
 }
 
-func (s *AdminService) SetSetting(key string, enabled bool) {
-	val := "false"
-	if enabled {
-		val = "true"
-	}
-	s.rdb.Set(context.Background(), key, val, 0)
+func (s *AdminService) SetSetting(key string, enabled bool, adminUID int) error {
+	return s.setting.SetBool(key, enabled, adminUID)
 }
 
 // ===== Stats =====

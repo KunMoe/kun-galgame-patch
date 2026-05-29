@@ -29,6 +29,7 @@ import (
 	patchHandler "kun-galgame-patch-api/internal/patch/handler"
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
+	settingService "kun-galgame-patch-api/internal/setting/service"
 	userHandler "kun-galgame-patch-api/internal/user/handler"
 	userRepo "kun-galgame-patch-api/internal/user/repository"
 	userService "kun-galgame-patch-api/internal/user/service"
@@ -91,9 +92,12 @@ func New(cfg *config.Config) *App {
 	authSvc := authService.New(authRepository, rdb, cfg.OAuth)
 	authHdl := authHandler.New(authSvc, rdb, db, usrCli)
 
+	// Site settings (source of truth for admin toggles; shared by patch + admin)
+	settingSvc := settingService.New(db)
+
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, rdb, db, s3, wiki, usrCli)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli)
 	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
@@ -108,7 +112,7 @@ func New(cfg *config.Config) *App {
 
 	// Admin module
 	adminRepository := adminRepo.New(db)
-	adminSvc := adminService.New(adminRepository, rdb, s3)
+	adminSvc := adminService.New(adminRepository, rdb, settingSvc, s3)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
 	// Common handler (direct DB access for simple aggregation endpoints)

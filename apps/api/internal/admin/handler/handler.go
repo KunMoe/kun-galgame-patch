@@ -11,6 +11,7 @@ import (
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -257,7 +258,7 @@ func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
 
 // GetCommentVerify GET /api/admin/setting/comment-verify
 func (h *AdminHandler) GetCommentVerify(c *fiber.Ctx) error {
-	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting("admin:enable_comment_verify")})
+	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting(settingService.KeyCommentVerify)})
 }
 
 // SetCommentVerify PUT /api/admin/setting/comment-verify
@@ -266,13 +267,15 @@ func (h *AdminHandler) SetCommentVerify(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	h.service.SetSetting("admin:enable_comment_verify", req.Enabled)
+	if err := h.service.SetSetting(settingService.KeyCommentVerify, req.Enabled, middleware.MustGetUser(c).ID); err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
 	return response.OKMessage(c, "Setting updated")
 }
 
 // GetCreatorOnly GET /api/admin/setting/creator-only
 func (h *AdminHandler) GetCreatorOnly(c *fiber.Ctx) error {
-	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting("admin:enable_creator_only")})
+	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting(settingService.KeyCreatorOnly)})
 }
 
 // SetCreatorOnly PUT /api/admin/setting/creator-only
@@ -284,7 +287,9 @@ func (h *AdminHandler) SetCreatorOnly(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	h.service.SetSetting("admin:enable_creator_only", req.Enabled)
+	if err := h.service.SetSetting(settingService.KeyCreatorOnly, req.Enabled, middleware.MustGetUser(c).ID); err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
 	return response.OKMessage(c, "Setting updated")
 }
 
