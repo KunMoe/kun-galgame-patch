@@ -13,17 +13,23 @@
 │ wiki     │   ?redirect=<encoded(authorize)>   │ ?redirect=...       │
 └──────────┘                                   └────────┬────────────┘
      ▲                                                  │
-     │                                                  │ ② 填表 → POST /api/v1/auth/register
-     │                                                  │    (后端发 access_token + refresh cookie)
+     │                                                  │ ② 填 name/email/password →
+     │                                                  │   POST /auth/register/send-code
+     │                                                  │   ↓ 后端寄 6 位码到邮箱
+     │                                                  │
+     │                                                  │ ③ 用户从邮箱取码 → 填进表单 →
+     │                                                  │   POST /auth/register { ..., code }
+     │                                                  │   (后端验码 + 建账号 +
+     │                                                  │    发 access_token + refresh cookie)
      │                                                  ▼
      │                                          ┌─────────────────────┐
      │                                          │ oauth.kungal.com    │
      │                                          │ /oauth/authorize    │
      │                                          │ ?client_id=...      │
-     │ ⑤ /auth/callback?code=...               │ &state=...&PKCE=... │
+     │ ⑥ /auth/callback?code=...               │ &state=...&PKCE=... │
      │ ← exchange → 本站 session 创建            └────────┬────────────┘
      │                                                   │
-     │                                                   │ ③ 用户已登录（注册时拿到了 access_token）
+     │                                                   │ ④ 用户已登录（注册时拿到了 access_token）
      │                                                   │   + client.auto_consent === true
      │                                                   │   ⇒ Container.vue 不渲染同意 UI，
      │                                                   │     直接 POST /oauth/authorize/consent
@@ -32,10 +38,12 @@
      │                                          │ oauth backend       │
      │                                          │ issues code         │
      └──────────────────────────────────────────│ 302 → redirect_uri  │
-                       ④                       └─────────────────────┘
+                       ⑤                       └─────────────────────┘
 ```
 
-整条链路是**注册 + OAuth code 流程合一**：用户在 OAuth 注册成功后，OAuth web 复用 `?redirect=` 直接跳到 `/oauth/authorize`，由于 client 是第一方（`auto_consent=true`），同意页跳过，code 立刻发回 kungal，kungal 用现成的 OAuth callback 流程完成本站登录。**用户感知是"点注册 → 填表单 → 回到原站点已登录"**，中间 OAuth 域名的存在被淡化到一闪而过。
+整条链路是**注册 + OAuth code 流程合一**：用户先通过邮箱验证码证明邮箱所有权，OAuth 后端验码通过后才创建账号并发 token。注册成功后 OAuth web 复用 `?redirect=` 直接跳到 `/oauth/authorize`，由于 client 是第一方（`auto_consent=true`），同意页跳过，code 立刻发回 kungal，kungal 用现成的 OAuth callback 流程完成本站登录。**用户感知是"点注册 → 填表单 → 收码 → 回到原站点已登录"**，中间 OAuth 域名的存在被淡化到一闪而过。
+
+> 🔒 **为什么强制邮箱验证**：注册是身份创建动作，邮箱不被验证就建账号 = 任何人都能用别人邮箱去抢注 + 后续找回密码邮件会发到无效地址。两步验证 = 邮箱所有权证明 + 反垃圾注册。同款模式见[改邮箱](./02-user-profile.md#post-authemailsend-code)。
 
 ## 为什么不在 kungal/moyu 自己前端做注册
 
@@ -52,9 +60,54 @@
 
 ## 端点
 
+### POST /auth/register/send-code
+
+**两步注册的第一步**：把 6 位数字验证码寄到 `email`，15 分钟（默认，可通过 `KUN_AUTH_VERIFICATION_CODE_TTL_MINUTES` 调整）有效。
+
+**请求体**：
+
+```json
+{
+  "name": "kun",
+  "email": "kun@kungal.com"
+}
+```
+
+| 字段 | 类型 | 约束 |
+|---|---|---|
+| name | string | 1..17 字符；允许 Unicode 字母/数字 + `!~_@#$%^&*()+=-`；**禁止**所有不可见 Unicode 字符（零宽、特殊空格、BOM 等 50+ 种）—— 详见 `utils.IsValidName` |
+| email | string | 合法邮箱格式 |
+
+**行为**：
+- 同步预检：name / email 是否已被注册 → 已被注册立即返回错误（不烧验证码额度，不发邮件）
+- 同邮箱限流：15 分钟（默认，可通过 `KUN_AUTH_VERIFICATION_CODE_TTL_MINUTES` 调整）内同一邮箱最多寄 1 次（Redis key `register_code:{email}` 兜底）
+- 验证码 6 位数字，存 Redis 15 分钟（默认，可通过 `KUN_AUTH_VERIFICATION_CODE_TTL_MINUTES` 调整） TTL
+- 调 SMTP（`auth@kungal.com`）寄正式邮件，模板见 [`mail.go SendRegisterCodeEmail`](../../../apps/api/internal/infrastructure/mail/mail.go)
+
+**成功响应**：
+
+```json
+{ "code": 0, "message": "验证码已发送到该邮箱", "data": null }
+```
+
+**错误响应**：
+
+| HTTP | code | 触发条件 |
+|------|------|----------|
+| 400  | 1    | JSON 格式错误 |
+| 400  | 7    | 字段约束未通过（name 长度 / email 格式） |
+| 400  | 10006 | 邮箱已被注册 |
+| 400  | 10007 | 用户名已被使用 |
+| 400  | 10012 | 该邮箱 15 分钟（默认，可通过 `KUN_AUTH_VERIFICATION_CODE_TTL_MINUTES` 调整）内已发过验证码（限流） |
+| 429  | — | 同 IP 触发 strict 限流（10/分钟） |
+
+> ⚠️ **错误码 10006 + 10007 会泄露"该邮箱/用户名是否已注册"** —— 这是有意权衡：用户体验上需要明确告知"换一个吧"，而注册场景的账号枚举攻击面比登录小（登录页只回笼统的"账号或密码错误"）。如果产品需要更严的反枚举，未来可改为"如果该邮箱可注册，验证码已寄出"统一文案 + 后端静默吞错。
+
+---
+
 ### POST /auth/register
 
-创建新用户并立即发放 token（**注册即登录**）。
+**两步注册的第二步**：用上一步收到的验证码 + 完整凭证创建账号，并立即发放 token（**注册即登录**）。
 
 **请求体**：
 
@@ -62,15 +115,17 @@
 {
   "name": "kun",
   "email": "kun@kungal.com",
-  "password": "secret123"
+  "password": "secret123",
+  "code": "123456"
 }
 ```
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
-| name | string | 2..17 字符；全局唯一 |
-| email | string | 合法邮箱格式；全局唯一 |
+| name | string | 1..17 字符；全局唯一；字符集见 send-code 节（`utils.IsValidName`） |
+| email | string | 合法邮箱格式；全局唯一；**必须与 send-code 时一致**（验证码按 email key 存的） |
 | password | string | 6..100 字符 |
+| code | string | 6 位数字；从 send-code 时寄到 email 的邮件正文中获取 |
 
 **成功响应**：返回访问令牌 + 用户资料 + 刷新令牌（写 httpOnly cookie）。
 
@@ -95,18 +150,23 @@
 }
 ```
 
-`refresh_token` 写在 httpOnly cookie 里（`Path=/api/v1/auth`，7 天），调用方不需要也不应处理。
+`refresh_token` 写在 httpOnly cookie 里（`Path=/api/v1/auth`，7 天），调用方不需要也不应处理。注册成功后 Redis 中的验证码立即被删除，**不可重放**。
 
 **错误响应**：
 
 | HTTP | code | 触发条件 |
 |------|------|----------|
 | 400  | 1    | JSON 格式错误 |
-| 400  | 7    | 字段约束未通过 |
-| 400  | 10006 | 邮箱已被注册 |
-| 400  | 10007 | 用户名已被使用 |
+| 400  | 7    | 字段约束未通过（name/email/password/code 长度或格式） |
+| 400  | 10006 | 邮箱已被注册（并发竞争；正常 send-code 阶段就该挡掉） |
+| 400  | 10007 | 用户名已被使用（同上） |
+| 400  | 10010 | 验证码错误（不匹配 send-code 时存的值） |
+| 400  | 10011 | 验证码已过期或从未请求（Redis 里没找到这个邮箱的 code） |
+| 429  | — | 同 IP 触发 strict 限流（10/分钟） |
 
-**调用方**：**只有 oauth.kungal.com 自己的前端应该直接调这个端点**。下游 kungal / moyu / wiki 应该走"跳转到 oauth.kungal.com/auth/register"的模式（见下方"下游接入"）。
+> **常见 10011 来源**：用户改了 email 字段后没重新发验证码 → 后端按新 email 找 Redis key 找不到 → 报"已过期"。前端应当锁定 email 字段直到用户主动点"重新发送"。
+
+**调用方**：**只有 oauth.kungal.com 自己的前端应该直接调这两个端点**。下游 kungal / moyu / wiki 应该走"跳转到 oauth.kungal.com/auth/register"的模式（见下方"下游接入"）。
 
 ---
 

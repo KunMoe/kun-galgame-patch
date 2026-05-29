@@ -36,7 +36,8 @@
 | 02 | [user-profile.md](./02-user-profile.md) | 用户自助：`GET/PATCH /auth/me` + `POST /auth/me/avatar`（含头像上传） |
 | 03 | [cross-service.md](./03-cross-service.md) | 服务到服务：`/users/batch`、`/users/search`（OAuth Client Basic Auth） |
 | 04 | [tokens-and-errors.md](./04-tokens-and-errors.md) | JWT Access Token claims + 完整错误码速查（OAuth 15xxx / 认证 10xxx / 通用） |
-| 05 | [registration.md](./05-registration.md) | 🆕 用户注册流程：跳转 OAuth 注册 + 自动 SSO 回跳；`POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例 |
+| 05 | [registration.md](./05-registration.md) | 🆕 用户注册流程：跳转 OAuth 注册 + 邮箱验证码 + 自动 SSO 回跳；`POST /auth/register/send-code` + `POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例 |
+| 06 | [moemoepoint.md](./06-moemoepoint.md) | 🚧 **设计规范（精简版）**：萌萌点全站统一货币（单一真源在 OAuth）。可变余额列 + append-only 审计日志 + 幂等发放/扣除 RPC + 迁移与下游接入；含"刻意没做的"清单（将来需要再升级）|
 
 ### 完整接入指南
 
@@ -75,7 +76,7 @@ OAuth 一共有三种鉴权方式，按场景区分：
 
 ## 变更摘要
 
-> 🆕 **2026-05-23 注册流程统一（L1，重要）**：新增 [05-registration.md](./05-registration.md) 文档；`POST /auth/register` 改为**注册即登录**（返回 access_token + 写 refresh cookie）；新增 [GET /oauth/client-info](./05-registration.md#get-oauthclient-info) 公开元数据端点；`oauth_clients` 加 `auto_consent` 列，5 个第一方 client 默认开启——同意页对第一方静默跳过，用户感知是"注册完一闪回到原站点已登录"。下游 kungal / moyu 的 legacy 注册端点全部删除，"注册"按钮改为复用登录的 PKCE 跳转模式（目标 URL 换成 `/auth/register?redirect=<authorize_url>`）。
+> 🆕 **2026-05-23 注册流程统一（L1，重要）**：新增 [05-registration.md](./05-registration.md) 文档；引入**邮箱验证码两步注册**——`POST /auth/register/send-code` 寄码 + `POST /auth/register` 带 code 创建账号并发 token（**注册即登录**，返回 access_token + 写 refresh cookie）；新增 [GET /oauth/client-info](./05-registration.md#get-oauthclient-info) 公开元数据端点；`oauth_clients` 加 `auto_consent` 列，5 个第一方 client 默认开启——同意页对第一方静默跳过，用户感知是"注册完一闪回到原站点已登录"。下游 kungal / moyu 的 legacy 注册端点全部删除，"注册"按钮改为复用登录的 PKCE 跳转模式（目标 URL 换成 `/auth/register?redirect=<authorize_url>`）。
 
 > 🔒 **2026-05-23 政策**：明确"身份层 vs 展示层"分类。下游禁止在自己前端做改邮箱 / 改密码 / 注销账号等身份操作，必须跳转 OAuth profile。详见上方"重要约定"小节和 [02-user-profile.md](./02-user-profile.md#身份操作-vs-展示操作)。
 
