@@ -392,12 +392,9 @@ func (r *PatchRepository) UpdateCount(patchID int, field string, delta int) erro
 		UpdateColumn(field, gorm.Expr(expr)).Error
 }
 
-// ===== User moemoepoint =====
-
-func (r *PatchRepository) UpdateMoemoepoint(userID int, delta int) error {
-	return r.db.Table("user").Where("id = ?", userID).
-		UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + ?", delta)).Error
-}
+// moemoepoint is no longer mutated locally — OAuth is the unified source of
+// truth (see pkg/moemoepoint). The local user.moemoepoint column is a read-cache
+// updated from each OAuth adjust response by moemoepoint.Awarder.
 
 // ===== Liked resource IDs for a user =====
 

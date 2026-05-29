@@ -27,6 +27,7 @@ import (
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	userModel "kun-galgame-patch-api/internal/user/model"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"gorm.io/gorm"
 )
@@ -41,7 +42,7 @@ const (
 // or one-off backfills). The cron path is the StartWikiSync wrapper below.
 //
 // Returns the number of messages applied + the new cursor value.
-func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Client) (int, int64, error) {
+func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Client, mp *moemoepoint.Client) (int, int64, error) {
 	if wiki == nil || db == nil {
 		return 0, 0, fmt.Errorf("wiki sync: missing wiki client or db")
 	}
@@ -74,7 +75,7 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 		err = db.Transaction(func(tx *gorm.DB) error {
 			for i := range feed.Items {
 				m := &feed.Items[i]
-				if err := applyWikiMessage(tx, m); err != nil {
+				if err := applyWikiMessage(ctx, tx, mp, m); err != nil {
 					return err
 				}
 				if m.ID > cursor {
@@ -105,7 +106,7 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 // idempotency boundary: a non-zero RowsAffected on the INSERT means this is
 // the first time we're seeing this message — only then do we run the side
 // effects. Repeats short-circuit.
-func applyWikiMessage(tx *gorm.DB, m *galgameClient.WikiMessage) error {
+func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, m *galgameClient.WikiMessage) error {
 	// Idempotency gate. ON CONFLICT DO NOTHING; if RowsAffected==0 we already
 	// applied this message in a prior run (or a prior tx in this batch).
 	res := tx.Exec(`
@@ -129,11 +130,30 @@ func applyWikiMessage(tx *gorm.DB, m *galgameClient.WikiMessage) error {
 	switch m.Type {
 	case "approved":
 		if m.TargetUserID != nil {
-			if err := tx.Exec(
-				`UPDATE "user" SET moemoepoint = moemoepoint + 3 WHERE id = ?`,
-				*m.TargetUserID,
-			).Error; err != nil {
-				return fmt.Errorf("award moemoepoint: %w", err)
+			// +3 via OAuth (unified source of truth). This is the canonical
+			// replay-safe path (doc §4): the per-message idempotency_key makes a
+			// retry a no-op, and a failure here returns an error → the batch tx
+			// rolls back → the cron retries this message next run (cursor only
+			// advances on commit). On success we mirror the authoritative balance
+			// into the local cache within the same tx. If OAuth isn't configured
+			// (mp == nil) we skip the award rather than write a local-only +3
+			// that would desync from the unified balance.
+			if mp != nil {
+				res, err := mp.Adjust(ctx, *m.TargetUserID, moemoepoint.AdjustRequest{
+					Delta:          3,
+					Reason:         "content_approved",
+					Ref:            fmt.Sprintf("galgame:%d", m.Galgame.ID),
+					IdempotencyKey: fmt.Sprintf("moyu:wiki_approved:%d", m.ID),
+				})
+				if err != nil {
+					return fmt.Errorf("award moemoepoint: %w", err)
+				}
+				if err := tx.Exec(
+					`UPDATE "user" SET moemoepoint = ? WHERE id = ?`,
+					res.Balance, *m.TargetUserID,
+				).Error; err != nil {
+					return fmt.Errorf("sync moemoepoint cache: %w", err)
+				}
 			}
 			if err := writeWikiNotification(tx, m, displayGalgameName(m.Galgame),
 				"您提交的《%s》已通过审核，奖励 +3 萌萌点"); err != nil {

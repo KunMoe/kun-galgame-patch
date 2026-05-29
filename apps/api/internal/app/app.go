@@ -36,6 +36,7 @@ import (
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/imageclient"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
 
@@ -87,6 +88,17 @@ func New(cfg *config.Config) *App {
 		ClientSecret: cfg.OAuth.ClientSecret,
 	})
 
+	// moemoepoint: OAuth is the unified source of truth. The Awarder routes every
+	// balance change through OAuth's idempotent s2s endpoint and mirrors the
+	// returned balance into the local user.moemoepoint read-cache. Same OAuth
+	// base + Basic-Auth creds as the user-brief client.
+	mpClient := moemoepoint.New(moemoepoint.Config{
+		BaseURL:      cfg.OAuth.ServerURL,
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+	})
+	mpAwarder := moemoepoint.NewAwarder(mpClient, db)
+
 	// Auth module
 	authRepository := authRepo.New(db)
 	authSvc := authService.New(authRepository, rdb, cfg.OAuth)
@@ -97,12 +109,12 @@ func New(cfg *config.Config) *App {
 
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli, mpAwarder)
 	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, s3, usrCli, wiki, db)
+	userSvc := userService.New(userRepository, s3, usrCli, wiki, db, mpAwarder)
 	userHdl := userHandler.New(userSvc, wiki, usrCli)
 
 	// Message module
@@ -175,7 +187,7 @@ func New(cfg *config.Config) *App {
 	app.Use(middleware.CORS(cfg.CORS))
 
 	// Start cron jobs (wiki-sync registered only when wiki client is available)
-	cronStop := cronJobs.Start(db, s3, wiki)
+	cronStop := cronJobs.Start(db, s3, wiki, mpClient)
 
 	slog.Info("Application initialized")
 

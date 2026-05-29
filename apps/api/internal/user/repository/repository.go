@@ -195,9 +195,10 @@ func (r *UserRepository) WhichFollowed(viewerID int, candidateIDs []int) (map[in
 
 // ===== Daily =====
 
-func (r *UserRepository) CheckIn(userID int, points int) error {
-	return r.db.Model(&authModel.User{}).Where("id = ?", userID).Updates(map[string]any{
-		"daily_check_in": 1,
-		"moemoepoint":    gorm.Expr("moemoepoint + ?", points),
-	}).Error
+// CheckIn marks the user as checked-in for today. The moemoepoint reward is no
+// longer applied here — it goes through OAuth (the unified source of truth) via
+// the service's awarder; this only flips the local daily flag.
+func (r *UserRepository) CheckIn(userID int) error {
+	return r.db.Model(&authModel.User{}).Where("id = ?", userID).
+		Update("daily_check_in", 1).Error
 }

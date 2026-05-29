@@ -16,6 +16,7 @@ import (
 	"kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/internal/user/repository"
 	"kun-galgame-patch-api/pkg/imageutil"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 
 	"gorm.io/gorm"
@@ -30,10 +31,11 @@ type UserService struct {
 	users *userclient.Client
 	wiki  *galgameClient.Client
 	db    *gorm.DB
+	mp    *moemoepoint.Awarder
 }
 
-func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB) *UserService {
-	return &UserService{repo: repo, s3: s3, users: users, wiki: wiki, db: db}
+func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB, mp *moemoepoint.Awarder) *UserService {
+	return &UserService{repo: repo, s3: s3, users: users, wiki: wiki, db: db, mp: mp}
 }
 
 // patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so we can
@@ -244,9 +246,15 @@ func (s *UserService) CheckIn(userID int) (int, error) {
 	}
 
 	points := rand.Intn(8) // 0-7
-	if err := s.repo.CheckIn(userID, points); err != nil {
+	if err := s.repo.CheckIn(userID); err != nil {
 		return 0, err
 	}
+	// Award via OAuth (unified balance) + local cache sync. Best-effort; the
+	// daily flag is already set so a missed award doesn't let the user re-check.
+	// Key is per-user-per-day → replay-safe. points==0 is a no-op (Awarder
+	// skips a zero delta, which also satisfies OAuth's non-zero rule).
+	go s.mp.Award(context.Background(), userID, points, "daily_checkin", "",
+		fmt.Sprintf("moyu:checkin:%d:%s", userID, time.Now().Format("2006-01-02")))
 	return points, nil
 }
 

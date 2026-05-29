@@ -9,6 +9,7 @@ import (
 	"kun-galgame-patch-api/internal/constants"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -21,7 +22,7 @@ import (
 //  2. Every 6 hours: clean up S3 multipart uploads still unfinished after 24h (D10 plan B)
 //  3. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
 //     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
-func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client) func() {
+func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *moemoepoint.Client) func() {
 	c := cron.New()
 
 	// ── Daily 00:00: reset quota fields ───────────────
@@ -56,7 +57,7 @@ func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client) func()
 		if _, err := c.AddFunc(wikiSyncSchedule, func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			applied, cursor, err := RunWikiMessageSync(ctx, db, wiki)
+			applied, cursor, err := RunWikiMessageSync(ctx, db, wiki, mp)
 			if err != nil {
 				slog.Error("Wiki 消息同步失败", "error", err, "applied", applied, "cursor", cursor)
 				return

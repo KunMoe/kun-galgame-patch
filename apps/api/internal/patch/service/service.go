@@ -15,6 +15,7 @@ import (
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	settingService "kun-galgame-patch-api/internal/setting/service"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
@@ -35,10 +36,11 @@ type PatchService struct {
 	s3      *storage.S3Client
 	wiki    *galgameClient.Client
 	users   *userclient.Client
+	mp      *moemoepoint.Awarder
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users, mp: mp}
 }
 
 // ===== Patch =====
@@ -110,12 +112,6 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 		}
 		patchID = p.ID
 
-		// User reward: +3 moemoepoint
-		if err := tx.Table("user").Where("id = ?", userID).
-			UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + 3")).Error; err != nil {
-			return fmt.Errorf("更新用户积分失败: %w", err)
-		}
-
 		// Register contributor
 		if err := tx.Create(&model.UserPatchContributeRelation{
 			UserID: userID, GalgameID: p.ID,
@@ -131,6 +127,10 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 	if txErr != nil {
 		return 0, txErr
 	}
+	// +3 reward for creating a galgame entry — awarded AFTER commit via OAuth
+	// (s2s, out of the txn). content_approved; ref/key by galgame id (= patch id).
+	go s.mp.Award(context.Background(), userID, 3, "content_approved",
+		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:patch_create:%d", patchID))
 	return patchID, nil
 }
 
@@ -256,11 +256,6 @@ func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID stri
 		}
 		patchID = p.ID
 
-		if err := tx.Table("user").Where("id = ?", userID).
-			UpdateColumn("moemoepoint", gorm.Expr("moemoepoint + 3")).Error; err != nil {
-			return fmt.Errorf("更新用户积分失败: %w", err)
-		}
-
 		if err := tx.Create(&model.UserPatchContributeRelation{
 			UserID: userID, GalgameID: p.ID,
 		}).Error; err != nil {
@@ -275,6 +270,10 @@ func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID stri
 	if txErr != nil {
 		return 0, txErr
 	}
+	// Claim reward +3 — awarded once per claim (the early-return above guards
+	// re-claims) AFTER commit via OAuth. Key by galgame id so it's replay-safe.
+	go s.mp.Award(context.Background(), userID, 3, "content_approved",
+		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:claim:%d", patchID))
 	return patchID, nil
 }
 
@@ -518,7 +517,7 @@ func (s *PatchService) CreateComment(patchID, userID int, content string, parent
 	}
 
 	if !pending {
-		s.applyCommentSideEffects(patchID, userID)
+		s.applyCommentSideEffects(patchID, userID, comment.ID)
 	}
 
 	// Pre-render content_html so the immediate POST response can be appended
@@ -533,11 +532,12 @@ func (s *PatchService) CreateComment(patchID, userID int, content string, parent
 // bump the patch's comment_count, award the owner +1 moemoepoint (unless they
 // authored it), and record the commenter as a contributor. Shared by
 // CreateComment (verify off) and ApproveComment (verify on, deferred).
-func (s *PatchService) applyCommentSideEffects(patchID, userID int) {
+func (s *PatchService) applyCommentSideEffects(patchID, userID, commentID int) {
 	s.repo.UpdateCount(patchID, "comment_count", 1)
 	patch, _ := s.repo.GetPatchByID(patchID)
 	if patch != nil && patch.UserID != userID {
-		s.repo.UpdateMoemoepoint(patch.UserID, 1)
+		go s.mp.Award(context.Background(), patch.UserID, 1, "liked",
+			fmt.Sprintf("comment:%d", commentID), fmt.Sprintf("moyu:comment:%d", commentID))
 	}
 	s.repo.EnsureContributor(userID, patchID)
 }
@@ -558,7 +558,7 @@ func (s *PatchService) ApproveComment(commentID int) (*model.PatchComment, error
 		return nil, err
 	}
 	comment.Status = 0
-	s.applyCommentSideEffects(comment.GalgameID, comment.UserID)
+	s.applyCommentSideEffects(comment.GalgameID, comment.UserID, comment.ID)
 	comment.ContentHTML = markdown.MustRender(comment.Content)
 	return comment, nil
 }
@@ -601,12 +601,13 @@ func (s *PatchService) ToggleCommentLike(commentID, userID int) (bool, error) {
 
 	existing, err := s.repo.FindCommentLike(userID, commentID)
 	if err == nil {
-		// Unlike
+		// Unlike — reverse the like with the same ref; per-relation-instance key.
 		s.repo.DeleteCommentLike(existing.ID)
 		s.db.Model(&model.PatchComment{}).Where("id = ?", commentID).
 			UpdateColumn("like_count", gorm.Expr("GREATEST(like_count - 1, 0)"))
 		if comment.UserID != userID {
-			s.repo.UpdateMoemoepoint(comment.UserID, -1)
+			go s.mp.Award(context.Background(), comment.UserID, -1, "liked",
+				fmt.Sprintf("comment:%d", commentID), fmt.Sprintf("moyu:comment_unlike:%d", existing.ID))
 		}
 		return false, nil
 	}
@@ -617,7 +618,8 @@ func (s *PatchService) ToggleCommentLike(commentID, userID int) (bool, error) {
 	s.db.Model(&model.PatchComment{}).Where("id = ?", commentID).
 		UpdateColumn("like_count", gorm.Expr("like_count + 1"))
 	if comment.UserID != userID {
-		s.repo.UpdateMoemoepoint(comment.UserID, 1)
+		go s.mp.Award(context.Background(), comment.UserID, 1, "liked",
+			fmt.Sprintf("comment:%d", commentID), fmt.Sprintf("moyu:comment_like:%d", rel.ID))
 	}
 	return true, nil
 }
@@ -741,8 +743,9 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 	s.db.Model(&model.Patch{}).Where("id = ?", resource.GalgameID).
 		Update("resource_update_time", time.Now())
 
-	// Moemoepoint +3
-	s.repo.UpdateMoemoepoint(userID, 3)
+	// Moemoepoint +3 for publishing a resource (unified via OAuth).
+	go s.mp.Award(context.Background(), userID, 3, "content_approved",
+		fmt.Sprintf("resource:%d", resource.ID), fmt.Sprintf("moyu:resource_publish:%d", resource.ID))
 
 	// Ensure contributor
 	s.repo.EnsureContributor(userID, resource.GalgameID)
@@ -976,8 +979,10 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 	s.repo.RecalculatePatchAggregates(resource.GalgameID)
 	// Moemoepoint always decremented from the resource OWNER, not the caller.
 	// When a mod/admin deletes someone else's resource the owner still loses
-	// the +3 they earned at upload time (same convention as legacy next-api).
-	s.repo.UpdateMoemoepoint(resource.UserID, -3)
+	// the +3 they earned at upload time. Same ref as the publish award so OAuth
+	// can reconcile (content_removed reverses content_approved).
+	go s.mp.Award(context.Background(), resource.UserID, -3, "content_removed",
+		fmt.Sprintf("resource:%d", resource.ID), fmt.Sprintf("moyu:resource_delete:%d", resource.ID))
 	return nil
 }
 
@@ -1043,7 +1048,8 @@ func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) 
 		s.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
 			UpdateColumn("like_count", gorm.Expr("GREATEST(like_count - 1, 0)"))
 		if resource.UserID != userID {
-			s.repo.UpdateMoemoepoint(resource.UserID, -1)
+			go s.mp.Award(context.Background(), resource.UserID, -1, "liked",
+				fmt.Sprintf("resource:%d", resourceID), fmt.Sprintf("moyu:resource_unlike:%d", existing.ID))
 		}
 		return false, nil
 	}
@@ -1053,7 +1059,8 @@ func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) 
 	s.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
 		UpdateColumn("like_count", gorm.Expr("like_count + 1"))
 	if resource.UserID != userID {
-		s.repo.UpdateMoemoepoint(resource.UserID, 1)
+		go s.mp.Award(context.Background(), resource.UserID, 1, "liked",
+			fmt.Sprintf("resource:%d", resourceID), fmt.Sprintf("moyu:resource_like:%d", rel.ID))
 	}
 	return true, nil
 }
@@ -1071,7 +1078,8 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 		s.repo.DeleteFavorite(existing.ID)
 		s.repo.UpdateCount(patchID, "favorite_count", -1)
 		if patch.UserID != userID {
-			s.repo.UpdateMoemoepoint(patch.UserID, -1)
+			go s.mp.Award(context.Background(), patch.UserID, -1, "liked",
+				fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:unfavorite:%d", existing.ID))
 		}
 		return false, nil
 	}
@@ -1080,7 +1088,8 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 	s.repo.CreateFavorite(rel)
 	s.repo.UpdateCount(patchID, "favorite_count", 1)
 	if patch.UserID != userID {
-		s.repo.UpdateMoemoepoint(patch.UserID, 1)
+		go s.mp.Award(context.Background(), patch.UserID, 1, "liked",
+			fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:favorite:%d", rel.ID))
 	}
 	return true, nil
 }
