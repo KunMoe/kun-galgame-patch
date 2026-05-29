@@ -105,7 +105,8 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 
 	h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12).Find(&patches)
 	h.db.Model(&patchModel.PatchResource{}).Order("created DESC, id DESC").Limit(6).Find(&resources)
-	h.db.Model(&patchModel.PatchComment{}).Order("created DESC, id DESC").Limit(6).Find(&comments)
+	// status = 0: hide comments pending review (comment-verify) from the home feed.
+	h.db.Model(&patchModel.PatchComment{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&comments)
 
 	// NSFW filter for the secondary slices BEFORE we render/attach anything —
 	// no point rendering a resource note whose owning patch is about to be
@@ -238,7 +239,8 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 	var comments []patchModel.PatchComment
 	var total int64
 
-	base := h.db.Model(&patchModel.PatchComment{})
+	// status = 0: hide comments pending review (comment-verify) from the global list.
+	base := h.db.Model(&patchModel.PatchComment{}).Where("status = 0")
 	base.Session(&gorm.Session{}).Count(&total)
 
 	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).

@@ -29,7 +29,7 @@ func New(db *gorm.DB) *AdminRepository {
 
 // ===== Comments =====
 
-func (r *AdminRepository) GetComments(search string, offset, limit int) ([]patchModel.PatchComment, int64, error) {
+func (r *AdminRepository) GetComments(search, status string, offset, limit int) ([]patchModel.PatchComment, int64, error) {
 	var comments []patchModel.PatchComment
 	var total int64
 
@@ -38,6 +38,14 @@ func (r *AdminRepository) GetComments(search string, offset, limit int) ([]patch
 	base := r.db.Model(&patchModel.PatchComment{})
 	if search != "" {
 		base = base.Where("content ILIKE ?", "%"+search+"%")
+	}
+	// status filter for the review queue: "pending" = awaiting approval,
+	// "approved" = visible, "all"/"" = both.
+	switch status {
+	case "pending":
+		base = base.Where("status <> 0")
+	case "approved":
+		base = base.Where("status = 0")
 	}
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err

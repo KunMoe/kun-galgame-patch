@@ -88,7 +88,7 @@ func (h *AdminHandler) GetComments(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	comments, total, err := h.service.GetComments(req.Search, req.Page, req.Limit)
+	comments, total, err := h.service.GetComments(req.Search, req.Status, req.Page, req.Limit)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -270,20 +270,27 @@ func (h *AdminHandler) SetCommentVerify(c *fiber.Ctx) error {
 	return response.OKMessage(c, "Setting updated")
 }
 
-// GetRegisterDisabled GET /api/admin/setting/register
-func (h *AdminHandler) GetRegisterDisabled(c *fiber.Ctx) error {
-	return response.OK(c, map[string]bool{"disabled": h.service.GetSetting("admin:disable_register")})
+// GetCreatorOnly GET /api/admin/setting/creator-only
+func (h *AdminHandler) GetCreatorOnly(c *fiber.Ctx) error {
+	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting("admin:enable_creator_only")})
 }
 
-// SetRegisterDisabled PUT /api/admin/setting/register
-func (h *AdminHandler) SetRegisterDisabled(c *fiber.Ctx) error {
+// SetCreatorOnly PUT /api/admin/setting/creator-only
+//
+// When on, only moderators / admins (role > 2) may publish a galgame — enforced
+// in the patch publish handlers (CreatePatch / ClaimGalgame / SubmitGalgame).
+func (h *AdminHandler) SetCreatorOnly(c *fiber.Ctx) error {
 	var req dto.AdminSettingBoolRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	h.service.SetSetting("admin:disable_register", req.Enabled)
+	h.service.SetSetting("admin:enable_creator_only", req.Enabled)
 	return response.OKMessage(c, "Setting updated")
 }
+
+// The "禁止注册" (disable-register) setting was removed — registration is
+// unified on the OAuth server (the local register flow no longer exists), so
+// the toggle is being reimplemented there rather than in this admin panel.
 
 // ===== Stats =====
 

@@ -56,8 +56,15 @@ const submit = async () => {
     if (res.code === 0) {
       content.value = ''
       composerKey.value++
-      useKunMessage('评论发布成功', 'success')
-      await refresh()
+      // When 评论审核 is on the comment is created pending (status=1) and is
+      // NOT yet visible — tell the user instead of refreshing (nothing new to
+      // show). Otherwise it's live: refresh to display it.
+      if (res.data?.status === 1) {
+        useKunMessage('评论已提交，等待管理员审核通过后显示', 'info')
+      } else {
+        useKunMessage('评论发布成功', 'success')
+        await refresh()
+      }
     } else {
       useKunMessage(res.message || '发布失败', 'error')
     }

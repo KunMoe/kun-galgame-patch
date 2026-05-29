@@ -193,6 +193,10 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Get("/comment", a.AdminHandler.GetComments)
 	adminRoutes.Put("/comment/:id", a.AdminHandler.UpdateComment)
 	adminRoutes.Delete("/comment/:id", a.AdminHandler.DeleteComment)
+	// Approve a pending (comment-verify) comment → visible. PatchHandler owns it
+	// because the approval reuses PatchService's comment side-effect logic
+	// (count / moemoepoint / contributor / notifications).
+	adminRoutes.Put("/comment/:id/approve", a.PatchHandler.ApproveComment)
 
 	// Resources
 	adminRoutes.Get("/resource", a.AdminHandler.GetResources)
@@ -210,8 +214,11 @@ func (a *App) RegisterRoutes() {
 	// Settings
 	adminRoutes.Get("/setting/comment-verify", a.AdminHandler.GetCommentVerify)
 	adminRoutes.Put("/setting/comment-verify", adminAuth, a.AdminHandler.SetCommentVerify)
-	adminRoutes.Get("/setting/register", a.AdminHandler.GetRegisterDisabled)
-	adminRoutes.Put("/setting/register", adminAuth, a.AdminHandler.SetRegisterDisabled)
+	adminRoutes.Get("/setting/creator-only", a.AdminHandler.GetCreatorOnly)
+	adminRoutes.Put("/setting/creator-only", adminAuth, a.AdminHandler.SetCreatorOnly)
+	// NOTE: the "禁止注册" (disable-register) setting was removed — registration
+	// is unified on the OAuth server (local register flow is gone), so the toggle
+	// belongs there, not here.
 
 	// Stats & Logs
 	adminRoutes.Get("/stats", a.AdminHandler.GetStats)

@@ -1,10 +1,15 @@
 package dto
 
-// AdminPaginationRequest is the common admin pagination request
+// AdminPaginationRequest is the common admin pagination request.
+//
+// Status is only meaningful for the comment list (the review queue):
+// "pending" → status<>0, "approved"/"" → status=0... handled per-endpoint.
+// "all" returns both. Other list endpoints ignore it.
 type AdminPaginationRequest struct {
 	Page   int    `query:"page" validate:"required,min=1"`
 	Limit  int    `query:"limit" validate:"required,min=1,max=100"`
 	Search string `query:"search" validate:"max=300"`
+	Status string `query:"status" validate:"omitempty,oneof=all pending approved"`
 }
 
 // AdminUpdateCommentRequest is the request for updating a comment (admin)

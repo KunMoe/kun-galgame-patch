@@ -4,10 +4,13 @@ useKunDisableSeo('网站设置')
 const api = useApi()
 
 // Each toggle is a separate endpoint on the backend — see
-// apps/api/internal/app/router.go /admin/setting/* routes.
-// `register` is phrased negatively ({disabled}) while the other two are
-// positive ({enabled}); we normalize everything to a {value, key} shape here.
-type SettingKey = 'register' | 'comment-verify' | 'creator-only'
+// apps/api/internal/app/router.go /admin/setting/* routes. All current toggles
+// are phrased positively ({enabled}); isInverse is kept for future negatively-
+// phrased flags.
+//
+// NOTE: 禁止注册 was removed — registration is unified on the OAuth server, so
+// the toggle is being reimplemented there, not here.
+type SettingKey = 'comment-verify' | 'creator-only'
 
 interface SettingDefinition {
   key: SettingKey
@@ -19,12 +22,6 @@ interface SettingDefinition {
 
 const definitions: SettingDefinition[] = [
   {
-    key: 'register',
-    name: '禁止注册',
-    description: '开启后新用户将无法通过普通注册流程加入本站',
-    isInverse: true
-  },
-  {
     key: 'comment-verify',
     name: '评论需要审核',
     description: '开启后新评论需要管理员审核通过才能显示',
@@ -32,19 +29,18 @@ const definitions: SettingDefinition[] = [
   },
   {
     key: 'creator-only',
-    name: '仅创作者可以发布 Galgame',
-    description: '开启后非创作者无法发布新的 Galgame 条目',
+    name: '仅版主 / 管理员可发布 Galgame',
+    description:
+      '开启后仅版主 / 管理员 (role > 2) 可以发布、认领或提交新的 Galgame 条目，普通用户将被拒绝',
     isInverse: false
   }
 ]
 
 const values = reactive<Record<SettingKey, boolean>>({
-  register: false,
   'comment-verify': false,
   'creator-only': false
 })
 const updating = reactive<Record<SettingKey, boolean>>({
-  register: false,
   'comment-verify': false,
   'creator-only': false
 })

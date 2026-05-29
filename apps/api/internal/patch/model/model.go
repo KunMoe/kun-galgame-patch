@@ -209,6 +209,11 @@ type PatchComment struct {
 	Content   string    `gorm:"type:varchar(10007);default:''" json:"content"`
 	Edit      string    `gorm:"default:''" json:"edit"`
 	LikeCount int       `gorm:"default:0" json:"like_count"`
+	// Status is the moderation state for the admin "评论需要审核" toggle:
+	// 0 = approved/visible (default), 1 = pending review (created while verify
+	// is on; hidden from public reads until an admin approves). See migration
+	// 011 + PatchService.CreateComment / ApproveComment.
+	Status    int       `gorm:"default:0" json:"status"`
 	ParentID  *int      `json:"parent_id"`
 	UserID    int       `gorm:"not null" json:"user_id"`
 	GalgameID int       `gorm:"not null" json:"galgame_id"`

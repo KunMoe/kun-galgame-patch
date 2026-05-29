@@ -19,6 +19,9 @@ interface PatchComment {
   created: Date | string
   // Populated only by /api/v1/comment and /api/v1/home; null on per-patch lists.
   patch?: PatchSummary | null
+  // Moderation state (comment-verify): 0 = approved, 1 = pending. Surfaced in
+  // the admin comment list so moderators can review/approve the queue.
+  status?: number
 }
 
 // PatchPageComment is a top-level or reply comment returned from
@@ -40,6 +43,10 @@ interface PatchPageComment {
   user: KunUser
   quoted_content?: string | null
   quoted_username?: string | null
+  // Moderation state (comment-verify): 0 = approved/visible, 1 = pending review.
+  // Public list endpoints only ever return status=0; the create response may be
+  // 1 when the comment was held for admin approval.
+  status?: number
 }
 
 interface HomeComment extends PatchComment {}

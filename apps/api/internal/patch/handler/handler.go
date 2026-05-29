@@ -71,15 +71,31 @@ func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
 
 // ===== Patch CRUD =====
 
+// ensureCanPublishGalgame enforces the admin "仅创作者(role>2)可发布 Galgame"
+// toggle: when on, only moderators / admins may publish. Returns a 403
+// AppError to block, or nil to allow. Applied to every publish entry point
+// (CreatePatch / ClaimGalgame / SubmitGalgame) so the gate can't be bypassed
+// by hitting a different publish route.
+func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
+	if h.service.IsCreatorOnlyEnabled() && !middleware.HasAnyRole(c, "admin", "moderator") {
+		return errors.New(40300, "本站当前仅允许版主 / 管理员发布 Galgame", fiber.StatusForbidden)
+	}
+	return nil
+}
+
 // CreatePatch POST /api/patch
 //
 // D12 (2026-04-21): the request body is simplified to JSON { "vndb_id": "vXXX" }.
 // The server calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
 //
-// The legacy "creator-only" gate (role >= 2 / role == "creator") was removed
-// when the creator role was retired in the OAuth migration; any logged-in
-// user may now create a patch.
+// Publish gate: by default any logged-in user may create a patch (the legacy
+// hard-coded "creator" role gate was retired with that role in the OAuth
+// migration). The admin "仅创作者(role>2)可发布" toggle can re-enable a gate —
+// see ensureCanPublishGalgame, applied to every publish entry point.
 func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
+	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
+		return response.Error(c, appErr)
+	}
 	user := middleware.MustGetUser(c)
 
 	var req dto.PatchCreateRequest
@@ -283,12 +299,39 @@ func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	// Background notifications
-	go func() {
-		h.service.CreateMentionMessages(user.ID, patchID, req.Content)
-		h.service.CreateCommentNotification(user.ID, comment)
-	}()
+	// Background notifications — only for immediately-visible comments. When
+	// the comment is pending review (comment-verify), notifications are
+	// deferred to ApproveComment so we don't ping mentioned users / the patch
+	// owner about a comment that may be rejected.
+	if comment.Status == 0 {
+		go func() {
+			h.service.CreateMentionMessages(user.ID, patchID, req.Content)
+			h.service.CreateCommentNotification(user.ID, comment)
+		}()
+	}
 
+	return response.OK(c, comment)
+}
+
+// ApproveComment PUT /api/admin/comment/:id/approve
+//
+// Flips a pending comment (comment-verify) to approved, applying the deferred
+// visible-comment side effects (comment_count, owner moemoepoint, contributor)
+// and firing the deferred mention / comment notifications. Idempotent.
+// Registered under the moderator-gated /admin group.
+func (h *PatchHandler) ApproveComment(c *fiber.Ctx) error {
+	id, err := getIDParam(c, "id")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	comment, aerr := h.service.ApproveComment(id)
+	if aerr != nil {
+		return response.Error(c, errors.ErrBadRequest(aerr.Error()))
+	}
+	go func() {
+		h.service.CreateMentionMessages(comment.UserID, comment.GalgameID, comment.Content)
+		h.service.CreateCommentNotification(comment.UserID, comment)
+	}()
 	return response.OK(c, comment)
 }
 
@@ -760,6 +803,9 @@ func writeWikiResult(c *fiber.Ctx, data json.RawMessage, err error) error {
 //   - application/json
 //   - multipart/form-data with `data` + optional `file` for banner upload
 func (h *PatchHandler) SubmitGalgame(c *fiber.Ctx) error {
+	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
+		return response.Error(c, appErr)
+	}
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -804,6 +850,9 @@ func (h *PatchHandler) submitGalgameMultipart(c *fiber.Ctx, accessToken string) 
 // Response payload: { "id": <local patch id == galgame id> } so the frontend
 // can navigate straight to /patch/:id without a second round-trip.
 func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
+	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
+		return response.Error(c, appErr)
+	}
 	gid, idErr := getIDParam(c, "gid")
 	if idErr != nil {
 		return response.Error(c, idErr.(*errors.AppError))

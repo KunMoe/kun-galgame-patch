@@ -30,8 +30,8 @@ func New(repo *repository.AdminRepository, rdb *redis.Client, s3 *storage.S3Clie
 
 // ===== Comments =====
 
-func (s *AdminService) GetComments(search string, page, limit int) ([]patchModel.PatchComment, int64, error) {
-	comments, total, err := s.repo.GetComments(search, (page-1)*limit, limit)
+func (s *AdminService) GetComments(search, status string, page, limit int) ([]patchModel.PatchComment, int64, error) {
+	comments, total, err := s.repo.GetComments(search, status, (page-1)*limit, limit)
 	if err == nil {
 		for i := range comments {
 			comments[i].ContentHTML = markdown.MustRender(comments[i].Content)

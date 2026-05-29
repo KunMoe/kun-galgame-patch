@@ -496,32 +496,70 @@ func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
 }
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {
+	// When the admin "评论需要审核" toggle is on, the comment is created in the
+	// pending state (status=1), hidden from public reads until approved. All
+	// the visible-comment side effects (comment_count++, owner moemoepoint,
+	// contributor) are DEFERRED to ApproveComment so pending / rejected
+	// comments never inflate counts or farm points.
+	pending := s.IsCommentVerifyEnabled()
+	status := 0
+	if pending {
+		status = 1
+	}
 	comment := &model.PatchComment{
 		GalgameID: patchID,
-		UserID:   userID,
-		Content:  content,
-		ParentID: parentID,
+		UserID:    userID,
+		Content:   content,
+		ParentID:  parentID,
+		Status:    status,
 	}
 	if err := s.repo.CreateComment(comment); err != nil {
 		return nil, err
 	}
 
-	// Update patch comment count
-	s.repo.UpdateCount(patchID, "comment_count", 1)
+	if !pending {
+		s.applyCommentSideEffects(patchID, userID)
+	}
 
-	// Award moemoepoint to patch creator
+	// Pre-render content_html so the immediate POST response can be appended
+	// directly into the comment list on the frontend without a second fetch
+	// (only done for approved comments — pending ones aren't shown).
+	comment.ContentHTML = markdown.MustRender(comment.Content)
+
+	return comment, nil
+}
+
+// applyCommentSideEffects runs the once-per-visible-comment bookkeeping:
+// bump the patch's comment_count, award the owner +1 moemoepoint (unless they
+// authored it), and record the commenter as a contributor. Shared by
+// CreateComment (verify off) and ApproveComment (verify on, deferred).
+func (s *PatchService) applyCommentSideEffects(patchID, userID int) {
+	s.repo.UpdateCount(patchID, "comment_count", 1)
 	patch, _ := s.repo.GetPatchByID(patchID)
 	if patch != nil && patch.UserID != userID {
 		s.repo.UpdateMoemoepoint(patch.UserID, 1)
 	}
-
-	// Ensure contributor
 	s.repo.EnsureContributor(userID, patchID)
+}
 
-	// Pre-render content_html so the immediate POST response can be appended
-	// directly into the comment list on the frontend without a second fetch.
+// ApproveComment flips a pending comment to approved and applies the deferred
+// visible-comment side effects. Idempotent: approving an already-approved
+// comment is a no-op. Returns the comment with content_html rendered.
+func (s *PatchService) ApproveComment(commentID int) (*model.PatchComment, error) {
+	comment, err := s.repo.GetCommentByID(commentID)
+	if err != nil {
+		return nil, fmt.Errorf("comment not found")
+	}
+	if comment.Status == 0 {
+		comment.ContentHTML = markdown.MustRender(comment.Content)
+		return comment, nil
+	}
+	if err := s.repo.UpdateCommentStatus(commentID, 0); err != nil {
+		return nil, err
+	}
+	comment.Status = 0
+	s.applyCommentSideEffects(comment.GalgameID, comment.UserID)
 	comment.ContentHTML = markdown.MustRender(comment.Content)
-
 	return comment, nil
 }
 
@@ -1130,5 +1168,13 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 
 func (s *PatchService) IsCommentVerifyEnabled() bool {
 	val, err := s.rdb.Get(context.Background(), "admin:enable_comment_verify").Result()
+	return err == nil && val == "true"
+}
+
+// IsCreatorOnlyEnabled reports the admin "仅创作者(role>2)可发布 Galgame" toggle.
+// When on, the publish handlers reject non-moderator/admin users. Stored in
+// Redis under admin:enable_creator_only (mirrors the comment-verify flag).
+func (s *PatchService) IsCreatorOnlyEnabled() bool {
+	val, err := s.rdb.Get(context.Background(), "admin:enable_creator_only").Result()
 	return err == nil && val == "true"
 }

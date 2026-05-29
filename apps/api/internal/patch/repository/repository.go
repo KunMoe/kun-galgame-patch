@@ -157,13 +157,17 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 
 	// Independent statements for Count vs Find — see gorm v2 reuse footgun
 	// in message/repository.go GetMessages.
-	base := r.db.Model(&model.PatchComment{}).Where("galgame_id = ? AND parent_id IS NULL", patchID)
+	// status = 0 → only APPROVED comments are public; pending (status=1) ones
+	// stay hidden until an admin approves (comment-verify). Applied to both the
+	// top-level query and the Replies preload so a pending reply is hidden too.
+	base := r.db.Model(&model.PatchComment{}).
+		Where("galgame_id = ? AND parent_id IS NULL AND status = 0", patchID)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
 		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created ASC, id ASC")
+			return db.Where("status = 0").Order("created ASC, id ASC")
 		}).
 		Find(&comments).Error
 
@@ -172,6 +176,13 @@ func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.Patch
 
 func (r *PatchRepository) CreateComment(comment *model.PatchComment) error {
 	return r.db.Create(comment).Error
+}
+
+// UpdateCommentStatus sets a comment's moderation status (0=approved,
+// 1=pending). Used by PatchService.ApproveComment.
+func (r *PatchRepository) UpdateCommentStatus(commentID, status int) error {
+	return r.db.Model(&model.PatchComment{}).Where("id = ?", commentID).
+		Update("status", status).Error
 }
 
 func (r *PatchRepository) GetCommentByID(id int) (*model.PatchComment, error) {
@@ -188,10 +199,15 @@ func (r *PatchRepository) DeleteComment(id int) error {
 	return r.db.Delete(&model.PatchComment{}, id).Error
 }
 
+// CountCommentAndReplies counts a comment + its direct replies, restricted to
+// APPROVED rows (status = 0). DeleteComment uses this to decrement
+// patch.comment_count, and only approved comments were ever added to that
+// count (pending ones are deferred to approval) — so a pending comment being
+// deleted must not subtract from it.
 func (r *PatchRepository) CountCommentAndReplies(commentID int) (int64, error) {
 	var count int64
 	r.db.Model(&model.PatchComment{}).
-		Where("id = ? OR parent_id = ?", commentID, commentID).
+		Where("(id = ? OR parent_id = ?) AND status = 0", commentID, commentID).
 		Count(&count)
 	return count, nil
 }
