@@ -200,17 +200,26 @@ func (r *AdminRepository) GetAllPatches(search string, offset, limit int) ([]pat
 
 // ===== Orphan Patches (D12 cleanup) =====
 
-// GetOrphanPatches returns a paginated list of patches with galgame_id=0
-// (no matching galgame found in Wiki). Ordered by resource count descending so
-// admins can prioritize "important" orphans that already have resources.
+// orphanCond is the SQL predicate for an "orphan" patch — one whose vndb_id is
+// not a well-formed VNDB visual-novel id (`vN`), so it can have no matching
+// Wiki galgame (Wiki is keyed by vndb_id). Captures both `pending-N`
+// placeholders and malformed ids (e.g. VNDB *release* ids `rN`, stray slashes).
 //
-// Two categories:
-//   - vndb_id LIKE 'pending-%': vndb_id was not filled at creation time
-//   - vndb_id looks like vN but Wiki lookup fails: typo or deleted in Wiki
+// D13 NOTE: the old per-row `galgame_id` sentinel column (== 0 meant "no Wiki
+// match") was DROPPED when patch.id became the Wiki galgame id. Orphan-ness is
+// no longer materialized in a column, so we derive it from vndb_id shape. The
+// "well-formed vndb_id that Wiki nonetheless lacks" case can't be detected
+// locally post-D13 (it would need a Wiki scan of all 6k+ patches per request)
+// and is intentionally out of scope here.
+const orphanCond = "vndb_id !~ '^v[0-9]+$'"
+
+// GetOrphanPatches returns a paginated list of orphan patches (see orphanCond),
+// ordered by resource count descending so admins can prioritize "important"
+// orphans that already have resources.
 func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
-	base := r.db.Model(&patchModel.Patch{}).Where("galgame_id = 0")
+	base := r.db.Model(&patchModel.Patch{}).Where(orphanCond)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -221,15 +230,17 @@ func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patc
 	return patches, total, err
 }
 
-// CountOrphanPatches returns totals for galgame_id=0 split into pending vs. valid-format-but-missing-in-Wiki.
+// CountOrphanPatches splits the orphan total into the two locally-knowable
+// categories: pending placeholders (`pending-N`) vs. otherwise-malformed
+// vndb_ids (not `vN`, not `pending-`).
 func (r *AdminRepository) CountOrphanPatches() (pendingCount, badVndbCount int64, err error) {
 	if err := r.db.Model(&patchModel.Patch{}).
-		Where("galgame_id = 0 AND vndb_id LIKE 'pending-%'").
+		Where("vndb_id LIKE 'pending-%'").
 		Count(&pendingCount).Error; err != nil {
 		return 0, 0, err
 	}
 	err = r.db.Model(&patchModel.Patch{}).
-		Where("galgame_id = 0 AND vndb_id NOT LIKE 'pending-%'").
+		Where(orphanCond+" AND vndb_id NOT LIKE 'pending-%'").
 		Count(&badVndbCount).Error
 	return
 }

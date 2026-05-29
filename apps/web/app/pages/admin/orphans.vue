@@ -22,8 +22,8 @@ interface OrphanPatch {
 interface OrphanListResponse {
   items: OrphanPatch[]
   total: number
-  pending_count: number      // count of rows with vndb_id = 'pending-N'
-  bad_vndb_count: number     // count of rows whose vndb_id is well-formed but missing in Wiki
+  pending_count: number      // rows with vndb_id = 'pending-N' (never filled)
+  bad_vndb_count: number     // rows with a malformed vndb_id (not vN, not pending-)
 }
 
 const { data, pending, refresh } = await useAsyncData<OrphanListResponse>(
@@ -121,12 +121,12 @@ const vndbLink = (v: string) =>
         </p>
       </KunCard>
       <KunCard :bordered="true">
-        <p class="text-default-500 text-xs">vndb_id 对但 Wiki 缺失</p>
+        <p class="text-default-500 text-xs">vndb_id 格式无效</p>
         <p class="mt-1 text-2xl font-bold text-danger">
           {{ data?.bad_vndb_count ?? 0 }}
         </p>
         <p class="text-default-400 mt-1 text-xs">
-          填错了，或 Wiki 里还没建
+          不是 <code>vN</code> 形式 (如填成 release id <code>rN</code>)
         </p>
       </KunCard>
     </div>
@@ -147,7 +147,7 @@ const vndbLink = (v: string) =>
                 variant="flat"
                 :color="isPlaceholder(p.vndb_id) ? 'warning' : 'danger'"
               >
-                {{ isPlaceholder(p.vndb_id) ? '未填' : 'Wiki 缺失' }}
+                {{ isPlaceholder(p.vndb_id) ? '未填' : '格式无效' }}
               </KunChip>
               <code
                 class="bg-default-100 rounded px-2 py-0.5 text-xs"

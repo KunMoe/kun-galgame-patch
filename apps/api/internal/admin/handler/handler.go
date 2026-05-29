@@ -349,14 +349,15 @@ func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
 
 // GetOrphanPatches GET /api/admin/patch/orphans
 //
-// Lists all patches with galgame_id=0, i.e. "orphans" whose galgame cannot be found in Wiki.
-// For each row, the admin can:
+// Lists "orphan" patches — those whose vndb_id is not a well-formed VNDB id
+// (`vN`), so no matching Wiki galgame can exist (see repository.orphanCond;
+// the old galgame_id=0 sentinel was dropped in D13). For each row, the admin can:
 //   - Rebind the correct vndb_id via PUT /api/patch/:id (will re-verify with Wiki /galgame/check)
 //   - Or DELETE /api/patch/:id to remove
 //   - If vndb_id is real but not yet created in Wiki, create the galgame in Wiki first, then rebind
 //
-// Alongside `items`, the response also returns pending_count (vndb_id empty = pending-N)
-// and bad_vndb_count (vndb_id format is valid but missing in Wiki).
+// Alongside `items`, the response returns pending_count (vndb_id = pending-N)
+// and bad_vndb_count (vndb_id malformed — not vN and not pending-).
 func (h *AdminHandler) GetOrphanPatches(c *fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
