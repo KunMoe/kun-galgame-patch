@@ -40,6 +40,7 @@ const isSelf = computed(
 )
 
 const tabs = computed(() => [
+  { key: 'info', title: '动态', href: `/user/${userId.value}/info` },
   { key: 'resource', title: '补丁资源', href: `/user/${userId.value}/resource` },
   { key: 'galgame', title: 'Galgame', href: `/user/${userId.value}/galgame` },
   { key: 'contribute', title: '贡献', href: `/user/${userId.value}/contribute` },

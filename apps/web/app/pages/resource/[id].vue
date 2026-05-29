@@ -42,14 +42,18 @@ const bannerSrc = computed(() =>
 // Composed title:
 //   {gameName}{platforms}{languages}{modelName}{types}资源下载
 // e.g. ヴァンパイアクルセイダーズWindows简体中文claude-opus-4.7AI 翻译补丁资源下载
+//
+// Split into the leading game name + the attribute suffix so the H1 can render
+// the name as a link to the owning patch's resource page, while composedTitle
+// (name + suffix, a plain string) still drives the SEO <title>.
 const mapJoin = (arr: string[] | undefined, m: Record<string, string>) =>
   (arr ?? []).map((k) => m[k] ?? k).join('')
 
-const composedTitle = computed(() => {
+const titleName = computed(() => patchName.value || resource.value?.name || '')
+const titleSuffix = computed(() => {
   const r = resource.value
   if (!r) return '资源下载'
   return (
-    (patchName.value || r.name || '') +
     mapJoin(r.platform, SUPPORTED_PLATFORM_MAP) +
     mapJoin(r.language, SUPPORTED_LANGUAGE_MAP) +
     (r.model_name || '') +
@@ -57,6 +61,10 @@ const composedTitle = computed(() => {
     '资源下载'
   )
 })
+
+const composedTitle = computed(() =>
+  resource.value ? titleName.value + titleSuffix.value : '资源下载'
+)
 
 const storageLabel = computed(() =>
   resource.value
@@ -228,11 +236,16 @@ if (
               {{ patchName }}
             </NuxtLink>
 
+            <!-- Game name is a link to the owning patch's resource page; the
+                 attribute suffix follows as plain text (no space between, to
+                 keep the same composed look as the SEO title). -->
             <h1
               class="text-2xl font-bold break-words sm:text-3xl lg:text-[2rem] lg:leading-tight"
-            >
-              {{ composedTitle }}
-            </h1>
+            ><NuxtLink
+                v-if="detail.patch"
+                :to="`/patch/${detail.patch.id}/resource`"
+                class="hover:text-primary transition-colors hover:underline"
+              >{{ titleName }}</NuxtLink><template v-else>{{ titleName }}</template>{{ titleSuffix }}</h1>
 
             <div class="flex flex-wrap items-center gap-2">
               <KunChip color="secondary" variant="flat" size="sm">
