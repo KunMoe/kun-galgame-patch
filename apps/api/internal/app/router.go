@@ -201,6 +201,12 @@ func (a *App) RegisterRoutes() {
 	// MOYU-PR5 / M3 — append-only file-replacement audit trail for one resource.
 	adminRoutes.Get("/resource/:id/history", a.AdminHandler.GetResourceFileHistory)
 
+	// User purge (anti-spam): wipe all moyu-side traces of one user. Account-
+	// level destruction → admin-only (stricter than the moderator-level single
+	// comment/resource deletes above). Preview is a dry run; purge executes.
+	adminRoutes.Get("/user/:id/purge-preview", adminAuth, a.AdminHandler.GetUserPurgePreview)
+	adminRoutes.Post("/user/:id/purge", adminAuth, a.AdminHandler.PurgeUser)
+
 	// Settings
 	adminRoutes.Get("/setting/comment-verify", a.AdminHandler.GetCommentVerify)
 	adminRoutes.Put("/setting/comment-verify", adminAuth, a.AdminHandler.SetCommentVerify)

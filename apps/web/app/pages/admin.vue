@@ -7,12 +7,24 @@ import { ADMIN_MENU } from '~/constants/admin'
 useKunDisableSeo('管理面板')
 
 const route = useRoute()
-// Writable computed for KunTab v-model — `set` is a no-op; KunTab.href
-// already does the navigateTo() and the route change re-runs the getter.
-const currentHref = computed({
-  get: () => route.path,
-  set: () => {}
-})
+const userStore = useUserStore()
+
+// Frontend access gate for the whole /admin subtree: only moderators / admins
+// (OAuth role "moderator" or "admin", i.e. legacy role > 2) may load the panel.
+// This shell mounts for every /admin/* child, so the check covers all pages.
+// It's defense-in-depth / UX only — the REAL gate is the backend (every /admin
+// API runs moderatorAuth, validating roles from the OAuth JWT in the Redis
+// session, not from this client-persisted store). isModerator is reliable
+// during SSR because the user store is cookie-persisted (see User.vue).
+if (!userStore.isModerator) {
+  await navigateTo('/')
+}
+
+// adminOnly menu entries (e.g. 用户清除) hit admin-gated endpoints, so hide
+// them from moderators — otherwise they'd open a page that only 403s.
+const visibleMenu = computed(() =>
+  ADMIN_MENU.filter((item) => !item.adminOnly || userStore.isAdmin)
+)
 </script>
 
 <template>
@@ -28,14 +40,14 @@ const currentHref = computed({
           </NuxtLink>
           <nav class="flex flex-col gap-1">
             <NuxtLink
-              v-for="item in ADMIN_MENU"
+              v-for="item in visibleMenu"
               :key="item.href"
               :to="item.href"
               :class="
                 cn(
                   'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
                   route.path === item.href
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-primary text-white'
                     : 'hover:bg-default-100'
                 )
               "

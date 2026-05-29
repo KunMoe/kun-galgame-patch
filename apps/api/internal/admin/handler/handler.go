@@ -179,6 +179,52 @@ func (h *AdminHandler) DeleteResource(c *fiber.Ctx) error {
 	return response.OKMessage(c, "Resource deleted")
 }
 
+// ===== User purge (anti-spam, admin-only) =====
+
+// GetUserPurgePreview GET /api/admin/user/:id/purge-preview?purge_owned_patches=
+//
+// Dry run: returns the count breakdown of everything a purge would remove. The
+// purge_owned_patches query flag mirrors the execute-time force option so the
+// owned-patch collateral counts reflect the same choice.
+func (h *AdminHandler) GetUserPurgePreview(c *fiber.Ctx) error {
+	id, err := getIDParam(c, "id")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	preview, perr := h.service.PurgeUserPreview(id, c.QueryBool("purge_owned_patches", false))
+	if perr != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, preview)
+}
+
+// PurgeUser POST /api/admin/user/:id/purge   body: { purge_owned_patches: bool }
+//
+// Irreversibly removes every moyu-side trace of the user (comments, resources +
+// their S3 files, likes/favorites/contributes, follows, chat, private messages)
+// and the local user row, fixing denormalized counters on surviving content.
+// Out of scope: OAuth identity, Wiki, kungal, image_service. Admin-only.
+func (h *AdminHandler) PurgeUser(c *fiber.Ctx) error {
+	id, err := getIDParam(c, "id")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	var req dto.PurgeUserRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+
+	admin := middleware.MustGetUser(c)
+	res, perr := h.service.PurgeUser(id, req.PurgeOwnedPatches, admin.ID)
+	if perr != nil {
+		if appErr, ok := perr.(*errors.AppError); ok {
+			return response.Error(c, appErr)
+		}
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, res)
+}
+
 // ===== All Patches (admin browse) =====
 
 // GetGalgame GET /api/admin/galgame

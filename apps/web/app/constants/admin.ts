@@ -42,12 +42,26 @@ export const ADMIN_STATS_MAP: Record<string, string> = {
 // (/admin/creator) were removed when identity moved to OAuth and the creator
 // role was retired. User bans / role grants now happen on the OAuth admin
 // console.
-export const ADMIN_MENU = [
+// `adminOnly` entries are visible only to OAuth "admin" (legacy super-admin,
+// role 4); everything else is open to "moderator" + "admin" (role > 2). The
+// flagged entries' backend endpoints are admin-gated (adminAuth), so showing
+// them to a moderator would just yield 403s — hide them instead.
+export interface KunAdminMenuItem {
+  name: string
+  href: string
+  icon: string
+  adminOnly?: boolean
+}
+
+export const ADMIN_MENU: KunAdminMenuItem[] = [
   { name: '数据概览', href: '/admin', icon: 'lucide:chart-column-big' },
   { name: 'Galgame 列表', href: '/admin/galgame', icon: 'lucide:gamepad-2' },
   { name: '补丁资源管理', href: '/admin/resource', icon: 'lucide:puzzle' },
   { name: '孤儿补丁', href: '/admin/orphans', icon: 'lucide:unlink' },
   { name: '评论管理', href: '/admin/comment', icon: 'lucide:message-square' },
+  { name: '用户清除', href: '/admin/user-purge', icon: 'lucide:user-x', adminOnly: true },
   { name: '管理日志', href: '/admin/log', icon: 'lucide:file-clock' },
+  // 网站设置 GET is moderator-readable (only its PUT toggles are admin-gated
+  // server-side), so it stays visible to moderators — not adminOnly.
   { name: '网站设置', href: '/admin/setting', icon: 'lucide:settings' }
 ]

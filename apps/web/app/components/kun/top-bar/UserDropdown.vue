@@ -95,6 +95,18 @@ const handleCheckIn = async () => {
         <KunIcon name="lucide:circle-help" class="size-4" />
         帮助与反馈
       </NuxtLink>
+      <!-- Admin panel entry — only moderators / admins (OAuth role
+           "moderator" or "admin", i.e. legacy role > 2) can reach /admin;
+           isModerator covers both. The /admin route group is moderator-gated
+           server-side too, so this is a visibility convenience, not the gate. -->
+      <NuxtLink
+        v-if="userStore.isModerator"
+        to="/admin"
+        class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
+      >
+        <KunIcon name="lucide:shield-check" class="size-4" />
+        管理面板
+      </NuxtLink>
       <KunButton
         variant="light"
         color="danger"

@@ -64,13 +64,17 @@ interface KunImageProps {
   // keeps autocomplete for the two known values while still accepting
   // any provider names a downstream fork registers (cloudinary, etc.).
   //
-  // Template-side cast `(provider as 'ipx')` is intentional: @nuxt/
-  // image's generated BaseImageProps types `provider` via a generic
-  // whose default narrows to ProviderDefaults.provider — which is
-  // hardcoded to `"ipx"` only, even when other providers are
-  // registered. Runtime accepts any registered provider; the cast
-  // tells TS to trust us. Don't remove the cast without verifying
-  // @nuxt/image upstream has fixed the type.
+  // Template-side cast `(provider as never)` is intentional. @nuxt/image's
+  // generated BaseImageProps types `provider` via a generic that narrows to
+  // ProviderDefaults.provider; with KunUI's custom `none` default provider
+  // (set in nuxt.config) that generated type resolves to `undefined` in
+  // consumer apps, so the real prop type (`'ipx' | 'none' | string`) isn't
+  // assignable — an earlier `as 'ipx'` cast failed typecheck for the same
+  // reason. Runtime accepts any registered provider regardless; casting to
+  // `never` (assignable to whatever the generated prop expects) tells TS to
+  // trust us without hardcoding a literal that breaks when the provider
+  // config changes. Don't remove without verifying @nuxt/image upstream
+  // fixed the generated type.
   provider?: 'ipx' | 'none' | (string & {})
   // Responsive density hint forwarded to NuxtImg srcset, e.g. "1x 2x".
   densities?: string
@@ -152,7 +156,7 @@ const wrap = computed(() => props.skeleton)
     :width="width"
     :height="height"
     :preload="preload"
-    :provider="(provider as 'ipx')"
+    :provider="(provider as never)"
     :densities="densities"
     :sizes="sizes"
     :fetchpriority="fetchpriority"
@@ -199,7 +203,7 @@ const wrap = computed(() => props.skeleton)
       :width="width"
       :height="height"
       :preload="preload"
-      :provider="(provider as 'ipx')"
+      :provider="(provider as never)"
       :densities="densities"
       :sizes="sizes"
       :fetchpriority="fetchpriority"

@@ -71,6 +71,49 @@ const (
 	accessTokenContextKey = "oauth_access_token"
 )
 
+// RevokeUserSessions best-effort deletes every Redis session belonging to a
+// user, matched by the id embedded in SessionData. Used by the admin user
+// purge: the request path reads identity from the session blob (not the DB
+// row), so without this a purged spammer's active scripted session would keep
+// authenticating for the rest of its 7-day TTL. Returns the count deleted.
+//
+// SCANs moyu:session:* with a cursor (non-blocking). A GET/parse miss on one
+// key is skipped, not fatal — this is cleanup, not an auth gate. NOTE: this
+// does not revoke the upstream OAuth grant; a truly persistent spammer must
+// also be banned on the OAuth console (out of moyu's scope).
+func RevokeUserSessions(ctx context.Context, rdb *redis.Client, userID int) (int, error) {
+	var (
+		cursor  uint64
+		deleted int
+	)
+	for {
+		keys, next, err := rdb.Scan(ctx, cursor, SessionPrefix+"*", 200).Result()
+		if err != nil {
+			return deleted, err
+		}
+		for _, key := range keys {
+			val, gerr := rdb.Get(ctx, key).Result()
+			if gerr != nil {
+				continue
+			}
+			var s SessionData
+			if json.Unmarshal([]byte(val), &s) != nil {
+				continue
+			}
+			if s.ID == userID {
+				if rdb.Del(ctx, key).Err() == nil {
+					deleted++
+				}
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return deleted, nil
+}
+
 func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		sessionID := c.Cookies(SessionCookieName)
