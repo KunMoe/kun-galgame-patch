@@ -135,6 +135,10 @@ func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
 	// service's attachPatchSummaries — drop rows whose owning patch wiki
 	// excludes under content_limit before they reach the response.
 	data = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, data, func(r patchModel.PatchResource) int { return r.GalgameID }, utils.ContentLimitForListBrowse(c))
+	// The user-profile resource tab renders summary cards only (no download
+	// links/secrets), so strip the download payload — same anti-scraping
+	// rationale as the home / global resource feeds.
+	patchModel.StripResourceSecrets(data)
 	return response.Paginated(c, data, total)
 }
 

@@ -23,19 +23,6 @@ func (s *MessageService) GetUnreadTypes(recipientID int) ([]string, error) {
 	return s.repo.GetUnreadTypes(recipientID)
 }
 
-// CreateMessage creates a new message
-func (s *MessageService) CreateMessage(senderID, recipientID int, msgType, content, link string) error {
-	msg := &model.UserMessage{
-		Type:        msgType,
-		Content:     content,
-		Status:      0,
-		Link:        link,
-		SenderID:    &senderID,
-		RecipientID: &recipientID,
-	}
-	return s.repo.CreateMessage(msg)
-}
-
 // MarkAsRead marks messages of a given type (or all) as read
 func (s *MessageService) MarkAsRead(recipientID int, msgType string) error {
 	return s.repo.MarkAsRead(recipientID, msgType)

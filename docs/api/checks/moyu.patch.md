@@ -6,7 +6,7 @@
 >
 > 配套: [moyu.get.md](./moyu.get.md) · [moyu.post.md](./moyu.post.md) · [moyu.put.md](./moyu.put.md) · [moyu.delete.md](./moyu.delete.md) · [README](./README.md)
 >
-> 状态：全部 ⏳ 待审计（inventory）。图例见 [README](./README.md#图例--审计状态)。
+> 状态：**审计完成（2026-05-29）**。详细逐端点报告见 [`_audit/`](./_audit/)。图例见 [README](./README.md#图例--审计状态)。
 
 ## 图例（简）
 
@@ -17,6 +17,7 @@
 
 - 本服务 PATCH 端点：**2**
   - 认证 1 · Galgame 代理 1
+- 本轮：✅ 全部对齐无误
 
 ---
 
@@ -24,10 +25,10 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PATCH /api/v1/auth/me` | 🔒 | `authH.UpdateMe` | ⏳ | 代理 OAuth 改**展示层**（仅 name / bio）；身份层（改密码/邮箱/2FA/注销）不代理，跳转 oauth.kungal.com/profile |
+| `PATCH /api/v1/auth/me` | 🔒 | `authH.UpdateMe` | ✅ | 代理 OAuth 改**展示层**（name/bio/avatar）；原样回传 OAuth 状态码+envelope；FE 仅读 `code` 后 refetch `/auth/me`，故 OAuth 富 body 不被绑定（实测空 body no-op 200）。身份层（改密码/邮箱/2FA/注销）不代理，跳转 oauth.kungal.com/profile |
 
 ## 2. Galgame 投稿代理 `/galgame`（→ Wiki）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PATCH /api/v1/galgame/:gid` | 🔒 | `patchH.PatchGalgameDraft` | ⏳ | 改草稿投稿（代理 Wiki；草稿态走 PATCH，已发布走 PUT）|
+| `PATCH /api/v1/galgame/:gid` | 🔒 | `patchH.PatchGalgameDraft` | ✅ | 改草稿投稿（代理 Wiki；草稿态走 PATCH，已发布走 PUT）；路由顺序 literal 先于 `:gid`，无 shadowing |

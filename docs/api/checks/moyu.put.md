@@ -6,7 +6,7 @@
 >
 > 配套: [moyu.get.md](./moyu.get.md) · [moyu.post.md](./moyu.post.md) · [moyu.delete.md](./moyu.delete.md) · [moyu.patch.md](./moyu.patch.md) · [README](./README.md)
 >
-> 状态：全部 ⏳ 待审计（inventory）。图例见 [README](./README.md#图例--审计状态)。
+> 状态：**审计完成（2026-05-29）**。详细逐端点报告见 [`_audit/`](./_audit/)。图例见 [README](./README.md#图例--审计状态)。
 
 ## 图例（简）
 
@@ -17,6 +17,7 @@
 
 - 本服务 PUT 端点：**26**
   - 补丁/评论/资源 9 · Galgame 代理 4 · 分类代理 4 · 用户 1 · 消息 1 · 管理 5 · 聊天 2
+- 本轮：🔧 修复 1（`/user/:id/follow` FK 报错泄露）· ⏭️ 代理 6 · ✅ 其余
 
 ---
 
@@ -24,59 +25,59 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/patch/:id` | 🔒 | `patchH.UpdatePatch` | ⏳ | 改补丁 |
-| `PUT /api/v1/patch/:id/view` | 🌐 | `patchH.IncrementView` | ⏳ | 浏览量 +1（无鉴权）|
-| `PUT /api/v1/patch/:id/favorite` | 🔒 | `patchH.ToggleFavorite` | ⏳ | 收藏 / 取消（±1 萌萌点给作者）|
-| `PUT /api/v1/patch/comment/:commentId` | 🔒 | `patchH.UpdateComment` | ⏳ | 改评论 |
-| `PUT /api/v1/patch/comment/:commentId/like` | 🔒 | `patchH.ToggleCommentLike` | ⏳ | 点赞 / 取消（±1 萌萌点）|
-| `PUT /api/v1/patch/resource/:resourceId` | 🔒 | `patchH.UpdateResource` | ⏳ | 改资源（可触发文件替换审计）|
-| `PUT /api/v1/patch/resource/:resourceId/disable` | 🔒 | `patchH.ToggleResourceDisable` | ⏳ | 禁用 / 启用该资源下载 |
-| `PUT /api/v1/patch/resource/:resourceId/download` | 🌐 | `patchH.IncrementResourceDownload` | ⏳ | 下载量 +1（无鉴权）|
-| `PUT /api/v1/patch/resource/:resourceId/like` | 🔒 | `patchH.ToggleResourceLike` | ⏳ | 点赞 / 取消（±1 萌萌点）|
+| `PUT /api/v1/patch/:id` | 🔒 | `patchH.UpdatePatch` | ✅ | owner/privileged gate；仅允许重绑同 galgame_id（实测）|
+| `PUT /api/v1/patch/:id/view` | 🌐 | `patchH.IncrementView` | ✅ | 无鉴权公开计数；缺失 id 匹配 0 行无错（实测）|
+| `PUT /api/v1/patch/:id/favorite` | 🔒 | `patchH.ToggleFavorite` | ✅ | `{favorited}`；±1 萌萌点给作者，自收藏 guard + 幂等键（实测自反转）|
+| `PUT /api/v1/patch/comment/:commentId` | 🔒 | `patchH.UpdateComment` | ✅ | owner-only；无 FE 编辑 UI（dead-but-correct）|
+| `PUT /api/v1/patch/comment/:commentId/like` | 🔒 | `patchH.ToggleCommentLike` | ✅ | `{liked}`；±1 萌萌点 + 自赞 guard + 幂等键（实测自反转）|
+| `PUT /api/v1/patch/resource/:resourceId` | 🔒 | `patchH.UpdateResource` | ✅ | owner/mod；文件实质变更才写 file-history + 删旧 S3（事务）|
+| `PUT /api/v1/patch/resource/:resourceId/disable` | 🔒 | `patchH.ToggleResourceDisable` | ✅ | `{status}`；原子 CASE 翻转（实测自反转）|
+| `PUT /api/v1/patch/resource/:resourceId/download` | 🌐 | `patchH.IncrementResourceDownload` | ✅ | 无鉴权；同事务 resource+patch 各 +1（无重复）|
+| `PUT /api/v1/patch/resource/:resourceId/like` | 🔒 | `patchH.ToggleResourceLike` | ✅ | `{liked}`；±1 萌萌点 + 自赞 guard + 幂等键（实测自反转）|
 
 ## 2. Galgame 编辑代理 `/galgame`（→ Wiki）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/galgame/:gid` | 🔒 | `patchH.UpdateGalgame` | ⏳ | 改 galgame 元数据（代理 Wiki；Wiki 强制 creator/admin）|
-| `PUT /api/v1/galgame/messages/read-state` | 🔒 | `patchH.UpdateWikiMessagesReadState` | ⏳ | 标记 Wiki 消息已读 |
-| `PUT /api/v1/galgame/:gid/prs/:prid/merge` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 代理：合并 PR |
-| `PUT /api/v1/galgame/:gid/prs/:prid/decline` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 代理：拒绝 PR |
+| `PUT /api/v1/galgame/:gid` | 🔒 | `patchH.UpdateGalgame` | ✅ | 代理 Wiki（Wiki 强制 creator/admin）|
+| `PUT /api/v1/galgame/messages/read-state` | 🔒 | `patchH.UpdateWikiMessagesReadState` | ✅ | forward-only GREATEST（实测往返，DB 回 0）|
+| `PUT /api/v1/galgame/:gid/prs/:prid/merge` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `PUT /api/v1/galgame/:gid/prs/:prid/decline` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
 
 ## 3. 分类代理 `/tag /official /engine /series`（→ Wiki，Wiki 强制 admin/mod）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/tag` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 改标签 |
-| `PUT /api/v1/official` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 改会社 |
-| `PUT /api/v1/engine` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 改引擎 |
-| `PUT /api/v1/series/:id` | 🔒 | `patchH.WikiEditProxy` | ⏳ | 改系列 |
+| `PUT /api/v1/tag` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `PUT /api/v1/official` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `PUT /api/v1/engine` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `PUT /api/v1/series/:id` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
 
 ## 4. 用户 `/user`
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/user/:id/follow` | 🔒 | `userH.Follow` | ⏳ | 关注 |
+| `PUT /api/v1/user/:id/follow` | 🔒 | `userH.Follow` | 🔧 | 被关注者无本地 user 行时原泄露 Postgres FK 串（SQLSTATE 23503）→ 识别 FK 冲突返回 `用户不存在`；自关注 guard + 已关注 guard 正常 |
 
 ## 5. 消息 `/message`（组级 `auth`）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/message/read` | 🔒 | `messageH.MarkAsRead` | ⏳ | 标记已读 |
+| `PUT /api/v1/message/read` | 🔒 | `messageH.MarkAsRead` | ✅ | `{type}`（或 all）；仅本人未读行（实测）|
 
 ## 6. 管理 `/admin`（组级 `auth` + `RequireRole("admin","moderator")`）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/admin/comment/:id` | 🛡️ | `adminH.UpdateComment` | ⏳ | 改评论 |
-| `PUT /api/v1/admin/comment/:id/approve` | 🛡️ | `patchH.ApproveComment` | ⏳ | 通过待审评论（复用 PatchService 评论副作用）|
-| `PUT /api/v1/admin/resource/:id` | 🛡️ | `adminH.UpdateResource` | ⏳ | 改资源 |
-| `PUT /api/v1/admin/setting/comment-verify` | ⚙️ | `adminH.SetCommentVerify` | ⏳ | 写“评论需审核”开关；仅 admin |
-| `PUT /api/v1/admin/setting/creator-only` | ⚙️ | `adminH.SetCreatorOnly` | ⏳ | 写“仅创作者可发布”开关；仅 admin |
+| `PUT /api/v1/admin/comment/:id` | 🛡️ | `adminH.UpdateComment` | ✅ | （低）DB 错误→400、改不存在 id 静默成功（可选硬化）|
+| `PUT /api/v1/admin/comment/:id/approve` | 🛡️ | `patchH.ApproveComment` | ✅ | 幂等（status==0 early-return）；重复 approve 不重复通知（createDedupMessage）|
+| `PUT /api/v1/admin/resource/:id` | 🛡️ | `adminH.UpdateResource` | ✅ | 仅改 note（有意）；（低）同 UpdateComment 错误映射 |
+| `PUT /api/v1/admin/setting/comment-verify` | ⚙️ | `adminH.SetCommentVerify` | ✅ | admin-only；upsert site_setting |
+| `PUT /api/v1/admin/setting/creator-only` | ⚙️ | `adminH.SetCreatorOnly` | ✅ | admin-only；实测自反转（开→读→关→读）|
 
 ## 7. 聊天 `/chat`（组级 `auth`）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/chat/room/:link/seen` | 🔒 | `chatH.MarkSeen` | ⏳ | 标记房间已读 |
-| `PUT /api/v1/chat/message/:id` | 🔒 | `chatH.UpdateMessage` | ⏳ | 改消息 |
+| `PUT /api/v1/chat/room/:link/seen` | 🔒 | `chatH.MarkSeen` | ✅ | 成员鉴权 + 房内 id 过滤 + OnConflict 幂等；无 FE 调用方（已读回执未接，dead-but-correct）|
+| `PUT /api/v1/chat/message/:id` | 🔒 | `chatH.UpdateMessage` | ✅ | 仅发送者可编辑；同事务写编辑历史；无 IDOR |

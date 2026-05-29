@@ -207,9 +207,12 @@ func (s *AboutService) GetPost(slug string) (*model.PostDetail, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("slug is required")
 	}
-	// Forbid path traversal — slugs are POSIX paths under postsDir.
+	// Forbid path traversal — slugs are POSIX paths under postsDir. Return
+	// os.ErrNotExist (not a generic error) so the handler maps it to 404:
+	// the check fires before any file read, so a traversal probe should look
+	// like an ordinary missing article rather than a 500.
 	if strings.Contains(slug, "..") {
-		return nil, fmt.Errorf("invalid slug")
+		return nil, os.ErrNotExist
 	}
 
 	posts, err := s.readAll()

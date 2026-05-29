@@ -32,21 +32,27 @@ type AdminStatsRequest struct {
 	Days int `query:"days" validate:"required,min=1"`
 }
 
-// AdminStatsResponse is the response for overview stats
+// AdminStatsResponse is the response for overview stats.
+// NOTE: json tags must match the FE keys (app/shared/types/admin.d.ts +
+// app/constants/admin.ts ADMIN_STATS_MAP) — `new_resource`, NOT
+// `new_patch_resource`, or the "新发布补丁" dashboard card silently renders 0.
 type AdminStatsResponse struct {
 	NewUser          int64 `json:"new_user"`
 	NewActiveUser    int64 `json:"new_active_user"`
 	NewGalgame       int64 `json:"new_galgame"`
-	NewPatchResource int64 `json:"new_patch_resource"`
+	NewPatchResource int64 `json:"new_resource"`
 	NewComment       int64 `json:"new_comment"`
 }
 
-// AdminStatsSumResponse is the response for total stats
+// AdminStatsSumResponse is the response for total stats.
+// json tags must match the FE keys (ADMIN_STATS_SUM_MAP + SumData):
+// `resource_count` / `comment_count`, NOT `patch_*_count`, or those two
+// dashboard cards silently render 0.
 type AdminStatsSumResponse struct {
 	UserCount          int64 `json:"user_count"`
 	GalgameCount       int64 `json:"galgame_count"`
-	PatchResourceCount int64 `json:"patch_resource_count"`
-	PatchCommentCount  int64 `json:"patch_comment_count"`
+	PatchResourceCount int64 `json:"resource_count"`
+	PatchCommentCount  int64 `json:"comment_count"`
 }
 
 // PurgeUserRequest is the body for POST /admin/user/:id/purge. When

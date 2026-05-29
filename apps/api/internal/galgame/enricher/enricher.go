@@ -338,6 +338,13 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	base := &PatchDetailCard{}
 	base.GalgameCard = baseCard(p)
 	base.Updated = p.Updated
+	// Initialize the Wiki-derived slices to non-nil so an empty set serializes
+	// as [] (not JSON null). The FE types declare them as non-optional arrays
+	// (tags/officials/wiki_engine_ids); a null would break any .map/.length the
+	// detail page does without a guard. Applies to every return path below.
+	base.Tags = []PatchDetailTag{}
+	base.Officials = []PatchDetailOfficial{}
+	base.WikiEngineIDs = []int{}
 
 	if users != nil && p.UserID > 0 {
 		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
@@ -506,7 +513,16 @@ func CardFromBrief(g *galgameClient.GalgameBrief) GalgameCard {
 	if g == nil {
 		return GalgameCard{}
 	}
-	card := GalgameCard{ID: g.ID, VndbID: g.VndbID}
+	// Init the JSONArray fields to non-nil so they serialize as [] not null —
+	// this degraded card (a Wiki galgame with no local patch row) has no local
+	// type/language/platform, and the FE type declares them as string[].
+	card := GalgameCard{
+		ID:       g.ID,
+		VndbID:   g.VndbID,
+		Type:     patchModel.JSONArray{},
+		Language: patchModel.JSONArray{},
+		Platform: patchModel.JSONArray{},
+	}
 	applyGalgame(&card, g)
 	return card
 }

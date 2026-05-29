@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
@@ -146,15 +147,29 @@ func (s *UserService) Follow(followerID, followingID int) error {
 
 	rel := &model.UserFollowRelation{FollowerID: followerID, FollowingID: followingID}
 	if err := s.repo.CreateFollow(rel); err != nil {
+		// The followee id comes from OAuth and may legitimately lack a local
+		// `user` row; the following_id FK then rejects the insert. Map that to
+		// a clean message instead of leaking the raw Postgres SQLSTATE string.
+		if strings.Contains(err.Error(), "violates foreign key") || strings.Contains(err.Error(), "23503") {
+			return fmt.Errorf("用户不存在")
+		}
 		return err
 	}
 
 	return s.repo.UpdateFollowCounts(followerID, followingID, 1)
 }
 
-// Unfollow removes a follow relation and decrements counts.
+// Unfollow removes a follow relation and decrements counts ONLY when a
+// relation actually existed. Without the rows-affected guard, calling unfollow
+// on a user you never followed would still decrement their follower_count,
+// letting anyone corrupt/harass another user's count (GREATEST clamps at 0 but
+// can't prevent corrupting a legitimate positive count).
 func (s *UserService) Unfollow(followerID, followingID int) error {
-	if err := s.repo.DeleteFollow(followerID, followingID); err != nil {
+	affected, err := s.repo.DeleteFollow(followerID, followingID)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return fmt.Errorf("not following this user")
 	}
 	return s.repo.UpdateFollowCounts(followerID, followingID, -1)

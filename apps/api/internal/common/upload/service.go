@@ -78,6 +78,20 @@ func (s *Service) markCompleteOnce(ctx context.Context, s3Key string) (bool, err
 	return res == "OK", nil
 }
 
+// unmarkComplete releases the idempotency marker for s3Key, used when a
+// complete attempt set the marker but then failed before the quota deduction
+// committed (so a retry can re-run the deduction). Best-effort, and uses a
+// fresh context because the request context may already be done by the time
+// this runs in a deferred cleanup.
+func (s *Service) unmarkComplete(s3Key string) {
+	if s.rdb == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	s.rdb.Del(ctx, "upload:complete:"+s3Key)
+}
+
 // ─── s3_key generation ───────────────────────────────
 
 var (
@@ -190,6 +204,17 @@ func (s *Service) verifyAndFinalize(ctx context.Context, userID int, s3Key strin
 	if !first {
 		return actual, nil
 	}
+	// The idempotency marker is now held. It must persist ONLY if the quota
+	// deduction below actually commits — otherwise a retry hits the "!first"
+	// fast-path above and returns success WITHOUT ever deducting, permanently
+	// under-counting daily_upload_size. Release the marker on every failure
+	// path so a retry can re-run the deduction (MOYU-PR7 / M5 follow-up).
+	deducted := false
+	defer func() {
+		if !deducted {
+			s.unmarkComplete(s3Key)
+		}
+	}()
 
 	var user authModel.User
 	if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
@@ -205,6 +230,7 @@ func (s *Service) verifyAndFinalize(ctx context.Context, userID int, s3Key strin
 		UpdateColumn("daily_upload_size", gorm.Expr("daily_upload_size + ?", actual)).Error; err != nil {
 		return 0, fmt.Errorf("扣减限额失败: %w", err)
 	}
+	deducted = true
 	return actual, nil
 }
 
@@ -246,6 +272,14 @@ func (s *Service) InitMultipart(ctx context.Context, userID int, privileged bool
 	}
 	if err := s.validatePreUpload(userID, req.FileName, req.FileSize, privileged); err != nil {
 		return nil, err
+	}
+	// part_count must match the fixed 10 MiB chunking the client uses (FE
+	// computes ceil(file_size / MULTIPART_PART_SIZE) with the same constant).
+	// Reject mismatches so a client can't decouple part_count from the real
+	// size and force the server to presign thousands of bogus part URLs.
+	wantParts := int((req.FileSize + constants.MultipartPartSize - 1) / constants.MultipartPartSize)
+	if req.PartCount != wantParts {
+		return nil, fmt.Errorf("分片数不正确：应为 %d", wantParts)
 	}
 
 	key, err := buildPatchResourceKey(req.GalgameID, req.FileName)

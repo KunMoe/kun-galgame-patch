@@ -21,10 +21,15 @@ type GetPatchCommentRequest struct {
 	Limit int `query:"limit" validate:"required,min=1,max=30"`
 }
 
-// PatchCommentCreateRequest is the request body for creating a comment
+// PatchCommentCreateRequest is the request body for creating a comment.
+//
+// GalgameID is NOT required from the body: the canonical source is the URL
+// path param (/patch/:id/comment), which the handler injects into this struct
+// AFTER validation runs. Marking it `required` made validation reject every
+// real request (the FE only sends {content}) — commenting was fully broken.
 type PatchCommentCreateRequest struct {
-	GalgameID int   `json:"galgame_id" validate:"required,min=1"`
-	ParentID *int   `json:"parent_id" validate:"omitempty,min=1"`
+	GalgameID int    `json:"galgame_id" validate:"omitempty,min=1"`
+	ParentID  *int   `json:"parent_id" validate:"omitempty,min=1"`
 	Content  string `json:"content" validate:"required,min=1,max=10007"`
 	Captcha  string `json:"captcha" validate:"max=10"`
 }

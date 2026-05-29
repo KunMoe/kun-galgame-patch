@@ -109,21 +109,6 @@ func (h *MessageHandler) GetUnreadTypes(c *fiber.Ctx) error {
 	return response.OK(c, types)
 }
 
-// CreateMessage POST /api/message
-func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
-	var req dto.CreateMessageRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	user := middleware.MustGetUser(c)
-	if err := h.service.CreateMessage(user.ID, req.RecipientID, req.Type, req.Content, req.Link); err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-
-	return response.OKMessage(c, "Message sent")
-}
-
 // MarkAsRead PUT /api/message/read
 func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	var req dto.ReadMessageRequest

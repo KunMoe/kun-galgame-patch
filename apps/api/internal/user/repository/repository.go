@@ -129,9 +129,16 @@ func (r *UserRepository) CreateFollow(rel *model.UserFollowRelation) error {
 	return r.db.Create(rel).Error
 }
 
-func (r *UserRepository) DeleteFollow(followerID, followingID int) error {
-	return r.db.Where("follower_id = ? AND following_id = ?", followerID, followingID).
-		Delete(&model.UserFollowRelation{}).Error
+// DeleteFollow removes a follow relation and reports how many rows were
+// actually deleted. The caller MUST gate the follower/following count
+// decrement on rowsAffected > 0 — a Where(...).Delete on a non-existent
+// relation returns a nil error with RowsAffected == 0, so blindly
+// decrementing would corrupt a victim's follower_count without any relation
+// ever existing.
+func (r *UserRepository) DeleteFollow(followerID, followingID int) (int64, error) {
+	res := r.db.Where("follower_id = ? AND following_id = ?", followerID, followingID).
+		Delete(&model.UserFollowRelation{})
+	return res.RowsAffected, res.Error
 }
 
 func (r *UserRepository) UpdateFollowCounts(followerID, followingID, delta int) error {

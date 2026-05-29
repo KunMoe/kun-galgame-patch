@@ -50,11 +50,6 @@ func (r *MessageRepository) GetUnreadTypes(recipientID int) ([]string, error) {
 	return types, err
 }
 
-// CreateMessage creates a new message
-func (r *MessageRepository) CreateMessage(msg *model.UserMessage) error {
-	return r.db.Create(msg).Error
-}
-
 // MarkAsRead marks messages as read by type (or all if type is "all")
 func (r *MessageRepository) MarkAsRead(recipientID int, msgType string) error {
 	query := r.db.Model(&model.UserMessage{}).Where("recipient_id = ? AND status = 0", recipientID)

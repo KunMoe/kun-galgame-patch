@@ -38,7 +38,10 @@ type ListMessagesQuery struct {
 	IDs    string `query:"ids" validate:"omitempty,max=2000"`
 	After  int    `query:"after" validate:"min=0"`
 	Before int    `query:"before" validate:"min=0"`
-	Limit  int    `query:"limit" validate:"min=1,max=100"`
+	// omitempty so an omitted limit (0) falls through to the handler's default
+	// of 30 instead of 422-ing. Previously `min=1` rejected limit-less calls
+	// (notably the `ids` exact-set refresh mode) before the default ran.
+	Limit  int    `query:"limit" validate:"omitempty,min=1,max=100"`
 }
 
 // CreateMessageRequest sends a message. FileURL is optional (attachment).

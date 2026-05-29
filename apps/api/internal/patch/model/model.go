@@ -151,6 +151,25 @@ func RenderResourceNotes(rs []PatchResource) {
 	}
 }
 
+// StripResourceSecrets blanks the download payload (Content / S3Key / Code /
+// Password) on a slice of resources. Used by the bulk LIST/feed endpoints
+// (home, global resource feed, /resource/:id recommendations, user-profile
+// resource tab) whose frontend cards never read these fields. Shipping them
+// there let a scraper page the public feeds to harvest every download URL +
+// extraction code + archive password, defeating the whole point of the
+// rate-limited `GET /patch/resource/:id/link` reveal endpoint. The dedicated
+// reveal surfaces — the single resource in `GET /resource/:id` and the
+// per-patch `GET /patch/:id/resource` list, which the FE reads inline — keep
+// these fields.
+func StripResourceSecrets(rs []PatchResource) {
+	for i := range rs {
+		rs[i].Content = ""
+		rs[i].S3Key = ""
+		rs[i].Code = ""
+		rs[i].Password = ""
+	}
+}
+
 // PatchResource represents a patch resource.
 //
 // D10 change (2026-04-21):

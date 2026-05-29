@@ -123,6 +123,10 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	h.attachResourceUsers(c.Context(), resources)
 	h.attachCommentUsers(c.Context(), comments)
 	h.attachPatchSummaries(c, comments, resources)
+	// Home cards never render download links/secrets — strip them so this
+	// public feed can't be scraped for download URLs / codes / passwords
+	// (the rate-limited /patch/resource/:id/link is the only reveal surface).
+	patchModel.StripResourceSecrets(resources)
 
 	return response.OK(c, homeResponse{
 		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl),
@@ -349,6 +353,11 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	patchModel.RenderResourceNotes(resources)
 	h.attachResourceUsers(c.Context(), resources)
 	h.attachPatchSummaries(c, nil, resources)
+	// Global resource feed cards never render the download payload — strip it
+	// so this public, paginated (whole table) feed can't be bulk-scraped for
+	// download URLs / codes / passwords, which would defeat the rate-limited
+	// /patch/resource/:id/link reveal endpoint.
+	patchModel.StripResourceSecrets(resources)
 	return response.Paginated(c, resources, total)
 }
 
@@ -445,6 +454,11 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	h.attachResourceUsers(c.Context(), one)
 	resource = one[0]
 	h.attachResourceUsers(c.Context(), recs)
+	// Recommendation cards only show name/note/stats — strip their download
+	// payload so the recs sidebar can't be walked to harvest links/secrets.
+	// The main `resource` keeps them: it is the intended single-reveal surface
+	// (the detail page renders its download links directly).
+	patchModel.StripResourceSecrets(recs)
 
 	// Viewer-specific state (if logged in): is_liked on the main resource +
 	// recommendations, and is_favorite on the owning patch — so the

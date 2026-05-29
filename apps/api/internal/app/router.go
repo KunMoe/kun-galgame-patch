@@ -79,8 +79,14 @@ func (a *App) RegisterRoutes() {
 	// 30/min per userID (or per IP when anonymous) keeps legitimate browsing
 	// (one user opens 10 patch resource pages = ~10-30 calls) untouched
 	// while breaking automated scraping. Returns 429 on overflow.
+	// optionalAuth runs BEFORE the limiter so it can key by userID for
+	// logged-in callers (the documented "30/min per userID, per IP when
+	// anonymous"). Without it the user context is never populated and the
+	// limiter always falls back to IP — collectively throttling logged-in
+	// users behind a shared NAT/proxy.
 	patchRoutes.Get(
 		"/resource/:resourceId/link",
+		optionalAuth,
 		middleware.RateLimit(a.RDB, "resource-link", 30, time.Minute),
 		a.PatchHandler.GetResourceDownloadInfo,
 	)
@@ -182,7 +188,13 @@ func (a *App) RegisterRoutes() {
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)
 	msgRoutes.Get("/all", a.MessageHandler.GetAllMessages)
 	msgRoutes.Get("/unread", a.MessageHandler.GetUnreadTypes)
-	msgRoutes.Post("/", a.MessageHandler.CreateMessage)
+	// NOTE: POST /message was removed (API audit 2026-05-29). It let ANY
+	// authenticated user write an arbitrary notification (client-controlled
+	// recipient_id / type / content / link, no rate limit) into ANY other
+	// user's inbox — a spam/phishing primitive. It had no frontend caller;
+	// all legitimate notifications are created server-side via the patch
+	// service's createDedupMessage. Re-add only with recipient restricted to
+	// an existing relationship + enum-validated type + rate limiting.
 	msgRoutes.Put("/read", a.MessageHandler.MarkAsRead)
 
 	// ===== Admin Routes =====

@@ -159,8 +159,20 @@ func (s *ChatService) DeleteMessage(userID int, isPrivileged bool, messageID int
 
 // ToggleReaction toggles an emoji reaction.
 func (s *ChatService) ToggleReaction(userID, messageID int, emoji string) (bool, error) {
-	if _, err := s.repo.GetMessage(messageID); err != nil {
+	m, err := s.repo.GetMessage(messageID)
+	if err != nil {
 		return false, fmt.Errorf("消息不存在")
+	}
+	// Membership check: every other message-scoped op resolves the room and
+	// verifies membership; without it here, any authenticated user could
+	// add/remove reactions on messages inside PRIVATE rooms they don't belong
+	// to (IDOR). Reactions need no moderator bypass.
+	ok, err := s.repo.IsMember(userID, m.ChatRoomID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, fmt.Errorf("您不是该房间的成员")
 	}
 	return s.repo.ToggleReaction(messageID, userID, emoji)
 }

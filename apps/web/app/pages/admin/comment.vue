@@ -94,10 +94,10 @@ const chipClass = (active: boolean) => [
     <div v-else class="space-y-3">
       <KunCard v-for="c in data?.items" :key="c.id" :bordered="true">
         <div class="flex items-start gap-3">
-          <KunAvatar :user="c.user" size="sm" />
+          <KunAvatar v-if="c.user" :user="c.user" size="sm" />
           <div class="min-w-0 flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2 text-sm">
-              <span class="font-semibold">{{ c.user.name }}</span>
+              <span class="font-semibold">{{ c.user?.name ?? '未知用户' }}</span>
               <KunChip v-if="c.status === 1" size="sm" variant="flat" color="warning">
                 待审核
               </KunChip>
