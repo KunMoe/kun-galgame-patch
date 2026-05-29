@@ -7,6 +7,8 @@ interface ListResponse {
 }
 
 const api = useApi()
+const messageStore = useMessageStore()
+
 const { data, pending } = await useAsyncData<ListResponse>(
   'message-notice',
   async () => {
@@ -17,6 +19,17 @@ const { data, pending } = await useAsyncData<ListResponse>(
   },
   { default: () => ({ items: [], total: 0 }) }
 )
+
+// Entering the notifications inbox marks everything read and clears the bell's
+// "new" dot. Client-only (onMounted) so it fires when the user actually views
+// the page, not during SSR prefetch. type:'all' → all user_message rows
+// (notifications only; chat is separate). Always fired (not gated on the
+// store) so a direct navigation / refresh on this page also marks read; the
+// PUT is idempotent when there's nothing unread.
+onMounted(async () => {
+  const res = await api.put('/message/read', { type: 'all' })
+  if (res.code === 0) messageStore.clear()
+})
 </script>
 
 <template>

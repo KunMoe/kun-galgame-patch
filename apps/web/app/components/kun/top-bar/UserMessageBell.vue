@@ -1,22 +1,16 @@
 <script setup lang="ts">
-interface Props {
-  unreadMessageTypes: string[]
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<{ readMessages: [] }>()
-
+// The bell links to /message/notice (the notifications inbox). The actual
+// "mark everything read + clear this dot" happens when that page loads (see
+// pages/message/notice.vue) — clicking the bell just navigates there. Unread
+// state is read from the shared messageStore (fed by the top-bar User.vue).
 const userStore = useUserStore()
+const messageStore = useMessageStore()
 
 const hasUnread = computed(() =>
-  props.unreadMessageTypes.some(
+  messageStore.unreadTypes.some(
     (type) => !userStore.user.muted_message_types?.includes(type)
   )
 )
-
-const handleClick = () => {
-  if (hasUnread.value) emit('readMessages')
-}
 </script>
 
 <template>
@@ -29,9 +23,8 @@ const handleClick = () => {
       variant="light"
       color="default"
       aria-label="我的消息"
-      href="/message/chat"
+      href="/message/notice"
       class-name="relative"
-      @click="handleClick"
     >
       <KunIcon
         :name="hasUnread ? 'lucide:bell-ring' : 'lucide:bell'"

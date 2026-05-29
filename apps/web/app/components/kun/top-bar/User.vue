@@ -9,6 +9,7 @@
 import type { UserState } from '~/stores/userStore'
 
 const userStore = useUserStore()
+const messageStore = useMessageStore()
 const api = useApi()
 
 // Top-bar surfaces a single solid "登录" button. Clicking opens a small modal
@@ -17,8 +18,6 @@ const api = useApi()
 // the modal is the only entry point now, so users don't get bounced to a
 // separate page just to start auth.
 const loginOpen = ref(false)
-
-const unreadMessageTypes = ref<string[]>([])
 
 const fetchUserStatus = async () => {
   const res = await api.get<UserState>('/auth/me')
@@ -44,7 +43,7 @@ const fetchUserStatus = async () => {
 const fetchUnread = async () => {
   const res = await api.get<string[]>('/message/unread')
   if (res.code === 0) {
-    unreadMessageTypes.value = res.data ?? []
+    messageStore.setUnread(res.data ?? [])
   }
 }
 
@@ -81,10 +80,7 @@ onMounted(async () => {
     </div>
 
     <template v-if="userStore.isLoggedIn">
-      <KunTopBarUserMessageBell
-        :unread-message-types="unreadMessageTypes"
-        @read-messages="unreadMessageTypes = []"
-      />
+      <KunTopBarUserMessageBell />
       <KunTopBarUserDropdown />
     </template>
   </div>
