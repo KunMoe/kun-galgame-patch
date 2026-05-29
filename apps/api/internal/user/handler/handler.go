@@ -311,6 +311,27 @@ func (h *UserHandler) CheckIn(c *fiber.Ctx) error {
 	return response.OK(c, map[string]int{"moemoepoint": points})
 }
 
+// GetMoemoepointLog GET /api/user/moemoepoint/log
+// The authenticated user's OWN moemoepoint ledger. The user id comes from the
+// session (never a path param), so one user can't read another's records. moyu
+// proxies OAuth's REDUCED s2s view (no admin note / actor). Cursor paginated via
+// before_id (0 / absent = newest page); optional reason filter.
+func (h *UserHandler) GetMoemoepointLog(c *fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	beforeID, _ := strconv.ParseInt(c.Query("before_id"), 10, 64)
+
+	items, hasMore, err := h.service.GetMoemoepointLog(c.Context(), user.ID, limit, beforeID, c.Query("reason"))
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, fiber.Map{"items": items, "has_more": hasMore})
+}
+
 // SearchUsers GET /api/user/search
 func (h *UserHandler) SearchUsers(c *fiber.Ctx) error {
 	var req dto.SearchUserRequest

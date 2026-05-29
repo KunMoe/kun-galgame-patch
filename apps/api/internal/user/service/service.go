@@ -258,6 +258,13 @@ func (s *UserService) CheckIn(userID int) (int, error) {
 	return points, nil
 }
 
+// GetMoemoepointLog reads a page of the user's OWN moemoepoint ledger from OAuth
+// (the unified source of truth — moyu stores no local ledger). Cursor paginated
+// via beforeID (0 = newest page); reason is an optional filter.
+func (s *UserService) GetMoemoepointLog(ctx context.Context, userID, limit int, beforeID int64, reason string) ([]moemoepoint.LogEntry, bool, error) {
+	return s.mp.Log(ctx, userID, limit, beforeID, reason)
+}
+
 // GetUserPatches retrieves the user's patch list.
 func (s *UserService) GetUserPatches(userID, page, limit int) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetUserPatches(userID, (page-1)*limit, limit)

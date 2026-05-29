@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -137,4 +139,68 @@ func (c *Client) Balance(ctx context.Context, userID int) (int, error) {
 		return 0, fmt.Errorf("oauth moemoepoint balance: code=%d", env.Code)
 	}
 	return env.Data.Balance, nil
+}
+
+// LogEntry is one row of the REDUCED (end-user-facing) moemoepoint ledger from
+// GET /users/:id/moemoepoint/log. Admin-only fields (note / actor_user_id) are
+// deliberately absent — OAuth's s2s view omits them so moderation notes never
+// leak to the user.
+type LogEntry struct {
+	ID        int64  `json:"id"`
+	Delta     int    `json:"delta"`
+	Reason    string `json:"reason"`
+	SourceApp string `json:"source_app"`
+	Ref       string `json:"ref"`
+	CreatedAt string `json:"created_at"`
+}
+
+// Log reads a page of a user's moemoepoint ledger
+// (GET /users/:id/moemoepoint/log). Cursor pagination: pass beforeID=0 for the
+// newest page, then the last returned entry's ID to fetch older rows. reason is
+// an optional filter. Returns the page plus hasMore. The slice is never nil.
+func (c *Client) Log(ctx context.Context, userID, limit int, beforeID int64, reason string) ([]LogEntry, bool, error) {
+	q := url.Values{}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	if beforeID > 0 {
+		q.Set("before_id", strconv.FormatInt(beforeID, 10))
+	}
+	if reason != "" {
+		q.Set("reason", reason)
+	}
+	u := fmt.Sprintf("%s/users/%d/moemoepoint/log", c.baseURL, userID)
+	if enc := q.Encode(); enc != "" {
+		u += "?" + enc
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", c.authHeader)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, false, fmt.Errorf("oauth moemoepoint log: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var env struct {
+		Code int `json:"code"`
+		Data struct {
+			Items   []LogEntry `json:"items"`
+			HasMore bool       `json:"has_more"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		return nil, false, fmt.Errorf("oauth moemoepoint log decode (status=%d): %w", resp.StatusCode, err)
+	}
+	if env.Code != 0 {
+		return nil, false, fmt.Errorf("oauth moemoepoint log: code=%d", env.Code)
+	}
+	if env.Data.Items == nil {
+		env.Data.Items = []LogEntry{}
+	}
+	return env.Data.Items, env.Data.HasMore, nil
 }

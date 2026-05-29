@@ -52,3 +52,14 @@ func (a *Awarder) Award(ctx context.Context, userID, delta int, reason, ref, ide
 			"user_id", userID, "balance", res.Balance, "error", err)
 	}
 }
+
+// Log reads a page of the user's moemoepoint ledger from OAuth (the source of
+// truth — moyu keeps no local ledger). Read-only passthrough to the s2s
+// endpoint; used by the self-service "萌萌点记录" view. A nil Awarder/client
+// yields an empty page rather than an error so the UI degrades gracefully.
+func (a *Awarder) Log(ctx context.Context, userID, limit int, beforeID int64, reason string) ([]LogEntry, bool, error) {
+	if a == nil || a.client == nil {
+		return []LogEntry{}, false, nil
+	}
+	return a.client.Log(ctx, userID, limit, beforeID, reason)
+}

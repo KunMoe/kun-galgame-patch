@@ -158,6 +158,9 @@ func (a *App) RegisterRoutes() {
 	userRoutes.Post("/image", auth, a.UserHandler.UploadImage)
 	userRoutes.Post("/check-in", auth, a.UserHandler.CheckIn)
 	userRoutes.Get("/search", auth, a.UserHandler.SearchUsers)
+	// Self-service moemoepoint ledger (own records only; id from session).
+	// Registered BEFORE /:id so Fiber doesn't match "moemoepoint" as a :id.
+	userRoutes.Get("/moemoepoint/log", auth, a.UserHandler.GetMoemoepointLog)
 
 	// Public user profiles
 	userRoutes.Get("/:id", optionalAuth, a.UserHandler.GetUserInfo)

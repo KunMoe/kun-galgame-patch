@@ -5,6 +5,24 @@ const api = useApi()
 const logoutOpen = ref(false)
 const loggingOut = ref(false)
 const checking = ref(false)
+const logOpen = ref(false)
+
+// KunPopover only closes on outside-click / Escape — a click on an inner item
+// is @click.stop'd, so navigating via a menu link leaves it open. Drive it shut
+// ourselves: a route watcher covers every NuxtLink + programmatic navigateTo,
+// and openModal() closes it before surfacing a modal so nothing lingers behind.
+const popover = ref<{ close: () => void } | null>(null)
+const route = useRoute()
+watch(
+  () => route.fullPath,
+  () => popover.value?.close()
+)
+
+const openModal = (target: 'log' | 'logout') => {
+  popover.value?.close()
+  if (target === 'log') logOpen.value = true
+  else logoutOpen.value = true
+}
 
 const handleLogout = async () => {
   loggingOut.value = true
@@ -46,7 +64,7 @@ const handleCheckIn = async () => {
 </script>
 
 <template>
-  <KunPopover position="bottom-end" inner-class="p-2 min-w-64">
+  <KunPopover ref="popover" position="bottom-end" inner-class="p-2 min-w-64">
     <template #trigger>
       <!-- Avatar is its own clickable affordance — wrapping it in a
            KunButton + colored ring/border felt foreign next to the rest
@@ -65,15 +83,22 @@ const handleCheckIn = async () => {
       <div class="px-2 py-1">
         <p class="font-semibold">{{ userStore.user.name }}</p>
       </div>
-      <div
-        class="text-foreground/80 flex items-center justify-between rounded px-2 py-1 text-sm"
+      <!-- 萌萌点 row doubles as the entry to the records modal — clicking opens
+           the full ledger (OAuth is the source of truth). -->
+      <button
+        type="button"
+        class="text-foreground/80 hover:bg-default-100 flex w-full items-center justify-between rounded px-2 py-1 text-sm"
+        @click="openModal('log')"
       >
         <span class="flex items-center gap-2">
           <KunIcon name="lucide:lollipop" class="size-4" />
           萌萌点
         </span>
-        <span>{{ userStore.user.moemoepoint }}</span>
-      </div>
+        <span class="flex items-center gap-1">
+          {{ userStore.user.moemoepoint }}
+          <KunIcon name="lucide:chevron-right" class="text-foreground/40 size-4" />
+        </span>
+      </button>
       <NuxtLink
         :to="`/user/${userStore.user.id}/resource`"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
@@ -114,7 +139,7 @@ const handleCheckIn = async () => {
         full-width
         rounded="md"
         class-name="justify-start"
-        @click="logoutOpen = true"
+        @click="openModal('logout')"
       >
         <KunIcon name="lucide:log-out" class="size-4" />
         退出登录
@@ -145,6 +170,8 @@ const handleCheckIn = async () => {
       </KunButton>
     </div>
   </KunPopover>
+
+  <KunTopBarMoemoepointLog v-model="logOpen" />
 
   <KunModal v-model="logoutOpen" inner-class-name="max-w-md">
     <div class="space-y-4">

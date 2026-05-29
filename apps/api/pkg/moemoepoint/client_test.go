@@ -93,3 +93,54 @@ func TestBalance(t *testing.T) {
 		t.Fatalf("got %d, want 99", bal)
 	}
 }
+
+func TestLog(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/users/42/moemoepoint/log" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		// cursor + limit must be forwarded as query params
+		if got := r.URL.Query().Get("limit"); got != "20" {
+			t.Errorf("limit query = %q, want 20", got)
+		}
+		if got := r.URL.Query().Get("before_id"); got != "100" {
+			t.Errorf("before_id query = %q, want 100", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 0, "data": map[string]any{
+				"items": []map[string]any{
+					{"id": 99, "delta": 3, "reason": "content_approved", "source_app": "moyu", "ref": "resource:7", "created_at": "2026-05-29T10:00:00Z"},
+					{"id": 98, "delta": -1, "reason": "liked", "source_app": "moyu", "ref": "comment:3", "created_at": "2026-05-28T09:00:00Z"},
+				},
+				"has_more": true,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	items, hasMore, err := newTestClient(srv).Log(context.Background(), 42, 20, 100, "")
+	if err != nil {
+		t.Fatalf("Log error: %v", err)
+	}
+	if !hasMore {
+		t.Fatal("expected has_more=true")
+	}
+	if len(items) != 2 || items[0].ID != 99 || items[0].Delta != 3 || items[1].Delta != -1 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestLog_EmptyNeverNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"has_more": false}})
+	}))
+	defer srv.Close()
+
+	items, _, err := newTestClient(srv).Log(context.Background(), 42, 20, 0, "")
+	if err != nil {
+		t.Fatalf("Log error: %v", err)
+	}
+	if items == nil {
+		t.Fatal("items must be non-nil (empty slice) so JSON marshals to [] not null")
+	}
+}
