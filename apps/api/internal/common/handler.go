@@ -104,7 +104,8 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	var comments []patchModel.PatchComment
 
 	h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12).Find(&patches)
-	h.db.Model(&patchModel.PatchResource{}).Order("created DESC, id DESC").Limit(6).Find(&resources)
+	// status = 0: don't promote disabled resources (pulled for virus etc.) in the home feed.
+	h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&resources)
 	// status = 0: hide comments pending review (comment-verify) from the home feed.
 	h.db.Model(&patchModel.PatchComment{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&comments)
 
@@ -328,7 +329,8 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var total int64
 
-	base := h.db.Model(&patchModel.PatchResource{})
+	// status = 0: disabled resources are excluded from the global list.
+	base := h.db.Model(&patchModel.PatchResource{}).Where("status = 0")
 	base.Session(&gorm.Session{}).Count(&total)
 
 	sortField := req.SortField
@@ -427,6 +429,17 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 	patchModel.RenderResourceNotes(recs)
 
+	// Disabled resource (status != 0): withhold the download payload so the
+	// link can't be fetched from the detail page either (mirrors the /link
+	// endpoint's 403). The row is still returned — the frontend shows a 已禁用
+	// notice instead of the (now empty) download links.
+	if resource.Status != 0 {
+		resource.Content = ""
+		resource.S3Key = ""
+		resource.Code = ""
+		resource.Password = ""
+	}
+
 	// Attach publisher briefs to the main resource and the recommendations.
 	one := []patchModel.PatchResource{resource}
 	h.attachResourceUsers(c.Context(), one)
@@ -505,7 +518,8 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 
 	// Get resources but strip S3 download content
 	var resources []patchModel.PatchResource
-	h.db.Where("galgame_id = ?", patch.ID).Find(&resources)
+	// status = 0: never serve a disabled resource's link via the external Hikari API.
+	h.db.Where("galgame_id = ? AND status = 0", patch.ID).Find(&resources)
 
 	for i := range resources {
 		if resources[i].Storage == "s3" {

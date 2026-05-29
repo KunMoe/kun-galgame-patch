@@ -75,6 +75,11 @@ const downloadLinks = computed(() =>
     .filter(Boolean)
 )
 
+// status != 0 → download disabled (e.g. pulled for virus). The backend withholds
+// content/code/password for disabled resources, so downloadLinks is empty here;
+// show an explicit notice instead of a bare "暂无下载链接".
+const isResourceDisabled = computed(() => (resource.value?.status ?? 0) !== 0)
+
 // ─── Download (fire-and-forget counter bump) ──────────
 const onDownload = () => {
   if (!resource.value) return
@@ -352,11 +357,21 @@ if (
               <h2 class="text-lg font-semibold">资源下载</h2>
             </div>
 
-            <p class="text-default-500 text-sm">
+            <div
+              v-if="isResourceDisabled"
+              class="border-danger/30 bg-danger/10 text-danger-700 flex items-center gap-2 rounded-xl border p-3 text-sm"
+            >
+              <KunIcon name="lucide:shield-alert" class="size-4 shrink-0" />
+              <span>
+                该资源已被禁用下载（可能存在安全风险，或应发布者 / 管理员要求下架），暂时无法获取下载链接。
+              </span>
+            </div>
+
+            <p v-if="!isResourceDisabled" class="text-default-500 text-sm">
               点击下方链接下载（共 {{ downloadLinks.length }} 个）
             </p>
 
-            <div class="space-y-2">
+            <div v-if="!isResourceDisabled" class="space-y-2">
               <div
                 v-for="(lnk, i) in downloadLinks"
                 :key="i"

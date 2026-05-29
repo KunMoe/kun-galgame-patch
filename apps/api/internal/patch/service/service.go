@@ -981,15 +981,27 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 	return nil
 }
 
-func (s *PatchService) ToggleResourceDisable(resourceID, userID int, isPrivileged bool) error {
+// ToggleResourceDisable flips a resource between enabled (status 0, downloadable)
+// and disabled (status 1, download link blocked — used to pull a virus-infected
+// resource without deleting it). Permitted for the resource owner or a
+// privileged user (moderator/admin). Returns the resulting status.
+func (s *PatchService) ToggleResourceDisable(resourceID, userID int, isPrivileged bool) (int, error) {
 	resource, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
-		return fmt.Errorf("resource not found")
+		return 0, fmt.Errorf("resource not found")
 	}
 	if resource.UserID != userID && !isPrivileged {
-		return fmt.Errorf("no permission to operate on this resource")
+		return 0, fmt.Errorf("no permission to operate on this resource")
 	}
-	return s.repo.ToggleResourceStatus(resourceID)
+	if err := s.repo.ToggleResourceStatus(resourceID); err != nil {
+		return 0, err
+	}
+	// Repo flips 0↔1 atomically (SQL CASE); the new value is the inverse of the
+	// one we just read.
+	if resource.Status == 0 {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 func (s *PatchService) IncrementResourceDownload(resourceID int) error {

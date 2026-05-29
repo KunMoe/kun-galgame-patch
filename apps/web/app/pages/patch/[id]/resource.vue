@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
 import { SUPPORTED_RESOURCE_LINK_MAP } from '~/constants/resource'
 
 const route = useRoute()
@@ -7,9 +6,6 @@ const api = useApi()
 const userStore = useUserStore()
 
 const galgameId = computed(() => Number(route.params.id))
-
-const sanitize = (html: string) =>
-  DOMPurify.sanitize(html, { ADD_ATTR: ['data-id'] })
 
 const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   () => `patch-resource-${galgameId.value}`,
@@ -50,6 +46,37 @@ const canEdit = (r: PatchResource) =>
   userStore.isModerator || r.user_id === userStore.user.id
 const canDelete = (r: PatchResource) =>
   userStore.isModerator || r.user_id === userStore.user.id
+// Disable-download: same predicate (owner or moderator/admin). The backend
+// re-checks; the UI gate is noise reduction only.
+const canManage = (r: PatchResource) =>
+  userStore.isModerator || r.user_id === userStore.user.id
+
+// status != 0 → resource download is disabled (e.g. pulled for virus). The row
+// stays visible but its link can't be fetched.
+const isDisabled = (r: PatchResource) => (r.status ?? 0) !== 0
+
+const togglingDisable = ref<number | null>(null)
+const toggleDisable = async (r: PatchResource) => {
+  togglingDisable.value = r.id
+  try {
+    const res = await api.put<{ status: number }>(
+      `/patch/resource/${r.id}/disable`
+    )
+    if (res.code === 0) {
+      r.status = res.data.status
+      // Collapse any already-revealed link when disabling.
+      if (isDisabled(r) && fetched[r.id]) delete fetched[r.id]
+      useKunMessage(
+        isDisabled(r) ? '已禁用该资源下载' : '已恢复该资源下载',
+        'success'
+      )
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  } finally {
+    togglingDisable.value = null
+  }
+}
 
 // Edit modal state. ResourcePublish handles both create + edit via the
 // `resource` prop; success returns a merged row we splice into the list.
@@ -312,6 +339,17 @@ const toggleLike = async (r: PatchResource) => {
           </KunChip>
         </div>
 
+        <!-- Disabled banner: download link is withheld server-side. -->
+        <div
+          v-if="isDisabled(r)"
+          class="border-danger/30 bg-danger/10 text-danger-700 flex items-center gap-2 rounded-xl border p-3 text-sm"
+        >
+          <KunIcon name="lucide:shield-alert" class="size-4 shrink-0" />
+          <span>
+            该资源已被禁用下载（可能存在安全风险，或应发布者 / 管理员要求下架），暂时无法获取下载链接。
+          </span>
+        </div>
+
         <KunPatchAttribute
           :types="r.type"
           :languages="r.language"
@@ -321,11 +359,7 @@ const toggleLike = async (r: PatchResource) => {
           size="sm"
         />
 
-        <div
-          v-if="r.note_html"
-          class="kun-prose border-default/15 bg-default-50 rounded-xl border p-3 text-sm"
-          v-html="sanitize(r.note_html)"
-        />
+        <ResourceNote v-if="r.note_html" :html="r.note_html" :max-height="100" />
 
         <div v-if="r.code || r.password" class="flex flex-wrap gap-2">
           <KunCopy
@@ -415,8 +449,36 @@ const toggleLike = async (r: PatchResource) => {
               <KunIcon name="lucide:trash-2" class="size-4" />
               删除
             </KunButton>
+            <!-- Owner / moderator: pull (or restore) the download without
+                 deleting the resource — for virus / takedown cases. -->
+            <KunButton
+              v-if="canManage(r)"
+              variant="light"
+              :color="isDisabled(r) ? 'success' : 'warning'"
+              size="xs"
+              rounded="full"
+              :loading="togglingDisable === r.id"
+              :aria-label="isDisabled(r) ? '恢复下载' : '禁用下载'"
+              @click="toggleDisable(r)"
+            >
+              <KunIcon
+                :name="isDisabled(r) ? 'lucide:download' : 'lucide:ban'"
+                class="size-4"
+              />
+              {{ isDisabled(r) ? '恢复下载' : '禁用下载' }}
+            </KunButton>
           </div>
+          <KunChip
+            v-if="isDisabled(r)"
+            color="danger"
+            variant="flat"
+            size="sm"
+          >
+            <KunIcon name="lucide:ban" class="size-3.5" />
+            已禁用下载
+          </KunChip>
           <KunButton
+            v-else
             color="primary"
             size="sm"
             rounded="full"

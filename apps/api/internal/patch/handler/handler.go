@@ -555,11 +555,12 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.ToggleResourceDisable(resourceID, user.ID, isPrivileged); err != nil {
+	status, err := h.service.ToggleResourceDisable(resourceID, user.ID, isPrivileged)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	return response.OKMessage(c, "OK")
+	return response.OK(c, fiber.Map{"status": status})
 }
 
 // IncrementResourceDownload PUT /api/patch/resource/:resourceId/download
@@ -583,6 +584,13 @@ func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
 	// would otherwise be leaked even though no patch metadata is.
 	if !h.gatePatchByContentLimit(c, r.GalgameID) {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
+	}
+	// Disabled resources (status != 0) have their download link withheld — the
+	// owner/admin pulled it (e.g. virus). The row stays visible (marked 已禁用)
+	// but the link can't be fetched. Distinct 403 code so the frontend can show
+	// a clear "已禁用" message instead of a generic failure.
+	if r.Status != 0 {
+		return response.Error(c, errors.New(40310, "该资源已被禁用，暂时无法下载", fiber.StatusForbidden))
 	}
 	return response.OK(c, fiber.Map{
 		"storage":  r.Storage,
