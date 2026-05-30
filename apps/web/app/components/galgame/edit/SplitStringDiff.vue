@@ -76,7 +76,7 @@ const newLines = computed<Line[]>(() => {
         "
       >
         <span v-if="l.kind === 'del'" class="text-danger mr-1">−</span>
-        <span class="break-words whitespace-pre-wrap">{{ l.text || ' ' }}</span>
+        <span class="break-words whitespace-pre-wrap">{{ l.text || '\u00A0' }}</span>
       </div>
       <p v-if="!oldS" class="text-default-400 italic">（空）</p>
     </div>
@@ -95,7 +95,7 @@ const newLines = computed<Line[]>(() => {
         "
       >
         <span v-if="l.kind === 'add'" class="text-success mr-1">+</span>
-        <span class="break-words whitespace-pre-wrap">{{ l.text || ' ' }}</span>
+        <span class="break-words whitespace-pre-wrap">{{ l.text || '\u00A0' }}</span>
       </div>
       <p v-if="!newS" class="text-default-400 italic">（空）</p>
     </div>

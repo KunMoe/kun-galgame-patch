@@ -49,4 +49,4 @@ interface PatchPageComment {
   status?: number
 }
 
-interface HomeComment extends PatchComment {}
+type HomeComment = PatchComment

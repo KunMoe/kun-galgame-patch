@@ -58,10 +58,14 @@ const lcsDiff = <T>(a: T[], b: T[], eq: (x: T, y: T) => boolean):
   const dp: number[][] = Array.from({ length: n + 1 }, () =>
     new Array<number>(m + 1).fill(0)
   )
+  // Non-null assertions: the loop bounds (i in [0,n), j in [0,m)) guarantee
+  // every index is in range, but `noUncheckedIndexedAccess` widens `a[i]` /
+  // `dp[i]` to `… | undefined`. Asserting here keeps the hot loops allocation-
+  // free instead of adding per-cell guards.
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      if (eq(a[i], b[j])) dp[i][j] = dp[i + 1][j + 1] + 1
-      else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1])
+      if (eq(a[i]!, b[j]!)) dp[i]![j] = dp[i + 1]![j + 1]! + 1
+      else dp[i]![j] = Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!)
     }
   }
 
@@ -69,23 +73,23 @@ const lcsDiff = <T>(a: T[], b: T[], eq: (x: T, y: T) => boolean):
   let i = 0
   let j = 0
   while (i < n && j < m) {
-    if (eq(a[i], b[j])) {
-      out.push({ op: 'eq', value: a[i] })
+    if (eq(a[i]!, b[j]!)) {
+      out.push({ op: 'eq', value: a[i]! })
       i++
       j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ op: 'del', value: a[i] })
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      out.push({ op: 'del', value: a[i]! })
       i++
     } else {
-      out.push({ op: 'add', value: b[j] })
+      out.push({ op: 'add', value: b[j]! })
       j++
     }
   }
   while (i < n) {
-    out.push({ op: 'del', value: a[i++] })
+    out.push({ op: 'del', value: a[i++]! })
   }
   while (j < m) {
-    out.push({ op: 'add', value: b[j++] })
+    out.push({ op: 'add', value: b[j++]! })
   }
   return out
 }

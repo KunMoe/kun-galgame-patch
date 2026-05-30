@@ -60,6 +60,9 @@ const handleRebind = async (galgameId: number) => {
     const res = await api.put(`/patch/${galgameId}`, { vndb_id: newID })
     if (res.code === 0) {
       useKunMessage('已重新绑定，Wiki 校验通过', 'success')
+      // Clear this row's edit input after a successful rebind; `delete` on the
+      // reactive record is intentional (the row's input field is keyed by id).
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete editVndbID[galgameId]
       await refresh()
     } else {

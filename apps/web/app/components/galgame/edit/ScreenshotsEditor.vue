@@ -97,8 +97,9 @@ const move = (hash: string, dir: -1 | 1) => {
   const idx = list.findIndex((s) => s.image_hash === hash)
   const swap = idx + dir
   if (idx < 0 || swap < 0 || swap >= list.length) return
-  const a = list[idx]
-  const b = list[swap]
+  // idx/swap are bounds-checked above, so both are in range.
+  const a = list[idx]!
+  const b = list[swap]!
   emit(
     'update:modelValue',
     props.modelValue.map((s) => {

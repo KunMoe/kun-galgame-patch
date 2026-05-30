@@ -36,7 +36,7 @@ interface PatchResource {
 // Backwards-compat alias: `note_html` is now part of PatchResource itself.
 type PatchResourceHtml = PatchResource
 
-interface HomeResource extends PatchResource {}
+type HomeResource = PatchResource
 
 // D11 + D12: the resource detail page receives a lightweight owning-patch card
 // that is really just the enricher GalgameCard shape. We re-use GalgameCard

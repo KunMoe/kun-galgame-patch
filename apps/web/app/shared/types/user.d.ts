@@ -37,6 +37,9 @@ interface PatchSummary {
 interface UserResourceItem {
   id: number
   galgame_id: number
+  // The resource's own display name; the user-profile resource tab renders it
+  // (info.vue). Backend includes it on every row.
+  name?: string
   size: string
   type: string[]
   language: string[]
@@ -57,6 +60,6 @@ interface UserComment {
   patch?: PatchSummary
 }
 
-interface UserFavoriteItem extends GalgameCard {}
+type UserFavoriteItem = GalgameCard
 
-interface UserGalgameItem extends GalgameCard {}
+type UserGalgameItem = GalgameCard

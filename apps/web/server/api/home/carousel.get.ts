@@ -3,6 +3,22 @@ import path from 'node:path'
 
 const POSTS_PATH = path.join(process.cwd(), 'posts')
 
+// Local copy of the shape: the app-side `HomeCarouselMetadata` lives in
+// app/shared/types/home.d.ts as a global ambient type, which the Nitro server
+// tsconfig does not include — so this server route can't see it. Defining it
+// here keeps the producer self-typed without exporting/modularizing the global.
+interface HomeCarouselMetadata {
+  title: string
+  banner: string
+  description: string
+  date: string
+  authorName: string
+  authorAvatar: string
+  pin: boolean
+  directory: string
+  link: string
+}
+
 const parseFrontmatter = (raw: string): Record<string, unknown> => {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) return {}

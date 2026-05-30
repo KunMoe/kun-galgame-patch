@@ -19,12 +19,12 @@ export const USER_ROLE_MAP: Record<string, string> = {
 const ROLE_PRIORITY: readonly string[] = ['admin', 'moderator', 'user']
 
 export const pickRoleLabel = (roles: string[] | null | undefined): string => {
-  if (!roles || roles.length === 0) return USER_ROLE_MAP.user
+  if (!roles || roles.length === 0) return USER_ROLE_MAP.user ?? '用户'
   for (const role of ROLE_PRIORITY) {
     if (roles.includes(role)) return USER_ROLE_MAP[role] ?? role
   }
   // Unknown role string -> render verbatim rather than mask the data.
-  return roles[0] ?? USER_ROLE_MAP.user
+  return roles[0] ?? USER_ROLE_MAP.user ?? '用户'
 }
 
 export const USER_STATUS_MAP: Record<number, string> = {

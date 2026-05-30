@@ -63,9 +63,9 @@ const diff = computed(() => {
   const newKeys = newArr.value.map(toKey)
   const { added, removed, kept } = setDiff(oldKeys, newKeys)
   const byKeyNew = new Map<string, unknown>()
-  newArr.value.forEach((x, i) => byKeyNew.set(newKeys[i], x))
+  newArr.value.forEach((x, i) => byKeyNew.set(newKeys[i]!, x))
   const byKeyOld = new Map<string, unknown>()
-  oldArr.value.forEach((x, i) => byKeyOld.set(oldKeys[i], x))
+  oldArr.value.forEach((x, i) => byKeyOld.set(oldKeys[i]!, x))
   return {
     added: added.map((k) => byKeyNew.get(k) ?? k),
     removed: removed.map((k) => byKeyOld.get(k) ?? k),

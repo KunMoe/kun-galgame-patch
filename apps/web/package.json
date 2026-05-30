@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@apps/web",
   "type": "module",
   "private": true,
   "scripts": {
@@ -8,7 +8,10 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "icons": "node scripts/generate-icon-list.mjs"
+    "icons": "node scripts/generate-icon-list.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",
@@ -28,7 +31,7 @@
     "@milkdown/kit": "^7.17.3",
     "@milkdown/plugin-upload": "^7.17.3",
     "@milkdown/prose": "^7.17.3",
-    "@milkdown/vue": "7.17.3",
+    "@milkdown/vue": "^7.21.1",
     "@noble/hashes": "^2.0.1",
     "@nuxt/eslint": "1.15.2",
     "@nuxt/icon": "2.2.1",

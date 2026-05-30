@@ -4,7 +4,7 @@
 // matches the slug under apps/web/posts.
 interface Props {
   node: KunTreeNode
-  level: number
+  level?: number
   activeSlug?: string
 }
 

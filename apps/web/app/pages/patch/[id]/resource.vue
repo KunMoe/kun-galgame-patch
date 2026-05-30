@@ -64,7 +64,10 @@ const toggleDisable = async (r: PatchResource) => {
     )
     if (res.code === 0) {
       r.status = res.data.status
-      // Collapse any already-revealed link when disabling.
+      // Collapse any already-revealed link when disabling. `delete` on the
+      // reactive `fetched` record is the intended Vue idiom here (drop the key
+      // so the reveal block hides); not a dynamic-collection footgun.
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       if (isDisabled(r) && fetched[r.id]) delete fetched[r.id]
       useKunMessage(
         isDisabled(r) ? '已禁用该资源下载' : '已恢复该资源下载',
@@ -192,7 +195,8 @@ const loadingId = ref<number | null>(null)
 
 const getResourceLink = async (r: PatchResource) => {
   if (fetched[r.id]) {
-    delete fetched[r.id] // collapse
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete fetched[r.id] // collapse (drop the reactive key)
     return
   }
   loadingId.value = r.id
