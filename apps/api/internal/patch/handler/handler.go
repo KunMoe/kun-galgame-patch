@@ -20,6 +20,7 @@ import (
 	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // Non-creators need a vndb_id; in all cases we require a well-formed vndb_id.
@@ -381,7 +382,9 @@ func (h *PatchHandler) ToggleCommentLike(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	liked, err := h.service.ToggleCommentLike(commentID, user.ID)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		// The only error this returns is "comment not found" → 404, not 400
+		// (audit F034).
+		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
 
 	return response.OK(c, map[string]bool{"liked": liked})
@@ -623,7 +626,8 @@ func (h *PatchHandler) ToggleResourceLike(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	liked, err := h.service.ToggleResourceLike(resourceID, user.ID)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		// Only "resource not found" → 404, not 400 (audit F034).
+		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
 
 	return response.OK(c, map[string]bool{"liked": liked})
@@ -641,7 +645,8 @@ func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	favorited, err := h.service.ToggleFavorite(id, user.ID)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		// Only "patch not found" → 404, not 400 (audit F034).
+		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}
 
 	return response.OK(c, map[string]bool{"favorited": favorited})
@@ -685,6 +690,12 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
 	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c))
 	if err != nil {
+		// "no candidate passes the content_limit filter" is a not-found, not a
+		// server fault — return 404 instead of a 500 that trips alerting (audit
+		// F083). The NSFW fail-closed logic is preserved.
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return response.Error(c, errors.ErrNotFound("no patch available"))
+		}
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.OK(c, map[string]int{"id": id})

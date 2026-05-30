@@ -23,6 +23,35 @@
 
 > 合计 22 条 moyu 相关发现（19 OPEN + 3 BY-DESIGN）+ 5 条证伪。
 
+## 修复进度（2026-05-30）
+
+19 条 OPEN 中已修复 **17 条**（`go build`/`go test`/`go vet` 全绿；关键项已在重启后的本地栈实测）。
+余 2 条 OPEN 为有意保持的 best-effort/广面项（见下）。
+
+| 状态 | 发现 | 说明 |
+|---|---|---|
+| 🔧 已修 + 实测 | **F004** | `CreateMessage` 校验引用消息属于本房间 + `enrichMessages` 按房间过滤引用。实测：跨房间引用 → `400 无效的引用消息`（0 行写入），同房间引用 → 200 正常 |
+| 🔧 已修 | **GPT-H01** | `pkg/imageclient` 改解 `{code,message,data}` 信封（成功取 `data`，错误取扁平 `{code,message}` + 整数码映射）；订正 `docs/image_service/03-api-design.md`。（image_service 当前未运行，按 image_service 自带测试确认的信封 + 代码逻辑核对；上传链路待上游起来后实测）|
+| 🔧 已修 | **F025** | wiki 同步改**逐消息事务**：保留 exactly-once，但在途 OAuth HTTP 从单事务最多 1000 次降为每事务 1 次，消除连接钉死/整页毒化 |
+| 🔧 已修 + 实测 | **F029** | follow/unfollow 的关系写入 + 计数更新合进单事务。实测：follow/unfollow 计数与关系表精确同步、无关系 unfollow 被拒（计数不变）、FK→`用户不存在` |
+| 🔧 已修 + 实测 | **GPT-M03 / F069** | `/resource/:id`、`/patch/resource/:id/download` 加 `optionalAuth + RateLimit(60/min)`。实测 `/resource/:id`：60 通过后 429 |
+| 🔧 已修 + 实测 | **GPT-M04** | 签到改 `WHERE daily_check_in=0` 原子 check-and-set。实测：首次 `{moemoepoint:4}`、立即再签 → `already checked in today` |
+| 🔧 已修 | **F066** | `CreateUser` 用 `ON CONFLICT DO NOTHING` + 回查规范行（并发首登不再 500）|
+| 🔧 已修 | **F068** | nil `target_user_id` 的可执行消息记 `slog.Warn` |
+| 🔧 已修 | **F070** | 评论被赞接上 `CreateLikeCommentNotification`（去重）|
+| 🔧 已修 | **F073** | room list 的 `LatestMessagePerRoom` 错误改为记日志 |
+| 🔧 已修 | **F074** | 四个 profile 计数 helper 改为出错记日志（不再静默 0）|
+| 🔧 已修 | **F075** | `GetOrphanPatches` 捕获 count 错误 → 失败返回 500 而非假 0 |
+| 🔧 已修 | **F077** | refresh 永久拒集合加入 `10014/15005/15008`，不再只靠 HTTP 状态码 |
+| 🔧 已修 | **F083** | `GetRandomPatch` 对 `ErrRecordNotFound` 返回 404 而非 500 |
+| 🔧 已修 | **F085** | cron `WithLocation(Asia/Shanghai)` + 签到键日期对齐同时区 |
+| 🔧 已修 | **GPT-L02** | `KUN_IMAGE_SERVICE_BASE_URL`/`KUN_IMAGE_CDN_BASE` 在 prod 模式 fail-fast；`.env.example` 补齐 `KUN_IMAGE_*` |
+| 🔧 部分修 | **F034** | 三个 toggle 端点（评论/资源/收藏点赞）的 not-found 由 400 改 404（其 service 仅返回 not-found，安全）。其余 ~20 处错误映射的广面治理（typed error 化）留待后续——改动面大且可能影响前端依赖的业务文案 |
+| ⏭️ 保留 | **F067** | 可逆奖励按 relation id 作幂等键：与全仓 best-effort 发奖设计一致，accept-and-document（同 §1 备注）|
+| ⏭️ 保留 | **F072 · F024/F032** | 见 [§二 有意保持](#二有意by-design-可接受--机制属实但为有意权衡)：聊天全局审核删除、下游"仅验签"封禁滞后窗口 |
+
+> 注：本仓 API 端点字段审计（`docs/api/checks/`）的修复在 2026-05-29 已完成并标注；本节是 2026-05-30 对上述跨仓审计 OPEN 项的修复。
+
 > ⚠️ **两条 HIGH 建议优先修复**：`F004`（聊天引用预览泄露任意私聊消息内容+发送者名，IDOR）、`GPT-H01`（图床客户端解析错信封 → 上传成功却回空 hash/url，截图/编辑器配图静默坏图）。两者本仓今日 API 审计**未覆盖**。
 
 ---

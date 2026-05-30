@@ -417,7 +417,12 @@ func (h *AdminHandler) GetOrphanPatches(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	pending, badVndb, _ := h.service.CountOrphanPatches()
+	pending, badVndb, cErr := h.service.CountOrphanPatches()
+	if cErr != nil {
+		// Don't report a false 0 for pending/bad_vndb on a DB hiccup (audit
+		// F075); fail the request so the admin sees an error, not fake counts.
+		return response.Error(c, errors.ErrInternal(""))
+	}
 	return response.OK(c, map[string]any{
 		"items":           items,
 		"total":           total,

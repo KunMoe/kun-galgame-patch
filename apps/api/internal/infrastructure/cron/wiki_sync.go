@@ -15,15 +15,22 @@ package cron
 // inside the same tx as its side effects. A re-run sees the row already
 // present and skips, so a crash mid-batch can safely be retried.
 //
-// Per-batch transaction model:
-//   - One tx wraps message-processing + cron_state cursor advance for one
-//     batch (up to `batchLimit` messages from a single feed page). On error
-//     we abort, the cursor doesn't move, the next tick retries.
+// Per-MESSAGE transaction model (changed 2026-05-30, audit F025):
+//   - One tx wraps a SINGLE message's idempotency insert + side effects +
+//     cron_state cursor advance. They still commit atomically (exactly-once
+//     preserved), but the synchronous OAuth award HTTP inside applyWikiMessage
+//     is now bounded to ONE call per open tx instead of up to `wikiBatchLimit`
+//     (1000). A slow/erroring OAuth can no longer pin one DB connection or hold
+//     row locks across a whole feed page, and a poison message stops the run
+//     without re-rolling-back (and re-awarding) the messages committed before
+//     it. On error we abort the loop, the cursor stays at the last committed
+//     message, and the next tick retries from there.
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	userModel "kun-galgame-patch-api/internal/user/model"
@@ -72,27 +79,31 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 			break
 		}
 
-		err = db.Transaction(func(tx *gorm.DB) error {
-			for i := range feed.Items {
-				m := &feed.Items[i]
+		for i := range feed.Items {
+			m := &feed.Items[i]
+			next := cursor
+			if m.ID > next {
+				next = m.ID
+			}
+			// One tx per message: its idempotency insert, side effects, and the
+			// cursor advance commit together (exactly-once), but the OAuth award
+			// HTTP is bounded to a single in-tx call. See the file header (F025).
+			txErr := db.Transaction(func(tx *gorm.DB) error {
 				if err := applyWikiMessage(ctx, tx, mp, m); err != nil {
 					return err
 				}
-				if m.ID > cursor {
-					cursor = m.ID
-				}
-				applied++
+				return tx.Exec(`
+					INSERT INTO cron_state(name, last_id, updated_at)
+					VALUES (?, ?, NOW())
+					ON CONFLICT(name) DO UPDATE
+					SET last_id = EXCLUDED.last_id, updated_at = EXCLUDED.updated_at
+				`, wikiSyncCronName, next).Error
+			})
+			if txErr != nil {
+				return applied, cursor, txErr
 			}
-			// Cursor + side effects move atomically.
-			return tx.Exec(`
-				INSERT INTO cron_state(name, last_id, updated_at)
-				VALUES (?, ?, NOW())
-				ON CONFLICT(name) DO UPDATE
-				SET last_id = EXCLUDED.last_id, updated_at = EXCLUDED.updated_at
-			`, wikiSyncCronName, cursor).Error
-		})
-		if err != nil {
-			return applied, cursor, err
+			cursor = next
+			applied++
 		}
 
 		if !feed.HasMore {
@@ -124,6 +135,18 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 	// and read. Per docs §7 we clean up any stale local state and skip.
 	// (Our local-stats equivalent is the `patch` row itself, lazy-loaded.)
 	if m.Galgame == nil {
+		return nil
+	}
+
+	// Actionable events must carry the target user. A nil here is a malformed/
+	// edge feed row; log it (kungal does the same) instead of silently
+	// consuming the idempotency marker with no effect. (F068)
+	if m.TargetUserID == nil {
+		switch m.Type {
+		case "approved", "declined", "banned", "unbanned":
+			slog.Warn("wiki actionable message has nil target_user_id; consumed with no effect",
+				"message_id", m.ID, "type", m.Type)
+		}
 		return nil
 	}
 

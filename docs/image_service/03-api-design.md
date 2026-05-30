@@ -16,7 +16,16 @@
 
 ## 错误响应
 
-统一格式：
+> ⚠️ **实现修正（2026-05-30）**：以下为早期设计稿。**运行中的 image_service 实际用与 OAuth
+> 一致的扁平信封** `{code:<int>, message:<string>[, details]}`（`api/pkg/response`），**不是**这里画的
+> `{error:{...}}` 嵌套结构，`code` 也是**整数业务码**而非字符串。成功响应同样是
+> `{code:0, message:"成功", data:{...}}`（见下方「成功响应」的修正注）。
+> moyu 的 `pkg/imageclient` 一度照本设计稿解析（裸成功体 + `{error}` 错误体）→ 上传成功却回空
+> hash/url，已于 2026-05-30 修正为按真实信封解析。整数码见
+> `kun-oauth-admin/pkg/errors/codes.go`：60002 审核拒绝 · 80001/80003 鉴权 · 80004 站点禁用 ·
+> 80006 preset 拒绝 · 80007 文件过大 · 80008 配额 · 80009 MIME 拒绝 · 80011 preset 不存在 等。
+
+早期设计稿格式（**已不准确**，保留供对照）：
 
 ```json
 {
@@ -93,6 +102,10 @@ V1 **仅接受** `multipart/form-data`，不支持 raw body + `Content-Type: ima
 如未来 S2S 转发出现性能瓶颈（目前不存在），再评估加 raw body 通道。
 
 **成功响应**：
+
+> ⚠️ **实现修正（2026-05-30）**：运行中的服务把下面这个对象包在
+> `{code:0, message:"成功", data:{...}}` 信封里返回（不是裸对象）。调用方须从 `data` 取
+> `hash/url/variant_urls`。下面的裸示例**仅示意 data 内部字段**。
 
 ```json
 {

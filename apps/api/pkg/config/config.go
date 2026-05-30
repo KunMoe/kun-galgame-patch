@@ -92,10 +92,11 @@ type AboutConfig struct {
 }
 
 func Load() *Config {
+	mode := getEnv("KUN_SERVER_MODE", "dev")
 	return &Config{
 		Server: ServerConfig{
 			Port: getEnv("KUN_SERVER_PORT", "5214"),
-			Mode: getEnv("KUN_SERVER_MODE", "dev"),
+			Mode: mode,
 		},
 		Database: DatabaseConfig{
 			URL:             mustGetEnv("KUN_DATABASE_URL"),
@@ -130,8 +131,12 @@ func Load() *Config {
 			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),
 		},
 		ImageService: ImageServiceConfig{
-			BaseURL: getEnv("KUN_IMAGE_SERVICE_BASE_URL", "http://127.0.0.1:9278"),
-			CDNBase: getEnv("KUN_IMAGE_CDN_BASE", "http://127.0.0.1:9000/kun-images-dev"),
+			// Fail-fast in prod (audit GPT-L02): these default to localhost dev
+			// values, so an unset var in prod would SILENTLY point uploads/CDN
+			// at 127.0.0.1 and only fail at runtime. Require them explicitly in
+			// prod; keep the dev defaults otherwise.
+			BaseURL: getEnvProd("KUN_IMAGE_SERVICE_BASE_URL", "http://127.0.0.1:9278", mode),
+			CDNBase: getEnvProd("KUN_IMAGE_CDN_BASE", "http://127.0.0.1:9000/kun-images-dev", mode),
 			// Empty fallback → app.go fills from OAuth credentials.
 			ClientID:     getEnv("KUN_IMAGE_OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("KUN_IMAGE_OAUTH_CLIENT_SECRET", ""),
@@ -167,4 +172,17 @@ func mustGetEnv(key string) string {
 		panic("required environment variable not set: " + key)
 	}
 	return v
+}
+
+// getEnvProd returns the env var if set; otherwise it panics in prod mode
+// (fail-fast — no silent dev-default fallback for things that must be
+// configured in production) and returns devFallback in dev.
+func getEnvProd(key, devFallback, mode string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	if mode == "prod" {
+		panic("required environment variable not set in prod mode: " + key)
+	}
+	return devFallback
 }

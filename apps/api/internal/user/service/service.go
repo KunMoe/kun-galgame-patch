@@ -145,8 +145,8 @@ func (s *UserService) Follow(followerID, followingID int) error {
 		return fmt.Errorf("already following this user")
 	}
 
-	rel := &model.UserFollowRelation{FollowerID: followerID, FollowingID: followingID}
-	if err := s.repo.CreateFollow(rel); err != nil {
+	// Relation insert + count bump commit atomically (audit F029).
+	if err := s.repo.CreateFollowAndIncrement(followerID, followingID); err != nil {
 		// The followee id comes from OAuth and may legitimately lack a local
 		// `user` row; the following_id FK then rejects the insert. Map that to
 		// a clean message instead of leaking the raw Postgres SQLSTATE string.
@@ -155,8 +155,7 @@ func (s *UserService) Follow(followerID, followingID int) error {
 		}
 		return err
 	}
-
-	return s.repo.UpdateFollowCounts(followerID, followingID, 1)
+	return nil
 }
 
 // Unfollow removes a follow relation and decrements counts ONLY when a
@@ -165,14 +164,14 @@ func (s *UserService) Follow(followerID, followingID int) error {
 // letting anyone corrupt/harass another user's count (GREATEST clamps at 0 but
 // can't prevent corrupting a legitimate positive count).
 func (s *UserService) Unfollow(followerID, followingID int) error {
-	affected, err := s.repo.DeleteFollow(followerID, followingID)
+	affected, err := s.repo.DeleteFollowAndDecrement(followerID, followingID)
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
 		return fmt.Errorf("not following this user")
 	}
-	return s.repo.UpdateFollowCounts(followerID, followingID, -1)
+	return nil
 }
 
 // GetFollowers returns follower user briefs, batch-resolved from OAuth.
@@ -252,24 +251,31 @@ func (s *UserService) briefsToUserBasic(ctx context.Context, ids []int) []model.
 
 // CheckIn performs daily check-in.
 func (s *UserService) CheckIn(userID int) (int, error) {
-	user, err := s.repo.FindByID(userID)
+	// Atomic check-and-set (audit GPT-M04): only the request that actually
+	// flips daily_check_in 0→1 proceeds. The previous read-then-write let two
+	// concurrent requests both pass the "already checked in" guard and both
+	// return a success + random reward.
+	affected, err := s.repo.CheckIn(userID)
 	if err != nil {
-		return 0, fmt.Errorf("user not found")
+		return 0, err
 	}
-	if user.DailyCheckIn == 1 {
+	if affected == 0 {
 		return 0, fmt.Errorf("already checked in today")
 	}
 
 	points := rand.Intn(8) // 0-7
-	if err := s.repo.CheckIn(userID); err != nil {
-		return 0, err
+	// Award via OAuth (unified balance). Best-effort; the daily flag is already
+	// set so a missed award doesn't let the user re-check. Key is per-user-per-
+	// day, with the date pinned to Asia/Shanghai so it agrees with the daily-
+	// reset cron's "day" boundary (audit F085) → replay-safe. points==0 is a
+	// no-op (Awarder skips a zero delta, satisfying OAuth's non-zero rule).
+	loc, lerr := time.LoadLocation("Asia/Shanghai")
+	if lerr != nil || loc == nil {
+		loc = time.Local
 	}
-	// Award via OAuth (unified balance) + local cache sync. Best-effort; the
-	// daily flag is already set so a missed award doesn't let the user re-check.
-	// Key is per-user-per-day → replay-safe. points==0 is a no-op (Awarder
-	// skips a zero delta, which also satisfies OAuth's non-zero rule).
+	date := time.Now().In(loc).Format("2006-01-02")
 	go s.mp.Award(context.Background(), userID, points, "daily_checkin", "",
-		fmt.Sprintf("moyu:checkin:%d:%s", userID, time.Now().Format("2006-01-02")))
+		fmt.Sprintf("moyu:checkin:%d:%s", userID, date))
 	return points, nil
 }
 

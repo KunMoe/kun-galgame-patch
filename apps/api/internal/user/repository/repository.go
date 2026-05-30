@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"log/slog"
+
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/model"
@@ -28,28 +30,32 @@ func (r *UserRepository) UpdateFields(userID int, fields map[string]any) error {
 	return r.db.Model(&authModel.User{}).Where("id = ?", userID).Updates(fields).Error
 }
 
-func (r *UserRepository) CountUserPatches(userID int) int64 {
+// countOrLog runs a Count and, on a DB error, LOGS it instead of silently
+// returning a false 0 (audit F074). These four profile aggregates are
+// display-only, so the call sites keep the simple int64 return; the log makes
+// a transient DB failure visible rather than masquerading as "0 patches".
+func countOrLog(q *gorm.DB, what string, userID int) int64 {
 	var count int64
-	r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID).Count(&count)
+	if err := q.Count(&count).Error; err != nil {
+		slog.Warn("user profile count failed", "what", what, "user_id", userID, "error", err)
+	}
 	return count
+}
+
+func (r *UserRepository) CountUserPatches(userID int) int64 {
+	return countOrLog(r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID), "patches", userID)
 }
 
 func (r *UserRepository) CountUserResources(userID int) int64 {
-	var count int64
-	r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID).Count(&count)
-	return count
+	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID), "resources", userID)
 }
 
 func (r *UserRepository) CountUserComments(userID int) int64 {
-	var count int64
-	r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID).Count(&count)
-	return count
+	return countOrLog(r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID), "comments", userID)
 }
 
 func (r *UserRepository) CountUserFavorites(userID int) int64 {
-	var count int64
-	r.db.Model(&patchModel.UserPatchFavoriteRelation{}).Where("user_id = ?", userID).Count(&count)
-	return count
+	return countOrLog(r.db.Model(&patchModel.UserPatchFavoriteRelation{}).Where("user_id = ?", userID), "favorites", userID)
 }
 
 // ===== User Profile Lists =====
@@ -125,31 +131,49 @@ func (r *UserRepository) FindFollow(followerID, followingID int) (*model.UserFol
 	return &rel, err
 }
 
-func (r *UserRepository) CreateFollow(rel *model.UserFollowRelation) error {
-	return r.db.Create(rel).Error
-}
-
-// DeleteFollow removes a follow relation and reports how many rows were
-// actually deleted. The caller MUST gate the follower/following count
-// decrement on rowsAffected > 0 — a Where(...).Delete on a non-existent
-// relation returns a nil error with RowsAffected == 0, so blindly
-// decrementing would corrupt a victim's follower_count without any relation
-// ever existing.
-func (r *UserRepository) DeleteFollow(followerID, followingID int) (int64, error) {
-	res := r.db.Where("follower_id = ? AND following_id = ?", followerID, followingID).
-		Delete(&model.UserFollowRelation{})
-	return res.RowsAffected, res.Error
-}
-
-func (r *UserRepository) UpdateFollowCounts(followerID, followingID, delta int) error {
+// CreateFollowAndIncrement inserts the relation AND bumps both denormalized
+// counts in ONE transaction (audit F029), so they can't drift if the process
+// dies between the two writes. A FK violation (followee has no local user row)
+// surfaces from the Create for the caller to translate.
+func (r *UserRepository) CreateFollowAndIncrement(followerID, followingID int) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&authModel.User{}).Where("id = ?", followerID).
-			UpdateColumn("following_count", gorm.Expr("GREATEST(following_count + ?, 0)", delta)).Error; err != nil {
+		if err := tx.Create(&model.UserFollowRelation{FollowerID: followerID, FollowingID: followingID}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&authModel.User{}).Where("id = ?", followingID).
-			UpdateColumn("follower_count", gorm.Expr("GREATEST(follower_count + ?, 0)", delta)).Error
+		return applyFollowCountsTx(tx, followerID, followingID, 1)
 	})
+}
+
+// DeleteFollowAndDecrement removes the relation and, ONLY if a row was actually
+// deleted, decrements both counts — all in one transaction (audit F029 + the
+// earlier rows-affected guard). Returns rowsAffected so the service can reject
+// an unfollow with no prior relation instead of corrupting a victim's count.
+func (r *UserRepository) DeleteFollowAndDecrement(followerID, followingID int) (int64, error) {
+	var affected int64
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("follower_id = ? AND following_id = ?", followerID, followingID).
+			Delete(&model.UserFollowRelation{})
+		if res.Error != nil {
+			return res.Error
+		}
+		affected = res.RowsAffected
+		if affected == 0 {
+			return nil
+		}
+		return applyFollowCountsTx(tx, followerID, followingID, -1)
+	})
+	return affected, err
+}
+
+// applyFollowCountsTx applies the +/-delta to following_count (follower) and
+// follower_count (followee) within the given tx. GREATEST clamps at 0.
+func applyFollowCountsTx(tx *gorm.DB, followerID, followingID, delta int) error {
+	if err := tx.Model(&authModel.User{}).Where("id = ?", followerID).
+		UpdateColumn("following_count", gorm.Expr("GREATEST(following_count + ?, 0)", delta)).Error; err != nil {
+		return err
+	}
+	return tx.Model(&authModel.User{}).Where("id = ?", followingID).
+		UpdateColumn("follower_count", gorm.Expr("GREATEST(follower_count + ?, 0)", delta)).Error
 }
 
 // GetFollowerIDs / GetFollowingIDs return only the user_ids; the handler layer
@@ -205,7 +229,13 @@ func (r *UserRepository) WhichFollowed(viewerID int, candidateIDs []int) (map[in
 // CheckIn marks the user as checked-in for today. The moemoepoint reward is no
 // longer applied here — it goes through OAuth (the unified source of truth) via
 // the service's awarder; this only flips the local daily flag.
-func (r *UserRepository) CheckIn(userID int) error {
-	return r.db.Model(&authModel.User{}).Where("id = ?", userID).
-		Update("daily_check_in", 1).Error
+// CheckIn atomically flips daily_check_in 0→1 and reports rows affected. The
+// `daily_check_in = 0` predicate makes it a true check-and-set: only the first
+// concurrent caller updates a row (RowsAffected==1); a same-day repeat (or a
+// missing user) affects 0 rows. The service gates the reward on that count.
+func (r *UserRepository) CheckIn(userID int) (int64, error) {
+	res := r.db.Model(&authModel.User{}).
+		Where("id = ? AND daily_check_in = 0", userID).
+		Update("daily_check_in", 1)
+	return res.RowsAffected, res.Error
 }

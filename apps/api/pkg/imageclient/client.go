@@ -159,39 +159,48 @@ func (c *Client) Upload(
 
 	raw, _ := io.ReadAll(resp.Body)
 
+	// image_service wraps EVERY response in {code,message,data} (api/pkg/response).
+	// A 2xx success body is {code:0,message:"成功",data:{hash,url,variant_urls,...}}.
+	// (The previous code unmarshalled the bare body into UploadResult, so hash/url
+	// came back empty on every successful upload — silently breaking the screenshot
+	// editor. The image_service's own handler_http_test.go reads `env.Data`.)
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-		var out UploadResult
-		if err := json.Unmarshal(raw, &out); err != nil {
+		var env struct {
+			Code int          `json:"code"`
+			Data UploadResult `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &env); err != nil {
 			return nil, fmt.Errorf("decode upload response: %w (body=%s)", err, truncate(string(raw), 200))
 		}
+		out := env.Data
 		if out.VariantURLs == nil {
 			out.VariantURLs = map[string]string{}
 		}
 		return &out, nil
 	}
 
-	// Try to decode the error envelope per docs/image_service/03-api-design.md
-	// shape `{error: {code, message, details}}`. Map known codes to sentinels;
-	// otherwise wrap raw.
+	// Error body is the same flat envelope {code:<int>,message:<string>} (NOT a
+	// nested {error:{...}} — that was a stale-doc assumption). Map the known
+	// integer business codes (kun-oauth-admin/pkg/errors/codes.go) to sentinels;
+	// otherwise wrap with code+message.
 	var env struct {
-		Error struct {
-			Code    string          `json:"code"`
-			Message string          `json:"message"`
-			Details json.RawMessage `json:"details"`
-		} `json:"error"`
+		Code    int    `json:"code"`
+		Message string `json:"message"`
 	}
 	_ = json.Unmarshal(raw, &env)
 
-	switch env.Error.Code {
-	case "quota_exceeded", "rate_limited":
-		return nil, fmt.Errorf("%w: %s", ErrQuotaExceeded, env.Error.Message)
-	case "rejected_moderation":
-		return nil, fmt.Errorf("%w: %s", ErrModerationRejected, env.Error.Message)
-	case "unauthorized", "scope_missing", "site_disabled":
-		return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Error.Message)
+	switch env.Code {
+	case 80008: // ErrImageQuotaExceeded
+		return nil, fmt.Errorf("%w: %s", ErrQuotaExceeded, env.Message)
+	case 60002: // ErrModerationRejected
+		return nil, fmt.Errorf("%w: %s", ErrModerationRejected, env.Message)
+	case 80001, 80002, 80003, 80004, 80005, 80006, 80015:
+		// unauthorized / bad client / bad secret / site disabled / site
+		// unconfigured / preset denied / upload disabled — all "you can't" class.
+		return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
 	}
-	return nil, fmt.Errorf("image_service upload failed: status=%d code=%q msg=%q",
-		resp.StatusCode, env.Error.Code, env.Error.Message)
+	return nil, fmt.Errorf("image_service upload failed: status=%d code=%d msg=%q",
+		resp.StatusCode, env.Code, env.Message)
 }
 
 // MainURL builds the canonical CDN URL for the full image (`.webp`).

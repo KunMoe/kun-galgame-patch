@@ -620,6 +620,10 @@ func (s *PatchService) ToggleCommentLike(commentID, userID int) (bool, error) {
 	if comment.UserID != userID {
 		go s.mp.Award(context.Background(), comment.UserID, 1, "liked",
 			fmt.Sprintf("comment:%d", commentID), fmt.Sprintf("moyu:comment_like:%d", rel.ID))
+		// Notify the comment owner. The helper existed but was never wired
+		// into this path (audit F070); createDedupMessage dedups so a
+		// like/unlike/like cycle won't spam the owner.
+		go s.CreateLikeCommentNotification(userID, comment)
 	}
 	return true, nil
 }

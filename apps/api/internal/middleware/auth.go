@@ -500,12 +500,20 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 	_ = json.Unmarshal(respBody, &env)
 
 	// Permanent reject: 401/403 (RFC 6749 invalid_grant style) or the
-	// OAuth-side business codes that mean "this refresh_token is dead":
-	//   10002 invalid token / 10003 token expired / 15003 invalid auth code.
+	// OAuth-side business codes that mean "this session can never refresh":
+	//   10002 invalid token / 10003 token expired / 15003 invalid auth code /
+	//   10014 account banned / 15005 grant-type not enabled / 15008 invalid
+	//   client secret.
+	// Per docs/oauth/README.md, OAuth returns some of these as HTTP 200 with a
+	// non-zero `code` (business 401 → HTTP 200), so we MUST match on the code
+	// and not rely on the HTTP status — otherwise these dead sessions fall
+	// through to the transient branch below and retry every request forever
+	// instead of being cleared (audit F077).
 	// In every case we destroy the local session — there is no recovery.
 	if resp.StatusCode == http.StatusUnauthorized ||
 		resp.StatusCode == http.StatusForbidden ||
-		env.Code == 10002 || env.Code == 10003 || env.Code == 15003 {
+		env.Code == 10002 || env.Code == 10003 || env.Code == 15003 ||
+		env.Code == 10014 || env.Code == 15005 || env.Code == 15008 {
 		slog.Warn("OAuth refresh permanently rejected; destroying session",
 			"status", resp.StatusCode, "code", env.Code, "msg", env.Message)
 		rdb.Del(ctx, SessionPrefix+sessionID)

@@ -155,6 +155,14 @@ func (s *AuthService) FindOrCreateUserByID(id int) (*authModel.User, error) {
 	if err := s.repo.CreateUser(newUser); err != nil {
 		return nil, fmt.Errorf("failed to create local user row: %w", err)
 	}
+	// Re-read the canonical row: under a concurrent first-login the
+	// ON CONFLICT DO NOTHING insert may have been a no-op (the other request
+	// won the race), so fetch the persisted row to return real values either
+	// way (audit F066). Fall back to the stub on a transient read error — its
+	// defaults still match a brand-new row.
+	if persisted, ferr := s.repo.FindUserByID(id); ferr == nil {
+		return persisted, nil
+	}
 	slog.Info("Provisioned local user row", "userID", id)
 	return newUser, nil
 }

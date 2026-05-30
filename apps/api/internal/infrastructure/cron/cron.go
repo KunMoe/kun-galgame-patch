@@ -23,7 +23,16 @@ import (
 //  3. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
 //     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
 func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *moemoepoint.Client) func() {
-	c := cron.New()
+	// Pin the schedule to Asia/Shanghai so the daily 00:00 reset fires at the
+	// intended civil midnight regardless of host TZ (audit F085). The check-in
+	// idempotency key's date (user/service) is pinned to the same zone so the
+	// "day" boundary agrees on both sides. Fall back to host-local if tzdata
+	// is unavailable.
+	loc, locErr := time.LoadLocation("Asia/Shanghai")
+	if locErr != nil || loc == nil {
+		loc = time.Local
+	}
+	c := cron.New(cron.WithLocation(loc))
 
 	// ── Daily 00:00: reset quota fields ───────────────
 	if _, err := c.AddFunc("0 0 * * *", func() {

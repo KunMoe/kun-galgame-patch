@@ -90,7 +90,16 @@ func (a *App) RegisterRoutes() {
 		middleware.RateLimit(a.RDB, "resource-link", 30, time.Minute),
 		a.PatchHandler.GetResourceDownloadInfo,
 	)
-	patchRoutes.Put("/resource/:resourceId/download", a.PatchHandler.IncrementResourceDownload)
+	// Public counter, but rate-limited (audit F069): without a cap anyone can
+	// script this to inflate a resource's/patch's download count (pollutes
+	// rankings + sort). optionalAuth lets it key by userID when logged in,
+	// else per IP — same shape as the /link limiter above.
+	patchRoutes.Put(
+		"/resource/:resourceId/download",
+		optionalAuth,
+		middleware.RateLimit(a.RDB, "resource-download", 60, time.Minute),
+		a.PatchHandler.IncrementResourceDownload,
+	)
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 
@@ -309,7 +318,16 @@ func (a *App) RegisterRoutes() {
 	api.Get("/comment", a.CommonHandler.GetGlobalComments)
 	api.Get("/resource", a.CommonHandler.GetGlobalResources)
 	// optionalAuth so the detail page can reflect the viewer's like state.
-	api.Get("/resource/:id", optionalAuth, a.CommonHandler.GetResourceDetail)
+	// Rate-limited (audit GPT-M03): this endpoint returns the main resource's
+	// real download payload (content/code/password), so an unthrottled id-walk
+	// could harvest every resource's links — the same scraping vector the
+	// /patch/resource/:id/link limiter exists to stop. 60/min/(user|IP) keeps
+	// normal browsing untouched.
+	api.Get("/resource/:id",
+		optionalAuth,
+		middleware.RateLimit(a.RDB, "resource-detail", 60, time.Minute),
+		a.CommonHandler.GetResourceDetail,
+	)
 
 	// Rankings (public).
 	api.Get("/ranking/user", a.CommonHandler.GetUserRanking)

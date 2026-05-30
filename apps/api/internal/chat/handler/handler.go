@@ -5,6 +5,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -123,13 +124,25 @@ func (h *ChatHandler) enrichMessages(ctx context.Context, msgs []chatModel.ChatM
 	if len(replyIDs) > 0 {
 		quoted, err := h.svc.MessagesByIDs(replyIDs)
 		if err == nil && len(quoted) > 0 {
+			// Defense-in-depth against cross-room quote leakage (F004): every
+			// message in `msgs` belongs to the same room (ListMessages is
+			// room-scoped), so drop any quoted message from a different room.
+			// CreateMessage already rejects cross-room reply targets at write
+			// time; this also neutralizes any legacy rows.
+			roomID := msgs[0].ChatRoomID
 			qSenderIDs := make([]int, 0, len(quoted))
 			for _, q := range quoted {
+				if q.ChatRoomID != roomID {
+					continue
+				}
 				qSenderIDs = append(qSenderIDs, q.SenderID)
 			}
 			qBriefs := userclient.BriefMapByInt(ctx, h.users, qSenderIDs)
 			byID := make(map[int]chatModel.ChatQuoteView, len(quoted))
 			for _, q := range quoted {
+				if q.ChatRoomID != roomID {
+					continue
+				}
 				name := "未知用户"
 				if b := qBriefs[q.SenderID]; b != nil {
 					name = b.Name
@@ -191,7 +204,13 @@ func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
 		}
 	}
 
-	lastMsgs, _ := h.svc.LatestMessagePerRoom(roomIDs)
+	lastMsgs, lmErr := h.svc.LatestMessagePerRoom(roomIDs)
+	if lmErr != nil {
+		// Best-effort enrichment: the room list still returns, just without
+		// last-message previews. Log so a persistent DB issue isn't invisible
+		// (audit F073).
+		slog.Warn("LatestMessagePerRoom failed; room list will omit previews", "error", lmErr)
+	}
 	peerBriefs := userclient.BriefMapByInt(c.Context(), h.users, peerUIDs)
 
 	out := make([]chatModel.RoomSummaryView, 0, len(rooms))

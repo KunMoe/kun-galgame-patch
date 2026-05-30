@@ -115,6 +115,17 @@ func (s *ChatService) CreateMessage(userID int, link string, content, fileURL st
 	if content == "" && fileURL == "" {
 		return nil, fmt.Errorf("消息内容不能为空")
 	}
+	// Reply target must live in THIS room. Without this check a member of
+	// room A could reply-to any message id from a PRIVATE room B they aren't
+	// in; the quote preview built on fetch would then leak that message's
+	// content + author name (cross-room IDOR). enrichMessages also re-scopes
+	// the quote read to the room as defense-in-depth.
+	if replyToID != nil {
+		target, terr := s.repo.GetMessage(*replyToID)
+		if terr != nil || target.ChatRoomID != room.ID {
+			return nil, fmt.Errorf("无效的引用消息")
+		}
+	}
 	msg := &model.ChatMessage{
 		ChatRoomID: room.ID,
 		SenderID:   userID,

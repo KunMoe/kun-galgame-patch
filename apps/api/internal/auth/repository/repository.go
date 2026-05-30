@@ -4,6 +4,7 @@ import (
 	"kun-galgame-patch-api/internal/auth/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AuthRepository is the data layer for the auth module. After the OAuth
@@ -29,9 +30,13 @@ func (r *AuthRepository) FindUserByID(id int) (*model.User, error) {
 }
 
 // CreateUser inserts a new local row. Caller must populate ID with the
-// OAuth-side integer id (NOT autoincrement; see migration 005).
+// OAuth-side integer id (NOT autoincrement; see migration 005). ON CONFLICT DO
+// NOTHING makes the concurrent first-login of a brand-new user idempotent
+// (audit F066): the race loser no longer hits a PK unique-violation that the
+// handler would surface as a bare 500. Callers should re-fetch the canonical
+// row afterward.
 func (r *AuthRepository) CreateUser(user *model.User) error {
-	return r.db.Create(user).Error
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(user).Error
 }
 
 // UpdateLastLoginTime stamps last_login_time on the local row.
