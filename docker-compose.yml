@@ -1,0 +1,84 @@
+# moyu (kun-galgame-patch-next) — the downstream patch site.
+#
+# Stateless api + web only. The backing services (Postgres / Redis) and the
+# upstreams (oauth / galgame-wiki / image_service / MinIO) are OWNED BY the
+# kun-oauth-admin HUB. moyu connects to them by service name on the hub's
+# network. See docker/README.md.
+#
+# Run one of:
+#   A) Umbrella: a website/compose.yaml that `include:`s the hub + this (the
+#      hub provides postgres/redis/oauth/galgame/image). Recommended.
+#   B) Alongside the hub: bring the hub up first (so its network + infra exist),
+#      then `docker compose up -d` here — this joins `kun-oauth-admin_default`.
+#
+# Host ports use the 1xxxx range to coexist with a running `air` dev server.
+# Service-to-service traffic uses container ports via service names
+# (postgres:5432, http://oauth:9277, http://galgame:9280, http://image:9278).
+name: moyu
+
+x-svc-health: &svc-health
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 15s
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/go.Dockerfile
+      args: { CMD: server }
+    image: moyu/api
+    env_file: [./docker/api.env]
+    ports: ["15214:5214"]
+    # No depends_on on postgres/redis: they live in the hub compose, not here.
+    # `restart: unless-stopped` reconnects once the hub infra is up.
+    healthcheck:
+      test: ["CMD", "/app", "healthcheck"]
+      <<: *svc-health
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/nuxt.Dockerfile
+      args:
+        APP: web
+        # Browser-facing → host ports / public URLs. Override per deploy.
+        PUBLIC_API_BASE: http://localhost:15214/api/v1
+        PUBLIC_OAUTH_SERVER_URL: http://localhost:19277/api/v1
+        PUBLIC_OAUTH_WEB_URL: http://localhost:19420
+        PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
+        PUBLIC_OAUTH_REDIRECT_URI: http://localhost:16969/auth/callback
+    image: moyu/web
+    env_file: [./docker/web.env]
+    ports: ["16969:3000"]
+    depends_on:
+      api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      <<: *svc-health
+    restart: unless-stopped
+
+  # ─────────────────────── one-off job (profile: jobs) ───────────────────────
+  # moyu's SQL migrations. Not started by `up`. Run on demand AFTER the hub's
+  # postgres is up and the kungalgame_patch database exists (add it to the hub's
+  # docker/initdb.d, see README):
+  #   docker compose run --rm migrate
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/go.Dockerfile
+      args: { CMD: migrate }
+    image: moyu/migrate
+    env_file: [./docker/api.env]
+    profiles: ["jobs"]
+    restart: "no"
+
+# moyu joins the hub's network so `postgres`/`oauth`/`galgame`/`image`/`minio`
+# resolve. (When run via the umbrella `include`, all services share one project
+# network and this `external` block is unnecessary — drop it there.)
+networks:
+  default:
+    name: kun-oauth-admin_default
+    external: true

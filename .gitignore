@@ -19,6 +19,10 @@ apps/api/build
 .env.goenv
 !.env.example
 
+# Docker runtime env (secrets) — keep the *.example, ignore the real files.
+docker/*.env
+!docker/*.env.example
+
 # Dependencies
 node_modules
 **/node_modules
