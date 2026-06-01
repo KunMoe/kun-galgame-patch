@@ -33,8 +33,8 @@ docker compose up -d api web
 
 | Service | URL |
 |---|---|
-| moyu API health | http://localhost:15214/api/v1/health |
-| moyu web | http://localhost:16969 |
+| moyu API health | http://localhost:15010/api/v1/health |
+| moyu web | http://localhost:15011 |
 
 Host ports use the **1xxxx** range to coexist with a running `air` dev server.
 Service-to-service traffic uses container ports via service names

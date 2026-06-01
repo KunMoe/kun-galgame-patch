@@ -30,7 +30,7 @@ services:
       args: { CMD: server }
     image: moyu/api
     env_file: [./docker/api.env]
-    ports: ["15214:5214"]
+    ports: ["15010:5214"]
     # No depends_on on postgres/redis: they live in the hub compose, not here.
     # `restart: unless-stopped` reconnects once the hub infra is up.
     healthcheck:
@@ -45,14 +45,14 @@ services:
       args:
         APP: web
         # Browser-facing → host ports / public URLs. Override per deploy.
-        PUBLIC_API_BASE: http://localhost:15214/api/v1
-        PUBLIC_OAUTH_SERVER_URL: http://localhost:19277/api/v1
-        PUBLIC_OAUTH_WEB_URL: http://localhost:19420
+        PUBLIC_API_BASE: http://localhost:15010/api/v1
+        PUBLIC_OAUTH_SERVER_URL: http://localhost:15005/api/v1
+        PUBLIC_OAUTH_WEB_URL: http://localhost:15008
         PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
-        PUBLIC_OAUTH_REDIRECT_URI: http://localhost:16969/auth/callback
+        PUBLIC_OAUTH_REDIRECT_URI: http://localhost:15011/auth/callback
     image: moyu/web
     env_file: [./docker/web.env]
-    ports: ["16969:3000"]
+    ports: ["15011:3000"]
     depends_on:
       api: { condition: service_started }
     healthcheck:
