@@ -66,7 +66,7 @@
 
 ### 决策 3 — Basic Auth 凭据：**复用现有 OAuth Client 凭证**
 
-Wiki 的 `oauth_client` 表跟 OAuth 服务**共享同一张表**（在 `kun_oauth_admin` 库里，wiki 只读连进去）。
+Wiki 的 `oauth_client` 表跟 OAuth 服务**共享同一张表**（在 `kun_galgame_infra` 库里，wiki 只读连进去）。
 
 moyu 现有调 `OAuth /users/batch` 的 `client_id / client_secret`，**直接拿来调 wiki `/galgame/messages/feed`**——零新配置。
 

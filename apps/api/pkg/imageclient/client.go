@@ -1,7 +1,7 @@
 // Package imageclient is a thin SDK for the centralized image_service.
 //
 // Background: image_service is a hash-addressed blob store hosted by
-// kun-oauth-admin (port 9278). Callers POST an image multipart body and get
+// kun-galgame-infra (port 9278). Callers POST an image multipart body and get
 // back a content hash + a set of variant URLs. The hash is the only thing
 // downstream stores; URLs are derived deterministically from
 // `{CDN_BASE}/img/<hash[:2]>/<hash[2:4]>/<hash>[_variant].webp`.
@@ -10,11 +10,11 @@
 // image_service shares the OAuth `oauth_client` table as its "site" registry,
 // so the project's existing OAuth credentials work as-is (provided the admin
 // flipped `image_enabled=true` and listed the desired presets in
-// `image_allowed_presets` on the kun-oauth-admin side).
+// `image_allowed_presets` on the kun-galgame-infra side).
 //
 // See docs at:
-//   - kun-oauth-admin/docs/image_service/03-api-design.md (endpoints)
-//   - kun-oauth-admin/docs/image_service/06-integration-guide.md (SDK contract)
+//   - kun-galgame-infra/docs/image_service/03-api-design.md (endpoints)
+//   - kun-galgame-infra/docs/image_service/06-integration-guide.md (SDK contract)
 //
 // This file intentionally stays small (single Upload call + URL helpers) and
 // stdlib-only — the screenshot editor is currently the only consumer; if more
@@ -181,7 +181,7 @@ func (c *Client) Upload(
 
 	// Error body is the same flat envelope {code:<int>,message:<string>} (NOT a
 	// nested {error:{...}} — that was a stale-doc assumption). Map the known
-	// integer business codes (kun-oauth-admin/pkg/errors/codes.go) to sentinels;
+	// integer business codes (kun-galgame-infra/pkg/errors/codes.go) to sentinels;
 	// otherwise wrap with code+message.
 	var env struct {
 		Code    int    `json:"code"`

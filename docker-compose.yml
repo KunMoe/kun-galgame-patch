@@ -2,14 +2,14 @@
 #
 # Stateless api + web only. The backing services (Postgres / Redis) and the
 # upstreams (oauth / galgame-wiki / image_service / MinIO) are OWNED BY the
-# kun-oauth-admin HUB. moyu connects to them by service name on the hub's
+# kun-galgame-infra HUB. moyu connects to them by service name on the hub's
 # network. See docker/README.md.
 #
 # Run one of:
 #   A) Umbrella: a website/compose.yaml that `include:`s the hub + this (the
 #      hub provides postgres/redis/oauth/galgame/image). Recommended.
 #   B) Alongside the hub: bring the hub up first (so its network + infra exist),
-#      then `docker compose up -d` here — this joins `kun-oauth-admin_default`.
+#      then `docker compose up -d` here — this joins `kun-galgame-infra_default`.
 #
 # Host ports use the 1xxxx range to coexist with a running `air` dev server.
 # Service-to-service traffic uses container ports via service names
@@ -80,5 +80,5 @@ services:
 # network and this `external` block is unnecessary — drop it there.)
 networks:
   default:
-    name: kun-oauth-admin_default
+    name: kun-galgame-infra_default
     external: true

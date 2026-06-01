@@ -71,7 +71,7 @@
 ### 复用哪个库？
 
 图片服务**独立建库**：`kun_images`。理由：
-- 不污染 `kun_oauth_admin` / `kun_galgame_wiki` 现有 schema
+- 不污染 `kun_galgame_infra` / `kun_galgame_wiki` 现有 schema
 - 故障隔离（图片服务 DB 挂了不影响 OAuth）
 - 容量伸缩独立
 
@@ -186,7 +186,7 @@ V1 可选（也可以先用 slog 日志，观察后再决定落表）。
 
 ## 站点配置扩展 OAuth Client
 
-在 `kun_oauth_admin.oauth_client` 表上 `ALTER TABLE` 追加字段：
+在 `kun_galgame_infra.oauth_client` 表上 `ALTER TABLE` 追加字段：
 
 ```sql
 ALTER TABLE oauth_client

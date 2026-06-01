@@ -279,7 +279,7 @@ export interface GalgameEditFields {
 - 6 个前端改动文件 ESLint exit 0
 - 关键路径自检：rewrite 不动 covers/screenshots → buildPayload 不含 → Wiki presence omit 保持 ✅；钉新封面 → 本地 demote+promote → 整集发送 → Wiki 替换 ✅；上传截图 → image_service hash → append → 集合差异判断后发送 ✅
 
-**部署前提（提醒 admin / ops）**：moyu 的 OAuth client 在 `kun_oauth_admin` 库的 `oauth_client` 表必须 `image_enabled=true` 且 `image_allowed_presets` 含 `'topic'`（截图用）。无需新增 `galgame_banner` preset（封面通过 Wiki multipart 流转）。环境变量未设时自动 fall back 到 OAuth 凭据，零新配置即可启动。
+**部署前提（提醒 admin / ops）**：moyu 的 OAuth client 在 `kun_galgame_infra` 库的 `oauth_client` 表必须 `image_enabled=true` 且 `image_allowed_presets` 含 `'topic'`（截图用）。无需新增 `galgame_banner` preset（封面通过 Wiki multipart 流转）。环境变量未设时自动 fall back 到 OAuth 凭据，零新配置即可启动。
 
 ---
 

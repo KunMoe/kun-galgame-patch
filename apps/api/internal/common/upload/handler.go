@@ -92,7 +92,7 @@ func (h *Handler) CompleteMultipart(c *fiber.Ctx) error {
 // UploadImageService POST /api/upload/image-service
 //
 // Proxies a multipart image upload to the centralized image_service
-// (kun-oauth-admin :9278) and returns the content hash + variant URLs. Used
+// (kun-galgame-infra :9278) and returns the content hash + variant URLs. Used
 // by the galgame screenshot editor (Wiki PR5: screenshots must reference
 // image_service by hash, and Wiki itself accepts no multipart for them).
 // Covers can also flow through this if the client wants to add a non-pinned

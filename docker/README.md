@@ -2,7 +2,7 @@
 
 moyu is a **downstream** patch site. Its containers (`api`, `web`) are
 stateless; the backing services (Postgres / Redis) and upstreams (oauth /
-galgame-wiki / image_service / MinIO) are **owned by the kun-oauth-admin hub**.
+galgame-wiki / image_service / MinIO) are **owned by the kun-galgame-infra hub**.
 This setup mirrors the hub's `docker/` conventions one-for-one.
 
 ## Layout
@@ -19,10 +19,10 @@ source).
 ## Run
 
 moyu does not own infra, so bring the **hub** up first (it creates the shared
-network `kun-oauth-admin_default` + Postgres/Redis/oauth/galgame/image):
+network `kun-galgame-infra_default` + Postgres/Redis/oauth/galgame/image):
 
 ```bash
-# 1) in kun-oauth-admin: start shared infra + upstreams (see its docker/README)
+# 1) in kun-galgame-infra: start shared infra + upstreams (see its docker/README)
 #    docker compose up -d postgres redis minio meili oauth image galgame
 # 2) here:
 cp docker/api.env.example docker/api.env && $EDITOR docker/api.env   # fill secrets

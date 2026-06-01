@@ -1,7 +1,7 @@
 # moyu 跨仓审计发现核对
 
 > 来源：`../kungal-docs/claude` 与 `../kungal-docs/gpt` 两份外部审计（对
-> `kun-oauth-admin` / `kun-galgame-nuxt4` / **`kun-galgame-patch-next`(moyu，本仓)** 三仓的只读安全/正确性审计）。
+> `kun-galgame-infra` / `kun-galgame-nuxt4` / **`kun-galgame-patch-next`(moyu，本仓)** 三仓的只读安全/正确性审计）。
 >
 > 本文**只摘录与本仓（moyu）有关的发现**，并逐条以**当前代码**核对真伪、给出当前
 > `file:line` 证据与处理建议。核对方式：逐条读源码 + 对外部审计的“证伪项”反向确认。
@@ -74,7 +74,7 @@
 
 - 位置（当前代码）：
   - `pkg/imageclient/client.go:163-164` 成功体解码进**裸** `UploadResult`（`client.go:90-98`，无 `data` 包裹）：`var out UploadResult; json.Unmarshal(raw, &out)`。
-  - **决定性证据**：真实 image_service（上游 `kun-oauth-admin` 的 `platform/image`）的**自带 HTTP 测试** `internal/platform/image/handler_http_test.go` 把上传响应解成信封 `envelope{Code int; Message; Data json.RawMessage}`，再从 `env.Data` 里取 `hash/url/variant_urls`（成功 handler `Upload` 末行 `response.Success(c, result)`）。即服务**实际返回 `{code,message,data:{hash,url,variant_urls}}`（带信封）**。moyu 这份解裸对象 → `Hash/URL/VariantURLs` 全留零值，`json.Unmarshal` 不报错 → 代理回 200 但 payload 全空。
+  - **决定性证据**：真实 image_service（上游 `kun-galgame-infra` 的 `platform/image`）的**自带 HTTP 测试** `internal/platform/image/handler_http_test.go` 把上传响应解成信封 `envelope{Code int; Message; Data json.RawMessage}`，再从 `env.Data` 里取 `hash/url/variant_urls`（成功 handler `Upload` 末行 `response.Success(c, result)`）。即服务**实际返回 `{code,message,data:{hash,url,variant_urls}}`（带信封）**。moyu 这份解裸对象 → `Hash/URL/VariantURLs` 全留零值，`json.Unmarshal` 不报错 → 代理回 200 但 payload 全空。
   - 误导根源：本仓 `docs/image_service/03-api-design.md`（约 97-110 行）画的是**无信封**的成功体（且把错误体画成 `{error:{...}}`），与运行中的服务（`{code,message,data}`，错误也是 `{code,message}`）都不一致 —— 客户端的成功体**和**错误体解析双双照这份过期文档写错了。
 - 影响：`POST /api/v1/upload/image-service`（截图编辑器/milkdown 配图，`apps/web` 的 `useGalgameEdit.ts` 读 `data.hash/url/variant_urls`）上传成功却拿到空 hash/url → 插入空图/坏图。**静默失败**。
 - 修复：`client.go:163` 改解 `var env struct{ Data UploadResult \`json:"data"\` }` 取 `env.Data`（对齐权威 SDK）；并订正 `docs/image_service/03-api-design.md` 的信封。

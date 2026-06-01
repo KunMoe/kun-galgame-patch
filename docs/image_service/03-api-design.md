@@ -22,7 +22,7 @@
 > `{code:0, message:"成功", data:{...}}`（见下方「成功响应」的修正注）。
 > moyu 的 `pkg/imageclient` 一度照本设计稿解析（裸成功体 + `{error}` 错误体）→ 上传成功却回空
 > hash/url，已于 2026-05-30 修正为按真实信封解析。整数码见
-> `kun-oauth-admin/pkg/errors/codes.go`：60002 审核拒绝 · 80001/80003 鉴权 · 80004 站点禁用 ·
+> `kun-galgame-infra/pkg/errors/codes.go`：60002 审核拒绝 · 80001/80003 鉴权 · 80004 站点禁用 ·
 > 80006 preset 拒绝 · 80007 文件过大 · 80008 配额 · 80009 MIME 拒绝 · 80011 preset 不存在 等。
 
 早期设计稿格式（**已不准确**，保留供对照）：

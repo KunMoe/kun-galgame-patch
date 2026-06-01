@@ -151,7 +151,7 @@ Standard textbook OAuth integration uses an `oauth_account(provider, sub, user_i
 
 The `sub → user_id` lookup against `oauth_account` would, in this architecture, **always** return `user_id == userinfo.id` because that equality is the migration's invariant. So the indirection is dead weight. Drop the table; query `user` by `id` directly.
 
-> If you previously created the `oauth_account` table, drop it. The `migrate-users` script in `kun-oauth-admin/apps/api/cmd/migrate-users/` handles the case where the table doesn't exist (it filters tables via `pg_tables` before remapping FK columns).
+> If you previously created the `oauth_account` table, drop it. The `migrate-users` script in `kun-galgame-infra/apps/api/cmd/migrate-users/` handles the case where the table doesn't exist (it filters tables via `pg_tables` before remapping FK columns).
 
 ## Migration Checklist
 

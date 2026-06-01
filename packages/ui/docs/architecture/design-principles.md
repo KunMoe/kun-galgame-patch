@@ -3,7 +3,7 @@
 > 提炼自 [v0.1.0 改进方案](../changelog/v0.1.0.md) 的 §1 跨切面问题 + §2 组件清单。这些是跨组件、长期生效的设计约束 —— 比单个组件的 bug 修复更值钱。
 >
 > 范围：`packages/ui/app/components/kun/` 下所有 ~40 个组件 + `composables/` + `utils/`。
-> 目标消费方：kungal、moyu、wiki (kun-oauth-admin/apps/wiki)、oauth (kun-oauth-admin/apps/web)。
+> 目标消费方：kungal、moyu、wiki (kun-galgame-infra/apps/wiki)、oauth (kun-galgame-infra/apps/web)。
 
 ## 摘要
 

@@ -7,7 +7,7 @@
 //
 //	HEALTHCHECK CMD ["/server", "healthcheck"]
 //
-// Mirrors kun-oauth-admin/apps/api/pkg/health so the whole ecosystem shares one
+// Mirrors kun-galgame-infra/apps/api/pkg/health so the whole ecosystem shares one
 // container-health convention.
 package health
 

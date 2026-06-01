@@ -224,7 +224,7 @@ visual:  dropdown cleanly capped at 240px; cards below fully visible
 ### 给 moyu 的同步指令
 
 ```bash
-KUN_OAUTH=/home/kun/Desktop/code/website/kun-oauth-admin
+KUN_OAUTH=/home/kun/Desktop/code/website/kun-galgame-infra
 cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue \
    /home/kun/Desktop/code/website/kun-galgame-patch-next/packages/ui/app/components/kun/select/Select.vue
 ```

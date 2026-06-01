@@ -367,7 +367,7 @@ services:
       "
 
   kun-image-service:
-    image: kun-oauth-admin/image-service:latest    # 或 build 本地
+    image: kun-galgame-infra/image-service:latest    # 或 build 本地
     ports:
       - "9278:9278"
     env_file:

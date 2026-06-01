@@ -1,7 +1,7 @@
 # API 字段对齐审计
 
 > 目的：逐方法记录 moyu 后端**全部 API 端点** + FE↔BE 字段对齐审计状态。仿照
-> [`kun-oauth-admin/docs/api/checks/`](../../../../kun-oauth-admin/docs/api/checks/README.md)。
+> [`kun-galgame-infra/docs/api/checks/`](../../../../kun-galgame-infra/docs/api/checks/README.md)。
 >
 > 当前进度：**审计完成（2026-05-29）** —— 全部 **159 端点**
 > （GET 80 / POST 37 / PUT 26 / DELETE 14 / PATCH 2）已逐条审计：静态读码

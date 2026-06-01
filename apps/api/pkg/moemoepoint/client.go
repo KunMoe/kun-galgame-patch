@@ -7,7 +7,7 @@
 // calls POST /users/:id/moemoepoint (idempotent, OAuth Client Basic Auth — the
 // same auth as /users/batch) and keeps user.moemoepoint only as a cache updated
 // from each adjust response. See
-// kun-oauth-admin/docs/integration/oauth/06-moemoepoint.md.
+// kun-galgame-infra/docs/integration/oauth/06-moemoepoint.md.
 package moemoepoint
 
 import (

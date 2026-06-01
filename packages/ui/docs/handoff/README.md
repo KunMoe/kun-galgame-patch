@@ -1,6 +1,6 @@
 # Handoff — 给下游 fork 的同步指令
 
-KunUI 在 `kun-oauth-admin/packages/ui` 是 canonical 源。下游（kungal / moyu / ...）通过同步文件 + 验证 build 来跟随 upstream。
+KunUI 在 `kun-galgame-infra/packages/ui` 是 canonical 源。下游（kungal / moyu / ...）通过同步文件 + 验证 build 来跟随 upstream。
 
 ## 文件结构
 
@@ -13,7 +13,7 @@ KunUI 在 `kun-oauth-admin/packages/ui` 是 canonical 源。下游（kungal / mo
 
 ```bash
 # 1. 拿到 KunUI 仓
-KUN_OAUTH=/path/to/kun-oauth-admin
+KUN_OAUTH=/path/to/kun-galgame-infra
 
 # 2. 看目标版本的 handoff/per-version/v0.X.X.md，照里面 cp 命令同步文件
 

@@ -11,7 +11,7 @@
 
 ## 一、注册图片服务能力
 
-在 `kun_oauth_admin` 的 `oauth_client` 表上，为本站的 Client 记录追加图片服务相关字段。
+在 `kun_galgame_infra` 的 `oauth_client` 表上，为本站的 Client 记录追加图片服务相关字段。
 
 ### 各站推荐值
 
@@ -161,12 +161,12 @@ var (
 
 ### 安装
 
-通过 Go module replace 引用（kun-oauth-admin 是单仓库）：
+通过 Go module replace 引用（kun-galgame-infra 是单仓库）：
 
 ```go
 // go.mod
 require api v0.0.0
-replace api => ../path/to/kun-oauth-admin/apps/api
+replace api => ../path/to/kun-galgame-infra/apps/api
 ```
 
 或直接拷贝 `pkg/imageclient/client.go` 到调用方仓库（单文件 ~280 行，零外部依赖，标准库 + `golang-jwt`）。

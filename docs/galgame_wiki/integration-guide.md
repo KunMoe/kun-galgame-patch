@@ -13,7 +13,7 @@
     │
     └── Galgame Wiki Service (独立端口 :9280)
           ├── kun_galgame_wiki DB (元数据)
-          └── kun_oauth_admin DB (用户信息，只读)
+          └── kun_galgame_infra DB (用户信息，只读)
 ```
 
 站点后端有两类操作：
