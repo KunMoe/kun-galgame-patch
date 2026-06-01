@@ -23,10 +23,10 @@ func main() {
 	cfg := config.Load()
 
 	// `server healthcheck` (container HEALTHCHECK on distroless, which has no
-	// shell): probe the already-running server's /api/v1/health and exit 0/1.
+	// shell): probe the already-running server's /healthz and exit 0/1.
 	// No-op for the normal `server` invocation. Runs before app.New so the
 	// probe never touches the DB/Redis.
-	health.MaybeProbe(cfg.Server.Port, "/api/v1/health")
+	health.MaybeProbe(cfg.Server.Port, "/healthz")
 
 	application := app.New(cfg)
 	application.RegisterRoutes()

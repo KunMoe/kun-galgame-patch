@@ -9,15 +9,15 @@ import (
 )
 
 func (a *App) RegisterRoutes() {
-	// Versioned API prefix, aligned with the frontend apiBase=http://host/api/v1
-	api := a.Fiber.Group("/api/v1")
-
-	// Liveness probe for container HEALTHCHECK (no auth, no DB touch). The
-	// `server healthcheck` subcommand GETs this and exits 0/1 — see
-	// cmd/server/main.go + pkg/health.
-	api.Get("/health", func(c *fiber.Ctx) error {
+	// Liveness probe — root /healthz, used by container HEALTHCHECK (no auth, no
+	// DB touch). The `server healthcheck` subcommand GETs this and exits 0/1 —
+	// see cmd/server/main.go + pkg/health. Unified to /healthz across services.
+	a.Fiber.Get("/healthz", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+
+	// Versioned API prefix, aligned with the frontend apiBase=http://host/api/v1
+	api := a.Fiber.Group("/api/v1")
 
 	auth := middleware.Auth(a.RDB, a.Config.OAuth)
 	optionalAuth := middleware.OptionalAuth(a.RDB, a.Config.OAuth)

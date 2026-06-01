@@ -16,9 +16,9 @@
 # NOTE: the image CDN (`imageBed`) is still HARDCODED in app/config/moyu-moe.ts
 # (not env-driven) — align it with image_service before relying on hash-
 # addressed avatar/banner display. See docker/README.md §image_service.
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 
-FROM node:${NODE_VERSION}-bookworm-slim AS base
+FROM node:${NODE_VERSION}-trixie-slim AS base
 RUN corepack enable
 WORKDIR /repo
 
@@ -60,7 +60,7 @@ RUN pnpm --filter "@apps/${APP}" run build
 
 # ---- run: just Node + the self-contained .output (no pnpm, no sources) ----
 # sharp ships inside .output (built for linux in this same arch container).
-FROM node:${NODE_VERSION}-bookworm-slim AS run
+FROM node:${NODE_VERSION}-trixie-slim AS run
 ARG APP=web
 ENV NODE_ENV=production HOST=0.0.0.0 NITRO_PORT=3000
 WORKDIR /app
