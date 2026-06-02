@@ -1,4 +1,4 @@
-![kun-galgame-patch-next](./public/kungalgame-trans.webp)
+![kun-galgame-patch-next](./apps/web/public/kungalgame-trans.webp)
 
 **Contact us：[Telegram](https://t.me/kungalgame) | [Discord](https://discord.com/invite/5F4FS2cXhX)**
 
@@ -20,6 +20,109 @@
 
 **该网站不接受任何盗版 Galgame 本体资源, 以及 R18 补丁等 NSFW(not safe for work) 资源**
 
+## 技术架构
+
+> 本仓库已从早期的 Next.js 全栈架构迁移到 **Go (后端) + Nuxt 4 (前端)** 的 pnpm monorepo。下文描述的是当前版本的架构。
+
+本项目是一个 **pnpm workspace monorepo**（`packageManager: pnpm@10.12.1`），由三个包组成：
+
+| 包 | 名称 | 技术栈 | 说明 |
+| --- | --- | --- | --- |
+| `apps/api` | `@apps/api` | **Go 1.26 · Fiber v2 · GORM (pgx) · PostgreSQL · Redis** | 后端 API 服务，`/api/v1` 前缀，开发端口 `5214` |
+| `apps/web` | `@apps/web` | **Nuxt 4 · Vue 3 (`<script setup>`) · Pinia · Tailwind 4 · Zod** | 前端 SSR 应用，开发端口 `6969` |
+| `packages/ui` | `@kun/ui` | **Nuxt Layer** | 共享 UI 组件库（被 `apps/web` 以 layer 形式 `extends`） |
+
+### 后端 `apps/api`
+
+- **Go + Fiber v2** Web 框架，**GORM + pgx** 访问 PostgreSQL，**go-redis** 管理会话。
+- 采用 5 层模块结构 `model → dto → repository → service → handler`，模块按业务域划分：`auth` / `patch` / `user` / `chat` / `message` / `admin` / `galgame` / `about` / `setting` 等。
+- 纯 Go 图像处理（`disintegration/imaging` + `golang.org/x/image`，**无 CGO**），Markdown 渲染用 `goldmark`，定时任务用 `robfig/cron`，对象存储用 `minio-go`。
+- 多个可执行命令位于 `apps/api/cmd/`：`server`（HTTP 服务）、`migrate`（SQL 迁移）以及若干一次性数据迁移/回填工具。
+- SQL 迁移文件位于 `apps/api/migrations/`（`*.up.sql` / `*.down.sql` 成对）。
+
+### 前端 `apps/web`
+
+- **Nuxt 4 SSR**，仅通过 `useApi()` composable（对 `$fetch` 的薄封装）与 Go 后端通信，依赖 `moyu_session` httpOnly cookie 鉴权，SSR 阶段转发 cookie。
+- 富文本编辑基于 **Milkdown** + **CodeMirror**，Markdown 解析/渲染走 **unified / remark / rehype**，公式用 **KaTeX**。
+- 浏览器面向的公开配置（API base、OAuth 地址等）在**运行时**从 `NUXT_PUBLIC_*` 环境变量读取，因此同一份构建产物可在任意环境复用。
+
+### 依赖的外部服务（不在本仓库内）
+
+本项目是 [`kun-galgame-infra`](https://nav.kungal.org) 基础设施 Hub 的**下游应用**，自身不拥有任何有状态服务，运行时按服务名连接 Hub 提供的上游：
+
+| 服务 | 默认端口 | 职责 |
+| --- | --- | --- |
+| KUN OAuth | `9277` | 身份认证唯一数据源（Authorization Code + PKCE） |
+| Galgame Wiki Service | `9280` | 全部 Galgame 元数据（名称/简介/标签/会社…）与搜索的唯一数据源 |
+| Image Service | `9278` | 内容寻址图床（上传返回 hash，URL 由 hash 推导） |
+| PostgreSQL / Redis / S3(MinIO) | — | 数据库 / 会话缓存 / 对象存储 |
+
+## 本地开发
+
+### 环境要求
+
+- **Node.js 22+** 与 **pnpm 10**（`corepack enable` 即可获得正确版本）
+- **Go 1.26+**
+- 可访问的 **PostgreSQL** 与 **Redis**，以及上述 OAuth / Wiki / Image 上游服务
+
+### 安装与启动
+
+```bash
+# 安装前端依赖（pnpm workspace）
+pnpm install
+
+# 准备环境变量：分别复制并填写 apps/api 与 apps/web 的 .env
+#   apps/api 至少需要 KUN_DATABASE_URL、Redis、OAuth、Image Service 等配置
+#   apps/web 的公开配置见 nuxt.config.ts 中的 runtimeConfig.public
+
+# 同时启动前后端（前端 :6969，后端 :5214）
+pnpm dev
+
+# 或单独启动
+pnpm dev:web     # 仅 Nuxt 前端
+pnpm dev:api     # 仅 Go 后端（air 热重载）
+```
+
+### 常用脚本（根目录）
+
+```bash
+pnpm build        # 构建 api + web
+pnpm build:api    # 仅构建 Go 二进制
+pnpm build:web    # 仅构建 Nuxt 产物
+
+pnpm lint         # 前端 ESLint
+pnpm typecheck    # 前端 nuxt typecheck (vue-tsc)
+pnpm vet          # 后端 go vet
+pnpm test:api     # 后端 go test ./...
+pnpm format       # 前后端格式化（prettier / gofmt）
+```
+
+数据库迁移在 `apps/api` 内执行：构建并运行 `migrate` 命令（容器化部署见下文 `docker compose run --rm migrate`）。
+
+## 部署
+
+本项目使用 **Docker 多阶段构建**部署，所有镜像定义在 `docker/`，编排文件在仓库根目录：
+
+- `docker/go.Dockerfile` — 参数化（`ARG CMD`）构建 Go 二进制，产物为 **distroless static (nonroot)** 镜像（约 45 MB）；健康检查复用二进制自带的 `healthcheck` 子命令（distroless 无 shell）。
+- `docker/nuxt.Dockerfile` — 参数化（`ARG APP`）构建 Nuxt，运行阶段为 `node:22-slim` + 自包含的 `.output`（Nitro server）。
+- `docker-compose.yml` — 开发/本机编排：`api` + `web` + `profiles: jobs` 的一次性 `migrate` 任务，加入 Hub 的外部网络以解析 `postgres` / `oauth` / `galgame` / `image` 等服务名。
+- `docker-compose.prod.yml` — 生产编排（GHCR 镜像 + Dokploy + Traefik）。
+
+```bash
+# 先确保基础设施 Hub（postgres/redis/oauth/...）已启动且网络存在
+cp docker/api.env.example docker/api.env   # 填写密钥（*.env 已 gitignore）
+cp docker/web.env.example docker/web.env
+
+docker compose up -d --build       # 启动 api + web
+docker compose run --rm migrate    # 按需执行 SQL 迁移
+```
+
+详细的部署约定、Hub 网络对接、图床 env 对齐说明见 [`docker/README.md`](./docker/README.md)。
+
+### 持续集成
+
+`.github/workflows/build.yml` 在推送到 `master` 时构建 `moyu-api` / `moyu-migrate` / `moyu-web` 三个镜像并推送到 **GHCR**，随后触发 Dokploy 重新部署。
+
 ## 网站原则
 
 ### 开源
@@ -28,7 +131,7 @@
 
 本网站最大的目的是, 帮助全体 Galgame 玩家提供存档, 错误修正补丁等必要资源, 提供零门槛的获取渠道
 
-以及对现代 Web 开发技术的研究, 例如 Next.js 15, React 19, Node.js, AWS S3 API, S3 Object Storage, Microsoft Graph, HeroUI, Prisma ORM, Argon2, BLAKE3, Framer Motion, Redis, Sharp, Unified.js, Milkdown, Zod, Zustand, PM2, Cloudflare R2, Cloudflare Worker, Cloudflare CDN, Cloudflare Tunnel 等等
+以及对现代 Web 开发技术的研究, 例如 Go, Fiber, GORM, PostgreSQL, Redis, Nuxt 4, Vue 3, Pinia, Tailwind CSS 4, Zod, Milkdown, CodeMirror, Unified.js, S3 Object Storage, OAuth 2.0 (PKCE), Docker, distroless 镜像等等
 
 对以上 Web 开发技术感兴趣的朋友们, 可以加入本文末尾的 Telegram 开发群组
 
@@ -100,7 +203,7 @@
 
 ## 开发联系
 
-如果有对 Web 开发技术 (Node.js, Nuxt, Next.js, SvelteKit, SolidStart 等) 感兴趣的朋友们, 可以加入我们的 Telegram 开发群组: [https://t.me/KUNForum](https://t.me/KUNForum)
+如果有对 Web 开发技术 (Go, Node.js, Nuxt, Next.js, SvelteKit, SolidStart 等) 感兴趣的朋友们, 可以加入我们的 Telegram 开发群组: [https://t.me/KUNForum](https://t.me/KUNForum)
 
 ## 开源声明 / 开源协议
 
