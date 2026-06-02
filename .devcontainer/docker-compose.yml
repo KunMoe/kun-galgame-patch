@@ -16,10 +16,10 @@ services:
       - REDIS_PORT=6379
 
   db:
-    image: postgres:latest
+    image: postgres:18-alpine
     restart: unless-stopped
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     environment:
       POSTGRES_PASSWORD: kunloveren
       POSTGRES_USER: postgres
