@@ -1,0 +1,64 @@
+# moyu (kun-galgame-patch-next) — PRODUCTION compose (Dokploy + GHCR images).
+#
+# moyu is a downstream app: it owns NO backing services. It joins the shared
+# `dokploy-network` and reaches the infra stack by service name (postgres:5432,
+# http://oauth:9277, http://galgame:9280, http://image:9278). Bring infra first.
+#
+# vs docker-compose.yml (dev): `image:` not `build:` (CI pushes to GHCR), and
+# `expose:` not `ports:` (Traefik routes internally — no host ports in prod).
+# See docs/deploy/12-dokploy.md + 13-registry-ci.md.
+#
+# FRONTEND DOMAINS (build-once): moyu web reads its public config at RUNTIME
+# from docker/web.env's NUXT_PUBLIC_* names, so the SAME image works anywhere —
+# set the real https domains in web.env / Dokploy Environment per 12-dokploy
+# §12.2-C (keep NUXT_API_BASE_SSR=http://api:5214/api/v1 for SSR). Rotate secrets.
+#
+# The api image bakes apps/web/posts (about-page .mdx) and reads them via
+# KUN_POSTS_DIR=/posts (docker/api.env) — no migration step carries them.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.prod.yml up -d api web
+name: moyu
+
+x-svc-health: &svc-health
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 15s
+
+services:
+  api:
+    image: ghcr.io/kun1007/moyu-api:latest
+    env_file: [./docker/api.env]
+    expose: ["5214"]
+    # No depends_on: postgres/redis live in the infra app, not here.
+    healthcheck:
+      test: ["CMD", "/app", "healthcheck"]
+      <<: *svc-health
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/kun1007/moyu-web:latest
+    env_file: [./docker/web.env]   # NUXT_API_BASE_SSR (SSR) + NUXT_PUBLIC_* (browser, prod domains)
+    expose: ["3000"]
+    depends_on:
+      api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      <<: *svc-health
+    restart: unless-stopped
+
+  # ─────────────────────── one-off job (profile: jobs) ───────────────────────
+  # Run AFTER infra's postgres is up and the kungalgame_patch database exists.
+  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  migrate:
+    image: ghcr.io/kun1007/moyu-migrate:latest
+    env_file: [./docker/api.env]
+    profiles: ["jobs"]
+    restart: "no"
+
+networks:
+  default:
+    name: dokploy-network
+    external: true

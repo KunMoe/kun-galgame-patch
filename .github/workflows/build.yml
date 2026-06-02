@@ -1,0 +1,71 @@
+# Build moyu images and push to GHCR, then trigger a Dokploy redeploy.
+# See docs/deploy/13-registry-ci.md.
+#
+# moyu-web's browser-facing public config is read at RUNTIME from docker/web.env's
+# NUXT_PUBLIC_* names, so one image works in any environment — set the real https
+# domains in Dokploy / web.env, not here. The api image bakes apps/web/posts
+# (about-page .mdx) via go.Dockerfile; nothing to configure for that here.
+name: build-and-push
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: moyu-api
+            file: docker/go.Dockerfile
+            args: CMD=server
+          - name: moyu-migrate
+            file: docker/go.Dockerfile
+            args: CMD=migrate
+          - name: moyu-web
+            file: docker/nuxt.Dockerfile
+            args: APP=web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.args }}
+          push: true
+          tags: |
+            ghcr.io/kun1007/${{ matrix.name }}:latest
+            ghcr.io/kun1007/${{ matrix.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Dokploy redeploy
+        env:
+          WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK_MOYU }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "DOKPLOY_WEBHOOK_MOYU not set — images pushed to GHCR, skipping redeploy trigger."
+            exit 0
+          fi
+          curl -fsS -X POST "$WEBHOOK"
