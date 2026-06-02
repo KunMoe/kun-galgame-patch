@@ -12,6 +12,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
+	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	settingService "kun-galgame-patch-api/internal/setting/service"
@@ -860,6 +861,11 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	}
 
 	galgameID := existing.GalgameID
+	// Per-field edit diff (public-safe) — computed from existing(before) vs
+	// update(after) BEFORE the txn overwrites `existing` below. Stored as a
+	// PatchResourceRevision so the resource page can show 改动前 → 改动后 for
+	// language / platform / type / note / name / size / file. Empty = no-op save.
+	changes := diffResourceFields(existing, update)
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if fileChanged {
 			hist := &model.PatchResourceFileHistory{
@@ -875,6 +881,20 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 			}
 			if err := tx.Create(hist).Error; err != nil {
 				return fmt.Errorf("write file history: %w", err)
+			}
+		}
+
+		if len(changes) > 0 {
+			rev := &model.PatchResourceRevision{
+				ResourceID: existing.ID,
+				Action:     "updated",
+				Changes:    changes,
+				Reason:     reason,
+				ActorID:    userID,
+				ActorRole:  actorRole,
+			}
+			if err := tx.Create(rev).Error; err != nil {
+				return fmt.Errorf("write resource revision: %w", err)
 			}
 		}
 
@@ -1202,4 +1222,77 @@ func (s *PatchService) IsCommentVerifyEnabled() bool {
 // When on, the publish handlers reject non-moderator/admin users.
 func (s *PatchService) IsCreatorOnlyEnabled() bool {
 	return s.setting.GetBool(settingService.KeyCreatorOnly)
+}
+
+// GetResourceFileHistory returns the privacy-safe, paginated file-replacement
+// audit for one resource. Public (any visitor, incl. anonymous): deliberately
+// omits old_s3_key (internal storage key) and old_content (the old download
+// links) — those stay behind the rate-limited /link endpoint. Callers see only
+// when / who-role / why / old size + hash.
+func (s *PatchService) GetResourceFileHistory(resourceID, page, limit int) ([]dto.PublicResourceFileHistoryItem, int64, error) {
+	rows, total, err := s.repo.GetResourceFileHistory(resourceID, (page-1)*limit, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	items := make([]dto.PublicResourceFileHistoryItem, 0, len(rows))
+	for _, h := range rows {
+		items = append(items, dto.PublicResourceFileHistoryItem{
+			ID:         h.ID,
+			OldStorage: h.OldStorage,
+			OldBlake3:  h.OldBlake3,
+			OldSize:    h.OldSize,
+			Reason:     h.Reason,
+			ActorRole:  h.ActorRole,
+			CreatedAt:  h.CreatedAt,
+		})
+	}
+	return items, total, nil
+}
+
+// diffResourceFields computes the public-safe per-field diff between the
+// pre-edit (before) and post-edit (after) resource. Secrets (download link /
+// s3 key / extract code / unzip password) are never emitted as raw values —
+// only a single "已更新" marker. Used by UpdateResource to record a revision.
+func diffResourceFields(before, after *model.PatchResource) model.ResourceChangeList {
+	var ch model.ResourceChangeList
+	addStr := func(field, label, b, a string) {
+		if b != a {
+			ch = append(ch, model.ResourceFieldChange{Field: field, Label: label, Before: b, After: a})
+		}
+	}
+	addArr := func(field, label string, b, a model.JSONArray) {
+		bs, as := strings.Join(b, "、"), strings.Join(a, "、")
+		if bs != as {
+			ch = append(ch, model.ResourceFieldChange{Field: field, Label: label, Before: bs, After: as})
+		}
+	}
+	addStr("name", "资源名称", before.Name, after.Name)
+	addStr("size", "文件大小", before.Size, after.Size)
+	addStr("model_name", "AI 模型", before.ModelName, after.ModelName)
+	addStr("storage", "存储方式", before.Storage, after.Storage)
+	// blake3 故意不在此 diff:它由文件自动计算、UpdateResource 不写入它(编辑表单
+	// 也不回传),直接比较会让每次元数据编辑都误报 "hash → (空)"。文件替换通过
+	// size/storage 变化 + 下面的「已更新」标记体现,blake3 本身不参与字段 diff。
+	addStr("note", "备注", before.Note, after.Note)
+	addArr("language", "语言", before.Language, after.Language)
+	addArr("platform", "平台", before.Platform, after.Platform)
+	addArr("type", "类型", before.Type, after.Type)
+	if before.Code != after.Code ||
+		before.Password != after.Password ||
+		before.Content != after.Content ||
+		before.S3Key != after.S3Key {
+		ch = append(ch, model.ResourceFieldChange{
+			Field:  "download",
+			Label:  "下载文件 / 链接 / 提取码 / 密码",
+			Before: "",
+			After:  "已更新",
+		})
+	}
+	return ch
+}
+
+// GetResourceRevisions returns the paginated per-field edit history for one
+// resource (public; Changes are secret-free).
+func (s *PatchService) GetResourceRevisions(resourceID, page, limit int) ([]model.PatchResourceRevision, int64, error) {
+	return s.repo.GetResourceRevisions(resourceID, (page-1)*limit, limit)
 }

@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 // PatchCreateRequest is the create-patch request body (D12, 2026-04-21).
 //
 // All game metadata (name / introduction / banner / released / content_limit / alias)
@@ -84,4 +86,24 @@ type PatchResourceUpdateRequest struct {
 // DuplicateCheckRequest is the request for checking VNDB ID duplicates
 type DuplicateCheckRequest struct {
 	VndbID string `query:"vndb_id" validate:"required,max=20"`
+}
+
+// ResourceFileHistoryRequest paginates the public resource file-history.
+type ResourceFileHistoryRequest struct {
+	Page  int `query:"page" validate:"required,min=1"`
+	Limit int `query:"limit" validate:"required,min=1,max=30"`
+}
+
+// PublicResourceFileHistoryItem is the privacy-safe view of one
+// patch_resource_file_history row for the PUBLIC history endpoint. It omits
+// old_s3_key (internal storage key) and old_content (the old download links) —
+// the public audit only needs when / who-role / why / old size + hash.
+type PublicResourceFileHistoryItem struct {
+	ID         int64     `json:"id"`
+	OldStorage string    `json:"old_storage"`
+	OldBlake3  string    `json:"old_blake3"`
+	OldSize    string    `json:"old_size"`
+	Reason     string    `json:"reason"`
+	ActorRole  int       `json:"actor_role"`
+	CreatedAt  time.Time `json:"created_at"`
 }

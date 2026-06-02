@@ -250,6 +250,155 @@ const toggleLike = async (r: PatchResource) => {
     useKunMessage(res.message || '操作失败', 'error')
   }
 }
+
+// ─── 单资源操作菜单(卡片右上角三个点)──────────────────
+// 公共项:更改历史 / 分享(所有人,含未登录);作者 / 版主额外:编辑 / 删除 /
+// 禁用下载。KunDropdownItem 的形状(本地复刻,避免跨 layer 导入类型路径)。
+interface ResourceMenuItem {
+  key: 'edit' | 'delete' | 'disable' | 'history' | 'share'
+  label: string
+  icon: string
+  color?:
+    | 'default'
+    | 'primary'
+    | 'secondary'
+    | 'success'
+    | 'warning'
+    | 'danger'
+    | 'info'
+  disabled?: boolean
+}
+
+const menuItems = (r: PatchResource): ResourceMenuItem[] => {
+  const items: ResourceMenuItem[] = []
+  if (canEdit(r)) {
+    items.push({ key: 'edit', label: '编辑', icon: 'lucide:pencil' })
+  }
+  if (canManage(r)) {
+    items.push({
+      key: 'disable',
+      label: isDisabled(r) ? '恢复下载' : '禁用下载',
+      icon: isDisabled(r) ? 'lucide:download' : 'lucide:ban',
+      color: isDisabled(r) ? 'success' : 'warning',
+      disabled: togglingDisable.value === r.id
+    })
+  }
+  items.push({ key: 'history', label: '更改历史', icon: 'lucide:history' })
+  items.push({ key: 'share', label: '分享', icon: 'lucide:share-2' })
+  if (canDelete(r)) {
+    items.push({
+      key: 'delete',
+      label: '删除',
+      icon: 'lucide:trash-2',
+      color: 'danger'
+    })
+  }
+  return items
+}
+
+const onMenuSelect = (r: PatchResource, item: { key: string }) => {
+  switch (item.key) {
+    case 'edit':
+      askEdit(r)
+      break
+    case 'delete':
+      askDelete(r)
+      break
+    case 'disable':
+      toggleDisable(r)
+      break
+    case 'history':
+      openHistory(r)
+      break
+    case 'share':
+      shareResource(r)
+      break
+  }
+}
+
+// ─── 分享(复制链接到剪贴板)────────────────────────────
+// 文案:<游戏名><资源名>资源下载: <origin>/resource/<id>。直接用
+// navigator.clipboard 而非 useKunCopy —— 后者会把整条长链接回显进 toast,
+// 这里只需提示「链接复制成功」。galgame 名来自 [id].vue 的 provide('patch')。
+const patch = inject<Ref<PatchHeader | null>>('patch')
+const galgameName = computed(() =>
+  patch?.value ? getPreferredLanguageText(patch.value.name) : ''
+)
+const shareResource = (r: PatchResource) => {
+  const url = `${location.origin}/resource/${r.id}`
+  const text = `${galgameName.value}${r.name || '补丁资源'}资源下载: ${url}`
+  navigator.clipboard
+    .writeText(text)
+    .then(() => useKunMessage('链接复制成功', 'success'))
+    .catch(() => useKunMessage('复制失败,请手动复制', 'error'))
+}
+
+// ─── 更改历史(按字段 diff,公开)────────────────────────
+// 读公开端点 GET /patch/resource/:id/revisions —— 每条 = 一次编辑,changes 里是
+// 该次编辑变更字段的「改动前 → 改动后」(语言/平台/类型/备注/名称/大小/文件…)。
+// 公开安全:下载链接 / 提取码 / 密码只以「已更新」标记,不含原文。
+interface ResourceFieldChange {
+  field: string
+  label: string
+  before: string
+  after: string
+}
+interface ResourceRevisionItem {
+  id: number
+  action: string
+  reason: string
+  actor_role: number
+  created_at: string
+  changes: ResourceFieldChange[]
+}
+const ACTOR_ROLE_LABEL: Record<number, string> = {
+  0: '未知',
+  1: '用户',
+  2: '协管',
+  3: '管理员'
+}
+const histOpen = ref(false)
+const histResource = ref<PatchResource | null>(null)
+const histLoading = ref(false)
+const histItems = ref<ResourceRevisionItem[]>([])
+const histTotal = ref(0)
+const histPage = ref(1)
+const histLimit = 20
+const histTotalPages = computed(() =>
+  Math.max(1, Math.ceil(histTotal.value / histLimit))
+)
+
+const loadHistory = async () => {
+  if (!histResource.value) return
+  histLoading.value = true
+  try {
+    const res = await api.get<{
+      items: ResourceRevisionItem[]
+      total: number
+    }>(
+      `/patch/resource/${histResource.value.id}/revisions?page=${histPage.value}&limit=${histLimit}`
+    )
+    if (res.code === 0) {
+      histItems.value = res.data?.items ?? []
+      histTotal.value = res.data?.total ?? 0
+    } else {
+      useKunMessage(res.message || '加载更改历史失败', 'error')
+    }
+  } finally {
+    histLoading.value = false
+  }
+}
+
+const openHistory = async (r: PatchResource) => {
+  histResource.value = r
+  histPage.value = 1
+  histItems.value = []
+  histTotal.value = 0
+  histOpen.value = true
+  await loadHistory()
+}
+
+watch(histPage, loadHistory)
 </script>
 
 <template>
@@ -307,8 +456,8 @@ const toggleLike = async (r: PatchResource) => {
         :key="r.id"
         class="border-default/20 bg-background hover:border-primary/40 space-y-4 rounded-2xl border p-5 transition-colors"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
             <h3 class="text-lg font-semibold line-clamp-2">
               {{ r.name || '补丁资源' }}
             </h3>
@@ -322,6 +471,11 @@ const toggleLike = async (r: PatchResource) => {
                   formatDate(r.created, { isShowYear: true, isPrecise: true })
                 }}
               </span>
+              <!-- 大小 Chip 从右上角移到这里:手机端不再和三个点挤在一起 -->
+              <KunChip color="warning" size="xs" variant="flat">
+                <KunIcon name="lucide:database" class="size-3" />
+                {{ r.size }}
+              </KunChip>
               <!-- "编辑时间" chip — only show when update_time > created (i.e.
                    the row has been edited at least once). Backend stamps
                    UpdateTime = time.Now() on every UpdateResource and leaves
@@ -337,10 +491,27 @@ const toggleLike = async (r: PatchResource) => {
               </KunChip>
             </div>
           </div>
-          <KunChip color="warning" size="sm" variant="flat">
-            <KunIcon name="lucide:database" class="size-3.5" />
-            {{ r.size }}
-          </KunChip>
+          <!-- 三个点固定在右上角(shrink-0,不随标题换行);更改历史 / 分享
+               所有人可见,编辑 / 删除 / 禁用下载 作者 / 版主可见。 -->
+          <KunDropdown
+            :items="menuItems(r)"
+            position="bottom-end"
+            @select="(item) => onMenuSelect(r, item)"
+          >
+            <template #trigger>
+              <KunButton
+                is-icon-only
+                variant="light"
+                color="default"
+                size="sm"
+                rounded="full"
+                class-name="shrink-0"
+                aria-label="更多操作"
+              >
+                <KunIcon name="lucide:ellipsis-vertical" class="size-4" />
+              </KunButton>
+            </template>
+          </KunDropdown>
         </div>
 
         <!-- Disabled banner: download link is withheld server-side. -->
@@ -426,51 +597,7 @@ const toggleLike = async (r: PatchResource) => {
               <KunIcon name="lucide:download" class="size-4" />
               {{ r.download }}
             </span>
-            <!-- Owner / moderator: edit + delete. Backend re-checks the
-                 same predicate so a hostile client can't bypass by forging
-                 visibility. -->
-            <KunButton
-              v-if="canEdit(r)"
-              variant="light"
-              color="default"
-              size="xs"
-              rounded="full"
-              aria-label="编辑资源"
-              @click="askEdit(r)"
-            >
-              <KunIcon name="lucide:pencil" class="size-4" />
-              编辑
-            </KunButton>
-            <KunButton
-              v-if="canDelete(r)"
-              variant="light"
-              color="danger"
-              size="xs"
-              rounded="full"
-              aria-label="删除资源"
-              @click="askDelete(r)"
-            >
-              <KunIcon name="lucide:trash-2" class="size-4" />
-              删除
-            </KunButton>
-            <!-- Owner / moderator: pull (or restore) the download without
-                 deleting the resource — for virus / takedown cases. -->
-            <KunButton
-              v-if="canManage(r)"
-              variant="light"
-              :color="isDisabled(r) ? 'success' : 'warning'"
-              size="xs"
-              rounded="full"
-              :loading="togglingDisable === r.id"
-              :aria-label="isDisabled(r) ? '恢复下载' : '禁用下载'"
-              @click="toggleDisable(r)"
-            >
-              <KunIcon
-                :name="isDisabled(r) ? 'lucide:download' : 'lucide:ban'"
-                class="size-4"
-              />
-              {{ isDisabled(r) ? '恢复下载' : '禁用下载' }}
-            </KunButton>
+            <!-- 编辑 / 删除 / 禁用下载 已移入右上角三个点菜单(见卡片头部) -->
           </div>
           <KunChip
             v-if="isDisabled(r)"
@@ -644,6 +771,89 @@ const toggleLike = async (r: PatchResource) => {
           >
             <KunIcon v-if="!deleting" name="lucide:trash-2" class="size-4" />
             确认删除
+          </KunButton>
+        </div>
+      </div>
+    </KunModal>
+
+    <!-- 更改历史:每条 = 一次编辑,按字段展示「改动前 → 改动后」 -->
+    <KunModal v-model="histOpen" inner-class-name="max-w-xl">
+      <div class="space-y-4 py-2">
+        <div class="flex items-center gap-2">
+          <KunIcon name="lucide:history" class="text-primary size-5" />
+          <h3 class="text-lg font-bold">资源更改历史</h3>
+        </div>
+        <p v-if="histResource?.name" class="text-default-500 text-sm">
+          {{ histResource.name }}
+        </p>
+
+        <KunLoading v-if="histLoading" description="正在加载更改历史..." />
+        <div v-else-if="histItems.length" class="space-y-3">
+          <div
+            v-for="rev in histItems"
+            :key="rev.id"
+            class="border-default/20 bg-default-50 space-y-3 rounded-xl border p-3"
+          >
+            <!-- 元信息:时间 + 操作者角色 + 原因 -->
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <KunChip color="primary" variant="flat" size="xs">
+                <KunIcon name="lucide:pencil-line" class="size-3" />
+                编辑
+              </KunChip>
+              <span class="text-default-500">
+                {{ formatDate(rev.created_at, { isShowYear: true, isPrecise: true }) }}
+              </span>
+              <KunChip color="default" variant="flat" size="xs">
+                {{ ACTOR_ROLE_LABEL[rev.actor_role] ?? '未知' }}
+              </KunChip>
+              <span v-if="rev.reason" class="text-default-400">
+                原因：{{ rev.reason }}
+              </span>
+            </div>
+
+            <!-- 字段 diff:左 = 改动前,右 = 改动后 -->
+            <div class="space-y-2">
+              <div v-for="(c, i) in rev.changes" :key="i">
+                <div class="text-default-500 mb-1 text-xs font-medium">
+                  {{ c.label }}
+                </div>
+                <div class="flex items-stretch gap-2">
+                  <div
+                    class="border-danger/30 bg-danger/5 text-danger-700 min-w-0 flex-1 rounded-lg border px-2 py-1 text-sm break-words"
+                  >
+                    <span class="text-default-400 block text-[10px]">改动前</span>
+                    {{ c.before || '(空)' }}
+                  </div>
+                  <KunIcon
+                    name="lucide:arrow-right"
+                    class="text-default-400 size-4 shrink-0 self-center"
+                  />
+                  <div
+                    class="border-success/30 bg-success/5 text-success-700 min-w-0 flex-1 rounded-lg border px-2 py-1 text-sm break-words"
+                  >
+                    <span class="text-default-400 block text-[10px]">改动后</span>
+                    {{ c.after || '(空)' }}
+                  </div>
+                </div>
+              </div>
+              <p v-if="!rev.changes.length" class="text-default-400 text-sm">
+                无字段变化
+              </p>
+            </div>
+          </div>
+
+          <div v-if="histTotalPages > 1" class="flex justify-center pt-1">
+            <KunPagination
+              v-model:current-page="histPage"
+              :total-page="histTotalPages"
+            />
+          </div>
+        </div>
+        <KunNull v-else description="暂无更改历史" />
+
+        <div class="flex justify-end">
+          <KunButton variant="light" color="default" @click="histOpen = false">
+            关闭
           </KunButton>
         </div>
       </div>

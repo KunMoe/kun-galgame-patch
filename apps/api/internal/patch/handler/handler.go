@@ -1133,3 +1133,46 @@ func parseGalgameMultipart(c *fiber.Ctx) (galgameClient.SubmitGalgameRequest, st
 	}
 	return req, fh.Filename, raw, mime, nil
 }
+
+// GetResourceFileHistory GET /api/patch/resource/:resourceId/history
+//
+// Public, privacy-safe view of one resource's file-replacement audit
+// (when / who-role / why / old size + hash). Deliberately omits the old
+// download links + s3 key — those stay behind the rate-limited /link endpoint.
+// Lets any visitor (incl. anonymous) see a resource's change history.
+func (h *PatchHandler) GetResourceFileHistory(c *fiber.Ctx) error {
+	resourceID, err := getIDParam(c, "resourceId")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	var req dto.ResourceFileHistoryRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	items, total, gErr := h.service.GetResourceFileHistory(resourceID, req.Page, req.Limit)
+	if gErr != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.Paginated(c, items, total)
+}
+
+// GetResourceRevisions GET /api/patch/resource/:resourceId/revisions
+//
+// Public per-field edit history (diff) for one resource: each row is one edit
+// with a list of {field, before, after}. Secret-free (see service). Lets any
+// visitor see "language changed from X to Y", etc.
+func (h *PatchHandler) GetResourceRevisions(c *fiber.Ctx) error {
+	resourceID, err := getIDParam(c, "resourceId")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	var req dto.ResourceFileHistoryRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	items, total, gErr := h.service.GetResourceRevisions(resourceID, req.Page, req.Limit)
+	if gErr != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.Paginated(c, items, total)
+}

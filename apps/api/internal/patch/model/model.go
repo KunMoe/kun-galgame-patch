@@ -342,3 +342,53 @@ func (PatchResourceFileHistory) TableName() string { return "patch_resource_file
 
 // NOTE: PatchTag / PatchTagRel are deprecated per D11 (2026-04-21).
 // Tag metadata is owned by the Galgame Wiki; fetch it via patch.vndb_id -> Wiki /galgame/batch.
+
+// ─── Resource edit revision (per-field diff history, migration 013) ──────────
+
+// ResourceFieldChange is one field's before/after in a resource edit. Public-
+// safe: secrets (download link / s3 key / extract code / unzip password) are
+// never stored as raw values — only marked "已更新" via a synthetic entry.
+type ResourceFieldChange struct {
+	Field  string `json:"field"`
+	Label  string `json:"label"`
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+// ResourceChangeList is the jsonb column type for PatchResourceRevision.Changes.
+type ResourceChangeList []ResourceFieldChange
+
+func (c *ResourceChangeList) Scan(value any) error {
+	if value == nil {
+		*c = ResourceChangeList{}
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("failed to unmarshal ResourceChangeList: %v", value)
+	}
+	return json.Unmarshal(bytes, c)
+}
+
+func (c ResourceChangeList) Value() (driver.Value, error) {
+	if c == nil {
+		return "[]", nil
+	}
+	return json.Marshal(c)
+}
+
+// PatchResourceRevision is one edit of a patch_resource, stored as a computed
+// field diff. Written by UpdateResource on every metadata/file change. Changes
+// carries no secret values (see service.diffResourceFields).
+type PatchResourceRevision struct {
+	ID         int64              `gorm:"primaryKey;autoIncrement" json:"id"`
+	ResourceID int                `gorm:"not null;index:idx_prr_resource,priority:1" json:"resource_id"`
+	Action     string             `gorm:"type:varchar(16);not null;default:'updated'" json:"action"`
+	Changes    ResourceChangeList `gorm:"type:jsonb;default:'[]'" json:"changes"`
+	Reason     string             `gorm:"type:varchar(500);not null;default:''" json:"reason"`
+	ActorID    int                `gorm:"not null;default:0" json:"actor_id"`
+	ActorRole  int                `gorm:"not null;default:0" json:"actor_role"`
+	CreatedAt  time.Time          `gorm:"autoCreateTime;index:idx_prr_resource,priority:2,sort:desc" json:"created_at"`
+}
+
+func (PatchResourceRevision) TableName() string { return "patch_resource_revision" }

@@ -110,6 +110,15 @@ func (a *App) RegisterRoutes() {
 		a.PatchHandler.IncrementResourceDownload,
 	)
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
+	// Public per-field edit history (diff) for one resource (anyone, incl.
+	// anonymous). Rate-limited like the other id-keyed resource reads. Changes
+	// are secret-free (service strips download links / codes) — distinct from
+	// the admin-only /admin/resource/:id/history file-replacement audit.
+	patchRoutes.Get(
+		"/resource/:resourceId/revisions",
+		middleware.RateLimit(a.RDB, "resource-revisions", 60, time.Minute),
+		a.PatchHandler.GetResourceRevisions,
+	)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 
 	// Galgame metadata edit (proxy to Galgame Wiki PUT /galgame/:gid).

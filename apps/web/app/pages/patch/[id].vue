@@ -217,12 +217,15 @@ const tabs = computed(() => [
     </div>
 
     <!-- ── Tabs ───────────────────────────────────────── -->
+    <!-- scrollable: 5 个 Tab 在手机端会超出视口宽度;KunTab 的 scrollable
+         让 tablist 横向滚动(overflow-x-auto scrollbar-hide)而非撑破布局。 -->
     <KunTab
       v-model="currentTab"
       :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"
       variant="light"
       color="primary"
       size="md"
+      scrollable
     />
 
     <div>
