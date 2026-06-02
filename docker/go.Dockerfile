@@ -30,5 +30,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 # HEALTHCHECK, since distroless has no shell/wget. Ports live in compose.
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/app /app
+# About-page content: the static .mdx posts that cmd/server reads at runtime
+# (internal/about, cfg.About.PostsDir). They live in the WEB app's source tree
+# (apps/web/posts) and are NOT DB data, so no migration step carries them —
+# bake them into the api image so it is self-contained. Point the server at
+# them with KUN_POSTS_DIR=/posts (docker/api.env). The banner images under
+# apps/web/public/posts are served separately by the web container.
+COPY apps/web/posts /posts
 USER nonroot:nonroot
 ENTRYPOINT ["/app"]

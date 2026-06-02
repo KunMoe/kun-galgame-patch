@@ -9,7 +9,9 @@ interface ApiEnvelope<T> {
 
 const route = useRoute()
 const config = useRuntimeConfig()
-const baseUrl = config.public.apiBase as string
+const baseUrl = (import.meta.server && config.apiBaseSsr
+  ? config.apiBaseSsr
+  : config.public.apiBase) as string
 
 const slugParam = computed(() => {
   const raw = route.params.slug

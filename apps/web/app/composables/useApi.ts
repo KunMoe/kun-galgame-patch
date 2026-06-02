@@ -28,7 +28,13 @@ interface ApiError {
 
 export const useApi = () => {
   const config = useRuntimeConfig()
-  const baseUrl = config.public.apiBase || 'http://127.0.0.1:5214/api/v1'
+  // Dual base: SSR (in-container) uses the docker service URL (apiBaseSsr);
+  // the browser uses the host-port public URL. apiBaseSsr is empty outside
+  // docker → falls back to public.apiBase.
+  const baseUrl =
+    (import.meta.server && config.apiBaseSsr
+      ? (config.apiBaseSsr as string)
+      : config.public.apiBase) || 'http://127.0.0.1:5214/api/v1'
 
   // `credentials: 'include'` only attaches the session cookie in the BROWSER.
   // During SSR (Nuxt server) there is no cookie jar, so an auth-gated

@@ -20,7 +20,9 @@ interface ApiEnvelope<T> {
 }
 
 const config = useRuntimeConfig()
-const baseUrl = config.public.apiBase as string
+const baseUrl = (import.meta.server && config.apiBaseSsr
+  ? config.apiBaseSsr
+  : config.public.apiBase) as string
 
 const { data: response } = await useFetch<ApiEnvelope<KunPostsResponse>>(
   `${baseUrl}/about/posts`,
