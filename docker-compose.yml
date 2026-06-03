@@ -54,7 +54,7 @@ services:
     env_file: [./docker/web.env]
     ports: ["15011:3000"]
     depends_on:
-      api: { condition: service_started }
+      api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       <<: *svc-health
