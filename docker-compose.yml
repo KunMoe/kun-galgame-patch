@@ -2,13 +2,13 @@
 #
 # Stateless api + web only. The backing services (Postgres / Redis) and the
 # upstreams (oauth / galgame-wiki / image_service / MinIO) are OWNED BY the
-# kun-galgame-infra HUB. moyu connects to them by service name on the hub's
+# kun-galgame-infra stack. moyu connects to them by service name on infra's
 # network. See docker/README.md.
 #
 # Run one of:
-#   A) Umbrella: a website/compose.yaml that `include:`s the hub + this (the
-#      hub provides postgres/redis/oauth/galgame/image). Recommended.
-#   B) Alongside the hub: bring the hub up first (so its network + infra exist),
+#   A) Umbrella: a website/compose.yaml that `include:`s infra + this (the
+#      infra provides postgres/redis/oauth/galgame/image). Recommended.
+#   B) Alongside infra: bring infra up first (so its network + services exist),
 #      then `docker compose up -d` here — this joins `kun-galgame-infra_default`.
 #
 # Host ports use the 1xxxx range to coexist with a running `air` dev server.
@@ -31,8 +31,8 @@ services:
     image: moyu/api
     env_file: [./docker/api.env]
     ports: ["15010:5214"]
-    # No depends_on on postgres/redis: they live in the hub compose, not here.
-    # `restart: unless-stopped` reconnects once the hub infra is up.
+    # No depends_on on postgres/redis: they live in the infra compose, not here.
+    # `restart: unless-stopped` reconnects once the infra stack is up.
     healthcheck:
       test: ["CMD", "/app", "healthcheck"]
       <<: *svc-health
@@ -61,8 +61,8 @@ services:
     restart: unless-stopped
 
   # ─────────────────────── one-off job (profile: jobs) ───────────────────────
-  # moyu's SQL migrations. Not started by `up`. Run on demand AFTER the hub's
-  # postgres is up and the kungalgame_patch database exists (add it to the hub's
+  # moyu's SQL migrations. Not started by `up`. Run on demand AFTER infra's
+  # postgres is up and the kungalgame_patch database exists (add it to infra's
   # docker/initdb.d, see README):
   #   docker compose run --rm migrate
   migrate:
@@ -75,7 +75,7 @@ services:
     profiles: ["jobs"]
     restart: "no"
 
-# moyu joins the hub's network so `postgres`/`oauth`/`galgame`/`image`/`minio`
+# moyu joins infra's network so `postgres`/`oauth`/`galgame`/`image`/`minio`
 # resolve. (When run via the umbrella `include`, all services share one project
 # network and this `external` block is unnecessary — drop it there.)
 networks:

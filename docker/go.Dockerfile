@@ -4,7 +4,7 @@
 #
 # moyu has NO cgo dependencies (pgx + disintegration/imaging are pure Go), so
 # every binary is a CGO_ENABLED=0 static binary on distroless — there is no
-# cgo.Dockerfile here (unlike the oauth/image services in the hub repo).
+# cgo.Dockerfile here (unlike the oauth/image services in the infra repo).
 #
 #   docker build -f docker/go.Dockerfile --build-arg CMD=server  -t moyu/api .
 #   docker build -f docker/go.Dockerfile --build-arg CMD=migrate -t moyu/migrate .

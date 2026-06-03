@@ -2,14 +2,14 @@
 
 moyu is a **downstream** patch site. Its containers (`api`, `web`) are
 stateless; the backing services (Postgres / Redis) and upstreams (oauth /
-galgame-wiki / image_service / MinIO) are **owned by the kun-galgame-infra hub**.
-This setup mirrors the hub's `docker/` conventions one-for-one.
+galgame-wiki / image_service / MinIO) are **owned by the kun-galgame-infra stack**.
+This setup mirrors infra's `docker/` conventions one-for-one.
 
 ## Layout
 
 | File | Builds | Base image | Why |
 |---|---|---|---|
-| `docker/go.Dockerfile` | `server` + every `cmd/migrate` / `sync-moemoepoint` / … tool (pure Go) | `distroless/static` (~15–25 MB) | `CGO_ENABLED=0` static binary. moyu has **no** cgo deps → no `cgo.Dockerfile` (unlike the hub's oauth/image). |
+| `docker/go.Dockerfile` | `server` + every `cmd/migrate` / `sync-moemoepoint` / … tool (pure Go) | `distroless/static` (~15–25 MB) | `CGO_ENABLED=0` static binary. moyu has **no** cgo deps → no `cgo.Dockerfile` (unlike infra's oauth/image). |
 | `docker/nuxt.Dockerfile` | `web` (Nitro `node-server`) | `node:22-slim` (~390 MB) | self-contained `.output`; sharp ships via the `@kun/ui` layer build |
 
 Both are **parametric** (`--build-arg CMD=…` / `APP=…`) and require the **repo
@@ -18,7 +18,7 @@ source).
 
 ## Run
 
-moyu does not own infra, so bring the **hub** up first (it creates the shared
+moyu does not own infra, so bring **infra** up first (it creates the shared
 network `kun-galgame-infra_default` + Postgres/Redis/oauth/galgame/image):
 
 ```bash
@@ -42,7 +42,7 @@ Service-to-service traffic uses container ports via service names
 
 ### Prerequisite: the `kungalgame_patch` database
 
-moyu shares the hub's Postgres. Add its database to the hub's
+moyu shares infra's Postgres. Add its database to infra's
 `docker/initdb.d/01-create-databases.sh` so it's created on first init:
 
 ```sql
@@ -53,7 +53,7 @@ CREATE DATABASE kungalgame_patch;
 
 ## Configuration
 
-- **Backend** (`docker/api.env`, 12-factor `env_file`): hosts are hub service
+- **Backend** (`docker/api.env`, 12-factor `env_file`): hosts are infra service
   names, not localhost. `KUN_SERVER_MODE=prod` makes config **fail fast** if
   `KUN_IMAGE_SERVICE_BASE_URL` / `KUN_IMAGE_CDN_BASE` are unset (audit GPT-L02).
   Rotate every `__SET_ME__` secret for a real deploy; prefer `docker secret`/a
@@ -73,17 +73,17 @@ liveness probe.
 
 ## image_service — known gap (not fixed here)
 
-The hub serves images at `KUN_IMAGE_PUBLIC_BASE_URL` with object key
+infra serves images at `KUN_IMAGE_PUBLIC_BASE_URL` with object key
 `{aa}/{bb}/{hash}.webp` (no `/img` in the key). moyu's frontend still
 **hardcodes** `imageBed = https://image.moyu.moe` in `app/config/moyu-moe.ts`
 and **adds `/img/`** in `resolveAvatarUrl.ts` / `resolveBannerUrl.ts`. For
 hash-addressed avatars/banners to resolve, set `KUN_IMAGE_CDN_BASE` (backend)
-**and** that hardcoded `imageBed` so that `imageBed + /img` equals the hub's
+**and** that hardcoded `imageBed` so that `imageBed + /img` equals infra's
 `KUN_IMAGE_PUBLIC_BASE_URL`. The clean fix (make `imageBed` env-driven and drop
 the hardcoded `/img` so moyu produces the same URL image_service returns) is a
 pending frontend change — see the cross-repo audit notes.
 
-## Gotchas (same as the hub)
+## Gotchas (same as infra)
 
 - **No BuildKit/buildx** on this host → the Dockerfiles avoid
   `--mount=type=cache` (plain layer caching only).
@@ -94,8 +94,8 @@ pending frontend change — see the cross-repo audit notes.
 
 ## Three-repo orchestration
 
-Put an umbrella `website/compose.yaml` one level up that `include:`s the hub +
+Put an umbrella `website/compose.yaml` one level up that `include:`s infra +
 kungal + moyu composes, and define `postgres`/`redis`/`minio`/`meili` **only in
-the hub**. When included, drop the `external` network block at the bottom of
+infra**. When included, drop the `external` network block at the bottom of
 this file (all services share one project network). Front the lot with
 Caddy/Traefik by domain.

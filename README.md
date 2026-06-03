@@ -48,7 +48,7 @@
 
 ### 依赖的外部服务（不在本仓库内）
 
-本项目是 [`kun-galgame-infra`](https://nav.kungal.org) 基础设施 Hub 的**下游应用**，自身不拥有任何有状态服务，运行时按服务名连接 Hub 提供的上游：
+本项目是 [`kun-galgame-infra`](https://nav.kungal.org) 基础设施（infra）的**下游应用**，自身不拥有任何有状态服务，运行时按服务名连接 infra 提供的上游：
 
 | 服务 | 默认端口 | 职责 |
 | --- | --- | --- |
@@ -105,11 +105,11 @@ pnpm format       # 前后端格式化（prettier / gofmt）
 
 - `docker/go.Dockerfile` — 参数化（`ARG CMD`）构建 Go 二进制，产物为 **distroless static (nonroot)** 镜像（约 45 MB）；健康检查复用二进制自带的 `healthcheck` 子命令（distroless 无 shell）。
 - `docker/nuxt.Dockerfile` — 参数化（`ARG APP`）构建 Nuxt，运行阶段为 `node:22-slim` + 自包含的 `.output`（Nitro server）。
-- `docker-compose.yml` — 开发/本机编排：`api` + `web` + `profiles: jobs` 的一次性 `migrate` 任务，加入 Hub 的外部网络以解析 `postgres` / `oauth` / `galgame` / `image` 等服务名。
+- `docker-compose.yml` — 开发/本机编排：`api` + `web` + `profiles: jobs` 的一次性 `migrate` 任务，加入 infra 的外部网络以解析 `postgres` / `oauth` / `galgame` / `image` 等服务名。
 - `docker-compose.prod.yml` — 生产编排（GHCR 镜像 + Dokploy + Traefik）。
 
 ```bash
-# 先确保基础设施 Hub（postgres/redis/oauth/...）已启动且网络存在
+# 先确保基础设施 infra（postgres/redis/oauth/...）已启动且网络存在
 cp docker/api.env.example docker/api.env   # 填写密钥（*.env 已 gitignore）
 cp docker/web.env.example docker/web.env
 
@@ -117,7 +117,7 @@ docker compose up -d --build       # 启动 api + web
 docker compose run --rm migrate    # 按需执行 SQL 迁移
 ```
 
-详细的部署约定、Hub 网络对接、图床 env 对齐说明见 [`docker/README.md`](./docker/README.md)。
+详细的部署约定、infra 网络对接、图床 env 对齐说明见 [`docker/README.md`](./docker/README.md)。
 
 ### 持续集成
 
