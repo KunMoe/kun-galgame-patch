@@ -9,8 +9,8 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 //
 // Resolution order: effective_banner_hash → legacy banner URL → ''.
 //
-// The hash → URL convention follows image_service §02 (`{cdn}/img/ab/cd/<hash>.webp`,
-// shard prefix = first 2 + next 2 hex chars). The `mini` variant maps to the
+// The hash → URL convention follows image_service §02 (`{cdn}/ab/cd/<hash>.webp`,
+// no `/img/` segment; shard prefix = first 2 + next 2 hex chars). The `mini` variant maps to the
 // pre-generated 460×259 galgame_banner thumbnail; for legacy URLs we keep the
 // existing `-mini.avif` substitution that PatchCard / Card / ranking pages
 // historically use.
@@ -40,7 +40,7 @@ const buildImageServiceURL = (hash: string, variant?: string): string => {
   const shard1 = hash.slice(0, 2)
   const shard2 = hash.slice(2, 4)
   const suffix = variant ? `_${variant}` : ''
-  return `${IMAGE_BED}/img/${shard1}/${shard2}/${hash}${suffix}.webp`
+  return `${IMAGE_BED}/${shard1}/${shard2}/${hash}${suffix}.webp`
 }
 
 // Public helper for any place that has just an image_service hash and wants

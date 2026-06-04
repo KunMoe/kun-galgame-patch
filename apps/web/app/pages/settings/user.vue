@@ -17,6 +17,7 @@
 // refetch /auth/me so the top-bar avatar / pinia store reflect immediately.
 
 import { MESSAGE_TYPE, MESSAGE_TYPE_MAP } from '~/constants/message'
+import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 import type { UserState } from '~/stores/userStore'
 
 // Personal settings — owner-only by design (the page only renders for
@@ -177,15 +178,15 @@ const handleReset = async () => {
 }
 
 // ─── Resolved avatar URL (current) ────────────────────────────────────
-// Mirror resolveAvatarUrl's preference: image_service hash → 256-px webp
-// thumb, fall back to legacy `avatar` URL when no hash is present.
-const imageBed =
-  (config.public as { imageBed?: string }).imageBed ?? ''
+// image_service hash → 256-px webp thumb (via the shared imageServiceUrl
+// helper, which owns the canonical {cdn}/aa/bb/<hash>_256.webp layout), fall
+// back to the legacy `avatar` URL when no hash is present.
 const currentAvatarUrl = computed(() => {
   if (!me.value) return ''
-  if (me.value.avatar_image_hash && imageBed) {
-    const h = me.value.avatar_image_hash
-    return `${imageBed.replace(/\/$/, '')}/img/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}-256.webp`
+  const hash = me.value.avatar_image_hash
+  if (hash) {
+    const u = imageServiceUrl(hash, '256')
+    if (u) return u
   }
   return me.value.avatar || ''
 })

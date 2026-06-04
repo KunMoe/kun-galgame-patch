@@ -33,6 +33,9 @@ jobs:
           - name: moyu-migrate
             file: docker/go.Dockerfile
             args: CMD=migrate
+          - name: moyu-tools           # every cmd/* binary, for one-off data-cutover jobs
+            file: docker/tools.Dockerfile
+            args: ""
           - name: moyu-web
             file: docker/nuxt.Dockerfile
             args: APP=web

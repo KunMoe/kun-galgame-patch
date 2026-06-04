@@ -36,7 +36,10 @@ export const kunMoyuMoe: KunSiteConfig = {
   },
   domain: {
     main: 'https://www.moyu.moe',
-    imageBed: 'https://image.moyu.moe',
+    // The shared image_service CDN (kun-galgame-infra's KUN_IMAGE_PUBLIC_BASE_URL).
+    // MUST equal the backend's KUN_IMAGE_CDN_BASE so both sides build identical
+    // {imageBed}/aa/bb/<hash>[_variant].webp URLs (image_service object-key layout).
+    imageBed: 'https://image.kungal.iloveren.link',
     storage: 'https://oss.moyu.moe',
     kungal: 'https://www.kungal.com',
     telegram_group: 'https://t.me/kungalgame',

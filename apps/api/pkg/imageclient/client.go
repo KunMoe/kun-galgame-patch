@@ -4,7 +4,8 @@
 // kun-galgame-infra (port 9278). Callers POST an image multipart body and get
 // back a content hash + a set of variant URLs. The hash is the only thing
 // downstream stores; URLs are derived deterministically from
-// `{CDN_BASE}/img/<hash[:2]>/<hash[2:4]>/<hash>[_variant].webp`.
+// `{CDN_BASE}/<hash[:2]>/<hash[2:4]>/<hash>[_variant].webp` (the image_service
+// object-key layout — no `/img/` segment; matches infra/kungal imageclient).
 //
 // Authentication is HTTP Basic with an OAuth client_id/secret — the
 // image_service shares the OAuth `oauth_client` table as its "site" registry,
@@ -224,7 +225,7 @@ func (c *Client) variantPath(hash, variant string) string {
 	if variant != "" {
 		suffix = "_" + variant
 	}
-	return fmt.Sprintf("%s/img/%s/%s/%s%s.webp",
+	return fmt.Sprintf("%s/%s/%s/%s%s.webp",
 		c.cdnBase, hash[:2], hash[2:4], hash, suffix)
 }
 

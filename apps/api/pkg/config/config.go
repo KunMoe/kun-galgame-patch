@@ -75,7 +75,7 @@ type GalgameWikiConfig struct {
 // `oauth_client` table as its "site" registry, so the same credentials work.
 type ImageServiceConfig struct {
 	BaseURL      string // e.g. http://127.0.0.1:9278 (no trailing slash)
-	CDNBase      string // e.g. http://127.0.0.1:9000/kun-images-dev; serves the /img/ab/cd/<hash>.webp tree
+	CDNBase      string // e.g. http://127.0.0.1:9000/kun-images-dev; serves the ab/cd/<hash>.webp tree
 	ClientID     string // defaults to OAuth.ClientID
 	ClientSecret string // defaults to OAuth.ClientSecret
 }

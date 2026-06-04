@@ -11,8 +11,8 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 // when present, falling back to the legacy URL. When neither is set, the
 // caller is responsible for showing a placeholder (KunAvatar uses a sticker).
 //
-// The hash → URL convention follows image_service §02 (`{cdn}/img/ab/cd/<hash>.webp`,
-// shard prefix = first 2 + next 2 hex chars). Variants (`_100`) are used for
+// The hash → URL convention follows image_service §02 (`{cdn}/ab/cd/<hash>.webp`,
+// no `/img/` segment; shard prefix = first 2 + next 2 hex chars). Variants (`_100`) are used for
 // list-density avatars to cut bandwidth.
 
 type AvatarSource = {
@@ -32,7 +32,7 @@ const buildImageServiceURL = (hash: string, variant?: string): string => {
   const shard1 = hash.slice(0, 2)
   const shard2 = hash.slice(2, 4)
   const suffix = variant ? `_${variant}` : ''
-  return `${IMAGE_BED}/img/${shard1}/${shard2}/${hash}${suffix}.webp`
+  return `${IMAGE_BED}/${shard1}/${shard2}/${hash}${suffix}.webp`
 }
 
 // Convert the legacy *.webp URL to its small variant (*-100.webp). Used when

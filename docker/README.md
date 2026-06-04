@@ -71,17 +71,25 @@ subcommand (`pkg/health`): the compose healthcheck runs `/app healthcheck`,
 which GETs its own `/api/v1/health` and exits 0/1. The frontend uses a Node TCP
 liveness probe.
 
-## image_service — known gap (not fixed here)
+## image_service URL contract
 
 infra serves images at `KUN_IMAGE_PUBLIC_BASE_URL` with object key
-`{aa}/{bb}/{hash}.webp` (no `/img` in the key). moyu's frontend still
-**hardcodes** `imageBed = https://image.moyu.moe` in `app/config/moyu-moe.ts`
-and **adds `/img/`** in `resolveAvatarUrl.ts` / `resolveBannerUrl.ts`. For
-hash-addressed avatars/banners to resolve, set `KUN_IMAGE_CDN_BASE` (backend)
-**and** that hardcoded `imageBed` so that `imageBed + /img` equals infra's
-`KUN_IMAGE_PUBLIC_BASE_URL`. The clean fix (make `imageBed` env-driven and drop
-the hardcoded `/img` so moyu produces the same URL image_service returns) is a
-pending frontend change — see the cross-repo audit notes.
+`{aa}/{bb}/{hash}[_variant].webp` — **no `/img` segment**. moyu now follows this
+exactly (the earlier `/img/` divergence is fixed):
+
+- **backend** `pkg/imageclient` builds `{KUN_IMAGE_CDN_BASE}/aa/bb/<hash>[_variant].webp`
+- **frontend** `resolveAvatarUrl.ts` / `resolveBannerUrl.ts` / `imageServiceUrl`
+  build `{imageBed}/aa/bb/<hash>[_variant].webp`
+
+So point **both** at the same shared image_service domain:
+`KUN_IMAGE_CDN_BASE` (backend, `docker/api.env`) **=** `domain.imageBed`
+(frontend, `app/config/moyu-moe.ts`, now `https://image.kungal.iloveren.link`)
+**=** infra's `KUN_IMAGE_PUBLIC_BASE_URL`. They must match so both sides emit
+identical URLs.
+
+Compression is chosen per use (all webp): main image for `topic` uploads
+(screenshots/inline — main pipeline ≤1920×1080 q77), `mini` (460×259) for banner
+thumbnails, `100` for list-density avatars, `256` for the settings-page avatar.
 
 ## Gotchas (same as infra)
 
