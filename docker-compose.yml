@@ -31,6 +31,9 @@ services:
     image: moyu/api
     env_file: [./docker/api.env]
     ports: ["15010:5214"]
+    networks:
+      default:
+        aliases: [moyu-api]   # 唯一别名:与 kungal 的 api 共用 kun-galgame-infra_default,bare `api` 会 DNS 冲突
     # No depends_on on postgres/redis: they live in the infra compose, not here.
     # `restart: unless-stopped` reconnects once the infra stack is up.
     healthcheck:
