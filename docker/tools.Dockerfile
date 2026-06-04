@@ -30,5 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin appuser
 WORKDIR /app
 COPY --from=build /out/ /usr/local/bin/
+# migrate reads SQL from ./migrations relative to WORKDIR (/app) at runtime;
+# without it the deferred migrations silently apply nothing.
+COPY apps/api/migrations /app/migrations
 USER appuser
 # No ENTRYPOINT: run a job by name, e.g. `docker run ... moyu-tools migrate`.
