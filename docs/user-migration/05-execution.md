@@ -33,7 +33,7 @@ step 7 重写源库（kungal/moyu），事务级原子但跨脚本不可逆。
 ```bash
 pg_dump -Fc kungalgame      > kungal.dump
 pg_dump -Fc kungalgame_patch > moyu.dump
-pg_dump -Fc kun_oauth        > oauth.dump
+pg_dump -Fc kun_galgame_infra        > oauth.dump
 ```
 
 ### 1.4 应用必须停机

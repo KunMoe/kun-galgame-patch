@@ -1,23 +1,25 @@
 # moyu (kun-galgame-patch) — PRODUCTION compose (Dokploy + GHCR images).
 #
-# moyu is a downstream app: it owns NO backing services. It joins the shared
-# `dokploy-network` and reaches the infra stack by service name (postgres:5432,
-# http://oauth:9277, http://galgame:9280, http://image:9278). Bring infra first.
+# Downstream app: owns NO backing services. Joins the shared `dokploy-network`
+# and reaches infra by service name (postgres:5432, oauth:9277, galgame:9280,
+# image:9278). Bring infra up first.
 #
-# vs docker-compose.yml (dev): `image:` not `build:` (CI pushes to GHCR), and
-# `expose:` not `ports:` (Traefik routes internally — no host ports in prod).
-# See docs/deploy/12-dokploy.md + 13-registry-ci.md.
+# vs docker-compose.yml (dev): `image:` not `build:`, `expose:` not `ports:`,
+# and **NO `env_file`** — all config is inline `environment:` so Dokploy needs no
+# `docker/*.env` on disk. Non-secret/domains are literal; secrets come from the
+# moyu app's **Dokploy Environment** via ${VAR}.
 #
-# FRONTEND DOMAINS (build-once): moyu web reads its public config at RUNTIME
-# from docker/web.env's NUXT_PUBLIC_* names, so the SAME image works anywhere —
-# set the real https domains in web.env / Dokploy Environment per 12-dokploy
-# §12.2-C (keep NUXT_API_BASE_SSR=http://api:5214/api/v1 for SSR). Rotate secrets.
+# Set in moyu's Dokploy Environment:
+#   POSTGRES_PASSWORD  OAUTH_CLIENT_SECRET
+#   KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID / _SECRET_ACCESS_KEY   (B2 补丁文件)
+#   (optional) KUN_VISUAL_NOVEL_EMAIL_PASSWORD  KUN_IMAGE_OAUTH_CLIENT_ID/SECRET
+# MUST match infra: POSTGRES_PASSWORD = infra POSTGRES_PASSWORD;
+# OAUTH_CLIENT_SECRET = 注册补丁 client 的明文.  (moyu 没有 JWT_SECRET — 不透明会话)
 #
-# The api image bakes apps/web/posts (about-page .mdx) and reads them via
-# KUN_POSTS_DIR=/posts (docker/api.env) — no migration step carries them.
+# The api image bakes apps/web/posts (about .mdx) → read via KUN_POSTS_DIR=/posts.
 #
 #   docker compose -f docker-compose.prod.yml pull
-#   docker compose -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.prod.yml --profile jobs run --rm migrate
 #   docker compose -f docker-compose.prod.yml up -d api web
 name: moyu
 
@@ -27,20 +29,60 @@ x-svc-health: &svc-health
   retries: 5
   start_period: 15s
 
+# ── api / migrate / tools runtime env (literal = non-secret; ${VAR} = panel) ──
+x-moyu-api-env: &moyu-api-env
+  KUN_SERVER_PORT: "5214"
+  KUN_SERVER_MODE: prod
+  KUN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Dokploy}@postgres:5432/kungalgame_patch?sslmode=disable
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  OAUTH_SERVER_URL: http://oauth:9277/api/v1
+  OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
+  OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in Dokploy (补丁 client 注册时的明文)}
+  OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
+  KUN_GALGAME_WIKI_BASE_URL: http://galgame:9280/api
+  # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
+  KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
+  KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
+  KUN_IMAGE_OAUTH_CLIENT_ID: ${KUN_IMAGE_OAUTH_CLIENT_ID:-}
+  KUN_IMAGE_OAUTH_CLIENT_SECRET: ${KUN_IMAGE_OAUTH_CLIENT_SECRET:-}
+  # B2 — patch resource files (NOT image_service). keys are secrets.
+  KUN_VISUAL_NOVEL_S3_STORAGE_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+  KUN_VISUAL_NOVEL_S3_STORAGE_URL: https://oss.moyu.moe
+  KUN_VISUAL_NOVEL_S3_STORAGE_REGION: us-east-005
+  KUN_VISUAL_NOVEL_S3_STORAGE_BUCKET_NAME: kun-galgame-patch
+  KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID: ${KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID:-}
+  KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY: ${KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY:-}
+  # mail (blank → disabled)
+  KUN_VISUAL_NOVEL_EMAIL_HOST: tuesday.mxrouting.net
+  KUN_VISUAL_NOVEL_EMAIL_PORT: "587"
+  KUN_VISUAL_NOVEL_EMAIL_ACCOUNT: auth@moyu.moe
+  KUN_VISUAL_NOVEL_EMAIL_PASSWORD: ${KUN_VISUAL_NOVEL_EMAIL_PASSWORD:-}
+  CORS_ALLOW_ORIGINS: https://www.moyu.moe,https://moyu.moe
+  KUN_POSTS_DIR: /posts
+
 services:
   api:
     image: ghcr.io/kunmoe/moyu-api:latest
-    env_file: [./docker/api.env]
+    environment: { <<: *moyu-api-env }
     expose: ["5214"]
-    # No depends_on: postgres/redis live in the infra app, not here.
+    # No depends_on: postgres/redis live in the infra app. restart reconnects.
     healthcheck:
       test: ["CMD", "/app", "healthcheck"]
       <<: *svc-health
     restart: unless-stopped
 
+  # Public config read at RUNTIME (moyu-web is NOT baked at CI) — set below.
   web:
     image: ghcr.io/kunmoe/moyu-web:latest
-    env_file: [./docker/web.env]   # NUXT_API_BASE_SSR (SSR) + NUXT_PUBLIC_* (browser, prod domains)
+    environment:
+      NUXT_API_BASE_SSR: http://api:5214/api/v1                 # SSR → api by service name
+      NUXT_PUBLIC_API_BASE: https://www.moyu.moe/api/v1         # browser
+      NUXT_PUBLIC_OAUTH_SERVER_URL: https://oauth.kungal.com/api/v1
+      NUXT_PUBLIC_OAUTH_WEB_URL: https://oauth.kungal.com
+      NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
+      NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
     expose: ["3000"]
     depends_on:
       api: { condition: service_healthy }
@@ -49,12 +91,20 @@ services:
       <<: *svc-health
     restart: unless-stopped
 
-  # ─────────────────────── one-off job (profile: jobs) ───────────────────────
-  # Run AFTER infra's postgres is up and the kungalgame_patch database exists.
-  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
+  # Run AFTER infra postgres up + kungalgame_patch exists. ORDER: docs/migration.
+  #   docker compose -f docker-compose.prod.yml --profile jobs run --rm migrate [-dir=up -only=001]
   migrate:
     image: ghcr.io/kunmoe/moyu-migrate:latest
-    env_file: [./docker/api.env]
+    environment: { <<: *moyu-api-env }
+    profiles: ["jobs"]
+    restart: "no"
+
+  # All cmd/* binaries (migrate-oauth-prep / remap-patch-ids / backfill-release-date):
+  #   docker compose -f docker-compose.prod.yml --profile jobs run --rm tools remap-patch-ids
+  tools:
+    image: ghcr.io/kunmoe/moyu-tools:latest
+    environment: { <<: *moyu-api-env }
     profiles: ["jobs"]
     restart: "no"
 

@@ -80,7 +80,7 @@ WHERE a.created_at > b.created_at;
 -- 抽 1 行 galgame，看 user_id 是否能在 OAuth users 找到
 SELECT g.user_id, u.name
 FROM galgame g
-JOIN dblink('host=... dbname=kun_oauth', 'SELECT id, name FROM users')
+JOIN dblink('host=... dbname=kun_galgame_infra', 'SELECT id, name FROM users')
   AS u(id INT, name TEXT) ON u.id = g.user_id
 LIMIT 5;
 -- 应该返回有效行，user_id 都能 join 上
@@ -90,7 +90,7 @@ LIMIT 5;
 -- moyu 端
 SELECT pr.user_id, u.name
 FROM patch_resource pr
-JOIN dblink('host=... dbname=kun_oauth', 'SELECT id, name FROM users')
+JOIN dblink('host=... dbname=kun_galgame_infra', 'SELECT id, name FROM users')
   AS u(id INT, name TEXT) ON u.id = pr.user_id
 LIMIT 5;
 ```
