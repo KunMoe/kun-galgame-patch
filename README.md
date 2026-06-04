@@ -12,7 +12,7 @@
 
 下面是它的 GitHub 开源地址, 可以给我们点一个 star 支持哦
 
-[https://github.com/KUN1007/kun-galgame-patch-next](https://github.com/KUN1007/kun-galgame-patch-next)
+[https://github.com/KunMoe/kun-galgame-patch-next](https://github.com/KunMoe/kun-galgame-patch-next)
 
 它是一个由开源社区驱动的, 属于 [KUN Visual Novel Website Cluster](https://nav.kungal.org), 遵从 [OpenGal](https://github.com/opengal) 原则的, 完全免费的, 非营利性的补丁资源下载网站
 
@@ -127,7 +127,7 @@ docker compose run --rm migrate    # 按需执行 SQL 迁移
 
 ### 开源
 
-本网站目前遵循 [AGPL-3.0 开源协议](https://www.gnu.org/licenses/gpl-3.0.en.html), 完全开源于 [GitHub](https://github.com/KUN1007/kun-galgame-patch-next)
+本网站目前遵循 [AGPL-3.0 开源协议](https://www.gnu.org/licenses/gpl-3.0.en.html), 完全开源于 [GitHub](https://github.com/KunMoe/kun-galgame-patch-next)
 
 本网站最大的目的是, 帮助全体 Galgame 玩家提供存档, 错误修正补丁等必要资源, 提供零门槛的获取渠道
 
@@ -185,7 +185,7 @@ docker compose run --rm migrate    # 按需执行 SQL 迁移
 
 除了以上的方式之外, 如果您对开源事业较为感兴趣, 您可以前往我们 GitHub 开源仓库的 Issue
 
-[https://github.com/KUN1007/kun-galgame-patch-next/issues/new](https://github.com/KUN1007/kun-galgame-patch-next/issues/new)
+[https://github.com/KunMoe/kun-galgame-patch-next/issues/new](https://github.com/KunMoe/kun-galgame-patch-next/issues/new)
 
 在这里编写您的 Issue 并提交, 以创建一个新的 Issue, 这是要获得我们优先支持最有效的方式
 

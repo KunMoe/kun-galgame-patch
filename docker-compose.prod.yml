@@ -29,7 +29,7 @@ x-svc-health: &svc-health
 
 services:
   api:
-    image: ghcr.io/kun1007/moyu-api:latest
+    image: ghcr.io/kunmoe/moyu-api:latest
     env_file: [./docker/api.env]
     expose: ["5214"]
     # No depends_on: postgres/redis live in the infra app, not here.
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/kun1007/moyu-web:latest
+    image: ghcr.io/kunmoe/moyu-web:latest
     env_file: [./docker/web.env]   # NUXT_API_BASE_SSR (SSR) + NUXT_PUBLIC_* (browser, prod domains)
     expose: ["3000"]
     depends_on:
@@ -53,7 +53,7 @@ services:
   # Run AFTER infra's postgres is up and the kungalgame_patch database exists.
   #   docker compose -f docker-compose.prod.yml run --rm migrate
   migrate:
-    image: ghcr.io/kun1007/moyu-migrate:latest
+    image: ghcr.io/kunmoe/moyu-migrate:latest
     env_file: [./docker/api.env]
     profiles: ["jobs"]
     restart: "no"

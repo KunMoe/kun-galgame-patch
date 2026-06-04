@@ -33,7 +33,7 @@ const currentYear = new Date().getFullYear()
             友情链接
           </NuxtLink>
           <a
-            href="https://github.com/KUN1007/kun-galgame-patch-next"
+            href="https://github.com/KunMoe/kun-galgame-patch-next"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center"

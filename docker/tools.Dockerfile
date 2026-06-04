@@ -7,7 +7,7 @@
 # and invokes a job by name:
 #
 #   docker run --rm --network kun-galgame-infra_default \
-#     --env-file docker/api.env ghcr.io/kun1007/moyu-tools remap-patch-ids
+#     --env-file docker/api.env ghcr.io/kunmoe/moyu-tools remap-patch-ids
 #
 # moyu has no cgo → pure static binaries. Build context MUST be the repo root.
 ARG GO_VERSION=1.26

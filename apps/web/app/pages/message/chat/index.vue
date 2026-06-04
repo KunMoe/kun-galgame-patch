@@ -146,7 +146,7 @@ const joinTestGroup = async () => {
                 <p class="text-default-500 text-sm">
                   网站完全开源，如果喜欢，请给我们的
                   <a
-                    href="https://github.com/KUN1007/kun-galgame-patch-next"
+                    href="https://github.com/KunMoe/kun-galgame-patch-next"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="text-primary font-semibold hover:underline"

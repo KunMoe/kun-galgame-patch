@@ -54,8 +54,8 @@ jobs:
           build-args: ${{ matrix.args }}
           push: true
           tags: |
-            ghcr.io/kun1007/${{ matrix.name }}:latest
-            ghcr.io/kun1007/${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/kunmoe/${{ matrix.name }}:latest
+            ghcr.io/kunmoe/${{ matrix.name }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
