@@ -58,7 +58,7 @@ type SessionData struct {
 
 const (
 	// SessionCookieName / SessionPrefix MUST be distinct from kungal's
-	// (kun-galgame-nuxt4) values. In local dev both sites run on
+	// (kun-galgame-forum) values. In local dev both sites run on
 	// 127.0.0.1 — cookies are domain-scoped, NOT port-scoped — and share
 	// one Redis. A shared cookie name + key prefix made kungal and moyu
 	// read/refresh/delete each other's sessions, producing cross-site

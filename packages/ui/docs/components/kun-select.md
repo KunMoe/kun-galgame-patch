@@ -226,7 +226,7 @@ visual:  dropdown cleanly capped at 240px; cards below fully visible
 ```bash
 KUN_OAUTH=/home/kun/Desktop/code/website/kun-galgame-infra
 cp $KUN_OAUTH/packages/ui/app/components/kun/select/Select.vue \
-   /home/kun/Desktop/code/website/kun-galgame-patch-next/packages/ui/app/components/kun/select/Select.vue
+   /home/kun/Desktop/code/website/kun-galgame-patch/packages/ui/app/components/kun/select/Select.vue
 ```
 
 （我刚才已经帮你 cp 了一次到 moyu 本地仓做验证，所以你那边的 dev server 现在应该已经热重载到正确状态。Git 也会显示这次 sync 是 modified —— 别 revert）

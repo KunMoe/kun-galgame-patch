@@ -1,4 +1,4 @@
-# Docker deployment — moyu (kun-galgame-patch-next)
+# Docker deployment — moyu (kun-galgame-patch)
 
 moyu is a **downstream** patch site. Its containers (`api`, `web`) are
 stateless; the backing services (Postgres / Redis) and upstreams (oauth /

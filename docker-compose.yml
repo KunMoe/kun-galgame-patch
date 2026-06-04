@@ -1,4 +1,4 @@
-# moyu (kun-galgame-patch-next) — the downstream patch site.
+# moyu (kun-galgame-patch) — the downstream patch site.
 #
 # Stateless api + web only. The backing services (Postgres / Redis) and the
 # upstreams (oauth / galgame-wiki / image_service / MinIO) are OWNED BY the

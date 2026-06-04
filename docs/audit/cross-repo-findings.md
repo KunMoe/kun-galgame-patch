@@ -1,7 +1,7 @@
 # moyu 跨仓审计发现核对
 
 > 来源：`../kungal-docs/claude` 与 `../kungal-docs/gpt` 两份外部审计（对
-> `kun-galgame-infra` / `kun-galgame-nuxt4` / **`kun-galgame-patch-next`(moyu，本仓)** 三仓的只读安全/正确性审计）。
+> `kun-galgame-infra` / `kun-galgame-forum` / **`kun-galgame-patch`(moyu，本仓)** 三仓的只读安全/正确性审计）。
 >
 > 本文**只摘录与本仓（moyu）有关的发现**，并逐条以**当前代码**核对真伪、给出当前
 > `file:line` 证据与处理建议。核对方式：逐条读源码 + 对外部审计的“证伪项”反向确认。

@@ -1,4 +1,4 @@
-# moyu (kun-galgame-patch-next) — PRODUCTION compose (Dokploy + GHCR images).
+# moyu (kun-galgame-patch) — PRODUCTION compose (Dokploy + GHCR images).
 #
 # moyu is a downstream app: it owns NO backing services. It joins the shared
 # `dokploy-network` and reaches the infra stack by service name (postgres:5432,
