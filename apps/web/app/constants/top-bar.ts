@@ -9,12 +9,12 @@ export const kunNavItem: KunNavItem[] = [
   { name: '下载', href: '/galgame' },
   { name: '发布', href: '/edit/create' },
   { name: '排行', href: '/ranking/user' },
-  { name: '关于', href: '/about' }
+  { name: '关于', href: '/doc' }
 ]
 
 export const kunNavItemDesktop: KunNavItem[] = [
   { name: '发布补丁', href: '/edit/create' },
-  { name: '关于我们', href: '/about' }
+  { name: '关于我们', href: '/doc' }
 ]
 
 // Public mobile nav entries (visible to everyone). The admin entry is
@@ -24,7 +24,7 @@ export const kunMobileNavItem: KunNavItem[] = [
   ...kunNavItem,
   { name: '补丁评论列表', href: '/comment' },
   { name: '补丁资源列表', href: '/resource' },
-  { name: '联系我们', href: '/about/notice/feedback' }
+  { name: '联系我们', href: '/doc/notice/feedback' }
 ]
 
 // Admin-only entries. Filter into the rendered list at the call site.

@@ -56,10 +56,10 @@ const ICON_BY_HREF: Record<string, string> = {
   '/galgame': 'lucide:gamepad-2',
   '/edit/create': 'lucide:plus-circle',
   '/ranking/user': 'lucide:chart-column-big',
-  '/about': 'lucide:book-open',
+  '/doc': 'lucide:book-open',
   '/comment': 'lucide:message-square',
   '/resource': 'lucide:puzzle',
-  '/about/notice/feedback': 'lucide:mail',
+  '/doc/notice/feedback': 'lucide:mail',
   '/admin': 'lucide:shield-check'
 }
 const iconFor = (href: string) => ICON_BY_HREF[href] ?? 'lucide:chevron-right'

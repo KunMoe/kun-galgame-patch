@@ -404,13 +404,13 @@ const existingFileName = computed(() => {
       <div class="text-default-500 space-y-1 text-sm">
         <div class="flex flex-wrap gap-x-4">
           <NuxtLink
-            to="/about/notice/patch-tutorial"
+            to="/doc/notice/patch-tutorial"
             class="text-primary hover:underline"
           >
             鲲 Galgame 补丁资源系统介绍
           </NuxtLink>
           <NuxtLink
-            to="/about/notice/paradigm"
+            to="/doc/notice/paradigm"
             class="text-primary hover:underline"
           >
             鲲 Galgame 补丁资源发布规范

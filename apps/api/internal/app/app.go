@@ -3,17 +3,14 @@ package app
 import (
 	"log/slog"
 
-	aboutHandler "kun-galgame-patch-api/internal/about/handler"
-	aboutRepository "kun-galgame-patch-api/internal/about/repository"
-	aboutService "kun-galgame-patch-api/internal/about/service"
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
 	adminService "kun-galgame-patch-api/internal/admin/service"
 	authHandler "kun-galgame-patch-api/internal/auth/handler"
-	blogHandler "kun-galgame-patch-api/internal/blog/handler"
-	blogRepository "kun-galgame-patch-api/internal/blog/repository"
-	blogService "kun-galgame-patch-api/internal/blog/service"
 	authRepo "kun-galgame-patch-api/internal/auth/repository"
+	docHandler "kun-galgame-patch-api/internal/doc/handler"
+	docRepository "kun-galgame-patch-api/internal/doc/repository"
+	docService "kun-galgame-patch-api/internal/doc/service"
 	authService "kun-galgame-patch-api/internal/auth/service"
 	chatHandler "kun-galgame-patch-api/internal/chat/handler"
 	chatRepo "kun-galgame-patch-api/internal/chat/repository"
@@ -68,8 +65,7 @@ type App struct {
 	UploadHandler  *uploadPkg.Handler
 	ChatHandler    *chatHandler.ChatHandler
 	SearchHandler  *searchPkg.Handler
-	AboutHandler   *aboutHandler.AboutHandler
-	BlogHandler    *blogHandler.BlogHandler
+	DocHandler     *docHandler.DocHandler
 
 	// CronStop is called during graceful shutdown to stop the cron jobs.
 	CronStop func()
@@ -167,17 +163,12 @@ func New(cfg *config.Config) *App {
 	// Search module (D11: delegate to Galgame Wiki Service)
 	searchHdl := searchPkg.New(db, wiki)
 
-	// About module: articles live in the about_post table (migration 014),
-	// seeded from the legacy .mdx files by cmd/migrate-about-posts.
-	aboutRepo := aboutRepository.New(db)
-	aboutSvc := aboutService.New(aboutRepo)
-	aboutHdl := aboutHandler.New(aboutSvc)
-
-	// Blog module (migration 015): DB-backed, admin-managed; banners/inline
-	// images go through image_service (imgCli derives banner URLs from hashes).
-	blogRepo := blogRepository.New(db)
-	blogSvc := blogService.New(blogRepo, imgCli, usrCli)
-	blogHdl := blogHandler.New(blogSvc)
+	// Doc module (migration 016; unifies the former /about + /blog into one
+	// "doc" feature): category-tree + slug docs with admin CRUD; banners and
+	// inline images go through image_service (imgCli derives URLs from hashes).
+	docRepo := docRepository.New(db)
+	docSvc := docService.New(docRepo, imgCli, usrCli)
+	docHdl := docHandler.New(docSvc)
 
 	// Cookie mode: use Secure cookies in prod; must be off for HTTP in dev
 	middleware.SecureCookies = cfg.Server.Mode == "prod"
@@ -220,8 +211,7 @@ func New(cfg *config.Config) *App {
 		UploadHandler:  uploadHdl,
 		ChatHandler:    chatHdl,
 		SearchHandler:  searchHdl,
-		AboutHandler:   aboutHdl,
-		BlogHandler:    blogHdl,
+		DocHandler:     docHdl,
 		CronStop:       cronStop,
 	}
 }

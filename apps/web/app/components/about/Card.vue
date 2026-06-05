@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Ported from refs/legacy/next-web/components/about/Card.tsx, structure
+// Ported from refs/legacy/next-web/components/doc/Card.tsx, structure
 // preserved: title on top, banner in the middle, calendar + type metadata
 // below, and a "点击阅读更多 →" footer separated by a top border.
 //
@@ -19,7 +19,7 @@ const props = defineProps<Props>()
 
 <template>
   <NuxtLink
-    :to="`/about/${props.post.slug}`"
+    :to="`/doc/${props.post.slug}`"
     class="bg-background border-default/20 hover:bg-default-100 group block w-full overflow-hidden rounded-lg border transition-all duration-200 hover:scale-[1.02]"
   >
     <div class="space-y-3 p-4">

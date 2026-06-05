@@ -20,7 +20,7 @@ const currentYear = new Date().getFullYear()
         </NuxtLink>
 
         <div class="flex space-x-8">
-          <NuxtLink to="/about" class="flex items-center">使用指南</NuxtLink>
+          <NuxtLink to="/doc" class="flex items-center">使用指南</NuxtLink>
           <a
             href="https://nav.kungal.org"
             target="_blank"

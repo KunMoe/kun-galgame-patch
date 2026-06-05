@@ -2,8 +2,7 @@
 import { kunMoyuMoe } from '~/config/moyu-moe'
 
 const menuItems = [
-  { href: '/about', label: '网站帮助', icon: 'lucide:circle-help' },
-  { href: '/blog', label: '博客', icon: 'lucide:notebook-pen' },
+  { href: '/doc', label: '文档', icon: 'lucide:notebook-pen' },
   { href: '/friend-link', label: '友情链接', icon: 'lucide:link' },
   {
     href: kunMoyuMoe.domain.kungal,

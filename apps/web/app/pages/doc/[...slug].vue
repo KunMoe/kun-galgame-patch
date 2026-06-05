@@ -23,9 +23,9 @@ const slugParam = computed(() => {
 // reactive ref briefly flips to null/empty (which is what makes the TOC vanish
 // after hydration when wrapping useApi in useAsyncData).
 const { data: detailResponse } = await useFetch<ApiEnvelope<KunPostDetail>>(
-  `${baseUrl}/about/post`,
+  `${baseUrl}/doc/post`,
   {
-    key: `about-post-${slugParam.value}`,
+    key: `doc-post-${slugParam.value}`,
     query: { slug: slugParam.value },
     credentials: 'include',
     watch: false
@@ -56,7 +56,7 @@ useKunSeoMeta({
   ogImage: (detail.value.frontmatter as { banner?: string }).banner || undefined
 })
 
-// Sidebar uses the tree fetched by /about/posts. Cached under the same key so
+// Sidebar uses the tree fetched by /doc/posts. Cached under the same key so
 // it shares the response with /about index.
 const emptyTree: KunTreeNode = {
   name: 'about',
@@ -66,8 +66,8 @@ const emptyTree: KunTreeNode = {
   children: []
 }
 const { data: postsResponse } = await useFetch<ApiEnvelope<KunPostsResponse>>(
-  `${baseUrl}/about/posts`,
-  { key: 'about-posts', credentials: 'include', watch: false }
+  `${baseUrl}/doc/posts`,
+  { key: 'doc-posts', credentials: 'include', watch: false }
 )
 const tree = computed<KunTreeNode>(() =>
   postsResponse.value?.code === 0 ? postsResponse.value.data.tree : emptyTree

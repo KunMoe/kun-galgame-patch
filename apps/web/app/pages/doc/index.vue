@@ -1,11 +1,11 @@
 <script setup lang="ts">
 useKunSeoMeta({
-  title: '关于我们',
+  title: '文档',
   description:
     '鲲 Galgame 补丁站的项目介绍、团队成员、公告、更新日志、用户协议、使用帮助、隐私政策、反馈与联系方式。'
 })
 
-// /about/posts returns both the flat list (rendered as cards on this page) and
+// /doc/posts returns both the flat list (rendered as cards on this page) and
 // the directory tree (consumed by the sidebar) — see
 // apps/api/internal/about/handler.ListPosts.
 //
@@ -25,9 +25,9 @@ const baseUrl = (import.meta.server && config.apiBaseSsr
   : config.public.apiBase) as string
 
 const { data: response } = await useFetch<ApiEnvelope<KunPostsResponse>>(
-  `${baseUrl}/about/posts`,
+  `${baseUrl}/doc/posts`,
   {
-    key: 'about-posts',
+    key: 'doc-posts',
     credentials: 'include',
     // No reactive sources to watch — this list is keyed by URL only.
     watch: false

@@ -84,7 +84,7 @@ const traverseDirectory = (
         authorAvatar: data.authorAvatar ?? '',
         pin: !!data.pin,
         directory: parentDirectory,
-        link: `/about/${parentDirectory}/${fileName}`
+        link: `/doc/${parentDirectory}/${fileName}`
       })
     }
   }

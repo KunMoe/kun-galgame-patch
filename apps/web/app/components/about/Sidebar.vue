@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Fixed-width sidebar listing the entire posts tree. Used on both the /about
+// Fixed-width sidebar listing the entire posts tree. Used on both the /doc
 // index page and the doc-detail page; the tree itself is fetched once via
-// /about/posts.
+// /doc/posts.
 interface Props {
   tree: KunTreeNode
   activeSlug?: string
@@ -22,7 +22,7 @@ const children = computed(() =>
        part of the page layout, not a floating panel. -->
   <nav class="border-default-200 pr-3 lg:border-r">
     <NuxtLink
-      to="/about"
+      to="/doc"
       class="hover:bg-default-100 mb-2 flex items-center gap-2 rounded-md px-2 py-2 text-base font-semibold"
     >
       <KunIcon name="lucide:book-open-text" class="text-primary size-5" />

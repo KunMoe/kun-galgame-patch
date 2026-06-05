@@ -38,7 +38,7 @@ const rowClass = computed(() => [
   <div class="select-none">
     <NuxtLink
       v-if="props.node.type === 'file'"
-      :to="`/about/${props.node.path}`"
+      :to="`/doc/${props.node.path}`"
       :class="rowClass"
       :style="{ paddingLeft: indentPx }"
     >

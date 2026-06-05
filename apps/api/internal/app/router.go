@@ -273,14 +273,14 @@ func (a *App) RegisterRoutes() {
 	// D12: "orphan patches" whose galgame is missing in Wiki, for admin manual handling
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
 
-	// Blog management (migration 015). Create/edit/delete posts; list includes
-	// drafts. Banners / inline images come from image_service (uploaded via
-	// /upload/image-service). moderator+ (group default).
-	adminRoutes.Get("/blog", a.BlogHandler.AdminListBlogs)
-	adminRoutes.Get("/blog/:id", a.BlogHandler.AdminGetBlog)
-	adminRoutes.Post("/blog", a.BlogHandler.CreateBlog)
-	adminRoutes.Put("/blog/:id", a.BlogHandler.UpdateBlog)
-	adminRoutes.Delete("/blog/:id", a.BlogHandler.DeleteBlog)
+	// Doc management (migration 016; unified about+blog). Create/edit/delete
+	// docs; list includes drafts. Banners / inline images come from
+	// image_service (uploaded via /upload/image-service). moderator+ (group default).
+	adminRoutes.Get("/doc", a.DocHandler.AdminListPosts)
+	adminRoutes.Get("/doc/:id", a.DocHandler.AdminGetPost)
+	adminRoutes.Post("/doc", a.DocHandler.CreatePost)
+	adminRoutes.Put("/doc/:id", a.DocHandler.UpdatePost)
+	adminRoutes.Delete("/doc/:id", a.DocHandler.DeletePost)
 
 	// ===== Galgame taxonomy proxy (handbook §15, MANDATORY full proxy) =====
 	//
@@ -392,13 +392,10 @@ func (a *App) RegisterRoutes() {
 	api.Get("/hikari", a.CommonHandler.GetHikari)
 	api.Get("/moyu/patch/has-patch", a.CommonHandler.GetMoyuHasPatch)
 
-	// About / docs (DB-backed, migration 014).
-	api.Get("/about/posts", a.AboutHandler.ListPosts)
-	api.Get("/about/post", a.AboutHandler.GetPost)
-
-	// Blog (public, published-only; migration 015). Detail renders markdown +
-	// derives the image_service banner URL. View counter is anonymous.
-	api.Get("/blog", a.BlogHandler.ListBlogs)
-	api.Get("/blog/:id", a.BlogHandler.GetBlog)
-	api.Put("/blog/:id/view", a.BlogHandler.IncrementView)
+	// Doc (public, published-only; migration 016 — unified about+blog). Posts
+	// list + category tree; detail renders markdown and derives the
+	// image_service banner URL. View counter is anonymous.
+	api.Get("/doc/posts", a.DocHandler.ListPosts)
+	api.Get("/doc/post", a.DocHandler.GetPost)
+	api.Put("/doc/view", a.DocHandler.IncrementView)
 }

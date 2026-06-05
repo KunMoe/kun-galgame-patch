@@ -13,7 +13,7 @@ const props = defineProps<Props>()
   >
     <NuxtLink
       v-if="props.prev"
-      :to="`/about/${props.prev.slug}`"
+      :to="`/doc/${props.prev.slug}`"
       class="hover:bg-default-100 flex-1 rounded-lg p-4 transition-colors"
     >
       <div class="text-default-500 mb-1 flex items-center gap-1 text-xs">
@@ -26,7 +26,7 @@ const props = defineProps<Props>()
 
     <NuxtLink
       v-if="props.next"
-      :to="`/about/${props.next.slug}`"
+      :to="`/doc/${props.next.slug}`"
       class="hover:bg-default-100 flex-1 rounded-lg p-4 text-right transition-colors"
     >
       <div
