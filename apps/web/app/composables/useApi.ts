@@ -104,6 +104,36 @@ export const useApi = () => {
     return `${endpoint}${sep}content_limit=${contentLimit}`
   }
 
+  // Centralized auto-logout on a definitively-unauthenticated response.
+  //
+  // Without this the ONLY thing that reacts to a dead server-side session is
+  // User.vue's onMounted /auth/me check — which runs once per full page load,
+  // NOT on SPA navigation (the top bar lives in the layout and never
+  // re-mounts). So a session that expires while the tab stays open would leave
+  // the top bar / admin gates / message bell showing the old identity until the
+  // next hard refresh, while every auth-gated action silently 401s. Reacting
+  // here means ANY request that comes back unauthenticated immediately wipes
+  // the persisted identity, so the whole UI flips to logged-out at once.
+  //
+  // Policy mirrors User.vue EXACTLY: only 40100 (no/expired cookie) and 40101
+  // (session dead) wipe the store. Any OTHER non-zero code (5xx, network blip,
+  // transient OAuth refresh failure that KEEPS the cookie for the next-request
+  // retry) must NOT log out — that was the "登录之后过一会自动退出" bug. Caveat:
+  // the backend also returns 40101 on a transient refresh failure during the
+  // hard-expiry window; we accept that rare spurious logout to keep the
+  // contract identical to User.vue rather than guess from the client.
+  //
+  // Client-only (store mutation + DOM toast must not run during SSR, where they
+  // would desync hydration), and a no-op once already logged out — so a
+  // concurrent fan-out of 401s fires exactly one logout + one toast.
+  const handleAuthExpiry = (code: number) => {
+    if (!import.meta.client) return
+    if (code !== 40100 && code !== 40101) return
+    if (userStore.user.id <= 0) return
+    userStore.logout()
+    useKunMessage('登录状态已失效，请重新登录', 'warn')
+  }
+
   const request = async <T>(
     endpoint: string,
     options: ApiOptions = {}
@@ -114,6 +144,13 @@ export const useApi = () => {
     try {
       const res = await $fetch<ApiResponse<T>>(url, {
         method,
+        // SSR-only ceiling. A stalled server-side $fetch with no timeout never
+        // settles → the awaiting Nitro render hangs forever, pinning its whole
+        // render context in the heap and leaking the in/out sockets. Over days
+        // these accumulate until the event loop GC-thrashes at 100% CPU.
+        // import.meta.server is a build-time constant, so the client bundle
+        // keeps its no-timeout behavior (long uploads etc. are unaffected).
+        timeout: import.meta.server ? 10000 : undefined,
         body: body ? JSON.stringify(body) : undefined,
         headers: {
           'Content-Type': 'application/json',
@@ -131,6 +168,7 @@ export const useApi = () => {
           query: res.message ? { reason: res.message } : {}
         })
       }
+      handleAuthExpiry(res.code)
       return res
     } catch (error: unknown) {
       const fetchError = error as { statusCode?: number; data?: ApiError }
@@ -143,6 +181,7 @@ export const useApi = () => {
             : {}
         })
       }
+      handleAuthExpiry(code)
       return {
         code,
         message: fetchError.data?.message ?? 'Request failed',
