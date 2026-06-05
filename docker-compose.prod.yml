@@ -99,6 +99,15 @@ services:
       test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       <<: *svc-health
     restart: unless-stopped
+    # Memory cap + auto-restart = OOM-recycle backstop for the upstream Nuxt
+    # 4.2.2 SSR memory leak (nuxt#34071). moyu-web was observed at ~2.0–2.14 GiB
+    # with CPU spikes; 2.5g leaves headroom over the current working set and
+    # OOM-recycles (restart: unless-stopped) once the leak grows past it, so it
+    # can't bloat unbounded / starve the box. Raise/remove once upstream is fixed.
+    deploy:
+      resources:
+        limits:
+          memory: 2560m
 
   # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
   # Run AFTER infra postgres up + kungalgame_patch exists. ORDER: docs/migration.

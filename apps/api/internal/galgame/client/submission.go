@@ -267,6 +267,9 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 		params.Set("limit", strconv.Itoa(limit))
 	}
 	params.Set("include_pending", "true")
+	// Publish wizard surfaces published games (0) AND claimable VNDB drafts (2);
+	// without status=2 it can't find the bulk of the catalog (unclaimed drafts).
+	params.Set("status", "0,2")
 	params.Set("facets", "false")
 	params.Set("highlight", "false")
 
