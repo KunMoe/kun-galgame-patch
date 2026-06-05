@@ -25,7 +25,36 @@ const generateState = (): string => {
   return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-// Build the standard OAuth authorize URL + sessionStorage-stash PKCE/state.
+// PKCE `state` + `code_verifier` are stashed in short-lived cookies (NOT
+// sessionStorage). The OAuth flow leaves our origin (→ oauth.kungal.com) and
+// redirects back to /auth/callback; lightweight / old mobile browsers (Via,
+// in-app WebViews) drop the per-tab sessionStorage across that cross-origin
+// round-trip, which surfaced as "OAuth callback verification failed". A cookie
+// is per-origin (not tab-bound) and survives the round-trip. 10-min TTL
+// auto-expires it; SameSite=Lax (it's a first-party cookie read via JS, so Lax
+// is enough) + secure on https. Tradeoff vs sessionStorage: cookies are shared
+// across tabs, so two concurrent logins in one browser can clobber each other's
+// state — rare and acceptable.
+const OAUTH_COOKIE_TTL = 600 // seconds (10 min)
+
+const setOAuthCookie = (name: string, value: string): void => {
+  const secure = window.location.protocol === 'https:' ? '; secure' : ''
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${OAUTH_COOKIE_TTL}; path=/; samesite=lax${secure}`
+}
+
+const getOAuthCookie = (name: string): string | null => {
+  const prefix = `${name}=`
+  for (const part of document.cookie ? document.cookie.split('; ') : []) {
+    if (part.startsWith(prefix)) return decodeURIComponent(part.slice(prefix.length))
+  }
+  return null
+}
+
+const deleteOAuthCookie = (name: string): void => {
+  document.cookie = `${name}=; max-age=0; path=/; samesite=lax`
+}
+
+// Build the standard OAuth authorize URL + cookie-stash PKCE/state.
 // Shared between login and register flows — only the OAuth web entry
 // point differs (see startOAuthLogin / startOAuthRegister below).
 const prepareAuthorizeUrl = async (): Promise<string> => {
@@ -34,8 +63,8 @@ const prepareAuthorizeUrl = async (): Promise<string> => {
   const codeChallenge = await generateCodeChallenge(codeVerifier)
   const state = generateState()
 
-  sessionStorage.setItem('oauth_code_verifier', codeVerifier)
-  sessionStorage.setItem('oauth_state', state)
+  setOAuthCookie('oauth_code_verifier', codeVerifier)
+  setOAuthCookie('oauth_state', state)
 
   // `/oauth/authorize` is an API endpoint (lives under oauthServerUrl =
   // dev :9277/api/v1, prod oauth.kungal.com/api/v1). The user-facing
@@ -87,19 +116,19 @@ export const verifyOAuthCallback = (): {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('code')
   const returnedState = urlParams.get('state')
-  const savedState = sessionStorage.getItem('oauth_state')
+  const savedState = getOAuthCookie('oauth_state')
 
   if (!code || !returnedState || returnedState !== savedState) {
     return null
   }
 
-  const codeVerifier = sessionStorage.getItem('oauth_code_verifier')
+  const codeVerifier = getOAuthCookie('oauth_code_verifier')
   if (!codeVerifier) {
     return null
   }
 
-  sessionStorage.removeItem('oauth_state')
-  sessionStorage.removeItem('oauth_code_verifier')
+  deleteOAuthCookie('oauth_state')
+  deleteOAuthCookie('oauth_code_verifier')
 
   return { code, codeVerifier }
 }
