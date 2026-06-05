@@ -14,6 +14,7 @@ onMounted(() => {
 
 <template>
   <div>
+    <NuxtLoadingIndicator color="var(--color-primary)" />
     <NuxtRouteAnnouncer />
     <KunAlertMessageContainer />
     <NuxtLayout>
