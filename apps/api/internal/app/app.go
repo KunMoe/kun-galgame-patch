@@ -10,6 +10,9 @@ import (
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
 	adminService "kun-galgame-patch-api/internal/admin/service"
 	authHandler "kun-galgame-patch-api/internal/auth/handler"
+	blogHandler "kun-galgame-patch-api/internal/blog/handler"
+	blogRepository "kun-galgame-patch-api/internal/blog/repository"
+	blogService "kun-galgame-patch-api/internal/blog/service"
 	authRepo "kun-galgame-patch-api/internal/auth/repository"
 	authService "kun-galgame-patch-api/internal/auth/service"
 	chatHandler "kun-galgame-patch-api/internal/chat/handler"
@@ -66,6 +69,7 @@ type App struct {
 	ChatHandler    *chatHandler.ChatHandler
 	SearchHandler  *searchPkg.Handler
 	AboutHandler   *aboutHandler.AboutHandler
+	BlogHandler    *blogHandler.BlogHandler
 
 	// CronStop is called during graceful shutdown to stop the cron jobs.
 	CronStop func()
@@ -169,6 +173,12 @@ func New(cfg *config.Config) *App {
 	aboutSvc := aboutService.New(aboutRepo)
 	aboutHdl := aboutHandler.New(aboutSvc)
 
+	// Blog module (migration 015): DB-backed, admin-managed; banners/inline
+	// images go through image_service (imgCli derives banner URLs from hashes).
+	blogRepo := blogRepository.New(db)
+	blogSvc := blogService.New(blogRepo, imgCli, usrCli)
+	blogHdl := blogHandler.New(blogSvc)
+
 	// Cookie mode: use Secure cookies in prod; must be off for HTTP in dev
 	middleware.SecureCookies = cfg.Server.Mode == "prod"
 
@@ -211,6 +221,7 @@ func New(cfg *config.Config) *App {
 		ChatHandler:    chatHdl,
 		SearchHandler:  searchHdl,
 		AboutHandler:   aboutHdl,
+		BlogHandler:    blogHdl,
 		CronStop:       cronStop,
 	}
 }
