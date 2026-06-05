@@ -47,9 +47,24 @@ func (j *JSONArray) Scan(value any) error {
 		*j = JSONArray{}
 		return nil
 	}
-	bytes, ok := value.([]byte)
-	if !ok {
+	// The pgx driver may hand a jsonb value back as either []byte or string
+	// depending on the code path (notably the INSERT ... RETURNING scan used by
+	// the lazy patch-create in ensureLocalPatch, which surfaced as repeated
+	// "failed to unmarshal JSONArray: []" errors → the whole Create rolled back
+	// → detail pages 404'd). Accept both, and treat an empty / null payload as
+	// an empty array rather than an error.
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
 		return fmt.Errorf("failed to unmarshal JSONArray: %v", value)
+	}
+	if len(bytes) == 0 || string(bytes) == "null" {
+		*j = JSONArray{}
+		return nil
 	}
 	return json.Unmarshal(bytes, j)
 }
@@ -363,9 +378,20 @@ func (c *ResourceChangeList) Scan(value any) error {
 		*c = ResourceChangeList{}
 		return nil
 	}
-	bytes, ok := value.([]byte)
-	if !ok {
+	// Accept both []byte and string (see JSONArray.Scan for why), and treat an
+	// empty / null payload as an empty list.
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
 		return fmt.Errorf("failed to unmarshal ResourceChangeList: %v", value)
+	}
+	if len(bytes) == 0 || string(bytes) == "null" {
+		*c = ResourceChangeList{}
+		return nil
 	}
 	return json.Unmarshal(bytes, c)
 }
