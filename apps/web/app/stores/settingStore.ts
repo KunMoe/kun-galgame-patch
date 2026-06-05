@@ -50,14 +50,18 @@ export const useSettingStore = defineStore('setting', {
       this.data.kunNsfwEnable = v
     },
     ackNsfw(id: number) {
-      if (id > 0 && !this.data.nsfwAckedIds.includes(id)) {
+      // `?? []` guards a null/legacy cookie value — isNsfwAcked runs in useApi
+      // during SSR for anonymous detail-route requests, so an unguarded
+      // .includes() here would 500 the page.
+      const ids = this.data.nsfwAckedIds ?? []
+      if (id > 0 && !ids.includes(id)) {
         // Replace the array (don't .push) so pinia's reactivity tracks the
         // mutation and the cookie-persist plugin writes the new value.
-        this.data.nsfwAckedIds = [...this.data.nsfwAckedIds, id]
+        this.data.nsfwAckedIds = [...ids, id]
       }
     },
     isNsfwAcked(id: number): boolean {
-      return id > 0 && this.data.nsfwAckedIds.includes(id)
+      return id > 0 && (this.data.nsfwAckedIds ?? []).includes(id)
     },
     resetData() {
       this.data = { ...initialState }

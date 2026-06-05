@@ -52,6 +52,10 @@ export const useUserStore = defineStore('user', {
       this.user = {
         ...this.user,
         ...user,
+        // A backend `roles: null` (nil []string) or a stale/legacy cookie must
+        // not poison the store: isAdmin/isModerator call roles.includes() during
+        // SSR. Coerce to an array so we never persist null.
+        roles: user.roles ?? this.user.roles ?? [],
         muted_message_types: this.user.muted_message_types
       }
     },
@@ -75,10 +79,13 @@ export const useUserStore = defineStore('user', {
     //   moyu/kungal admin -> "moderator"
     // The backend's middleware.RequireRole("admin", "moderator") matches the
     // isModerator getter; admin-only gates use isAdmin.
-    isAdmin: (state) => state.user.roles.includes('admin'),
+    // `?? []` guards against a null roles surviving in an old persisted cookie
+    // (pre-fix sessions): without it these getters throw "Cannot read
+    // properties of null (reading 'includes')" during SSR of /patch/* pages.
+    isAdmin: (state) => (state.user.roles ?? []).includes('admin'),
     isModerator: (state) =>
-      state.user.roles.includes('admin') ||
-      state.user.roles.includes('moderator')
+      (state.user.roles ?? []).includes('admin') ||
+      (state.user.roles ?? []).includes('moderator')
   },
   // Cookie-backed persistence is intentional: the cookie is sent on the
   // initial HTML request so the SSR pass already has the logged-in user

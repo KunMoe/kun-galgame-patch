@@ -190,6 +190,14 @@ func (h *AuthHandler) proxyUserOAuth(c *fiber.Ctx, method, path string) error {
 // the local fields -- name/avatar will simply be empty rather than crashing
 // the page.
 func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
+	// Never marshal roles as JSON null. A nil []string serializes to `null`,
+	// which the frontend persists into its cookie-backed user store; then
+	// isAdmin/isModerator run roles.includes(...) during SSR and throw
+	// "Cannot read properties of null (reading 'includes')" → 500s on the
+	// /patch/* pages. An empty slice serializes to [] and is safe.
+	if roles == nil {
+		roles = []string{}
+	}
 	resp := dto.MeResponse{
 		ID:              local.ID,
 		Sub:             sub,
