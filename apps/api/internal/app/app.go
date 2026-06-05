@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	aboutHandler "kun-galgame-patch-api/internal/about/handler"
+	aboutRepository "kun-galgame-patch-api/internal/about/repository"
 	aboutService "kun-galgame-patch-api/internal/about/service"
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
@@ -162,8 +163,10 @@ func New(cfg *config.Config) *App {
 	// Search module (D11: delegate to Galgame Wiki Service)
 	searchHdl := searchPkg.New(db, wiki)
 
-	// About module (static .mdx posts under cfg.About.PostsDir)
-	aboutSvc := aboutService.New(cfg.About.PostsDir)
+	// About module: articles live in the about_post table (migration 014),
+	// seeded from the legacy .mdx files by cmd/migrate-about-posts.
+	aboutRepo := aboutRepository.New(db)
+	aboutSvc := aboutService.New(aboutRepo)
 	aboutHdl := aboutHandler.New(aboutSvc)
 
 	// Cookie mode: use Secure cookies in prod; must be off for HTTP in dev

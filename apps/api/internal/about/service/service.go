@@ -1,22 +1,18 @@
-// Package service is the file-system layer for the /about pages.
-//
-// Posts are static .mdx files. We re-read them from disk on every request —
-// cheap because there are <30 files and Linux page cache makes this a
-// nanosecond-grade operation. If profiling ever shows it being a hot spot we
-// can add a memo with a mtime-keyed invalidation.
+// Package service serves the /about pages from the about_post table
+// (migration 014). Posts used to be on-disk .mdx files re-read per request;
+// cmd/migrate-about-posts seeded them into the DB and the .mdx files remain the
+// editable source. HTML + TOC are rendered from the stored markdown body on
+// read so the output stays in lockstep with the markdown package.
 package service
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"kun-galgame-patch-api/internal/about/model"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
-
-	"gopkg.in/yaml.v3"
 )
 
 // directoryLabels mirrors the legacy aboutDirectoryLabelMap so the sidebar
@@ -29,17 +25,24 @@ var directoryLabels = map[string]string{
 	"notice":  "公告",
 }
 
+// PostStore is the DB dependency, implemented by about/repository.AboutRepository.
+// An interface (not the concrete repo) so the service can be unit-tested with a
+// fake, no DB required.
+type PostStore interface {
+	GetAll() ([]model.AboutPost, error)
+}
+
 // AboutService handles /about endpoints.
 type AboutService struct {
-	postsDir string
+	repo PostStore
 }
 
-// New constructs a service rooted at the given directory.
-func New(postsDir string) *AboutService {
-	return &AboutService{postsDir: postsDir}
+// New constructs a service backed by the given post store.
+func New(repo PostStore) *AboutService {
+	return &AboutService{repo: repo}
 }
 
-// rawPost is the parsed contents of a single .mdx file.
+// rawPost is the in-memory shape the list/tree/detail logic operates on.
 type rawPost struct {
 	slug        string
 	directory   string
@@ -47,62 +50,33 @@ type rawPost struct {
 	body        string
 }
 
-// readAll walks postsDir, parses every .mdx, and returns them sorted by date
-// (newest first), matching the legacy listAllPosts behaviour.
+// readAll loads every post from the DB (already date-sorted newest-first by the
+// repository) and maps it to the in-memory rawPost shape.
 func (s *AboutService) readAll() ([]rawPost, error) {
-	if _, err := os.Stat(s.postsDir); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("posts dir unavailable: %w", err)
-	}
-
-	var posts []rawPost
-	err := filepath.Walk(s.postsDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".mdx") {
-			return nil
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		fm, body, err := parseFrontmatter(data)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-
-		rel, err := filepath.Rel(s.postsDir, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		slug := strings.TrimSuffix(rel, ".mdx")
-		directory := ""
-		if i := strings.IndexByte(slug, '/'); i > 0 {
-			directory = slug[:i]
-		}
-
-		posts = append(posts, rawPost{
-			slug:        slug,
-			directory:   directory,
-			frontmatter: fm,
-			body:        body,
-		})
-		return nil
-	})
+	rows, err := s.repo.GetAll()
 	if err != nil {
 		return nil, err
 	}
-
-	// Newest-first by date string. Frontmatter writes ISO dates, lexical
-	// ordering matches chronological ordering for that format.
-	sort.Slice(posts, func(i, j int) bool {
-		return posts[i].frontmatter.Date > posts[j].frontmatter.Date
-	})
+	posts := make([]rawPost, len(rows))
+	for i := range rows {
+		r := rows[i]
+		posts[i] = rawPost{
+			slug:      r.Slug,
+			directory: r.Directory,
+			frontmatter: model.PostFrontmatter{
+				Title:          r.Title,
+				Banner:         r.Banner,
+				Description:    r.Description,
+				Date:           r.Date,
+				AuthorUID:      r.AuthorUID,
+				AuthorName:     r.AuthorName,
+				AuthorAvatar:   r.AuthorAvatar,
+				AuthorHomepage: r.AuthorHomepage,
+				Pin:            r.Pin,
+			},
+			body: r.Content,
+		}
+	}
 	return posts, nil
 }
 
@@ -134,8 +108,8 @@ func listMetadata(posts []rawPost) []model.PostMetadata {
 // "about" root node containing one child per directory.
 func buildTree(posts []rawPost) model.TreeNode {
 	type bucket struct {
-		dir      string
-		entries  []rawPost
+		dir     string
+		entries []rawPost
 	}
 	order := []string{}
 	groups := map[string]*bucket{}
@@ -207,10 +181,8 @@ func (s *AboutService) GetPost(slug string) (*model.PostDetail, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("slug is required")
 	}
-	// Forbid path traversal — slugs are POSIX paths under postsDir. Return
-	// os.ErrNotExist (not a generic error) so the handler maps it to 404:
-	// the check fires before any file read, so a traversal probe should look
-	// like an ordinary missing article rather than a 500.
+	// A slug containing ".." is never a real post; return os.ErrNotExist (not a
+	// generic error) so the handler maps it to a 404 rather than a 500.
 	if strings.Contains(slug, "..") {
 		return nil, os.ErrNotExist
 	}
@@ -256,30 +228,4 @@ func (s *AboutService) GetPost(slug string) (*model.PostDetail, error) {
 		Prev:        prev,
 		Next:        next,
 	}, nil
-}
-
-// parseFrontmatter splits the YAML block delimited by `---` lines from the
-// body. Returns frontmatter + body, or an error if the block is malformed.
-// An empty/missing frontmatter yields a zero-valued PostFrontmatter.
-func parseFrontmatter(data []byte) (model.PostFrontmatter, string, error) {
-	const delim = "---"
-	src := strings.ReplaceAll(string(data), "\r\n", "\n")
-	if !strings.HasPrefix(src, delim) {
-		return model.PostFrontmatter{}, src, nil
-	}
-	rest := src[len(delim):]
-	rest = strings.TrimLeft(rest, "\n")
-	end := strings.Index(rest, "\n"+delim)
-	if end < 0 {
-		return model.PostFrontmatter{}, "", fmt.Errorf("frontmatter is not terminated")
-	}
-	yamlSrc := rest[:end]
-	body := rest[end+len("\n"+delim):]
-	body = strings.TrimLeft(body, "\n")
-
-	var fm model.PostFrontmatter
-	if err := yaml.Unmarshal([]byte(yamlSrc), &fm); err != nil {
-		return model.PostFrontmatter{}, "", fmt.Errorf("parse frontmatter: %w", err)
-	}
-	return fm, body, nil
 }

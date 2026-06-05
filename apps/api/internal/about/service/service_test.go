@@ -1,33 +1,33 @@
 package service_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
+	"kun-galgame-patch-api/internal/about/model"
 	"kun-galgame-patch-api/internal/about/service"
 )
 
-func writePost(t *testing.T, dir, slug, title, body string) {
-	t.Helper()
-	full := filepath.Join(dir, slug+".mdx")
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	src := "---\ntitle: " + title + "\ndate: 2026-05-01\nbanner: '/b.png'\n" +
-		"description: '描述'\nauthorName: '作者'\nauthorAvatar: 'a.png'\n---\n" +
-		body
-	if err := os.WriteFile(full, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
+// fakeStore implements service.PostStore in-memory so the list/tree/detail
+// logic can be tested without a database.
+type fakeStore struct {
+	posts []model.AboutPost
 }
 
-func TestListAndGetPost(t *testing.T) {
-	dir := t.TempDir()
-	writePost(t, dir, "kun/moe", "关于鲲", "# 章节一\n\n## 子节\n")
-	writePost(t, dir, "dev/api", "开发指南", "## 安装\n\n## 使用\n")
+func (f *fakeStore) GetAll() ([]model.AboutPost, error) { return f.posts, nil }
 
-	svc := service.New(dir)
+func TestListAndGetPost(t *testing.T) {
+	// Returned newest-first (the repository orders by date DESC); give distinct
+	// dates so ordering is deterministic.
+	store := &fakeStore{posts: []model.AboutPost{
+		{Slug: "kun/moe", Directory: "kun", Title: "关于鲲", Date: "2026-05-02",
+			Banner: "/b.png", Description: "描述", AuthorName: "作者", AuthorAvatar: "a.png",
+			Content: "# 章节一\n\n## 子节\n"},
+		{Slug: "dev/api", Directory: "dev", Title: "开发指南", Date: "2026-05-01",
+			Banner: "/b.png", Description: "描述", AuthorName: "作者", AuthorAvatar: "a.png",
+			Content: "## 安装\n\n## 使用\n"},
+	}}
+
+	svc := service.New(store)
 	list, err := svc.List()
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -51,6 +51,13 @@ func TestListAndGetPost(t *testing.T) {
 	}
 	if post.TOC[0].ID != "章节一" || post.TOC[1].ID != "子节" {
 		t.Errorf("TOC ids = %+v", post.TOC)
+	}
+	// kun/moe is newest (index 0) → no "next"; dev/api is older → it is "prev".
+	if post.Prev == nil || post.Prev.Slug != "dev/api" {
+		t.Errorf("prev = %+v", post.Prev)
+	}
+	if post.Next != nil {
+		t.Errorf("expected no next, got %+v", post.Next)
 	}
 
 	if _, err := svc.GetPost("../escape"); err == nil {
