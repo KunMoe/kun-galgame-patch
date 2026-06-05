@@ -87,7 +87,7 @@ export default defineNuxtConfig({
 
   umami: {
     id: process.env.KUN_VISUAL_NOVEL_FORUM_UMAMI_ID,
-    host: 'https://stats.kungal.org/',
+    host: 'https://umami.kungal.org/',
     autoTrack: true
   },
 
@@ -112,8 +112,7 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_KUN_OAUTH_SERVER_URL ||
         'http://127.0.0.1:9277/api/v1',
       oauthWebUrl:
-        process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL ||
-        'http://127.0.0.1:9420',
+        process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL || 'http://127.0.0.1:9420',
       oauthClientId: process.env.NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID || '',
       oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || ''
     }
