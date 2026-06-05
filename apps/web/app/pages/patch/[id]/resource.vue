@@ -215,10 +215,7 @@ const getResourceLink = async (r: PatchResource) => {
 }
 
 const linksOf = (d: ResourceLinkInfo) =>
-  (d.content ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  resolveDownloadLinks(d.storage, d.content)
 
 const storageLabelOf = (d: ResourceLinkInfo) =>
   SUPPORTED_RESOURCE_LINK_MAP[d.storage] ?? d.storage

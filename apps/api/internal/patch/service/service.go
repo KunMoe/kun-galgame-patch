@@ -1050,13 +1050,12 @@ func (s *PatchService) GetResourceDownloadInfo(resourceID int) (*model.PatchReso
 	if err != nil {
 		return nil, fmt.Errorf("resource not found")
 	}
-	// storage="s3" stores the s3_key in Content (CreateResource invariant);
-	// materialize the public download URL at read time so a CDN/domain change
-	// (KUN_VISUAL_NOVEL_S3_STORAGE_URL) takes effect for old rows without DB
-	// backfill. storage="user" rows already carry the raw link list.
-	if r.Storage == "s3" && r.S3Key != "" {
-		r.Content = s.s3.PublicURL(r.S3Key)
-	}
+	// Content is returned as stored: storage="s3" → the bare s3_key (object
+	// path, CreateResource invariant), storage="user" → the raw link list. The
+	// public download URL is assembled on the frontend (resolveDownloadLinks
+	// prepends domain.storage for s3 — same pattern as resolveAvatarUrl with
+	// domain.imageBed), so swapping the download CDN/domain is a single
+	// frontend-config change with no DB backfill.
 	return r, nil
 }
 
