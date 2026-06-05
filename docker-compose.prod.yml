@@ -70,6 +70,9 @@ services:
   # SSR(moyu-web → http://moyu-api:5214)才能解析到。
   moyu-api:
     image: ghcr.io/kunmoe/moyu-api:latest
+    # 每次部署强制重新拉 :latest;否则 Dokploy 的 `docker compose up` 会用本地旧缓存,
+    # 即使 webhook 在构建完成后才触发也照样跑旧镜像。
+    pull_policy: always
     environment: { <<: *moyu-api-env }
     expose: ["5214"]
     # No depends_on: postgres/redis live in the infra app. restart reconnects.
@@ -81,6 +84,7 @@ services:
   # Public config read at RUNTIME (moyu-web is NOT baked at CI) — set below.
   web:
     image: ghcr.io/kunmoe/moyu-web:latest
+    pull_policy: always
     environment:
       NUXT_API_BASE_SSR: http://moyu-api:5214/api/v1           # SSR → 本仓 api 服务名 moyu-api(唯一,避免与 kungal api 冲突)
       NUXT_PUBLIC_API_BASE: https://www.moyu.moe/api/v1         # browser
@@ -101,6 +105,7 @@ services:
   #   docker compose -f docker-compose.prod.yml --profile jobs run --rm migrate [-dir=up -only=001]
   migrate:
     image: ghcr.io/kunmoe/moyu-migrate:latest
+    pull_policy: always
     environment: { <<: *moyu-api-env }
     profiles: ["jobs"]
     restart: "no"
@@ -109,6 +114,7 @@ services:
   #   docker compose -f docker-compose.prod.yml --profile jobs run --rm tools remap-patch-ids
   tools:
     image: ghcr.io/kunmoe/moyu-tools:latest
+    pull_policy: always
     environment: { <<: *moyu-api-env }
     profiles: ["jobs"]
     restart: "no"
