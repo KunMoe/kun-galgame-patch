@@ -48,13 +48,14 @@ x-moyu-api-env: &moyu-api-env
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
   KUN_IMAGE_OAUTH_CLIENT_ID: ${KUN_IMAGE_OAUTH_CLIENT_ID:-}
   KUN_IMAGE_OAUTH_CLIENT_SECRET: ${KUN_IMAGE_OAUTH_CLIENT_SECRET:-}
-  # B2 — patch resource files (NOT image_service). keys 是密钥;空则补丁上传/下载 500(补丁站核心功能,正式上线必填)
+  # B2 — patch resource files (NOT image_service). 补丁下载/上传是补丁站核心功能,
+  # 空 key → 上传/下载链路必坏 → 所以 key fail-fast(不让一个下不了补丁的站上线)。
   KUN_VISUAL_NOVEL_S3_STORAGE_ENDPOINT: https://s3.us-east-005.backblazeb2.com
   KUN_VISUAL_NOVEL_S3_STORAGE_URL: https://oss.moyu.moe
   KUN_VISUAL_NOVEL_S3_STORAGE_REGION: us-east-005
   KUN_VISUAL_NOVEL_S3_STORAGE_BUCKET_NAME: kun-galgame-patch
-  KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID: ${KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID:-}
-  KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY: ${KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY:-}
+  KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID: ${KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID:?B2 access key — 补丁站核心,必填}
+  KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY: ${KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY:?B2 secret — 必填}
   # mail (blank → disabled)
   KUN_VISUAL_NOVEL_EMAIL_HOST: tuesday.mxrouting.net
   KUN_VISUAL_NOVEL_EMAIL_PORT: "587"
@@ -64,13 +65,13 @@ x-moyu-api-env: &moyu-api-env
   KUN_POSTS_DIR: /posts
 
 services:
-  api:
+  # 服务名直接叫 moyu-api(不是 `api` + alias):Dokploy 不应用 compose 的 networks.aliases,
+  # 只把「服务名」注册到 dokploy-network。两仓都叫 `api` 会 DNS 冲突,所以用唯一服务名,
+  # SSR(moyu-web → http://moyu-api:5214)才能解析到。
+  moyu-api:
     image: ghcr.io/kunmoe/moyu-api:latest
     environment: { <<: *moyu-api-env }
     expose: ["5214"]
-    networks:
-      default:
-        aliases: [moyu-api]   # 唯一别名:kungal/moyu 都叫 `api`,共用 dokploy-network 时 bare `api` 会 DNS 冲突
     # No depends_on: postgres/redis live in the infra app. restart reconnects.
     healthcheck:
       test: ["CMD", "/app", "healthcheck"]
@@ -81,7 +82,7 @@ services:
   web:
     image: ghcr.io/kunmoe/moyu-web:latest
     environment:
-      NUXT_API_BASE_SSR: http://moyu-api:5214/api/v1           # SSR → 本仓 api 的唯一别名(避免与 kungal api DNS 冲突)
+      NUXT_API_BASE_SSR: http://moyu-api:5214/api/v1           # SSR → 本仓 api 服务名 moyu-api(唯一,避免与 kungal api 冲突)
       NUXT_PUBLIC_API_BASE: https://www.moyu.moe/api/v1         # browser
       NUXT_PUBLIC_OAUTH_SERVER_URL: https://oauth.kungal.com/api/v1
       NUXT_PUBLIC_OAUTH_WEB_URL: https://oauth.kungal.com
@@ -89,7 +90,7 @@ services:
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
     expose: ["3000"]
     depends_on:
-      api: { condition: service_healthy }
+      moyu-api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       <<: *svc-health

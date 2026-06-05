@@ -23,7 +23,9 @@ x-svc-health: &svc-health
   start_period: 15s
 
 services:
-  api:
+  # 服务名直接叫 moyu-api(与 prod 一致):两仓都叫 `api` 在共享网络会 DNS 冲突,
+  # 用唯一服务名,SSR(moyu-web → http://moyu-api:5214)才能解析到。
+  moyu-api:
     build:
       context: .
       dockerfile: docker/go.Dockerfile
@@ -31,9 +33,6 @@ services:
     image: moyu/api
     env_file: [./docker/api.env]
     ports: ["15010:5214"]
-    networks:
-      default:
-        aliases: [moyu-api]   # 唯一别名:与 kungal 的 api 共用 kun-galgame-infra_default,bare `api` 会 DNS 冲突
     # No depends_on on postgres/redis: they live in the infra compose, not here.
     # `restart: unless-stopped` reconnects once the infra stack is up.
     healthcheck:
@@ -57,7 +56,7 @@ services:
     env_file: [./docker/web.env]
     ports: ["15011:3000"]
     depends_on:
-      api: { condition: service_healthy }
+      moyu-api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       <<: *svc-health
