@@ -509,10 +509,14 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 // `data` = the patch with a nested `resource` array, and the legacy field names
 // (released / hash / patch_id …).
 //
-// Two deliberate departures, both for safety (per the deployment decision):
-//   - NO uploader identity: the legacy `user` object + `user_id` are dropped.
-//   - NO download secrets: `content` / `code` / `password` / `s3_key` are
-//     dropped (legacy already omitted `content`; we also drop code/password).
+// The public `user` object ({id, name, avatar}) is carried on the patch + each
+// resource, exactly as legacy did — partners render the uploader and link to
+// /user/:id, so dropping it crashed their `patch.user.id` access.
+//
+// One deliberate departure, for safety: NO download secrets. `content` / `code`
+// / `password` / `s3_key` are dropped (legacy already omitted `content`; we also
+// drop code/password). The real download stays behind moyu's rate-limited
+// reveal flow.
 //
 // Legacy patch fields that no longer exist locally (name / banner /
 // introduction / engine — now wiki-sourced) are omitted; a partner that queries
@@ -521,6 +525,15 @@ type hikariEnvelope struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
+}
+
+// hikariUser is the public uploader brief — exactly the legacy KunUser shape
+// ({id, name, avatar}). Avatar is the full URL from OAuth (usable directly as an
+// <img src>). Nothing more (no roles / bio / email / uuid) leaves the service.
+type hikariUser struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Avatar string `json:"avatar"`
 }
 
 type hikariResource struct {
@@ -537,8 +550,10 @@ type hikariResource struct {
 	Download   int                  `json:"download"`
 	Status     int                  `json:"status"`
 	UpdateTime time.Time            `json:"update_time"`
+	UserID     int                  `json:"user_id"`
 	PatchID    int                  `json:"patch_id"`
 	Created    time.Time            `json:"created"`
+	User       hikariUser           `json:"user"`
 }
 
 type hikariPatch struct {
@@ -552,8 +567,10 @@ type hikariPatch struct {
 	Type               patchModel.JSONArray `json:"type"`
 	Language           patchModel.JSONArray `json:"language"`
 	Platform           patchModel.JSONArray `json:"platform"`
+	UserID             int                  `json:"user_id"`
 	Created            time.Time            `json:"created"`
 	Updated            time.Time            `json:"updated"`
+	User               hikariUser           `json:"user"`
 	Resource           []hikariResource     `json:"resource"`
 }
 
@@ -588,6 +605,23 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	h.db.Where("galgame_id = ? AND status = 0", patch.ID).Find(&resources)
 
+	// Public uploader briefs (id/name/avatar) for the patch + every resource —
+	// the legacy contract carried these and partners render/link the uploader.
+	// Best-effort: on an OAuth miss the brief is nil and we fall back to just the
+	// id (still the real, non-zero user id) so a partner's `user.id` never breaks.
+	uids := make([]int, 0, len(resources)+1)
+	uids = append(uids, patch.UserID)
+	for i := range resources {
+		uids = append(uids, resources[i].UserID)
+	}
+	briefs := userclient.BriefMapByInt(c.Context(), h.users, uids)
+	toUser := func(uid int) hikariUser {
+		if b := briefs[uid]; b != nil {
+			return hikariUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+		}
+		return hikariUser{ID: uid}
+	}
+
 	out := make([]hikariResource, 0, len(resources))
 	for i := range resources {
 		r := &resources[i]
@@ -605,8 +639,10 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 			Download:   r.Download,
 			Status:     r.Status,
 			UpdateTime: r.UpdateTime,
+			UserID:     r.UserID,
 			PatchID:    r.GalgameID,
 			Created:    r.Created,
+			User:       toUser(r.UserID),
 		})
 	}
 
@@ -629,8 +665,10 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 			Type:               patch.Type,
 			Language:           patch.Language,
 			Platform:           patch.Platform,
+			UserID:             patch.UserID,
 			Created:            patch.Created,
 			Updated:            patch.Updated,
+			User:               toUser(patch.UserID),
 			Resource:           out,
 		},
 	})

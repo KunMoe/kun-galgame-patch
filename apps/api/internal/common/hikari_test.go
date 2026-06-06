@@ -53,6 +53,7 @@ func TestGetHikariIntegration(t *testing.T) {
 		Language:    patchModel.JSONArray{"zh-Hans"},
 		Platform:    patchModel.JSONArray{"windows"},
 		ReleaseDate: &released,
+		UserID:      3,
 	}
 	if err := db.Create(&patch).Error; err != nil {
 		t.Fatalf("seed patch: %v", err)
@@ -130,6 +131,8 @@ func TestGetHikariIntegration(t *testing.T) {
 				VndbID   string           `json:"vndb_id"`
 				Released string           `json:"released"`
 				Status   int              `json:"status"`
+				UserID   int              `json:"user_id"`
+				User     map[string]any   `json:"user"`
 				Resource []map[string]any `json:"resource"`
 			} `json:"data"`
 		}
@@ -152,8 +155,8 @@ func TestGetHikariIntegration(t *testing.T) {
 		if r["hash"] != "abc123hashvalue" || r["patch_id"] == nil || r["update_time"] == nil {
 			t.Errorf("legacy field names missing/renamed: %v", r)
 		}
-		// The standing security directive: identity + download secrets must be gone.
-		for _, leaked := range []string{"code", "password", "s3_key", "content", "user", "user_id"} {
+		// Download secrets must still be gone — the one deliberate departure.
+		for _, leaked := range []string{"code", "password", "s3_key", "content"} {
 			if _, ok := r[leaked]; ok {
 				t.Errorf("LEAK: resource exposes %q", leaked)
 			}
@@ -162,6 +165,19 @@ func TestGetHikariIntegration(t *testing.T) {
 			if strings.Contains(body, leaked) {
 				t.Errorf("LEAK: body contains secret %q", leaked)
 			}
+		}
+		// The public uploader object IS restored (legacy KunUser shape) — this is
+		// what partners read as `patch.user.id` / `resource.user.id`. The resource
+		// was seeded with UserID 7, the patch with UserID 3. (name/avatar come from
+		// OAuth and are empty here since the users client is nil — verified live.)
+		if got := r["user_id"]; got != float64(7) {
+			t.Errorf("resource user_id: want 7, got %v", got)
+		}
+		if ru, ok := r["user"].(map[string]any); !ok || ru["id"] != float64(7) {
+			t.Errorf("resource.user missing/wrong: %v", r["user"])
+		}
+		if env.Data.UserID != 3 || env.Data.User == nil || env.Data.User["id"] != float64(3) {
+			t.Errorf("patch user_id/user wrong: user_id=%d user=%v", env.Data.UserID, env.Data.User)
 		}
 	})
 
