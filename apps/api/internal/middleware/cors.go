@@ -39,6 +39,7 @@ var hikariOriginPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^https://([\w-]+\.)*shionlib\.com$`),
 	regexp.MustCompile(`^https://([\w-]+\.)*touchgal\.us$`),
 	regexp.MustCompile(`^https://([\w-]+\.)*touchgal\.top$`),
+	regexp.MustCompile(`^https://([\w-]+\.)*touchgal\.ink$`),
 	regexp.MustCompile(`^https://([\w-]+\.)*nyne\.dev$`),
 	regexp.MustCompile(`^https://([\w-]+\.)*kungal\.com$`),
 	regexp.MustCompile(`^https://([\w-]+\.)*kungal\.org$`),

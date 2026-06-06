@@ -504,46 +504,69 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 
 // ===== Hikari External API =====
 
-// hikariPatch / hikariResource are the curated, public-safe shapes returned by
-// the external Hikari API. They deliberately OMIT uploader identity (user /
-// user_id) and every download secret (content / code / password / s3_key) — the
-// actual download stays behind moyu's rate-limited /resource/:id/link flow.
-// Partners get enough metadata to display the patch and link users back.
-type hikariPatch struct {
-	ID                 int                  `json:"id"`
-	VndbID             string               `json:"vndb_id"`
-	Type               patchModel.JSONArray `json:"type"`
-	Language           patchModel.JSONArray `json:"language"`
-	Platform           patchModel.JSONArray `json:"platform"`
-	View               int                  `json:"view"`
-	Download           int                  `json:"download"`
-	ResourceCount      int                  `json:"resource_count"`
-	ResourceUpdateTime time.Time            `json:"resource_update_time"`
-	ReleaseDate        *time.Time           `json:"release_date"`
-	Created            time.Time            `json:"created"`
+// The Hikari shapes mirror the LEGACY next-api/hikari contract so existing
+// partner integrations keep working: the `{success, message, data}` envelope,
+// `data` = the patch with a nested `resource` array, and the legacy field names
+// (released / hash / patch_id …).
+//
+// Two deliberate departures, both for safety (per the deployment decision):
+//   - NO uploader identity: the legacy `user` object + `user_id` are dropped.
+//   - NO download secrets: `content` / `code` / `password` / `s3_key` are
+//     dropped (legacy already omitted `content`; we also drop code/password).
+//
+// Legacy patch fields that no longer exist locally (name / banner /
+// introduction / engine — now wiki-sourced) are omitted; a partner that queries
+// by vndb_id already holds those from VNDB.
+type hikariEnvelope struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
 type hikariResource struct {
-	ID                    int                  `json:"id"`
-	Name                  string               `json:"name"`
-	ModelName             string               `json:"model_name"`
-	LocalizationGroupName string               `json:"localization_group_name"`
-	Size                  string               `json:"size"`
-	Storage               string               `json:"storage"`
-	Type                  patchModel.JSONArray `json:"type"`
-	Language              patchModel.JSONArray `json:"language"`
-	Platform              patchModel.JSONArray `json:"platform"`
-	Blake3                string               `json:"blake3"`
-	NoteHTML              string               `json:"note_html"`
-	Download              int                  `json:"download"`
-	Created               time.Time            `json:"created"`
+	ID         int                  `json:"id"`
+	Storage    string               `json:"storage"`
+	Name       string               `json:"name"`
+	ModelName  string               `json:"model_name"`
+	Size       string               `json:"size"`
+	Note       string               `json:"note"`
+	Hash       string               `json:"hash"`
+	Type       patchModel.JSONArray `json:"type"`
+	Language   patchModel.JSONArray `json:"language"`
+	Platform   patchModel.JSONArray `json:"platform"`
+	Download   int                  `json:"download"`
+	Status     int                  `json:"status"`
+	UpdateTime time.Time            `json:"update_time"`
+	PatchID    int                  `json:"patch_id"`
+	Created    time.Time            `json:"created"`
+}
+
+type hikariPatch struct {
+	ID                 int                  `json:"id"`
+	VndbID             string               `json:"vndb_id"`
+	Released           string               `json:"released"`
+	Status             int                  `json:"status"`
+	Download           int                  `json:"download"`
+	View               int                  `json:"view"`
+	ResourceUpdateTime time.Time            `json:"resource_update_time"`
+	Type               patchModel.JSONArray `json:"type"`
+	Language           patchModel.JSONArray `json:"language"`
+	Platform           patchModel.JSONArray `json:"platform"`
+	Created            time.Time            `json:"created"`
+	Updated            time.Time            `json:"updated"`
+	Resource           []hikariResource     `json:"resource"`
+}
+
+// hikariFail writes the legacy error envelope ({success:false, data:null}).
+func hikariFail(c *fiber.Ctx, status int, message string) error {
+	return c.Status(status).JSON(hikariEnvelope{Success: false, Message: message, Data: nil})
 }
 
 // GetHikari GET /api/hikari?vndb_id=...
 //
 // Public partner API — CORS allowlist + rate limit are applied at the route
-// (see router.go). Returns curated metadata ONLY (see hikariPatch /
-// hikariResource for what's withheld: uploader identity + download secrets).
+// (see router.go). Response mirrors the legacy contract (see the type comments
+// above) MINUS uploader identity + download secrets.
 //
 // NSFW: same gate as the detail endpoints — content_limit query (default sfw)
 // is forwarded to wiki; a NSFW patch returns 404 to anonymous callers so this
@@ -551,12 +574,12 @@ type hikariResource struct {
 func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
-		return response.Error(c, errors.ErrBadRequest("vndb_id is required"))
+		return hikariFail(c, fiber.StatusBadRequest, "Missing required parameter: vndb_id")
 	}
 
 	var patch patchModel.Patch
 	if err := h.db.Where("vndb_id = ?", vndbID).First(&patch).Error; err != nil {
-		return response.Error(c, errors.ErrNotFound("patch not found"))
+		return hikariFail(c, fiber.StatusNotFound, "No patch found for VNDB ID: "+vndbID)
 	}
 
 	// Verify the patch passes the caller's content_limit before exposing it or
@@ -564,7 +587,7 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	if cl := utils.ContentLimitForListBrowse(c); cl != "" {
 		briefs, bErr := h.wiki.GalgameBatch(c.Context(), []int{patch.ID}, cl)
 		if bErr != nil || len(briefs) == 0 {
-			return response.Error(c, errors.ErrNotFound("patch not found"))
+			return hikariFail(c, fiber.StatusNotFound, "No patch found for VNDB ID: "+vndbID)
 		}
 	}
 
@@ -576,37 +599,47 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	for i := range resources {
 		r := &resources[i]
 		out = append(out, hikariResource{
-			ID:                    r.ID,
-			Name:                  r.Name,
-			ModelName:             r.ModelName,
-			LocalizationGroupName: r.LocalizationGroupName,
-			Size:                  r.Size,
-			Storage:               r.Storage,
-			Type:                  r.Type,
-			Language:              r.Language,
-			Platform:              r.Platform,
-			Blake3:                r.Blake3,
-			NoteHTML:              markdown.MustRender(r.Note),
-			Download:              r.Download,
-			Created:               r.Created,
+			ID:         r.ID,
+			Storage:    r.Storage,
+			Name:       r.Name,
+			ModelName:  r.ModelName,
+			Size:       r.Size,
+			Note:       r.Note,
+			Hash:       r.Blake3,
+			Type:       r.Type,
+			Language:   r.Language,
+			Platform:   r.Platform,
+			Download:   r.Download,
+			Status:     r.Status,
+			UpdateTime: r.UpdateTime,
+			PatchID:    r.GalgameID,
+			Created:    r.Created,
 		})
 	}
 
-	return response.OK(c, fiber.Map{
-		"patch": hikariPatch{
+	released := ""
+	if patch.ReleaseDate != nil {
+		released = patch.ReleaseDate.Format("2006-01-02")
+	}
+
+	return c.JSON(hikariEnvelope{
+		Success: true,
+		Message: "Patch found successfully",
+		Data: hikariPatch{
 			ID:                 patch.ID,
 			VndbID:             patch.VndbID,
+			Released:           released,
+			Status:             patch.Status,
+			Download:           patch.Download,
+			View:               patch.View,
+			ResourceUpdateTime: patch.ResourceUpdateTime,
 			Type:               patch.Type,
 			Language:           patch.Language,
 			Platform:           patch.Platform,
-			View:               patch.View,
-			Download:           patch.Download,
-			ResourceCount:      patch.ResourceCount,
-			ResourceUpdateTime: patch.ResourceUpdateTime,
-			ReleaseDate:        patch.ReleaseDate,
 			Created:            patch.Created,
+			Updated:            patch.Updated,
+			Resource:           out,
 		},
-		"resources": out,
 	})
 }
 

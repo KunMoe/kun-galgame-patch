@@ -16,6 +16,7 @@ func TestHikariOriginAllowed(t *testing.T) {
 		"https://cdn.shionlib.com",
 		"https://touchgal.us",
 		"https://touchgal.top",
+		"https://touchgal.ink",
 		"https://nyne.dev",
 		"https://kungal.com",
 		"https://kungal.org",
