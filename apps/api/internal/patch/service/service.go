@@ -1162,10 +1162,22 @@ func (s *PatchService) ToggleResourceFavorite(resourceID, userID int) (bool, err
 	}
 	existing, err := s.repo.FindResourceFavorite(userID, resourceID)
 	if err == nil {
-		s.repo.DeleteResourceFavorite(existing.ID)
+		if delErr := s.repo.DeleteResourceFavorite(existing.ID); delErr != nil {
+			return false, delErr
+		}
 		return false, nil
 	}
-	s.repo.CreateResourceFavorite(&model.UserPatchResourceFavoriteRelation{UserID: userID, ResourceID: resourceID})
+	// Only a genuine "no row yet" means we should create. ANY other error (e.g.
+	// the relation table is missing because migration 017 hasn't run, or a
+	// transport failure) MUST surface — otherwise the create silently fails and
+	// we report a fake "已收藏" that never persists and can never be undone
+	// (the un-favorite branch never matches because the row was never written).
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+	if err := s.repo.CreateResourceFavorite(&model.UserPatchResourceFavoriteRelation{UserID: userID, ResourceID: resourceID}); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -1184,7 +1196,9 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 
 	existing, err := s.repo.FindFavorite(userID, patchID)
 	if err == nil {
-		s.repo.DeleteFavorite(existing.ID)
+		if delErr := s.repo.DeleteFavorite(existing.ID); delErr != nil {
+			return false, delErr
+		}
 		s.repo.UpdateCount(patchID, "favorite_count", -1)
 		if patch.UserID != userID {
 			go s.mp.Award(context.Background(), patch.UserID, -1, "liked",
@@ -1192,9 +1206,15 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 		}
 		return false, nil
 	}
+	// A real DB error (not just "no row") must surface — don't fake success.
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
 
 	rel := &model.UserPatchFavoriteRelation{UserID: userID, GalgameID: patchID}
-	s.repo.CreateFavorite(rel)
+	if err := s.repo.CreateFavorite(rel); err != nil {
+		return false, err
+	}
 	s.repo.UpdateCount(patchID, "favorite_count", 1)
 	if patch.UserID != userID {
 		go s.mp.Award(context.Background(), patch.UserID, 1, "liked",

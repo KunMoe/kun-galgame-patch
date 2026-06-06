@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"io"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -648,8 +649,10 @@ func (h *PatchHandler) ToggleResourceFavorite(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	favorited, err := h.service.ToggleResourceFavorite(resourceID, user.ID)
 	if err != nil {
-		// Only "resource not found" → 404, not 400 (mirrors ToggleResourceLike).
-		return response.Error(c, errors.ErrNotFound(err.Error()))
+		// Generic message — never leak the raw DB error (e.g. a missing-table
+		// "relation does not exist" when migration 017 hasn't run) to the client.
+		slog.Error("ToggleResourceFavorite failed", "resourceID", resourceID, "error", err)
+		return response.Error(c, errors.ErrInternal("收藏失败，请稍后重试"))
 	}
 
 	return response.OK(c, map[string]bool{"favorited": favorited})
@@ -667,8 +670,9 @@ func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	favorited, err := h.service.ToggleFavorite(id, user.ID)
 	if err != nil {
-		// Only "patch not found" → 404, not 400 (audit F034).
-		return response.Error(c, errors.ErrNotFound(err.Error()))
+		// Generic message — don't leak the raw DB error to the client.
+		slog.Error("ToggleFavorite failed", "patchID", id, "error", err)
+		return response.Error(c, errors.ErrInternal("收藏失败，请稍后重试"))
 	}
 
 	return response.OK(c, map[string]bool{"favorited": favorited})

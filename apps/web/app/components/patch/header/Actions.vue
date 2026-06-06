@@ -132,18 +132,18 @@ const confirmDelete = async () => {
       >
       <KunTooltip :text="favorite ? '取消收藏游戏' : '收藏游戏'">
         <KunButton
-          variant="light"
+          :variant="favorite ? 'flat' : 'light'"
           :color="favorite ? 'warning' : 'default'"
           size="sm"
           is-icon-only
           :loading="favoriteLoading"
           :disabled="favoriteLoading"
-          aria-label="收藏游戏"
+          :aria-label="favorite ? '取消收藏游戏' : '收藏游戏'"
           @click="toggleFavorite"
         >
           <KunIcon
             name="lucide:star"
-            :class="cn('size-4', favorite && 'fill-warning text-warning')"
+            :class="cn('size-4', favorite && 'fill-current')"
           />
         </KunButton>
       </KunTooltip>
