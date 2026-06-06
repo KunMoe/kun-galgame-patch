@@ -1,25 +1,21 @@
 <script setup lang="ts">
+// Patch comment tab. Single-tier threaded model (matches kungal /galgame/:id):
+// root comments each carry their replies (one indent), with the first few shown
+// inline and the rest behind a ThreadDrawer. This page owns the comments array;
+// the Item/Thread components call the APIs and emit results, which the handlers
+// below apply optimistically (no refetch, no loading flash).
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
 
-// Comment / reply bodies render via <KunContent>, which handles sanitize +
-// spoiler + per-block inline-image lightbox internally. Each <KunContent>
-// in the v-for is its own component instance with its own lightbox, so
-// images are scoped to that comment and newly-posted / paginated comments
-// get clickable images for free (delegated click + live img scan).
-
 const galgameId = computed(() => Number(route.params.id))
 
-// /patch/:id/comment requires page+limit and returns the standard paginated
-// envelope { items, total } (apps/api/internal/patch/dto/dto.go
-// GetPatchCommentRequest marks both as required).
 interface CommentListResponse {
   items: PatchPageComment[]
   total: number
 }
 
-const { data, pending, refresh } = await useAsyncData<CommentListResponse>(
+const { data, pending } = await useAsyncData<CommentListResponse>(
   () => `patch-comments-${galgameId.value}`,
   async () => {
     const res = await api.get<CommentListResponse>(
@@ -32,10 +28,11 @@ const { data, pending, refresh } = await useAsyncData<CommentListResponse>(
 
 const comments = computed(() => data.value?.items ?? [])
 
+// ─── new top-level comment composer ───────────────────
 const content = ref('')
 const submitting = ref(false)
-// KunMilkdownDualEditorProvider is uncontrolled (valueMarkdown is the initial
-// value only), so bump this key to remount it empty after a successful post.
+// KunMilkdownDualEditorProvider is uncontrolled; bump the key to remount it
+// empty after a successful post.
 const composerKey = ref(0)
 
 const submit = async () => {
@@ -56,14 +53,13 @@ const submit = async () => {
     if (res.code === 0) {
       content.value = ''
       composerKey.value++
-      // When 评论审核 is on the comment is created pending (status=1) and is
-      // NOT yet visible — tell the user instead of refreshing (nothing new to
-      // show). Otherwise it's live: refresh to display it.
       if (res.data?.status === 1) {
         useKunMessage('评论已提交，等待管理员审核通过后显示', 'info')
-      } else {
+      } else if (data.value) {
+        res.data.reply = res.data.reply ?? []
+        data.value.items.unshift(res.data)
+        data.value.total++
         useKunMessage('评论发布成功', 'success')
-        await refresh()
       }
     } else {
       useKunMessage(res.message || '发布失败', 'error')
@@ -73,29 +69,66 @@ const submit = async () => {
   }
 }
 
-const renderComment = (c: PatchPageComment): PatchPageComment => c
+// ─── optimistic mutation handlers (this page owns the array) ───
+const findComment = (id: number): PatchPageComment | undefined => {
+  for (const c of comments.value) {
+    if (c.id === id) return c
+    const r = c.reply?.find((x) => x.id === id)
+    if (r) return r
+  }
+  return undefined
+}
 
-// Optimistic toggle for the heart on each comment / reply.
-//
-// Backend returns { liked: boolean }; we apply it to the local row plus
-// adjust the displayed like_count by the resulting delta. On error we leave
-// state untouched so the next refresh reconciles.
-const toggleLike = async (c: PatchPageComment) => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再点赞', 'warn')
+const onLiked = (id: number, liked: boolean) => {
+  const c = findComment(id)
+  if (!c || c.is_liked === liked) return
+  c.like_count = Math.max(0, c.like_count + (liked ? 1 : -1))
+  c.is_liked = liked
+}
+
+const onReplyAdded = (reply: PatchPageComment) => {
+  if (!data.value) return
+  // A reply always attaches to a ROOT (parent_id = root id) — one tier.
+  const root = data.value.items.find((c) => c.id === reply.parent_id)
+  if (!root) return
+  reply.reply = reply.reply ?? []
+  if (!root.reply) root.reply = []
+  root.reply.push(reply)
+  data.value.total++
+}
+
+const onEdited = (updated: PatchPageComment) => {
+  const c = findComment(updated.id)
+  if (!c) return
+  c.content = updated.content
+  c.content_html = updated.content_html
+  c.edit = updated.edit
+}
+
+const onRemoved = (id: number) => {
+  if (!data.value) return
+  const rootIdx = data.value.items.findIndex((c) => c.id === id)
+  if (rootIdx >= 0) {
+    const removed = 1 + (data.value.items[rootIdx]?.reply?.length ?? 0)
+    data.value.items.splice(rootIdx, 1)
+    data.value.total = Math.max(0, data.value.total - removed)
+    if (drawerRoot.value?.id === id) drawerRoot.value = null
     return
   }
-  const res = await api.put<{ liked: boolean }>(
-    `/patch/comment/${c.id}/like`
-  )
-  if (res.code === 0) {
-    const liked = res.data.liked
-    const delta = liked === c.is_liked ? 0 : liked ? 1 : -1
-    c.is_liked = liked
-    c.like_count = Math.max(0, c.like_count + delta)
-  } else {
-    useKunMessage(res.message || '操作失败', 'error')
+  for (const c of data.value.items) {
+    const i = c.reply?.findIndex((x) => x.id === id) ?? -1
+    if (i >= 0) {
+      c.reply.splice(i, 1)
+      data.value.total = Math.max(0, data.value.total - 1)
+      return
+    }
   }
+}
+
+// ─── drawer (full thread) ─────────────────────────────
+const drawerRoot = ref<PatchPageComment | null>(null)
+const openThread = (rootId: number) => {
+  drawerRoot.value = data.value?.items.find((c) => c.id === rootId) ?? null
 }
 </script>
 
@@ -143,77 +176,30 @@ const toggleLike = async (c: PatchPageComment) => {
     </div>
 
     <KunLoading v-if="pending" description="加载评论中..." />
-    <div v-else-if="comments && comments.length" class="space-y-4">
-      <div
+    <div v-else-if="comments.length" class="space-y-4">
+      <CommentThread
         v-for="c in comments"
         :key="c.id"
-        class="border-default/20 bg-background hover:border-primary/30 rounded-2xl border p-5 transition-colors"
-      >
-        <div class="flex items-start gap-3">
-          <KunAvatar :user="c.user" size="sm" />
-          <div class="min-w-0 flex-1 space-y-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold">{{ c.user.name }}</span>
-              <span class="text-default-400 text-xs">
-                {{ formatDate(c.created, { isPrecise: true, isShowYear: true }) }}
-              </span>
-            </div>
-            <KunContent :content="c.content_html" class-name="text-sm" />
-            <KunButton
-              :variant="c.is_liked ? 'flat' : 'light'"
-              color="danger"
-              size="xs"
-              rounded="full"
-              :aria-label="c.is_liked ? '取消点赞' : '点赞'"
-              @click="toggleLike(c)"
-            >
-              <KunIcon
-                name="lucide:thumbs-up"
-                :class="cn('size-3.5', c.is_liked && 'fill-current')"
-              />
-              {{ c.like_count }}
-            </KunButton>
-
-            <div
-              v-if="c.reply?.length"
-              class="border-default/20 mt-3 space-y-3 border-l-2 pl-4"
-            >
-              <div
-                v-for="r in c.reply"
-                :key="r.id"
-                class="bg-default-50 rounded-xl p-3 text-sm"
-              >
-                <div class="flex items-center gap-2">
-                  <KunAvatar :user="r.user" size="xs" />
-                  <span class="font-semibold">{{ r.user.name }}</span>
-                  <span class="text-default-400 text-xs">
-                    {{
-                      formatDate(r.created, { isPrecise: true, isShowYear: true })
-                    }}
-                  </span>
-                </div>
-                <KunContent :content="r.content_html" class-name="mt-1.5" />
-                <KunButton
-                  :variant="r.is_liked ? 'flat' : 'light'"
-                  color="danger"
-                  size="xs"
-                  rounded="full"
-                  class-name="mt-1.5"
-                  :aria-label="r.is_liked ? '取消点赞' : '点赞'"
-                  @click="toggleLike(r)"
-                >
-                  <KunIcon
-                    name="lucide:thumbs-up"
-                    :class="cn('size-3.5', r.is_liked && 'fill-current')"
-                  />
-                  {{ r.like_count }}
-                </KunButton>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        :root="c"
+        :galgame-id="galgameId"
+        :can-moderate="userStore.isModerator"
+        @liked="onLiked"
+        @reply-added="onReplyAdded"
+        @edited="onEdited"
+        @removed="onRemoved"
+        @open-thread="openThread"
+      />
     </div>
     <KunNull v-else description="暂无评论, 快来抢沙发吧~" />
+
+    <CommentThreadDrawer
+      v-model:root="drawerRoot"
+      :galgame-id="galgameId"
+      :can-moderate="userStore.isModerator"
+      @liked="onLiked"
+      @reply-added="onReplyAdded"
+      @edited="onEdited"
+      @removed="onRemoved"
+    />
   </div>
 </template>

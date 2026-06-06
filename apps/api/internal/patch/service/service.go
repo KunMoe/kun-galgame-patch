@@ -584,17 +584,23 @@ func (s *PatchService) ApproveComment(commentID int) (*model.PatchComment, error
 	return comment, nil
 }
 
-func (s *PatchService) UpdateComment(commentID, userID int, content string) error {
+func (s *PatchService) UpdateComment(commentID, userID int, content string) (*model.PatchComment, error) {
 	comment, err := s.repo.GetCommentByID(commentID)
 	if err != nil {
-		return fmt.Errorf("comment not found")
+		return nil, fmt.Errorf("comment not found")
 	}
 	if comment.UserID != userID {
-		return fmt.Errorf("can only edit your own comments")
+		return nil, fmt.Errorf("can only edit your own comments")
 	}
 	comment.Content = content
 	comment.Edit = time.Now().Format(time.RFC3339)
-	return s.repo.UpdateComment(comment)
+	if err := s.repo.UpdateComment(comment); err != nil {
+		return nil, err
+	}
+	// Render content_html so the frontend can apply the edit optimistically,
+	// mirroring CreateComment (which also returns the rendered comment).
+	comment.ContentHTML = markdown.MustRender(comment.Content)
+	return comment, nil
 }
 
 func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool) error {

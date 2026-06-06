@@ -349,11 +349,12 @@ func (h *PatchHandler) UpdateComment(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.UpdateComment(commentID, user.ID, req.Content); err != nil {
+	comment, err := h.service.UpdateComment(commentID, user.ID, req.Content)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	return response.OKMessage(c, "Comment updated")
+	return response.OK(c, comment)
 }
 
 // DeleteComment DELETE /api/patch/comment/:commentId

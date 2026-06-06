@@ -39,6 +39,10 @@ interface PatchPageComment {
   galgame_id: number
   created: string
   updated: string
+  // Set (RFC3339) when the comment has been edited; empty/absent otherwise.
+  // Drives the "(已编辑)" indicator — `updated` is unreliable for that since it
+  // also bumps on likes.
+  edit?: string
   reply: PatchPageComment[]
   user: KunUser
   quoted_content?: string | null
