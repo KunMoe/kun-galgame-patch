@@ -47,7 +47,7 @@
     "isomorphic-dompurify": "^3.3.0",
     "katex": "^0.16.27",
     "localforage": "^1.10.0",
-    "nuxt": "^4.3.1",
+    "nuxt": "^4.4.7",
     "nuxt-schema-org": "^5.0.10",
     "pinia": "^3.0.4",
     "postcss": "^8.5.8",
