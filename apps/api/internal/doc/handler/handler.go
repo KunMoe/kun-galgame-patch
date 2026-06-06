@@ -43,6 +43,16 @@ func (h *DocHandler) ListPosts(c *fiber.Ctx) error {
 	return response.OK(c, out)
 }
 
+// ListPinnedPosts GET /doc/pinned — pinned published docs for the home
+// carousel, newest first by display date.
+func (h *DocHandler) ListPinnedPosts(c *fiber.Ctx) error {
+	items, err := h.svc.ListPinned()
+	if err != nil {
+		return response.Error(c, apperrors.ErrInternal(""))
+	}
+	return response.OK(c, items)
+}
+
 // GetPost GET /doc/post?slug=<category>/<name> — published only.
 func (h *DocHandler) GetPost(c *fiber.Ctx) error {
 	slug := c.Query("slug")

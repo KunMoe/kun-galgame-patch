@@ -396,6 +396,7 @@ func (a *App) RegisterRoutes() {
 	// list + category tree; detail renders markdown and derives the
 	// image_service banner URL. View counter is anonymous.
 	api.Get("/doc/posts", a.DocHandler.ListPosts)
+	api.Get("/doc/pinned", a.DocHandler.ListPinnedPosts)
 	api.Get("/doc/post", a.DocHandler.GetPost)
 	api.Put("/doc/view", a.DocHandler.IncrementView)
 }

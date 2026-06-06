@@ -17,9 +17,13 @@ const post = computed(() => props.posts[props.currentSlide])
          carousel's h-full chain (parent h-[300px] / md:h-full → this h-full)
          can actually take effect. Without it the wrapper is inline-block
          0×0 pre-load and the whole carousel column collapses. -->
+    <!-- provider="none": banners are already-optimized URLs (image_service CDN
+         webp, or a static /posts/*.avif fallback) — skip the IPX round-trip,
+         which would also reject the external CDN host (not in image.domains). -->
     <KunImage
       :src="post.banner"
       :alt="post.title"
+      provider="none"
       class-name="block h-full w-full rounded-2xl"
       image-class-name="brightness-75"
     />

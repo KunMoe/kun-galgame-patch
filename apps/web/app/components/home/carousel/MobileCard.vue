@@ -17,10 +17,12 @@ const post = computed(() => props.posts[props.currentSlide])
     class="h-full border-none bg-transparent shadow-none sm:hidden"
   >
     <div class="relative h-1/2">
-      <!-- See DesktopCard.vue: `block` overrides inline-block so h-full works. -->
+      <!-- See DesktopCard.vue: `block` overrides inline-block so h-full works;
+           provider="none" passes the already-optimized banner URL through. -->
       <KunImage
         :src="post.banner"
         :alt="post.title"
+        provider="none"
         class-name="block h-full w-full rounded-2xl"
       />
     </div>

@@ -86,6 +86,20 @@ type PostsResponse struct {
 	Tree  TreeNode       `json:"tree"`
 }
 
+// CarouselItem is a pinned, published doc surfaced on the home carousel.
+// Banner is the effective (image_service hash → CDN, else static) URL; Slug
+// drives the /doc/<slug> link. Author fields feed the carousel card byline.
+type CarouselItem struct {
+	Title        string `json:"title"`
+	Banner       string `json:"banner"`
+	Description  string `json:"description"`
+	Date         string `json:"date"`
+	Slug         string `json:"slug"`
+	Category     string `json:"category"`
+	AuthorName   string `json:"author_name"`
+	AuthorAvatar string `json:"author_avatar"`
+}
+
 // PostDetail is GET /doc/post?slug=... (about-compatible).
 type PostDetail struct {
 	Slug        string             `json:"slug"`

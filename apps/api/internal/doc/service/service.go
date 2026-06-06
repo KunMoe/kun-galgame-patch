@@ -68,6 +68,54 @@ func (s *DocService) List() (*model.PostsResponse, error) {
 	}, nil
 }
 
+// ListPinned returns the pinned, published docs for the home carousel, newest
+// first by the displayed `date`. We parse the date string for ordering rather
+// than trusting created_at: the /about→/doc migration stamped every row with a
+// near-identical created_at, so created_at order would be meaningless.
+func (s *DocService) ListPinned() ([]model.CarouselItem, error) {
+	docs, err := s.repo.GetAll(true)
+	if err != nil {
+		return nil, err
+	}
+	pinned := make([]model.Doc, 0)
+	for _, d := range docs {
+		if d.Pin {
+			pinned = append(pinned, d)
+		}
+	}
+	sort.SliceStable(pinned, func(i, j int) bool {
+		return parseDocDate(pinned[i].Date).After(parseDocDate(pinned[j].Date))
+	})
+	items := make([]model.CarouselItem, 0, len(pinned))
+	for _, d := range pinned {
+		items = append(items, model.CarouselItem{
+			Title:        d.Title,
+			Banner:       s.effectiveBanner(d),
+			Description:  d.Description,
+			Date:         d.Date,
+			Slug:         d.Slug,
+			Category:     d.Category,
+			AuthorName:   d.AuthorName,
+			AuthorAvatar: d.AuthorAvatar,
+		})
+	}
+	return items, nil
+}
+
+// parseDocDate tolerantly parses a doc's display date (e.g. "2025-6-18").
+// Unparseable values return the zero time so they sort last.
+func parseDocDate(s string) time.Time {
+	s = strings.TrimSpace(s)
+	for _, layout := range []string{
+		"2006-1-2", "2006-01-02", "2006/1/2", "2006/01/02", time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
 func (s *DocService) listMetadata(docs []model.Doc) []model.PostMetadata {
 	items := make([]model.PostMetadata, len(docs))
 	for i, d := range docs {
