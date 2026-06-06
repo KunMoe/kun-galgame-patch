@@ -634,6 +634,27 @@ func (h *PatchHandler) ToggleResourceLike(c *fiber.Ctx) error {
 	return response.OK(c, map[string]bool{"liked": liked})
 }
 
+// ToggleResourceFavorite PUT /api/patch/resource/:resourceId/favorite
+//
+// Per-resource SUBSCRIPTION — distinct from the resource LIKE (appreciation) and
+// the galgame FAVORITE (notified on new resources). A subscriber gets a
+// patchResourceUpdate notification when this resource's file/link changes.
+func (h *PatchHandler) ToggleResourceFavorite(c *fiber.Ctx) error {
+	resourceID, err := getIDParam(c, "resourceId")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+
+	user := middleware.MustGetUser(c)
+	favorited, err := h.service.ToggleResourceFavorite(resourceID, user.ID)
+	if err != nil {
+		// Only "resource not found" → 404, not 400 (mirrors ToggleResourceLike).
+		return response.Error(c, errors.ErrNotFound(err.Error()))
+	}
+
+	return response.OK(c, map[string]bool{"favorited": favorited})
+}
+
 // ===== Favorites =====
 
 // ToggleFavorite PUT /api/patch/:id/favorite

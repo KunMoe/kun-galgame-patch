@@ -489,6 +489,13 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 			Where("user_id = ? AND galgame_id = ?", u.ID, resource.GalgameID).
 			Count(&favCount)
 		patchFavorited = favCount > 0
+
+		// Per-resource subscription state for the "收藏资源" button.
+		var resFavCount int64
+		h.db.Model(&patchModel.UserPatchResourceFavoriteRelation{}).
+			Where("user_id = ? AND resource_id = ?", u.ID, resource.ID).
+			Count(&resFavCount)
+		resource.IsFavorite = resFavCount > 0
 	}
 
 	return response.OK(c, map[string]any{

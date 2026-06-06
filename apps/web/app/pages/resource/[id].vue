@@ -141,6 +141,35 @@ const toggleFavorite = async () => {
   }
 }
 
+// ─── Favorite THIS resource (per-resource update subscription) ──
+// Distinct from the like above (appreciation) and the favorite-game button
+// (notified on NEW resources): subscribing here notifies you when THIS
+// resource's download link / file changes.
+const resourceFavoriting = ref(false)
+const toggleResourceFavorite = async () => {
+  if (!resource.value) return
+  if (!requireLogin()) return
+  resourceFavoriting.value = true
+  try {
+    const res = await api.put<{ favorited: boolean }>(
+      `/patch/resource/${resource.value.id}/favorite`
+    )
+    if (res.code === 0) {
+      resource.value.is_favorite = res.data.favorited
+      useKunMessage(
+        res.data.favorited
+          ? '已收藏此资源，下载链接或文件更新时会通知你'
+          : '已取消收藏',
+        'success'
+      )
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  } finally {
+    resourceFavoriting.value = false
+  }
+}
+
 // ─── Recommendations preview helper ───────────────────
 const recName = (r: PatchResource) =>
   r.name || (r.patch ? getPreferredLanguageText(r.patch.name) : '补丁资源')
@@ -307,6 +336,22 @@ if (
                 {{ favorited ? '已收藏' : '收藏游戏' }}
               </KunButton>
 
+              <KunButton
+                variant="bordered"
+                :color="resource.is_favorite ? 'primary' : 'default'"
+                size="sm"
+                rounded="full"
+                :loading="resourceFavoriting"
+                :disabled="resourceFavoriting"
+                @click="toggleResourceFavorite"
+              >
+                <KunIcon
+                  :name="resource.is_favorite ? 'lucide:bell-ring' : 'lucide:bell'"
+                  class="size-4"
+                />
+                {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
+              </KunButton>
+
               <span
                 class="text-default-500 inline-flex items-center gap-1 text-sm"
               >
@@ -314,6 +359,27 @@ if (
                 {{ formatNumber(resource.download) }} 次下载
               </span>
             </div>
+
+            <!-- Resource-subscription hint — the bell button can't explain what
+                 收藏资源 does on its own. Active → primary + bell-ring. -->
+            <p
+              :class="
+                cn(
+                  'mt-2 flex items-center gap-1.5 text-xs',
+                  resource.is_favorite ? 'text-primary' : 'text-default-500'
+                )
+              "
+            >
+              <KunIcon
+                :name="resource.is_favorite ? 'lucide:bell-ring' : 'lucide:bell'"
+                class="size-3.5 shrink-0"
+              />
+              <span>{{
+                resource.is_favorite
+                  ? '已收藏此资源，下载链接或文件更新时会通知你'
+                  : '收藏此资源，下载链接或文件更新时通知你'
+              }}</span>
+            </p>
           </div>
         </div>
       </div>

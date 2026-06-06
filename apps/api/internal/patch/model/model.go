@@ -14,9 +14,9 @@ import (
 // fetching the full patch). The Name field is filled by the enricher from
 // Wiki, leaving this package free of Wiki/HTTP concerns.
 type PatchSummary struct {
-	ID     int           `json:"id"`
-	VndbID string        `json:"vndb_id"`
-	Banner string        `json:"banner"`
+	ID     int              `json:"id"`
+	VndbID string           `json:"vndb_id"`
+	Banner string           `json:"banner"`
 	Name   PatchSummaryName `json:"name"`
 }
 
@@ -233,16 +233,21 @@ type PatchResource struct {
 	// IsLiked is populated per-request from the current user's like relation
 	// (mirrors PatchComment.IsLiked). Not a DB column.
 	IsLiked bool `gorm:"-" json:"is_liked"`
+
+	// IsFavorite is populated per-request from the current user's resource
+	// subscription (UserPatchResourceFavoriteRelation). When true the user is
+	// notified on this resource's file/link updates. Not a DB column.
+	IsFavorite bool `gorm:"-" json:"is_favorite"`
 }
 
 func (PatchResource) TableName() string { return "patch_resource" }
 
 // PatchComment represents a patch comment
 type PatchComment struct {
-	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Content   string    `gorm:"type:varchar(10007);default:''" json:"content"`
-	Edit      string    `gorm:"default:''" json:"edit"`
-	LikeCount int       `gorm:"default:0" json:"like_count"`
+	ID        int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Content   string `gorm:"type:varchar(10007);default:''" json:"content"`
+	Edit      string `gorm:"default:''" json:"edit"`
+	LikeCount int    `gorm:"default:0" json:"like_count"`
 	// Status is the moderation state for the admin "评论需要审核" toggle:
 	// 0 = approved/visible (default), 1 = pending review (created while verify
 	// is on; hidden from public reads until an admin approves). See migration
@@ -279,12 +284,12 @@ func (PatchComment) TableName() string { return "patch_comment" }
 
 // PatchLink represents an external link
 type PatchLink struct {
-	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	GalgameID int     `gorm:"uniqueIndex:idx_patch_link;index;not null" json:"galgame_id"`
-	Name    string    `gorm:"uniqueIndex:idx_patch_link;type:varchar(233)" json:"name"`
-	URL     string    `gorm:"type:varchar(1007)" json:"url"`
-	Created time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
+	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	GalgameID int       `gorm:"uniqueIndex:idx_patch_link;index;not null" json:"galgame_id"`
+	Name      string    `gorm:"uniqueIndex:idx_patch_link;type:varchar(233)" json:"name"`
+	URL       string    `gorm:"type:varchar(1007)" json:"url"`
+	Created   time.Time `gorm:"autoCreateTime" json:"created"`
+	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
 }
 
 func (PatchLink) TableName() string { return "patch_link" }
@@ -294,21 +299,21 @@ func (PatchLink) TableName() string { return "patch_link" }
 
 // Relation tables
 type UserPatchFavoriteRelation struct {
-	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID  int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"user_id"`
-	GalgameID int     `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"galgame_id"`
-	Created time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
+	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID    int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"user_id"`
+	GalgameID int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"galgame_id"`
+	Created   time.Time `gorm:"autoCreateTime" json:"created"`
+	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
 }
 
 func (UserPatchFavoriteRelation) TableName() string { return "user_patch_favorite_relation" }
 
 type UserPatchContributeRelation struct {
-	ID      int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID  int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"user_id"`
-	GalgameID int     `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"galgame_id"`
-	Created time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated time.Time `gorm:"autoUpdateTime" json:"updated"`
+	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID    int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"user_id"`
+	GalgameID int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"galgame_id"`
+	Created   time.Time `gorm:"autoCreateTime" json:"created"`
+	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
 }
 
 func (UserPatchContributeRelation) TableName() string { return "user_patch_contribute_relation" }
@@ -332,6 +337,21 @@ type UserPatchResourceLikeRelation struct {
 }
 
 func (UserPatchResourceLikeRelation) TableName() string { return "user_patch_resource_like_relation" }
+
+// UserPatchResourceFavoriteRelation is a per-resource SUBSCRIPTION: the user is
+// notified (patchResourceUpdate) when this resource's file/link changes. Unlike
+// the like relation it carries no public count — it's a private subscription.
+type UserPatchResourceFavoriteRelation struct {
+	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID     int       `gorm:"uniqueIndex:idx_user_resource_favorite;not null" json:"user_id"`
+	ResourceID int       `gorm:"uniqueIndex:idx_user_resource_favorite;not null" json:"resource_id"`
+	Created    time.Time `gorm:"autoCreateTime" json:"created"`
+	Updated    time.Time `gorm:"autoUpdateTime" json:"updated"`
+}
+
+func (UserPatchResourceFavoriteRelation) TableName() string {
+	return "user_patch_resource_favorite_relation"
+}
 
 // PatchResourceFileHistory is the append-only audit trail for resource file
 // replacements (MOYU-PR5 / M3). One row is written BEFORE each substantive

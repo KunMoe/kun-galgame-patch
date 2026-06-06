@@ -121,14 +121,16 @@ const confirmDelete = async () => {
   <div
     class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
   >
-    <!-- Action bar: read-only actions (favorite / share) on the left, an
-         in-row divider, then owner-side actions (edit / delete) on the
-         right. All icon-only + tooltip — uniform shape avoids the old
-         "some labels / some not" inconsistency. -->
-    <div
-      class="border-default/20 bg-default-50/50 flex items-center gap-1 rounded-xl border p-1"
-    >
-      <KunTooltip :text="favorite ? '取消收藏' : '收藏 (有新补丁时通知您)'">
+    <!-- Left column: the icon action bar + a one-line hint that makes the
+         heart's purpose (subscribe to new-patch notifications) discoverable
+         without having to hover the icon-only button. -->
+    <div class="flex flex-col items-start gap-2">
+      <!-- Action bar: favorite / share, divider, then owner edit / delete.
+           All icon-only + tooltip — uniform shape. -->
+      <div
+        class="border-default/20 bg-default-50/50 flex items-center gap-1 rounded-xl border p-1"
+      >
+      <KunTooltip :text="favorite ? '取消收藏' : '收藏'">
         <KunButton
           variant="light"
           :color="favorite ? 'danger' : 'default'"
@@ -187,6 +189,29 @@ const confirmDelete = async () => {
           <KunIcon name="lucide:trash-2" class="size-4" />
         </KunButton>
       </KunTooltip>
+      </div>
+
+      <!-- New-patch notification hint — the icon-only heart can't say this on
+           its own. Active (favorited) → primary + bell-ring to confirm you're
+           subscribed; inactive → muted nudge. -->
+      <p
+        :class="
+          cn(
+            'flex items-center gap-1.5 text-xs',
+            favorite ? 'text-primary' : 'text-default-500'
+          )
+        "
+      >
+        <KunIcon
+          :name="favorite ? 'lucide:bell-ring' : 'lucide:bell'"
+          class="size-3.5 shrink-0"
+        />
+        <span>{{
+          favorite
+            ? '已收藏，有新补丁时会通知你'
+            : '收藏后，有新补丁时第一时间通知你'
+        }}</span>
+      </p>
     </div>
 
     <p class="text-default-500 text-xs">

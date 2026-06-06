@@ -17,6 +17,10 @@ interface PatchResource {
   password?: string
   like_count: number
   is_liked?: boolean
+  // Per-resource subscription state (filled on GET /resource/:id for the
+  // logged-in viewer). When true the user is notified on this resource's
+  // file/link updates. Drives the "收藏资源" button.
+  is_favorite?: boolean
   status?: number
   download: number
   user_id?: number

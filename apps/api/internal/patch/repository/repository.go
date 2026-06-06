@@ -312,6 +312,22 @@ func (r *PatchRepository) DeleteResourceLike(id int) error {
 	return r.db.Delete(&model.UserPatchResourceLikeRelation{}, id).Error
 }
 
+// ===== Resource Favorites (per-resource subscription) =====
+
+func (r *PatchRepository) FindResourceFavorite(userID, resourceID int) (*model.UserPatchResourceFavoriteRelation, error) {
+	var rel model.UserPatchResourceFavoriteRelation
+	err := r.db.Where("user_id = ? AND resource_id = ?", userID, resourceID).First(&rel).Error
+	return &rel, err
+}
+
+func (r *PatchRepository) CreateResourceFavorite(rel *model.UserPatchResourceFavoriteRelation) error {
+	return r.db.Create(rel).Error
+}
+
+func (r *PatchRepository) DeleteResourceFavorite(id int) error {
+	return r.db.Delete(&model.UserPatchResourceFavoriteRelation{}, id).Error
+}
+
 // ===== Favorites =====
 
 func (r *PatchRepository) FindFavorite(userID, patchID int) (*model.UserPatchFavoriteRelation, error) {

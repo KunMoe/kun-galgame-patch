@@ -110,6 +110,9 @@ func (a *App) RegisterRoutes() {
 		a.PatchHandler.IncrementResourceDownload,
 	)
 	patchRoutes.Put("/resource/:resourceId/like", auth, a.PatchHandler.ToggleResourceLike)
+	// Per-resource subscription: notified (patchResourceUpdate) when this
+	// resource's file/link changes. Distinct from /like and the galgame /favorite.
+	patchRoutes.Put("/resource/:resourceId/favorite", auth, a.PatchHandler.ToggleResourceFavorite)
 	// Public per-field edit history (diff) for one resource (anyone, incl.
 	// anonymous). Rate-limited like the other id-keyed resource reads. Changes
 	// are secret-free (service strips download links / codes) — distinct from

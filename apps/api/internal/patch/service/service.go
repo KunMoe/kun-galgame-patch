@@ -977,6 +977,13 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		attachUsersToResources(ctx, s.users, one)
 		existing.User = one[0].User
 	}
+
+	// Per-resource subscribers get a patchResourceUpdate notification — but ONLY
+	// when the download link / file actually changed (fileChanged), per product
+	// decision. Pure metadata edits (note / name / type / …) stay silent.
+	if fileChanged {
+		s.notifyResourceFavoritedUsers(resourceID, userID)
+	}
 	return existing, nil
 }
 
@@ -1119,6 +1126,29 @@ func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) 
 	return true, nil
 }
 
+// ToggleResourceFavorite subscribes / unsubscribes the user to a SINGLE
+// resource's updates. Unlike ToggleResourceLike there is no public count and no
+// moemoepoint — it is a private subscription. While subscribed, the user gets a
+// patchResourceUpdate notification whenever this resource's file/link changes
+// (see UpdateResource → notifyResourceFavoritedUsers).
+func (s *PatchService) ToggleResourceFavorite(resourceID, userID int) (bool, error) {
+	if _, err := s.repo.GetResourceByID(resourceID); err != nil {
+		return false, fmt.Errorf("resource not found")
+	}
+	existing, err := s.repo.FindResourceFavorite(userID, resourceID)
+	if err == nil {
+		s.repo.DeleteResourceFavorite(existing.ID)
+		return false, nil
+	}
+	s.repo.CreateResourceFavorite(&model.UserPatchResourceFavoriteRelation{UserID: userID, ResourceID: resourceID})
+	return true, nil
+}
+
+func (s *PatchService) IsResourceFavorited(userID, resourceID int) bool {
+	_, err := s.repo.FindResourceFavorite(userID, resourceID)
+	return err == nil
+}
+
 // ===== Favorites =====
 
 func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
@@ -1182,6 +1212,24 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 		s.createDedupMessage(senderID, userID, "patchResourceCreate",
 			"New resource added to patch",
 			fmt.Sprintf("/patch/%d/resource", patchID))
+	}
+}
+
+// notifyResourceFavoritedUsers notifies every user subscribed to a SINGLE
+// resource that its file/link changed. Called from UpdateResource ONLY on a
+// file-substantive change (storage / s3_key / content) — metadata-only edits
+// don't notify. Dedup (keyed on type+sender+recipient+link) keeps repeated
+// saves from spamming a subscriber.
+func (s *PatchService) notifyResourceFavoritedUsers(resourceID, senderID int) {
+	var userIDs []int
+	s.db.Model(&model.UserPatchResourceFavoriteRelation{}).
+		Where("resource_id = ? AND user_id != ?", resourceID, senderID).
+		Pluck("user_id", &userIDs)
+
+	for _, userID := range userIDs {
+		s.createDedupMessage(senderID, userID, "patchResourceUpdate",
+			"A subscribed resource was updated",
+			fmt.Sprintf("/resource/%d", resourceID))
 	}
 }
 
