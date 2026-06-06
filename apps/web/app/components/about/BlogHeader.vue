@@ -23,7 +23,9 @@ const props = defineProps<Props>()
     <!-- Banner — pre-optimized AVIF authored at build time; KunImage
          provider="none" skips the IPX → sharp roundtrip. eager + high
          fetchpriority because this is the LCP element on a post detail
-         page. aspect-ratio reserves layout before bytes arrive. -->
+         page. aspect-ratio reserves layout before bytes arrive — 16/9 to
+         match the source banners (1920×1080) and the list cards, so the full
+         image shows instead of being cropped to a strip. -->
     <div
       v-if="props.frontmatter.banner"
       class="relative w-full overflow-hidden rounded-xl"
@@ -34,7 +36,7 @@ const props = defineProps<Props>()
         provider="none"
         loading="eager"
         fetchpriority="high"
-        aspect-ratio="3 / 1"
+        aspect-ratio="16 / 9"
         class-name="w-full"
       />
     </div>
