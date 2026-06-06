@@ -218,6 +218,13 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 	// Pure stats row. ON CONFLICT DO NOTHING makes concurrent first-opens
 	// idempotent; we always re-read the canonical row afterwards.
 	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID}
+	// A lazily-materialized row (galgame merely opened on moyu, no resources yet)
+	// must NOT jump to the top of the "最近更新" sort. Inherit the galgame's real
+	// resource_update_time from Wiki instead of letting autoCreateTime stamp it
+	// to now. Bad/empty value → leave zero → autoCreateTime (safe fallback).
+	if t, pErr := time.Parse(time.RFC3339, brief.ResourceUpdateTime); pErr == nil {
+		row.ResourceUpdateTime = t
+	}
 	if cErr := s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
 		Create(row).Error; cErr != nil {
@@ -244,8 +251,11 @@ func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID stri
 		return 0, fmt.Errorf("invalid galgame id")
 	}
 	if existing, _ := s.repo.GetPatchByID(galgameID); existing != nil && existing.ID != 0 {
-		// Already registered — no reward, just hand back the id so the
-		// frontend can navigate. (Covers re-claim races / retries.)
+		// Already materialized (e.g. the galgame was browsed before claiming) —
+		// no reward, but claiming is still a content action → refresh
+		// resource_update_time so it surfaces in 最近更新. (A brand-new patch
+		// below gets now() from autoCreateTime, so both claim paths bump.)
+		s.TouchResourceUpdateTime(galgameID)
 		return existing.ID, nil
 	}
 
@@ -283,6 +293,16 @@ func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID stri
 // upserts without round-tripping through a dedicated repo + service layer.
 // Anything with real business logic should still live in a service method.
 func (s *PatchService) DB() *gorm.DB { return s.db }
+
+// TouchResourceUpdateTime bumps a galgame's patch.resource_update_time to now —
+// the moyu "最近更新" sort key. Called after a successful Wiki galgame-info edit
+// so editing metadata also surfaces the galgame (publish/claim already stamp it
+// on their own paths). No-op if the galgame has no local patch row yet — it'll
+// get a correct time when the row is first materialized.
+func (s *PatchService) TouchResourceUpdateTime(gid int) {
+	s.db.Model(&model.Patch{}).Where("id = ?", gid).
+		Update("resource_update_time", time.Now())
+}
 
 // UpdatePatch: after D13, patch.id IS the Wiki galgame_id, so changing vndb_id
 // to one that resolves to a different galgame_id would require remapping
@@ -934,6 +954,11 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	// Aggregate refresh outside the transaction — it's a derived counter
 	// touching the parent patch row; doesn't need to share the txn.
 	s.repo.RecalculatePatchAggregates(galgameID)
+
+	// Editing a resource is a content update → bump resource_update_time so the
+	// galgame rises in the "最近更新" sort (mirrors CreateResource).
+	s.db.Model(&model.Patch{}).Where("id = ?", galgameID).
+		Update("resource_update_time", time.Now())
 
 	// Re-render note_html + attach publisher brief so the response shape
 	// matches GetResources / CreateResource. Without this the frontend's

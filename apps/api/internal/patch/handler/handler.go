@@ -740,6 +740,10 @@ func (h *PatchHandler) updateGalgameJSON(c *fiber.Ctx, gid int, accessToken stri
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+	if err == nil {
+		// Editing galgame info is a content update → bump moyu's 最近更新 sort key.
+		h.service.TouchResourceUpdateTime(gid)
+	}
 	return writeWikiResult(c, data, err)
 }
 
@@ -768,6 +772,9 @@ func (h *PatchHandler) updateGalgameMultipart(c *fiber.Ctx, gid int, accessToken
 	fileHeaders, _ := form.File["file"]
 	if len(fileHeaders) == 0 {
 		data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+		if err == nil {
+			h.service.TouchResourceUpdateTime(gid)
+		}
 		return writeWikiResult(c, data, err)
 	}
 
@@ -792,6 +799,9 @@ func (h *PatchHandler) updateGalgameMultipart(c *fiber.Ctx, gid int, accessToken
 	data, err := h.wiki.UpdateGalgameMultipart(
 		c.Context(), accessToken, gid, &req, fh.Filename, raw, mime,
 	)
+	if err == nil {
+		h.service.TouchResourceUpdateTime(gid)
+	}
 	return writeWikiResult(c, data, err)
 }
 
