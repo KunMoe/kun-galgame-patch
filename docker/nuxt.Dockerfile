@@ -56,11 +56,11 @@ COPY apps/${APP} apps/${APP}
 # skipped by --ignore-scripts, and .dockerignore strips the host's copy); the
 # app build reads the layer's generated tsconfig.
 RUN pnpm --filter @kun/ui run prepare
-RUN pnpm --filter "@apps/${APP}" run build
 # build:limit bumps Node's heap (--max-old-space-size=8192). The web build is
-# memory-heavy and OOM-aborts (exit 134 / SIGABRT) under the default heap in
-# CI's constrained build env; the GitHub runner has 16 GB so 8 GB heap fits.
-RUN pnpm --filter web run build:limit
+# memory-heavy (jsdom is pulled in for server-side HTML sanitization) and
+# OOM-aborts (exit 134 / SIGABRT) under the default ~4 GB heap; the GitHub
+# runner has 16 GB so 8 GB heap fits.
+RUN pnpm --filter "@apps/${APP}" run build:limit
 
 # ---- run: just Node + the self-contained .output (no pnpm, no sources) ----
 # sharp ships inside .output (built for linux in this same arch container).
