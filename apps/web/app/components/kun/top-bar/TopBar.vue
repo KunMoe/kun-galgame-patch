@@ -110,6 +110,13 @@ watch(
         </NuxtLink>
       </div>
 
+      <!-- AIEro ad button (desktop / tablet). User.vue is ml-auto, so giving
+           this ml-auto too groups [ad][user] together on the right — the same
+           slot it held in the legacy top bar. Phones get it via
+           KunTopBarMobileMenu (md is the nav⇄mobile-menu breakpoint), so it's
+           hidden below md here. -->
+      <KunAdAIEroNav class="ml-auto hidden md:block" />
+
       <!-- KunTopBarUser already groups NSFW switcher + search + random +
            theme + bell + avatar (see User.vue). Don't add NSFWSwitcher here
            in parallel — that would render two copies on desktop. -->

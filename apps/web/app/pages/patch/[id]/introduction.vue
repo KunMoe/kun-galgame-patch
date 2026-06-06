@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const route = useRoute()
@@ -38,7 +38,7 @@ const introHtml = computed(() => {
     detail.value.introduction_html,
     lang.value
   )
-  return DOMPurify.sanitize(text, { ADD_ATTR: ['data-id'] })
+  return kunSanitize(text, { ADD_ATTR: ['data-id'] })
 })
 
 const langOptions = [

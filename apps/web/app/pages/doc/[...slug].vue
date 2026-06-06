@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 
 interface ApiEnvelope<T> {
   code: number
@@ -75,7 +75,7 @@ const tree = computed<KunTreeNode>(() =>
 
 // data-id is allowed so server-rendered @mentions keep their attribute.
 const html = computed(() =>
-  DOMPurify.sanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-id'] })
+  kunSanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-id'] })
 )
 
 const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])

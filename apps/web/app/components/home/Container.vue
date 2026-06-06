@@ -12,6 +12,8 @@ const props = defineProps<Props>()
   <div class="mx-auto max-w-7xl space-y-8">
     <HomeHero />
 
+    <KunAdAIEroBanner />
+
     <section class="space-y-3 sm:space-y-6">
       <div class="flex items-center space-x-4">
         <h2 class="text-2xl font-bold">最新 Galgame</h2>

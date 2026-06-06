@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 
 // Chat room. Feature-parity port of the next-web chat window MINUS realtime
 // (D9: REST-only). New messages arrive via a 5s incremental poll; edits /
@@ -45,7 +45,7 @@ type KunTextareaExposed = {
 const inputEl = ref<KunTextareaExposed | null>(null)
 
 const sanitize = (html: string) =>
-  DOMPurify.sanitize(html || '', { ADD_ATTR: ['data-id', 'target'] })
+  kunSanitize(html || '', { ADD_ATTR: ['data-id', 'target'] })
 
 // Pagination model (REST-only, no realtime):
 //   - loadLatest(): the most recent page, used on entry + after any in-place

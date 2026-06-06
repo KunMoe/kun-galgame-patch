@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '../../../utils/sanitize'
 import { useSpoilerContent } from '../../../composables/topic/useSpoilerContent'
 import { useContentLightbox } from '../../../composables/topic/useContentLightbox'
 
@@ -36,7 +36,7 @@ const sanitizeConfig = {
     <article
       ref="articleRef"
       :class="cn('kun-prose', className)"
-      v-html="DOMPurify.sanitize(content, sanitizeConfig)"
+      v-html="kunSanitize(content, sanitizeConfig)"
     />
     <KunLightbox
       v-model:is-open="isLightboxOpen"

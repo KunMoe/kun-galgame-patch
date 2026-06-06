@@ -234,6 +234,9 @@ onUnmounted(() => {
             </KunButton>
           </section>
 
+          <!-- ── AIEro ad (phone counterpart of the desktop AIEroNav) ── -->
+          <KunAdAIEroMobileNav class="justify-center" @click="closeMenu" />
+
           <!-- ── Primary nav ── -->
           <section class="space-y-1">
             <p

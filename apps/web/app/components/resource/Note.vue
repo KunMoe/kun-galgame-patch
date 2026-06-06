@@ -6,7 +6,7 @@
 // It starts clamped (before measurement) so a long note never flashes fully
 // open on hydration; after onMounted measures scrollHeight, short notes drop
 // the clamp (no button) and long ones keep it.
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 
 const props = withDefaults(
   defineProps<{ html: string; maxHeight?: number }>(),
@@ -14,7 +14,7 @@ const props = withDefaults(
 )
 
 const clean = computed(() =>
-  DOMPurify.sanitize(props.html, { ADD_ATTR: ['data-id'] })
+  kunSanitize(props.html, { ADD_ATTR: ['data-id'] })
 )
 
 const contentRef = ref<HTMLElement | null>(null)

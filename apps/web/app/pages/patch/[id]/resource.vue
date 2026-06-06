@@ -408,6 +408,9 @@ watch(histPage, loadHistory)
       </KunButton>
     </div>
 
+    <!-- AIEro ad banner (above the resource list, as in legacy) -->
+    <KunAdAIEroBanner />
+
     <!-- sorter -->
     <div
       v-if="!pending && resources && resources.length"

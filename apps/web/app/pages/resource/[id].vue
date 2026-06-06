@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DOMPurify from 'isomorphic-dompurify'
+import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 import {
   SUPPORTED_RESOURCE_LINK_MAP,
   SUPPORTED_TYPE_MAP,
@@ -27,7 +27,7 @@ const resource = computed(() => detail.value?.resource ?? null)
 
 const noteHtml = computed(() =>
   resource.value?.note_html
-    ? DOMPurify.sanitize(resource.value.note_html, { ADD_ATTR: ['data-id'] })
+    ? kunSanitize(resource.value.note_html, { ADD_ATTR: ['data-id'] })
     : ''
 )
 
@@ -326,6 +326,10 @@ if (
         </div>
       </div>
 
+      <!-- AIEro ad banner — desktop only (mobile copy sits in the main
+           column, mirroring the legacy KunResourceDetail placement). -->
+      <KunAdAIEroBanner class-name="mb-6 hidden sm:block" />
+
       <!-- ── Body grid ────────────────────────────────── -->
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <!-- main column -->
@@ -354,6 +358,9 @@ if (
               </p>
             </div>
           </KunCard>
+
+          <!-- AIEro ad banner — mobile only (desktop copy is above the grid) -->
+          <KunAdAIEroBanner class-name="block sm:hidden" />
 
           <!-- Download card -->
           <div
