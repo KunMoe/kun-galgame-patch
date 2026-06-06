@@ -94,9 +94,13 @@ func (j JSONArray) Value() (driver.Value, error) {
 //
 // To display game name/banner/introduction, call Wiki /galgame/batch with patch.id directly.
 type Patch struct {
-	ID                 int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	VndbID             string    `gorm:"uniqueIndex;type:varchar(107);not null" json:"vndb_id"`
-	BID                *int      `gorm:"uniqueIndex" json:"bid"`
+	ID     int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	VndbID string `gorm:"uniqueIndex;type:varchar(107);not null" json:"vndb_id"`
+	// Column is `bid` (baseline migration). Without the explicit column override
+	// GORM derives `b_id` from the field name (it treats "ID" as an initialism),
+	// which doesn't exist → every full-column write (e.g. the lazy patch Create
+	// in ensureLocalPatch) fails with SQLSTATE 42703. Pin it to the real column.
+	BID                *int      `gorm:"column:bid;uniqueIndex" json:"bid"`
 	Status             int       `gorm:"default:0" json:"status"`
 	Download           int       `gorm:"default:0" json:"download"`
 	View               int       `gorm:"default:0" json:"view"`
