@@ -388,8 +388,13 @@ func (a *App) RegisterRoutes() {
 	// Full-text search (Meilisearch)
 	api.Post("/search", a.SearchHandler.Search)
 
-	// External APIs
-	api.Get("/hikari", a.CommonHandler.GetHikari)
+	// External APIs.
+	// Hikari is a public partner API (Hikarinagi / ShionLib / TouchGal / …):
+	// its own CORS domain allowlist (via Use so the OPTIONS preflight is
+	// answered too) + a generous 10000/min/IP rate limit. The handler returns
+	// only public metadata — no uploader identity, no download secrets.
+	api.Use("/hikari", middleware.HikariCORS())
+	api.Get("/hikari", middleware.RateLimit(a.RDB, "hikari", 10000, time.Minute), a.CommonHandler.GetHikari)
 	api.Get("/moyu/patch/has-patch", a.CommonHandler.GetMoyuHasPatch)
 
 	// Doc (public, published-only; migration 016 — unified about+blog). Posts

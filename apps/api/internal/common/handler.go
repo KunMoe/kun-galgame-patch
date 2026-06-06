@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
@@ -503,12 +504,50 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 
 // ===== Hikari External API =====
 
-// GetHikari GET /api/hikari
+// hikariPatch / hikariResource are the curated, public-safe shapes returned by
+// the external Hikari API. They deliberately OMIT uploader identity (user /
+// user_id) and every download secret (content / code / password / s3_key) — the
+// actual download stays behind moyu's rate-limited /resource/:id/link flow.
+// Partners get enough metadata to display the patch and link users back.
+type hikariPatch struct {
+	ID                 int                  `json:"id"`
+	VndbID             string               `json:"vndb_id"`
+	Type               patchModel.JSONArray `json:"type"`
+	Language           patchModel.JSONArray `json:"language"`
+	Platform           patchModel.JSONArray `json:"platform"`
+	View               int                  `json:"view"`
+	Download           int                  `json:"download"`
+	ResourceCount      int                  `json:"resource_count"`
+	ResourceUpdateTime time.Time            `json:"resource_update_time"`
+	ReleaseDate        *time.Time           `json:"release_date"`
+	Created            time.Time            `json:"created"`
+}
+
+type hikariResource struct {
+	ID                    int                  `json:"id"`
+	Name                  string               `json:"name"`
+	ModelName             string               `json:"model_name"`
+	LocalizationGroupName string               `json:"localization_group_name"`
+	Size                  string               `json:"size"`
+	Storage               string               `json:"storage"`
+	Type                  patchModel.JSONArray `json:"type"`
+	Language              patchModel.JSONArray `json:"language"`
+	Platform              patchModel.JSONArray `json:"platform"`
+	Blake3                string               `json:"blake3"`
+	NoteHTML              string               `json:"note_html"`
+	Download              int                  `json:"download"`
+	Created               time.Time            `json:"created"`
+}
+
+// GetHikari GET /api/hikari?vndb_id=...
 //
-// NSFW: same gate as the detail endpoints — content_limit query (default
-// sfw) is forwarded to wiki; a NSFW patch returns 404 to anonymous callers
-// so this endpoint can't be used as a vndb_id-based bypass for the SEO
-// filter on /api/patch/:id.
+// Public partner API — CORS allowlist + rate limit are applied at the route
+// (see router.go). Returns curated metadata ONLY (see hikariPatch /
+// hikariResource for what's withheld: uploader identity + download secrets).
+//
+// NSFW: same gate as the detail endpoints — content_limit query (default sfw)
+// is forwarded to wiki; a NSFW patch returns 404 to anonymous callers so this
+// endpoint can't be a vndb_id-based bypass for the SEO filter on /api/patch/:id.
 func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
@@ -520,9 +559,8 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
-	// Verify the patch passes the caller's content_limit before exposing
-	// either it or its resources. Same shape as common detail endpoints:
-	// a wiki miss (filtered or not-visible) collapses to 404.
+	// Verify the patch passes the caller's content_limit before exposing it or
+	// its resources. A wiki miss (filtered / not-visible) collapses to 404.
 	if cl := utils.ContentLimitForListBrowse(c); cl != "" {
 		briefs, bErr := h.wiki.GalgameBatch(c.Context(), []int{patch.ID}, cl)
 		if bErr != nil || len(briefs) == 0 {
@@ -530,21 +568,45 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 		}
 	}
 
-	// Get resources but strip S3 download content
+	// status = 0 only: never expose a disabled resource via the external API.
 	var resources []patchModel.PatchResource
-	// status = 0: never serve a disabled resource's link via the external Hikari API.
 	h.db.Where("galgame_id = ? AND status = 0", patch.ID).Find(&resources)
 
+	out := make([]hikariResource, 0, len(resources))
 	for i := range resources {
-		if resources[i].Storage == "s3" {
-			resources[i].Content = ""
-		}
+		r := &resources[i]
+		out = append(out, hikariResource{
+			ID:                    r.ID,
+			Name:                  r.Name,
+			ModelName:             r.ModelName,
+			LocalizationGroupName: r.LocalizationGroupName,
+			Size:                  r.Size,
+			Storage:               r.Storage,
+			Type:                  r.Type,
+			Language:              r.Language,
+			Platform:              r.Platform,
+			Blake3:                r.Blake3,
+			NoteHTML:              markdown.MustRender(r.Note),
+			Download:              r.Download,
+			Created:               r.Created,
+		})
 	}
-	patchModel.RenderResourceNotes(resources)
 
-	return response.OK(c, map[string]any{
-		"patch":     patch,
-		"resources": resources,
+	return response.OK(c, fiber.Map{
+		"patch": hikariPatch{
+			ID:                 patch.ID,
+			VndbID:             patch.VndbID,
+			Type:               patch.Type,
+			Language:           patch.Language,
+			Platform:           patch.Platform,
+			View:               patch.View,
+			Download:           patch.Download,
+			ResourceCount:      patch.ResourceCount,
+			ResourceUpdateTime: patch.ResourceUpdateTime,
+			ReleaseDate:        patch.ReleaseDate,
+			Created:            patch.Created,
+		},
+		"resources": out,
 	})
 }
 
@@ -579,11 +641,11 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 	// row holds only the local-side aggregates; name/avatar are filled later
 	// from OAuth /users/batch since they are no longer in the local user table.
 	type row struct {
-		ID            int    `gorm:"column:id"`
-		Moemoepoint   int    `gorm:"column:moemoepoint"`
-		PatchCount    int64  `gorm:"column:patch_count"`
-		ResourceCount int64  `gorm:"column:resource_count"`
-		CommentCount  int64  `gorm:"column:comment_count"`
+		ID            int   `gorm:"column:id"`
+		Moemoepoint   int   `gorm:"column:moemoepoint"`
+		PatchCount    int64 `gorm:"column:patch_count"`
+		ResourceCount int64 `gorm:"column:resource_count"`
+		CommentCount  int64 `gorm:"column:comment_count"`
 	}
 
 	// id tiebreaker (u.id DESC) appended to every branch for stable ordering
