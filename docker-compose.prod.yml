@@ -18,9 +18,10 @@
 #
 # The api image bakes apps/web/posts (about .mdx) → read via KUN_POSTS_DIR=/posts.
 #
-#   docker compose -f docker-compose.prod.yml pull
-#   docker compose -f docker-compose.prod.yml --profile jobs run --rm migrate
-#   docker compose -f docker-compose.prod.yml up -d api web
+#   docker compose -f docker-compose.prod.yml up -d
+# The `migrate` service runs automatically before moyu-api on every `up` (api
+# depends_on it completing) — pending DB migrations are applied on each deploy,
+# no manual migrate step. `tools` stays a manual `--profile jobs` one-off.
 name: moyu
 
 x-svc-health: &svc-health
@@ -75,7 +76,12 @@ services:
     pull_policy: always
     environment: { <<: *moyu-api-env }
     expose: ["5214"]
-    # No depends_on: postgres/redis live in the infra app. restart reconnects.
+    # postgres/redis live in the infra app (no depends_on for them; restart
+    # reconnects). DO wait for `migrate` to finish so the API never serves an
+    # un-migrated schema — this is what makes `up` auto-apply pending migrations.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/app", "healthcheck"]
       <<: *svc-health
@@ -109,15 +115,22 @@ services:
         limits:
           memory: 2560m
 
-  # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
-  # Run AFTER infra postgres up + kungalgame_patch exists. ORDER: docs/migration.
-  #   docker compose -f docker-compose.prod.yml --profile jobs run --rm migrate [-dir=up -only=001]
+  # DB migrations — runs automatically on every `up`, BEFORE moyu-api (which
+  # depends_on it completing). `-yes` = non-interactive (apply all pending, no
+  # confirm prompt). pull_policy: always so each deploy gets the fresh image with
+  # any newly-added migrations baked in. Idempotent + near-instant when nothing
+  # is pending; a failed migration blocks the API from starting (intended — never
+  # serve an un-migrated schema). NOT in the `jobs` profile so plain `up` runs it.
+  # Manual run still works: `docker compose -f docker-compose.prod.yml run --rm migrate -dir=down`.
   migrate:
     image: ghcr.io/kunmoe/moyu-migrate:latest
     pull_policy: always
     environment: { <<: *moyu-api-env }
-    profiles: ["jobs"]
+    command: ["-yes"]
     restart: "no"
+
+  # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
+  # Run AFTER infra postgres up + kungalgame_patch exists. ORDER: docs/migration.
 
   # All cmd/* binaries (migrate-oauth-prep / remap-patch-ids / backfill-release-date):
   #   docker compose -f docker-compose.prod.yml --profile jobs run --rm tools remap-patch-ids
