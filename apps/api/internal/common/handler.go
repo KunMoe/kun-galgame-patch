@@ -568,9 +568,11 @@ func hikariFail(c *fiber.Ctx, status int, message string) error {
 // (see router.go). Response mirrors the legacy contract (see the type comments
 // above) MINUS uploader identity + download secrets.
 //
-// NSFW: same gate as the detail endpoints — content_limit query (default sfw)
-// is forwarded to wiki; a NSFW patch returns 404 to anonymous callers so this
-// endpoint can't be a vndb_id-based bypass for the SEO filter on /api/patch/:id.
+// NSFW: NOT gated. Like the legacy API, Hikari returns every patch by vndb_id
+// regardless of the galgame's NSFW rating — partner sites (touchgal, shionlib,
+// hikarinagi, …) are galgame sites themselves and need the full catalog. The
+// content_limit / SEO gate that protects the public browse endpoints does NOT
+// apply here, so this handler never calls the wiki.
 func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
@@ -580,15 +582,6 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	var patch patchModel.Patch
 	if err := h.db.Where("vndb_id = ?", vndbID).First(&patch).Error; err != nil {
 		return hikariFail(c, fiber.StatusNotFound, "No patch found for VNDB ID: "+vndbID)
-	}
-
-	// Verify the patch passes the caller's content_limit before exposing it or
-	// its resources. A wiki miss (filtered / not-visible) collapses to 404.
-	if cl := utils.ContentLimitForListBrowse(c); cl != "" {
-		briefs, bErr := h.wiki.GalgameBatch(c.Context(), []int{patch.ID}, cl)
-		if bErr != nil || len(briefs) == 0 {
-			return hikariFail(c, fiber.StatusNotFound, "No patch found for VNDB ID: "+vndbID)
-		}
 	}
 
 	// status = 0 only: never expose a disabled resource via the external API.

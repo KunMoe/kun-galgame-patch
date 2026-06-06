@@ -1,6 +1,7 @@
 {
   "cSpell.words": [
     "abcdefghjkmnopqrstuvwxyzABCDEFGHJKLMNOPQRSTUVWXYZ",
+    "ACAO",
     "Acked",
     "Alcot",
     "alttitle",
@@ -9,6 +10,7 @@
     "atrule",
     "autoincrement",
     "automd",
+    "automigrate",
     "autoremove",
     "autorestart",
     "azuretools",
@@ -54,6 +56,7 @@
     "esbenp",
     "esno",
     "extlinks",
+    "fasthttp",
     "favorited",
     "favoriting",
     "fkey",
@@ -75,6 +78,7 @@
     "GORM",
     "gormlogger",
     "govips",
+    "hashvalue",
     "healthcheck",
     "Hentai",
     "heroui",
