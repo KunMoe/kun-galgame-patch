@@ -44,14 +44,13 @@ const initializeContainer = () => {
   //
   // Vue's bare `render(vnode, container)` creates an isolated app
   // context. Any descendant component whose setup calls a Nuxt
-  // composable — `<KunIcon>` is the live example, it wraps
-  // `<NuxtIcon>` from @nuxt/icon whose setup() calls useNuxtApp() —
-  // hits `Cannot read properties of null (reading '$nuxt')` because
-  // tryUseNuxtApp() returns null in that isolated context.
+  // composable (e.g. color-mode / pinia consumers in the message
+  // item) hits `Cannot read properties of null (reading '$nuxt')`
+  // because tryUseNuxtApp() returns null in that isolated context.
   //
   // Walking the appContext from the live Nuxt instance preserves
-  // plugins (@nuxt/icon, pinia, color-mode, etc.) AND, more
-  // importantly, the `$nuxt` injection that those plugins rely on.
+  // plugins (pinia, color-mode, etc.) AND, more importantly, the
+  // `$nuxt` injection that those plugins rely on.
   //
   // tryUseNuxtApp can return null if useKunMessage is itself called
   // from a microtask outside a Nuxt context. Consumers must wrap such

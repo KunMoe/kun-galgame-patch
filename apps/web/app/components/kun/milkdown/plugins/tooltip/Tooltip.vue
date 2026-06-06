@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Icon } from '#components'
+import { KunIcon } from '#components'
 import { TooltipProvider } from '@milkdown/kit/plugin/tooltip'
 import {
   toggleStrongCommand,
@@ -19,10 +19,10 @@ const [loading, get] = useInstance()
 const divRef = ref<VNodeRef>()
 let tooltipProvider: TooltipProvider
 
-const KunBold = h(Icon, { name: 'lucide:bold' })
-const KunItalic = h(Icon, { name: 'lucide:italic' })
-const KunStrikethrough = h(Icon, { name: 'lucide:strikethrough' })
-const KunCode = h(Icon, { name: 'lucide:code-xml' })
+const KunBold = h(KunIcon, { name: 'lucide:bold' })
+const KunItalic = h(KunIcon, { name: 'lucide:italic' })
+const KunStrikethrough = h(KunIcon, { name: 'lucide:strikethrough' })
+const KunCode = h(KunIcon, { name: 'lucide:code-xml' })
 
 onMounted(() => {
   tooltipProvider = new TooltipProvider({

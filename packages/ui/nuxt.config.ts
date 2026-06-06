@@ -3,7 +3,10 @@ import { fileURLToPath } from 'node:url'
 const currentDir = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineNuxtConfig({
-  modules: ['@nuxt/icon', '@nuxt/image'],
+  // Icons are hardcoded inline SVGs via KunIcon (components/kun/icon/icons.ts),
+  // so @nuxt/icon is intentionally NOT a module here — see that component +
+  // apps/web/scripts/generate-icon-list.mjs.
+  modules: ['@nuxt/image'],
 
   // Default provider stays IPX — most KunUI consumers route runtime-
   // resized galgame banners / user avatars through it. The `none`

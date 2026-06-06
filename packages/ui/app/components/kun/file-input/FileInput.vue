@@ -94,7 +94,7 @@ const handlePick = () => {
           type="button"
           @click="handlePick"
         >
-          <Icon
+          <KunIcon
             v-if="triggerIcon"
             :name="triggerIcon"
             class="mr-1 size-4"
