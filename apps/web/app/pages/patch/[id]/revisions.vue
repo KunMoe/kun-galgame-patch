@@ -17,6 +17,7 @@ const route = useRoute()
 const gid = computed(() => Number(route.params.id))
 const ge = useGalgameEdit()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const page = ref(1)
 const limit = 20
@@ -88,10 +89,7 @@ const openDiff = async (rev: number) => {
 // ─── Revert ───────────────────────────────────────────
 const reverting = ref<number | null>(null)
 const handleRevert = async (rev: number) => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   const ok = await useKunAlert({
     title: '回滚版本',
     message: `确定回滚到版本 #${rev}？这会创建一个新的回滚版本，不会删除历史。`

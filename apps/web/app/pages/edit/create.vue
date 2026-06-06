@@ -16,16 +16,12 @@
 useKunDisableSeo('发布 Galgame')
 
 const api = useApi()
-const userStore = useUserStore()
 const route = useRoute()
 
-// Unauthed → bounce to home (NOT auto-startOAuthLogin). Reason: if we
-// auto-OAuth, the user gets stuck at OAuth login and pressing browser-back
-// returns them here, where this guard fires again and re-bounces — infinite
-// loop. From home they can click the top-bar 登录 button manually.
-if (!userStore.isLoggedIn) {
-  await navigateTo('/')
-}
+// Unauthed users see the login modal in place (via <AuthRequired> in the
+// template) instead of a silent redirect to home — same modal the 登录 button
+// opens. We don't auto-startOAuthLogin (that traps the user at OAuth with a
+// back-button bounce loop).
 
 type WizardMode = 'search' | 'submit'
 const mode = ref<WizardMode>('search')
@@ -286,11 +282,12 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <!-- Outer wrapper matches header (max-w-7xl via the default layout) so
+  <AuthRequired>
+    <!-- Outer wrapper matches header (max-w-7xl via the default layout) so
        page edges align with the top bar; the form body itself stays in a
        centered narrow column for readability — same pattern settings/user
        already uses. -->
-  <div class="container mx-auto my-4">
+    <div class="container mx-auto my-4">
     <KunHeader
       name="发布 Galgame"
       description="先搜索 Wiki，看看是否已有条目；若没有再提交新的元数据"
@@ -562,5 +559,6 @@ const handleSubmit = async () => {
       </div>
     </KunCard>
     </div>
-  </div>
+    </div>
+  </AuthRequired>
 </template>

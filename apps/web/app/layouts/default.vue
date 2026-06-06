@@ -25,5 +25,9 @@
 
     <KunBackToTop />
     <KunFooter />
+
+    <!-- App-wide login/register modal. Mounted once here; opened from anywhere
+         via useAuthModal() (top-bar button, login-required actions, page gates). -->
+    <AuthLoginModal />
   </div>
 </template>

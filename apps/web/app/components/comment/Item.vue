@@ -29,6 +29,7 @@ const emit = defineEmits<{
 
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const isAuthor = computed(() => userStore.user.id === props.comment.user_id)
 // Edit is author-only; delete is author OR moderator (mirrors the backend
@@ -39,10 +40,7 @@ const isEdited = computed(() => !!props.comment.edit)
 
 // ─── Like ──────────────────────────────────────────────
 const toggleLike = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再点赞', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   const res = await api.put<{ liked: boolean }>(
     `/patch/comment/${props.comment.id}/like`
   )
@@ -57,10 +55,7 @@ const replyKey = ref(0) // bump to remount the uncontrolled editor empty
 const submittingReply = ref(false)
 
 const openReply = () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   // Replying to a reply (depth 1): seed an @mention so the target is clear,
   // while still attaching to the root (one-tier). markdown renders
   // [@name](/user/id) as a kun-mention link.

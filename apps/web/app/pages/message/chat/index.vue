@@ -3,6 +3,7 @@ useKunDisableSeo('私聊')
 
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const { data: rooms, pending } = await useAsyncData<ChatRoomSummary[]>(
   'chat-rooms',
@@ -19,10 +20,7 @@ const { data: rooms, pending } = await useAsyncData<ChatRoomSummary[]>(
 // safe to click whether or not the user is already a member; then we open it.
 const joining = ref(false)
 const joinTestGroup = async () => {
-  if (!userStore.isLoggedIn) {
-    useKunMessage('请先登录后再加入群组', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   joining.value = true
   try {
     const res = await api.post('/chat/room/join', { link: 'kun' })

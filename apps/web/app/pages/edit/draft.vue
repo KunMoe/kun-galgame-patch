@@ -8,13 +8,11 @@
 useKunDisableSeo('编辑草稿')
 
 const route = useRoute()
-const userStore = useUserStore()
 const api = useApi()
 
-// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
-if (!userStore.isLoggedIn) {
-  await navigateTo('/')
-}
+// Unauthed users see the login modal in place (via <AuthRequired> in the
+// template), not a redirect to home — see edit/create.vue for the no-auto-OAuth
+// reasoning.
 
 const gid = computed(() => Number(route.query.id))
 const validId = computed(() => Number.isFinite(gid.value) && gid.value > 0)
@@ -181,9 +179,10 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <!-- Outer wrapper aligns with header (max-w-7xl via default layout); form
+  <AuthRequired>
+    <!-- Outer wrapper aligns with header (max-w-7xl via default layout); form
        body uses inner narrow column for readability. -->
-  <div class="container mx-auto my-4">
+    <div class="container mx-auto my-4">
     <KunHeader name="编辑草稿" description="修改后将自动重新进入审核队列" />
     <div class="mx-auto max-w-3xl">
 
@@ -317,5 +316,6 @@ const handleSubmit = async () => {
       </div>
     </KunCard>
     </div>
-  </div>
+    </div>
+  </AuthRequired>
 </template>

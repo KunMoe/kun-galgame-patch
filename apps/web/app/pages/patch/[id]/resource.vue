@@ -4,6 +4,7 @@ import { SUPPORTED_RESOURCE_LINK_MAP } from '~/constants/resource'
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -23,10 +24,7 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
 // duplicate it here — just nudge the user to log in.
 const publishOpen = ref(false)
 const handlePublishClick = () => {
-  if (!userStore.isLoggedIn) {
-    useKunMessage('请先登录后再发布资源', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   publishOpen.value = true
 }
 const handlePublishSuccess = (created: PatchResource) => {
@@ -230,10 +228,7 @@ const onLinkDownload = (r: PatchResource) => {
 // Optimistic resource-like toggle, mirroring the comment pattern: backend
 // returns { liked }, we fold it onto the local row.
 const toggleLike = async (r: PatchResource) => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再点赞', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   const res = await api.put<{ liked: boolean }>(
     `/patch/resource/${r.id}/like`
   )

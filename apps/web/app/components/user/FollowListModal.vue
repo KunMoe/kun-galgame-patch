@@ -34,6 +34,7 @@ const emit = defineEmits<{
 
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const page = ref(1)
 const limit = 20
@@ -86,10 +87,7 @@ const title = computed(() => (props.mode === 'follower' ? '粉丝' : '关注'))
 // returns success), DELETE likewise (not-following returns success).
 const toggling = ref<number | null>(null)
 const toggleFollow = async (row: FollowItem) => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   if (row.id === userStore.user.id) return // can't follow self
   toggling.value = row.id
   const wasFollowed = row.is_followed

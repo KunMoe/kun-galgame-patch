@@ -12,12 +12,12 @@ const userStore = useUserStore()
 const messageStore = useMessageStore()
 const api = useApi()
 
-// Top-bar surfaces a single solid "登录" button. Clicking opens a small modal
-// (AuthEntry) with two buttons — 登录 and 注册 — both bounce to OAuth web.
-// The local /login + /register pages were deleted (L1 unified registration);
-// the modal is the only entry point now, so users don't get bounced to a
-// separate page just to start auth.
-const loginOpen = ref(false)
+// Top-bar surfaces a single solid "登录" button. Clicking opens the app-wide
+// login modal (AuthEntry: 登录 / 注册, both bounce to OAuth web) — the same modal
+// every login-required action/page opens via useAuthModal(), mounted once in the
+// default layout. The local /login + /register pages were deleted (L1 unified
+// registration), so the modal is the only auth entry point.
+const { open: openAuthModal } = useAuthModal()
 
 const fetchUserStatus = async () => {
   const res = await api.get<UserState>('/auth/me')
@@ -61,7 +61,7 @@ onMounted(async () => {
         size="sm"
         color="primary"
         variant="solid"
-        @click="loginOpen = true"
+        @click="openAuthModal()"
       >
         登录
       </KunButton>
@@ -84,11 +84,4 @@ onMounted(async () => {
       <KunTopBarUserDropdown />
     </template>
   </div>
-
-  <KunModal v-model="loginOpen" inner-class-name="max-w-sm">
-    <div class="flex flex-col items-center gap-6 py-4">
-      <h2 class="text-2xl font-bold">登录或注册</h2>
-      <AuthEntry />
-    </div>
-  </KunModal>
 </template>

@@ -9,6 +9,7 @@ import {
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const resourceId = computed(() => Number(route.params.id))
 
@@ -93,10 +94,7 @@ const onDownload = () => {
 const liking = ref(false)
 const toggleLike = async () => {
   if (!resource.value) return
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再点赞', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   liking.value = true
   try {
     const res = await api.put<{ liked: boolean }>(
@@ -130,10 +128,7 @@ watch(
 const favoriting = ref(false)
 const toggleFavorite = async () => {
   if (!detail.value?.patch) return
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再收藏', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   favoriting.value = true
   try {
     const res = await api.put<{ favorited: boolean }>(

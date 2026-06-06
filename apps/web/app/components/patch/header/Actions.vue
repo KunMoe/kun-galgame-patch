@@ -47,6 +47,7 @@ const wikiOrigin =
 
 const userStore = useUserStore()
 const api = useApi()
+const { requireLogin } = useAuthModal()
 
 const favorite = ref(props.patch.is_favorite)
 const favoriteLoading = ref(false)
@@ -60,10 +61,9 @@ watch(
 )
 
 const toggleFavorite = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录后再收藏', 'warn')
-    return
-  }
+  // Logged-out → pop the global login modal (same as the 登录 button) rather
+  // than a toast the user can't act on.
+  if (!requireLogin()) return
   favoriteLoading.value = true
   try {
     const res = await api.put<{ favorited: boolean }>(

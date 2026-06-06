@@ -15,13 +15,10 @@
 useKunDisableSeo('编辑 Galgame')
 
 const route = useRoute()
-const userStore = useUserStore()
 const api = useApi()
 
-// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
-if (!userStore.user.id) {
-  await navigateTo('/')
-}
+// Unauthed users see the login modal in place (via <AuthRequired> in the
+// template), not a redirect to home — see edit/create.vue for the reasoning.
 
 const galgameId = computed(() => Number(route.query.id))
 const validId = computed(
@@ -428,7 +425,8 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="container mx-auto my-6">
+  <AuthRequired>
+    <div class="container mx-auto my-6">
     <KunHeader
       name="编辑 Galgame"
       description="修改 Galgame 元数据 (经 Galgame Wiki 转发)"
@@ -697,4 +695,5 @@ const handleSubmit = async () => {
       </div>
     </div>
   </div>
+  </AuthRequired>
 </template>

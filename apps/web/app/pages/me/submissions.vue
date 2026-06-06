@@ -15,13 +15,10 @@ import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 useKunDisableSeo('我的提交')
 
 const route = useRoute()
-const userStore = useUserStore()
 const api = useApi()
 
-// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
-if (!userStore.isLoggedIn) {
-  await navigateTo('/')
-}
+// Unauthed users see the login modal in place (via <AuthRequired> in the
+// template), not a redirect to home — see edit/create.vue for the reasoning.
 
 interface MineItem {
   id: number
@@ -97,7 +94,8 @@ const handleEdit = async (m: MineItem) => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4">
+  <AuthRequired>
+    <div class="container mx-auto my-4">
     <KunHeader
       name="我的提交"
       description="查看您提交到 Galgame Wiki 的作品的审核进度"
@@ -165,4 +163,5 @@ const handleEdit = async (m: MineItem) => {
       </KunCard>
     </div>
   </div>
+  </AuthRequired>
 </template>

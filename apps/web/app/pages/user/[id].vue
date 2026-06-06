@@ -4,6 +4,7 @@ import { pickRoleLabel } from '~/constants/user'
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const userId = computed(() => Number(route.params.id))
 
@@ -74,10 +75,7 @@ const openFollowList = (mode: 'follower' | 'following') => {
 // converges both directions).
 const startingChat = ref(false)
 const handleStartPrivateChat = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   if (!user.value) return
   if (user.value.id === userStore.user.id) {
     useKunMessage('不能给自己发消息', 'warn')
@@ -100,10 +98,7 @@ const handleStartPrivateChat = async () => {
 
 const followLoading = ref(false)
 const toggleFollow = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   if (!user.value) return
   followLoading.value = true
   try {

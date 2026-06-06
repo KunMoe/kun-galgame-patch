@@ -18,6 +18,7 @@ const gid = computed(() => Number(route.params.id))
 const ge = useGalgameEdit()
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const page = ref(1)
 const limit = 20
@@ -130,10 +131,7 @@ const buildPayload = (): GalgameEditFields => {
 }
 
 const submitPR = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   const payload = buildPayload()
   if (Object.keys(payload).filter((k) => k !== 'note').length === 0) {
     useKunMessage('请至少修改一个字段', 'warn')

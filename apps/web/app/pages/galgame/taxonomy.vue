@@ -22,13 +22,10 @@ import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
 useKunDisableSeo('Galgame 分类管理')
 
 const route = useRoute()
-const userStore = useUserStore()
 const ge = useGalgameEdit()
 
-// Unauthed → bounce to home (see edit/create.vue for the loop reasoning).
-if (!userStore.isLoggedIn) {
-  await navigateTo('/')
-}
+// Unauthed users see the login modal in place (via <AuthRequired> in the
+// template), not a redirect to home — see edit/create.vue for the reasoning.
 
 type Kind = 'tag' | 'official' | 'engine' | 'series'
 const tab = ref<Kind>('tag')
@@ -381,9 +378,10 @@ const fmtSnapshotValue = (v: unknown): string => {
 </script>
 
 <template>
-  <!-- Outer aligns with header (max-w-7xl via default layout); table /
+  <AuthRequired>
+    <!-- Outer aligns with header (max-w-7xl via default layout); table /
        form body uses inner narrow column for readability. -->
-  <div class="container mx-auto my-4">
+    <div class="container mx-auto my-4">
     <KunHeader
       name="Galgame 分类管理"
       description="标签 / 开发商 / 引擎 / 系列的增删改 —— 元数据由 Galgame Wiki 统一维护"
@@ -634,4 +632,5 @@ const fmtSnapshotValue = (v: unknown): string => {
     </KunModal>
     </div>
   </div>
+  </AuthRequired>
 </template>

@@ -7,6 +7,7 @@
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { requireLogin } = useAuthModal()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -36,10 +37,7 @@ const submitting = ref(false)
 const composerKey = ref(0)
 
 const submit = async () => {
-  if (!userStore.user.id) {
-    useKunMessage('请先登录', 'warn')
-    return
-  }
+  if (!requireLogin()) return
   if (!content.value.trim()) {
     useKunMessage('评论内容不能为空', 'warn')
     return
