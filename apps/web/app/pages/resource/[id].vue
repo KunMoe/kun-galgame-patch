@@ -90,61 +90,10 @@ const onDownload = () => {
   if (detail.value) detail.value.resource.download += 1
 }
 
-// ─── Like (resource) ──────────────────────────────────
-const liking = ref(false)
-const toggleLike = async () => {
-  if (!resource.value) return
-  if (!requireLogin()) return
-  liking.value = true
-  try {
-    const res = await api.put<{ liked: boolean }>(
-      `/patch/resource/${resource.value.id}/like`
-    )
-    if (res.code === 0) {
-      const liked = res.data.liked
-      const prev = resource.value.is_liked ?? false
-      resource.value.is_liked = liked
-      resource.value.like_count = Math.max(
-        0,
-        resource.value.like_count + (liked === prev ? 0 : liked ? 1 : -1)
-      )
-    } else {
-      useKunMessage(res.message || '操作失败', 'error')
-    }
-  } finally {
-    liking.value = false
-  }
-}
-
-// ─── Favorite (the owning galgame/patch) ──────────────
-const favorited = ref(false)
-watch(
-  detail,
-  (d) => {
-    favorited.value = !!d?.patch_is_favorite
-  },
-  { immediate: true }
-)
-const favoriting = ref(false)
-const toggleFavorite = async () => {
-  if (!detail.value?.patch) return
-  if (!requireLogin()) return
-  favoriting.value = true
-  try {
-    const res = await api.put<{ favorited: boolean }>(
-      `/patch/${detail.value.patch.id}/favorite`
-    )
-    if (res.code === 0) favorited.value = res.data.favorited
-    else useKunMessage(res.message || '操作失败', 'error')
-  } finally {
-    favoriting.value = false
-  }
-}
-
-// ─── Favorite THIS resource (per-resource update subscription) ──
-// Distinct from the like above (appreciation) and the favorite-game button
-// (notified on NEW resources): subscribing here notifies you when THIS
-// resource's download link / file changes.
+// ─── Favorite THIS resource (update subscription) ──
+// Notifies you when this resource's download link / file changes. Game-level
+// 点赞 / 收藏游戏 live on the game page (/patch/:id) — this page is scoped to the
+// single resource, so it only exposes 收藏资源 (removes the like/favorite mix-up).
 const resourceFavoriting = ref(false)
 const toggleResourceFavorite = async () => {
   if (!resource.value) return
@@ -300,80 +249,45 @@ if (
               </div>
             </div>
 
-            <!-- like + favorite, integrated into the hero -->
-            <div class="mt-1 flex flex-wrap items-center gap-2">
+            <!-- This page is scoped to ONE resource, so it only exposes
+                 收藏资源 (subscribe to this resource's updates). Game-level
+                 点赞 / 收藏游戏 live on the game page (/patch/:id); keeping them
+                 off here removes the like-vs-favorite confusion. -->
+            <div class="mt-1 flex flex-wrap items-center gap-3">
               <KunButton
-                :variant="resource.is_liked ? 'bordered' : 'bordered'"
-                :color="resource.is_liked ? 'danger' : 'default'"
-                size="sm"
-                rounded="full"
-                :loading="liking"
-                :disabled="liking"
-                @click="toggleLike"
-              >
-                <KunIcon
-                  name="lucide:heart"
-                  :class="cn('size-4', resource.is_liked && 'fill-current')"
-                />
-                点赞
-                <span class="text-default-400">{{ resource.like_count }}</span>
-              </KunButton>
-
-              <KunButton
-                v-if="detail.patch"
-                variant="bordered"
-                :color="favorited ? 'warning' : 'default'"
-                size="sm"
-                rounded="full"
-                :loading="favoriting"
-                :disabled="favoriting"
-                @click="toggleFavorite"
-              >
-                <KunIcon
-                  name="lucide:star"
-                  :class="cn('size-4', favorited && 'fill-current')"
-                />
-                {{ favorited ? '已收藏' : '收藏游戏' }}
-              </KunButton>
-
-              <KunButton
-                variant="bordered"
-                :color="resource.is_favorite ? 'primary' : 'default'"
-                size="sm"
+                :variant="resource.is_favorite ? 'flat' : 'bordered'"
+                :color="resource.is_favorite ? 'warning' : 'default'"
+                size="md"
                 rounded="full"
                 :loading="resourceFavoriting"
                 :disabled="resourceFavoriting"
                 @click="toggleResourceFavorite"
               >
                 <KunIcon
-                  :name="resource.is_favorite ? 'lucide:bell-ring' : 'lucide:bell'"
-                  class="size-4"
+                  name="lucide:star"
+                  :class="cn('size-4', resource.is_favorite && 'fill-current')"
                 />
                 {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
               </KunButton>
 
               <span
-                class="text-default-500 inline-flex items-center gap-1 text-sm"
+                class="text-default-500 inline-flex items-center gap-1.5 text-sm"
               >
                 <KunIcon name="lucide:download" class="size-4" />
                 {{ formatNumber(resource.download) }} 次下载
               </span>
             </div>
 
-            <!-- Resource-subscription hint — the bell button can't explain what
-                 收藏资源 does on its own. Active → primary + bell-ring. -->
+            <!-- A star alone can't say "notify" — spell out what 收藏资源 does. -->
             <p
               :class="
                 cn(
-                  'mt-2 flex items-center gap-1.5 text-xs',
-                  resource.is_favorite ? 'text-primary' : 'text-default-500'
+                  'flex items-center gap-1.5 text-xs',
+                  resource.is_favorite ? 'text-warning' : 'text-default-500'
                 )
               "
             >
-              <KunIcon
-                :name="resource.is_favorite ? 'lucide:bell-ring' : 'lucide:bell'"
-                class="size-3.5 shrink-0"
-              />
+              <KunIcon name="lucide:bell" class="size-3.5 shrink-0" />
               <span>{{
                 resource.is_favorite
                   ? '已收藏此资源，下载链接或文件更新时会通知你'

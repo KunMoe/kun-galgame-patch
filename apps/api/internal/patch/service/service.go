@@ -675,6 +675,7 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 	model.RenderResourceNotes(resources)
 	attachUsersToResources(ctx, s.users, resources)
 	s.markResourceLiked(currentUID, resources)
+	s.markResourceFavorited(currentUID, resources)
 	return resources, nil
 }
 
@@ -698,6 +699,30 @@ func (s *PatchService) markResourceLiked(currentUID int, rs []model.PatchResourc
 	}
 	for i := range rs {
 		rs[i].IsLiked = likedSet[rs[i].ID]
+	}
+}
+
+// markResourceFavorited stamps is_favorite (收藏资源 subscription) on each
+// resource for the given currentUID. Anonymous (0) leaves it false. Mirrors
+// markResourceLiked.
+func (s *PatchService) markResourceFavorited(currentUID int, rs []model.PatchResource) {
+	if currentUID == 0 || len(rs) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(rs))
+	for _, r := range rs {
+		ids = append(ids, r.ID)
+	}
+	favorited, err := s.repo.GetFavoritedResourceIDs(currentUID, ids)
+	if err != nil {
+		return
+	}
+	favSet := make(map[int]bool, len(favorited))
+	for _, id := range favorited {
+		favSet[id] = true
+	}
+	for i := range rs {
+		rs[i].IsFavorite = favSet[rs[i].ID]
 	}
 }
 

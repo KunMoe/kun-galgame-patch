@@ -422,6 +422,17 @@ func (r *PatchRepository) GetLikedResourceIDs(userID int, resourceIDs []int) ([]
 	return ids, err
 }
 
+// GetFavoritedResourceIDs returns the subset of resourceIDs the user has
+// subscribed to (收藏资源) — mirrors GetLikedResourceIDs, used to stamp
+// is_favorite on the resource list.
+func (r *PatchRepository) GetFavoritedResourceIDs(userID int, resourceIDs []int) ([]int, error) {
+	var ids []int
+	err := r.db.Model(&model.UserPatchResourceFavoriteRelation{}).
+		Where("user_id = ? AND resource_id IN ?", userID, resourceIDs).
+		Pluck("resource_id", &ids).Error
+	return ids, err
+}
+
 func (r *PatchRepository) GetLikedCommentIDs(userID int, commentIDs []int) ([]int, error) {
 	var ids []int
 	err := r.db.Model(&model.UserPatchCommentLikeRelation{}).

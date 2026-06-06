@@ -143,15 +143,14 @@ const confirmDelete = async () => {
 
 // ─── Sorter ───────────────────────────────────────────
 // Client-side (the list endpoint returns the whole set unpaginated).
-type SortField = 'update_time' | 'created' | 'download' | 'like_count'
+type SortField = 'update_time' | 'created' | 'download'
 const sortField = ref<SortField>('update_time') // 更改时间
 const sortDesc = ref(true) // 默认降序：最新更改在最上面
 
 const sortOptions = [
   { value: 'update_time', label: '更改时间' },
   { value: 'created', label: '发布时间' },
-  { value: 'download', label: '下载数' },
-  { value: 'like_count', label: '点赞数' }
+  { value: 'download', label: '下载数' }
 ]
 
 // `update_time` is the canonical 更改时间: the backend sets it = creation
@@ -170,7 +169,7 @@ const sortedResources = computed(() => {
   const f = sortField.value
   list.sort((a, b) => {
     const cmp =
-      f === 'download' || f === 'like_count'
+      f === 'download'
         ? (a[f] ?? 0) - (b[f] ?? 0)
         : timeOf(a, f) - timeOf(b, f)
     return sortDesc.value ? -cmp : cmp
@@ -225,21 +224,30 @@ const onLinkDownload = (r: PatchResource) => {
   r.download += 1
 }
 
-// Optimistic resource-like toggle, mirroring the comment pattern: backend
-// returns { liked }, we fold it onto the local row.
-const toggleLike = async (r: PatchResource) => {
+// 收藏资源 (per-resource subscription) toggle. Optimistic: backend returns
+// { favorited }, folded onto the local row. Notifies on this resource's
+// download-link / file update (see UpdateResource → notifyResourceFavoritedUsers).
+const favoritingId = ref<number | null>(null)
+const toggleResourceFavorite = async (r: PatchResource) => {
   if (!requireLogin()) return
-  const res = await api.put<{ liked: boolean }>(
-    `/patch/resource/${r.id}/like`
-  )
-  if (res.code === 0) {
-    const liked = res.data.liked
-    const prev = r.is_liked ?? false
-    const delta = liked === prev ? 0 : liked ? 1 : -1
-    r.is_liked = liked
-    r.like_count = Math.max(0, r.like_count + delta)
-  } else {
-    useKunMessage(res.message || '操作失败', 'error')
+  favoritingId.value = r.id
+  try {
+    const res = await api.put<{ favorited: boolean }>(
+      `/patch/resource/${r.id}/favorite`
+    )
+    if (res.code === 0) {
+      r.is_favorite = res.data.favorited
+      useKunMessage(
+        res.data.favorited
+          ? '已收藏此资源，下载链接或文件更新时会通知你'
+          : '已取消收藏',
+        'success'
+      )
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  } finally {
+    favoritingId.value = null
   }
 }
 
@@ -573,26 +581,47 @@ watch(histPage, loadHistory)
         <div
           class="border-default/15 flex flex-wrap items-center justify-between gap-2 border-t pt-3"
         >
-          <div class="text-default-500 flex items-center gap-4 text-sm">
-            <KunButton
-              :variant="r.is_liked ? 'flat' : 'light'"
-              color="danger"
-              size="xs"
-              rounded="full"
-              :aria-label="r.is_liked ? '取消点赞' : '点赞'"
-              @click="toggleLike(r)"
+          <div class="flex min-w-0 flex-col gap-1.5">
+            <div class="text-default-500 flex items-center gap-4 text-sm">
+              <!-- 收藏资源 = subscribe to THIS resource (star, like 收藏游戏). -->
+              <KunButton
+                :variant="r.is_favorite ? 'flat' : 'light'"
+                :color="r.is_favorite ? 'warning' : 'default'"
+                size="xs"
+                rounded="full"
+                :loading="favoritingId === r.id"
+                :disabled="favoritingId === r.id"
+                :aria-label="r.is_favorite ? '取消收藏资源' : '收藏资源'"
+                @click="toggleResourceFavorite(r)"
+              >
+                <KunIcon
+                  name="lucide:star"
+                  :class="cn('size-4', r.is_favorite && 'fill-current')"
+                />
+                {{ r.is_favorite ? '已收藏' : '收藏资源' }}
+              </KunButton>
+              <span class="flex items-center gap-1.5">
+                <KunIcon name="lucide:download" class="size-4" />
+                {{ r.download }}
+              </span>
+              <!-- 编辑 / 删除 / 禁用下载 已移入右上角三个点菜单(见卡片头部) -->
+            </div>
+            <!-- Spell out what 收藏资源 does — a star alone can't say "notify". -->
+            <p
+              :class="
+                cn(
+                  'flex items-center gap-1 text-xs',
+                  r.is_favorite ? 'text-warning' : 'text-default-400'
+                )
+              "
             >
-              <KunIcon
-                name="lucide:heart"
-                :class="cn('size-4', r.is_liked && 'fill-current')"
-              />
-              {{ r.like_count }}
-            </KunButton>
-            <span class="flex items-center gap-1.5">
-              <KunIcon name="lucide:download" class="size-4" />
-              {{ r.download }}
-            </span>
-            <!-- 编辑 / 删除 / 禁用下载 已移入右上角三个点菜单(见卡片头部) -->
+              <KunIcon name="lucide:bell" class="size-3 shrink-0" />
+              {{
+                r.is_favorite
+                  ? '已收藏此资源，下载链接或文件更新时会通知你'
+                  : '收藏此资源，下载链接或文件更新时通知你'
+              }}
+            </p>
           </div>
           <KunChip
             v-if="isDisabled(r)"
