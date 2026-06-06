@@ -30,10 +30,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
 # HEALTHCHECK, since distroless has no shell/wget. Ports live in compose.
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/app /app
-# cmd/migrate reads SQL from disk at runtime (-path defaults to "migrations",
-# resolved against CWD=/ here → /migrations). WITHOUT this copy the migrate
-# binary finds no files (filepath.Glob on a missing dir → empty, no error) and
-# silently "runs" zero migrations. Harmless in the api/server image.
+# cmd/migrate reads SQL from /migrations at runtime. Its -path defaults to the
+# RELATIVE "migrations", so the runtime CWD matters — and distroless :nonroot
+# sets WORKDIR=/home/nonroot, which would make the default resolve to a MISSING
+# /home/nonroot/migrations → filepath.Glob returns empty (no error) → the tool
+# silently applies ZERO migrations ("没有待执行的迁移"). `WORKDIR /` below fixes
+# the default; compose also passes `-path /migrations` explicitly as a backstop.
 COPY apps/api/migrations /migrations
 # About-page content: the static .mdx posts that cmd/server reads at runtime
 # (internal/about, cfg.About.PostsDir). They live in the WEB app's source tree
@@ -42,5 +44,8 @@ COPY apps/api/migrations /migrations
 # them with KUN_POSTS_DIR=/posts (docker/api.env). The banner images under
 # apps/web/public/posts are served separately by the web container.
 COPY apps/web/posts /posts
+# Override distroless :nonroot's WORKDIR=/home/nonroot so cmd/migrate's default
+# relative -path "migrations" resolves to the baked /migrations (see above).
+WORKDIR /
 USER nonroot:nonroot
 ENTRYPOINT ["/app"]

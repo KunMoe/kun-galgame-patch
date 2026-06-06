@@ -126,7 +126,10 @@ services:
     image: ghcr.io/kunmoe/moyu-migrate:latest
     pull_policy: always
     environment: { <<: *moyu-api-env }
-    command: ["-yes"]
+    # -path /migrations is EXPLICIT (not relying on CWD): the image's WORKDIR is
+    # /home/nonroot, so the binary's default relative "migrations" would find
+    # nothing and silently apply zero migrations. -yes = non-interactive.
+    command: ["-path", "/migrations", "-yes"]
     restart: "no"
 
   # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
