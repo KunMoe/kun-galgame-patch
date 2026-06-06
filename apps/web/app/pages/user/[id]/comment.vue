@@ -12,16 +12,26 @@ interface ListResponse {
   total: number
 }
 
+const page = ref(1)
+const limit = 20
 const { data, pending } = await useAsyncData<ListResponse>(
   () => `user-${userId.value}-comments`,
   async () => {
     const res = await api.get<ListResponse>(
-      `/user/${userId.value}/comment?page=1&limit=20`
+      `/user/${userId.value}/comment?page=${page.value}&limit=${limit}`
     )
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
-  { default: () => ({ items: [], total: 0 }) }
+  { default: () => ({ items: [], total: 0 }), watch: [page] }
 )
+watch(userId, () => {
+  page.value = 1
+})
+const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
+const onChangePage = (v: number) => {
+  page.value = v
+  if (import.meta.client) window.scrollTo({ top: 0 })
+}
 
 const patchName = (c: UserComment) =>
   c.patch?.name ? getPreferredLanguageText(c.patch.name) : `补丁 #${c.galgame_id}`
@@ -52,5 +62,14 @@ const patchName = (c: UserComment) =>
       </NuxtLink>
     </div>
     <KunNull v-else description="该用户暂无评论" />
+
+    <div v-if="totalPages > 1" class="mt-6 flex justify-center">
+      <KunPagination
+        :current-page="page"
+        :total-page="totalPages"
+        :is-loading="pending"
+        @update:current-page="onChangePage"
+      />
+    </div>
   </div>
 </template>

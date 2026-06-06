@@ -10,16 +10,26 @@ interface ListResponse {
   total: number
 }
 
+const page = ref(1)
+const limit = 20
 const { data, pending } = await useAsyncData<ListResponse>(
   () => `user-${userId.value}-favorites`,
   async () => {
     const res = await api.get<ListResponse>(
-      `/user/${userId.value}/favorite?page=1&limit=20`
+      `/user/${userId.value}/favorite?page=${page.value}&limit=${limit}`
     )
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
-  { default: () => ({ items: [], total: 0 }) }
+  { default: () => ({ items: [], total: 0 }), watch: [page] }
 )
+watch(userId, () => {
+  page.value = 1
+})
+const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
+const onChangePage = (v: number) => {
+  page.value = v
+  if (import.meta.client) window.scrollTo({ top: 0 })
+}
 </script>
 
 <template>
@@ -36,5 +46,14 @@ const { data, pending } = await useAsyncData<ListResponse>(
       />
     </div>
     <KunNull v-else description="该用户暂无收藏" />
+
+    <div v-if="totalPages > 1" class="mt-6 flex justify-center">
+      <KunPagination
+        :current-page="page"
+        :total-page="totalPages"
+        :is-loading="pending"
+        @update:current-page="onChangePage"
+      />
+    </div>
   </div>
 </template>
