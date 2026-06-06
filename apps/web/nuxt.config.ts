@@ -85,6 +85,20 @@ export default defineNuxtConfig({
     plugins: [tailwindcss()]
   },
 
+  // The Nitro server bundle is transformed by esbuild, whose default target
+  // (es2019) rejects top-level await. @kun/ui's sanitize.ts uses it
+  // (`await import('jsdom')` to load jsdom for server-side DOMPurify), which
+  // broke the production build with: "Top-level await is not available in the
+  // configured target environment (es2019)". The node-server preset runs on
+  // Node 24, which supports TLA natively, so target a modern ES level.
+  nitro: {
+    esbuild: {
+      options: {
+        target: 'es2022'
+      }
+    }
+  },
+
   umami: {
     id: process.env.KUN_VISUAL_NOVEL_FORUM_UMAMI_ID,
     host: 'https://umami.kungal.org/',
