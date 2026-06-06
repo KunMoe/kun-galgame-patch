@@ -189,8 +189,18 @@ var md = goldmark.New(
 		renderer.WithNodeRenderers(
 			util.Prioritized(newMentionLinkRenderer(), 99),
 		),
-		// We deliberately do NOT enable html.WithUnsafe — raw HTML inside user
-		// content is dropped, matching the legacy markdownToHtml behavior.
+		// SECURITY BOUNDARY — do NOT enable html.WithUnsafe.
+		//
+		// This is the ONLY XSS sanitization for user content now: the web
+		// frontend renders these *_html fields via v-html with no client-side
+		// sanitizer (the old DOMPurify-on-jsdom was removed — it leaked SSR
+		// memory and broke the Nitro build). With WithUnsafe off, goldmark
+		// escapes raw user HTML (<script>, <img onerror>, …) and the default
+		// link/image renderers run html.IsDangerousURL, which drops
+		// javascript:/vbscript:/data: URLs (see defaultLinkRender above and the
+		// XSS tests in markdown_test.go). If you ever need raw-HTML passthrough,
+		// you MUST add a server-side allow-list sanitizer (e.g. bluemonday)
+		// here first — enabling WithUnsafe alone reopens stored XSS.
 	),
 )
 

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { kunSanitize } from '@kun/ui/app/utils/sanitize'
-
 interface ApiEnvelope<T> {
   code: number
   message: string
@@ -73,10 +71,10 @@ const tree = computed<KunTreeNode>(() =>
   postsResponse.value?.code === 0 ? postsResponse.value.data.tree : emptyTree
 )
 
-// data-id is allowed so server-rendered @mentions keep their attribute.
-const html = computed(() =>
-  kunSanitize(detail.value?.html ?? '', { ADD_ATTR: ['data-id'] })
-)
+// detail.html is server-rendered via markdown.RenderWithTOC (goldmark, no
+// html.WithUnsafe → already sanitized at the source: raw HTML escaped,
+// dangerous URLs dropped). Bound directly; no client-side sanitizer.
+const html = computed(() => detail.value?.html ?? '')
 
 const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])
 </script>

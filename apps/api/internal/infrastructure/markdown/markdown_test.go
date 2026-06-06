@@ -78,6 +78,48 @@ func TestRenderRawHTMLIsEscaped(t *testing.T) {
 	}
 }
 
+// TestRenderRawHTMLTagsEscaped locks the server-side XSS boundary: with
+// html.WithUnsafe off, every raw HTML tag a user can type must be escaped to
+// text, never emitted as a live element. This is the only sanitizer now that
+// the frontend binds *_html via v-html with no client-side DOMPurify — if a
+// future change enables WithUnsafe, these fail.
+func TestRenderRawHTMLTagsEscaped(t *testing.T) {
+	cases := []struct{ in, tag string }{
+		{`<script>alert(1)</script>`, "<script"},
+		{`<img src=x onerror="alert(1)">`, "<img"},
+		{`<svg onload="alert(1)"></svg>`, "<svg"},
+		{`<iframe src="https://evil.example"></iframe>`, "<iframe"},
+		{`<a href="javascript:alert(1)">x</a>`, "javascript:"},
+	}
+	for _, tc := range cases {
+		out := markdown.MustRender(tc.in)
+		if strings.Contains(out, tc.tag) {
+			t.Errorf("raw HTML %q leaked unescaped for input %q:\n  %s", tc.tag, tc.in, out)
+		}
+	}
+}
+
+// TestRenderStripsDangerousURLs locks goldmark's html.IsDangerousURL behavior
+// for markdown links/images: javascript:/vbscript:/data: destinations must be
+// dropped (href/src emitted empty), so a crafted [x](javascript:…) or
+// ![x](javascript:…) can't execute when the HTML is bound with v-html.
+func TestRenderStripsDangerousURLs(t *testing.T) {
+	cases := []struct{ name, in, bad string }{
+		{"javascript link", "[x](javascript:alert(1))", "javascript:"},
+		{"javascript image", "![x](javascript:alert(1))", "javascript:"},
+		{"vbscript link", "[x](vbscript:msgbox(1))", "vbscript:"},
+		{"data text/html link", "[x](data:text/html;base64,PHN2Zz4=)", "data:text/html"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := strings.ToLower(markdown.MustRender(tc.in))
+			if strings.Contains(out, tc.bad) {
+				t.Errorf("dangerous URL %q leaked into output: %s", tc.bad, out)
+			}
+		})
+	}
+}
+
 func TestRenderGFMStrikethrough(t *testing.T) {
 	out := markdown.MustRender("~~done~~")
 	if !strings.Contains(out, "<del>done</del>") {

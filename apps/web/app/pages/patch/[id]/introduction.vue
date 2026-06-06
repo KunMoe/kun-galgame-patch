@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const route = useRoute()
@@ -29,16 +28,13 @@ watchEffect(() => {
   lang.value = pickInitialLang()
 })
 
-// introduction_html is pre-rendered server-side via the markdown package; we
-// only need to sanitize before mounting it. ADD_ATTR keeps mention links'
-// data-id attribute (the renderer adds class="kun-mention").
+// introduction_html is pre-rendered server-side via the markdown package
+// (goldmark, no html.WithUnsafe → raw HTML escaped + dangerous URLs dropped),
+// so it's already safe and bound directly. The renderer keeps mention links'
+// class="kun-mention" + data-id.
 const introHtml = computed(() => {
   if (!detail.value?.introduction_html) return ''
-  const text = getPreferredLanguageText(
-    detail.value.introduction_html,
-    lang.value
-  )
-  return kunSanitize(text, { ADD_ATTR: ['data-id'] })
+  return getPreferredLanguageText(detail.value.introduction_html, lang.value)
 })
 
 const langOptions = [

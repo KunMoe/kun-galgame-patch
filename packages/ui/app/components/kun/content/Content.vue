@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { kunSanitize } from '../../../utils/sanitize'
 import { useSpoilerContent } from '../../../composables/topic/useSpoilerContent'
 import { useContentLightbox } from '../../../composables/topic/useContentLightbox'
 
+// `content` is server-rendered HTML from the Go API's markdown pipeline
+// (goldmark with no html.WithUnsafe → raw HTML is escaped and dangerous URLs
+// are dropped at the source). It is already safe, so it's bound directly with
+// no client-side sanitizer. (Previously this ran DOMPurify-on-jsdom every SSR
+// render, which leaked memory and broke the Nitro build.)
 withDefaults(
   defineProps<{
     content: string
@@ -24,11 +28,6 @@ useSpoilerContent(articleRef)
 // for free — no per-consumer wiring.
 const { isLightboxOpen, images, currentImageIndex } =
   useContentLightbox(articleRef)
-
-const sanitizeConfig = {
-  ADD_TAGS: ['div', 'span', 'button'],
-  ADD_ATTR: ['class', 'title', 'line']
-}
 </script>
 
 <template>
@@ -36,7 +35,7 @@ const sanitizeConfig = {
     <article
       ref="articleRef"
       :class="cn('kun-prose', className)"
-      v-html="kunSanitize(content, sanitizeConfig)"
+      v-html="content"
     />
     <KunLightbox
       v-model:is-open="isLightboxOpen"

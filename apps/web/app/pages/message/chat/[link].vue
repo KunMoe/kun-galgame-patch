@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
-import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 
 // Chat room. Feature-parity port of the next-web chat window MINUS realtime
 // (D9: REST-only). New messages arrive via a 5s incremental poll; edits /
@@ -44,8 +43,10 @@ type KunTextareaExposed = {
 }
 const inputEl = ref<KunTextareaExposed | null>(null)
 
-const sanitize = (html: string) =>
-  kunSanitize(html || '', { ADD_ATTR: ['data-id', 'target'] })
+// content_html and quote_message.content are both server-rendered HTML
+// (markdown.MustRender — goldmark with no html.WithUnsafe, so raw HTML is
+// escaped and dangerous URLs dropped at the source). They're bound directly;
+// no client-side sanitizer.
 
 // Pagination model (REST-only, no realtime):
 //   - loadLatest(): the most recent page, used on entry + after any in-place
@@ -458,14 +459,14 @@ onBeforeUnmount(() => pause())
                     <div
                       class="kun-prose text-xs opacity-80"
                       :class="{ 'line-clamp-2': !expandedQuotes.has(m.id) }"
-                      v-html="sanitize(m.quote_message.content)"
+                      v-html="m.quote_message.content"
                     />
                   </div>
 
                   <div class="flex flex-wrap items-end gap-2">
                     <div
                       class="kun-prose text-sm break-words"
-                      v-html="sanitize(m.content_html)"
+                      v-html="m.content_html"
                     />
                     <span
                       class="text-default-400 ml-auto translate-y-1 text-xs whitespace-nowrap"

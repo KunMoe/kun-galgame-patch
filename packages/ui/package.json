@@ -21,8 +21,6 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "focus-trap": "^8.2.1",
-    "dompurify": "^3.4.8",
-    "jsdom": "^29.1.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "vue-advanced-cropper": "^2.8.9"

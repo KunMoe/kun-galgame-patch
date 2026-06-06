@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { kunSanitize } from '@kun/ui/app/utils/sanitize'
 import {
   SUPPORTED_RESOURCE_LINK_MAP,
   SUPPORTED_TYPE_MAP,
@@ -25,11 +24,9 @@ const { data: detail, pending } = await useAsyncData<PatchResourceDetail | null>
 
 const resource = computed(() => detail.value?.resource ?? null)
 
-const noteHtml = computed(() =>
-  resource.value?.note_html
-    ? kunSanitize(resource.value.note_html, { ADD_ATTR: ['data-id'] })
-    : ''
-)
+// note_html is server-rendered (goldmark, no html.WithUnsafe → already
+// sanitized at the source), so bind it directly without a client sanitizer.
+const noteHtml = computed(() => resource.value?.note_html ?? '')
 
 const patchName = computed(() =>
   detail.value?.patch ? getPreferredLanguageText(detail.value.patch.name) : ''

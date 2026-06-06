@@ -6,15 +6,14 @@
 // It starts clamped (before measurement) so a long note never flashes fully
 // open on hydration; after onMounted measures scrollHeight, short notes drop
 // the clamp (no button) and long ones keep it.
-import { kunSanitize } from '@kun/ui/app/utils/sanitize'
-
+//
+// `html` is the server-rendered note_html — markdown.MustRender output from the
+// Go API's goldmark pipeline (no html.WithUnsafe: raw HTML is escaped and
+// javascript:/data: URLs are dropped server-side). It is already safe, so it's
+// bound directly with no client-side sanitizer.
 const props = withDefaults(
   defineProps<{ html: string; maxHeight?: number }>(),
   { maxHeight: 100 }
-)
-
-const clean = computed(() =>
-  kunSanitize(props.html, { ADD_ATTR: ['data-id'] })
 )
 
 const contentRef = ref<HTMLElement | null>(null)
@@ -57,7 +56,7 @@ watch(
         ref="contentRef"
         class="kun-prose overflow-hidden transition-[max-height] duration-300"
         :style="clampStyle"
-        v-html="clean"
+        v-html="props.html"
       />
       <!-- bottom fade hint while collapsed -->
       <div
