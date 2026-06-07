@@ -524,7 +524,7 @@ func dedupe(ids []uint) []uint {
 | bio | ✓ 可以删（OAuth 提供） |
 | role | ✓ 可以删，但要先确认所有权限判断都改走 OAuth roles claim 或 `/users/batch` 返回的 roles 字段 |
 | status | ✓ 可以删（OAuth 提供） |
-| moemoepoint | ✗ **保留**（OAuth 也有但被认为是 OAuth-端总积分；站点的 moemoepoint 是站点行为分） |
+| moemoepoint | ✓ **可删本地真源**（C3：余额单源在 OAuth；本地仅能作缓存视图，不可当站点独立行为分，否则与统一账本 split-brain）|
 | daily_check_in / daily_image_count | ✗ **保留**（站点功能特有） |
 | daily_toolset_upload_count（kungal）/ daily_upload_size（moyu） | ✗ **保留** |
 | last_login_time | ✗ **保留** |

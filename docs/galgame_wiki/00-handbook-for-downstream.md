@@ -51,7 +51,7 @@
 |---|---|
 | 用户调 `POST /galgame/submit` | **0**（提交不奖励） |
 | 用户调 `POST /galgame/:gid/claim` | **+3**（claim 直接 published） |
-| moyu cron 收到 `approved` 消息 | **+3**（在 cron 事务里写一行 user.moemoepoint += 3） |
+| moyu/kungal cron 收到 `approved` 消息 | **+3**（调 OAuth s2s `POST /users/:id/moemoepoint` reason=`content_approved`；本地仅缓存返回余额，**不可**本地 `moemoepoint += 3` 双写）|
 | `declined` / `delete draft` | **不退**（一开始就没给） |
 
 **理由**：submit 即时 +3 会激励刷垃圾投稿；只奖励"通过审核"才是正确的质量信号。

@@ -62,7 +62,7 @@
 }
 ```
 
-> ⚠️ **业务级 401 走 HTTP 200**：`/auth/me` / `/auth/*` 等需要 token 的端点在 token 缺失 / 失效 / 过期时返回 **HTTP 200** + `{ code: 10001 | 10002 | 10003, message }`，而**不是** HTTP 401。下游客户端不能只靠 HTTP status 判断未授权，必须同时检查 `code`。完整列表见 [04-tokens-and-errors.md §认证错误](./04-tokens-and-errors.md#认证错误-10xxx)。
+> ⚠️ **认证失败返回 HTTP 401 / 403**：`/auth/me` / `/auth/*` 等受保护端点（protected 组，挂 `middleware.Auth`，见 `cmd/oauth/main.go`）在 token 缺失 / 失效 / 过期时返回 **HTTP 401** + `{ code: 10001 | 10002 | 10003, message }`；权限不足返回 **HTTP 403**。下游客户端应同时检查 HTTP status 与 `code`。完整列表见 [04-tokens-and-errors.md §认证错误](./04-tokens-and-errors.md#认证错误-10xxx)。
 
 ## 认证
 

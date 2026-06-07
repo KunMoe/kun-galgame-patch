@@ -21,18 +21,18 @@
 
 ## 一句话总结
 
-> **图片服务不管业务实体、不存引用关系、不允许调用方主动删图。只管 hash 对应的二进制 + 元数据。上传时预生成固定变体；生命周期由 TTL 驱动。**
+> **图片服务不管业务实体、不存引用关系。只管 hash 对应的二进制 + 元数据。上传时预生成固定变体；生命周期由 TTL 驱动；调用方可对自己用过的图发 `DELETE /image/:hash` 软删（GC 到期物理回收）。**
 
 ## 关键决策速查
 
-- ✅ **决策 0：调用方不主动删图** —— 图片生命周期完全由 `last_referenced_at` + TTL 驱动，调用方只改自己库里的外键
+- ✅ **决策 0：生命周期 TTL 驱动** —— 由 `last_referenced_at` + TTL 软清理，调用方改自己库外键即可；**亦可主动软删** `DELETE /image/:hash`（OAuth 注销 / 匿名化回收头像即走此路径，见 `cmd/image/main.go` 的 `SoftDelete`）
 - ✅ **复用 OAuth** —— 不新增 API Key 体系，沿用 `oauth_client` 作为"站点"的 source of truth
 - ✅ **内容寻址** —— 存储 key = `sha256(content)`，无 site 前缀，跨站彻底物理去重
 - ✅ **`UNIQUE(hash)` 单行** —— 物理 + 审核态都是单行；站点维度用独立 `image_site_usage` 审计表
 - ✅ **调用方管引用** —— `users.avatar_image_hash` 放在各调用方库里，不在图片服务
 - ✅ **上传时预生成固定变体** —— 按 preset 生成已知变体（avatar-100、banner-mini 等），不走 imgproxy
 - ✅ **软清理** —— 靠 `last_referenced_at` + TTL，不用引用计数
-- 🕒 **审核 + Admin UI 延后到 V3** —— V1 不做，`review_status` 列保留默认 `approved`
+- ✅ **审核 + Admin 端点已上线** —— `/api/v1/admin/image/{list,stats,:hash/review,:hash}` 已挂在 OAuth 进程（`cmd/oauth/main.go`）；`review_status` 默认 `approved`
 
 ## V1 必要性下限（不可拆）
 

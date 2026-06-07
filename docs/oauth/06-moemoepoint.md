@@ -6,7 +6,7 @@
 
 返回 [README](./README.md)
 
-> 🚧 **状态：设计规范（待实现）**。库表 / 端点 / 错误码尚未落地。
+> ✅ **状态：已实现**。`moemoepoint_log` 表 + s2s 端点 `POST/GET /users/:id/moemoepoint`（`Adjust` 幂等 / `GetBalance`）+ 用户自助 `GET /auth/me/moemoepoint/log` 均已上线。实现见 `internal/platform/auth/handler/moemoepoint_handler.go`，路由注册见 `cmd/oauth/main.go`。
 
 ## 0. 决策与定位
 

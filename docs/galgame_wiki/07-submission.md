@@ -25,7 +25,7 @@
 
 kungal/moyu cron 每日
   → GET /galgame/messages/feed?since_id=X (Basic Auth)
-  → 同步本地 galgame_stats.wiki_status_snapshot
+  → 写本地通知 + 经 OAuth s2s 发放萌萌点（游标存 since_id；无 wiki_status_snapshot 字段）
 ```
 
 ### Status 取值
