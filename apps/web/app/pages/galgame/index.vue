@@ -306,6 +306,8 @@ const chipClass = (active: boolean) => [
           <span>高级筛选</span>
         </button>
 
+        <GalgameDisplaySettings />
+
         <button
           v-if="hasActiveFilter"
           type="button"

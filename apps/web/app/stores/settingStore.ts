@@ -31,11 +31,29 @@ export interface KunSettingData {
   // on logout would be incorrect (an anonymous browser that logged in then
   // out should keep its prior NSFW acks).
   nsfwAckedIds: number[]
+
+  // ── Galgame card display preferences (the /galgame "显示设置" panel) ──
+  // Cookie-persisted with the rest of the store so SSR renders cards in the
+  // chosen language on first paint (no hydration flash). Read with a `?? default`
+  // guard at the use site — an older cookie won't carry these keys.
+  //
+  // Preferred language for the game TITLE on cards: 'zh-cn' (default) or 'ja-jp'.
+  titleLanguage: 'zh-cn' | 'ja-jp'
+  // Show the Japanese title as a subtitle under the title. Default off.
+  showJapaneseSubtitle: boolean
+  // Show the game's release date on the card. Default off.
+  showReleaseDate: boolean
+  // Show the game's NSFW / age-rating badge on the card. Default on.
+  showNsfwBadge: boolean
 }
 
 const initialState: KunSettingData = {
   kunNsfwEnable: 'sfw',
-  nsfwAckedIds: []
+  nsfwAckedIds: [],
+  titleLanguage: 'zh-cn',
+  showJapaneseSubtitle: false,
+  showReleaseDate: false,
+  showNsfwBadge: true
 }
 
 export const useSettingStore = defineStore('setting', {

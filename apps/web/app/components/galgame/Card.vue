@@ -7,7 +7,27 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const galgameName = computed(() => getPreferredLanguageText(props.patch.name))
+// Card display preferences (the /galgame "显示设置" panel; cookie-persisted).
+// `?? default` guards an older cookie written before these keys existed.
+const settingStore = useSettingStore()
+const titleLanguage = computed(() => settingStore.data.titleLanguage ?? 'zh-cn')
+const showJapaneseSubtitle = computed(
+  () => settingStore.data.showJapaneseSubtitle ?? false
+)
+const showReleaseDate = computed(() => settingStore.data.showReleaseDate ?? false)
+const showNsfwBadge = computed(() => settingStore.data.showNsfwBadge ?? true)
+
+const galgameName = computed(() =>
+  getPreferredLanguageText(props.patch.name, titleLanguage.value)
+)
+
+// Opt-in Japanese subtitle under the title — suppressed when it would just
+// duplicate the title (title already 日语, or a zh title that fell back to ja).
+const japaneseSubtitle = computed(() => {
+  if (!showJapaneseSubtitle.value) return ''
+  const ja = props.patch.name?.['ja-jp'] ?? ''
+  return ja && ja !== galgameName.value ? ja : ''
+})
 
 const bannerSrc = computed(
   () => resolveBannerUrl(props.patch, 'mini') || '/kungalgame-trans.webp'
@@ -41,7 +61,10 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
         class-name="rounded-t-lg"
       />
 
-      <div class="bg-background absolute top-2 left-2 z-10 rounded-full">
+      <div
+        v-if="showNsfwBadge"
+        class="bg-background absolute top-2 left-2 z-10 rounded-full"
+      >
         <KunChip
           :color="props.patch.content_limit === 'sfw' ? 'success' : 'danger'"
           variant="flat"
@@ -52,19 +75,27 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
     </div>
 
     <div class="flex flex-col justify-between space-y-2 p-3">
-      <h2
-        class="text-medium hover:text-primary-500 space-x-2 font-semibold transition-colors line-clamp-2 sm:text-lg"
-      >
-        <span>{{ galgameName }}</span>
-        <span
-          v-if="props.patch.created"
-          class="text-default-500 text-xs font-normal"
+      <div class="space-y-0.5">
+        <h2
+          class="text-medium hover:text-primary-500 space-x-2 font-semibold transition-colors line-clamp-2 sm:text-lg"
         >
-          {{ formatDistanceToNow(props.patch.created) }}
-        </span>
-      </h2>
+          <span>{{ galgameName }}</span>
+          <span
+            v-if="props.patch.created"
+            class="text-default-500 text-xs font-normal"
+          >
+            {{ formatDistanceToNow(props.patch.created) }}
+          </span>
+        </h2>
+        <p
+          v-if="japaneseSubtitle"
+          class="text-default-500 line-clamp-1 text-xs"
+        >
+          {{ japaneseSubtitle }}
+        </p>
+      </div>
       <div
-        v-if="releaseDate"
+        v-if="showReleaseDate && releaseDate"
         class="text-default-500 flex items-center gap-1 text-xs"
       >
         <KunIcon name="lucide:calendar" class="size-3.5" />
