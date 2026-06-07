@@ -121,9 +121,9 @@ UPDATE images.last_referenced_at = NOW()
 
 ## 核心设计决策
 
-### 决策 0：调用方不主动删图
+### 决策 0：生命周期 TTL 驱动；调用方可软删
 
-**选择**：图片的生命周期**完全**由图片服务根据 `last_referenced_at` + TTL 管理。调用方没有 `DELETE /image/:hash` 端点可用。
+**选择**：图片生命周期由 `last_referenced_at` + TTL 软清理。调用方**可**对自己用过的图主动软删 `DELETE /image/:hash`（`cmd/image/main.go` 的 `SoftDelete`，GC 到期物理回收；OAuth 注销 / 匿名化回收头像即走此路径）。
 
 **触发机制**：
 - 调用方删帖/删用户 → 只改自己库里的 `image_hash` 外键
