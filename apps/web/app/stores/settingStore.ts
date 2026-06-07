@@ -45,6 +45,12 @@ export interface KunSettingData {
   showReleaseDate: boolean
   // Show the game's NSFW / age-rating badge on the card. Default on.
   showNsfwBadge: boolean
+  // Include galgames that have no patch resources (resource_count = 0) in the
+  // /galgame list. Default off → the list only shows games with patches.
+  // Unlike the other four (pure card rendering), this drives a backend filter:
+  // the /galgame index forwards it as the `include_empty` query param, so the
+  // list + pagination total stay correct.
+  showGalgamesWithoutResource: boolean
 }
 
 const initialState: KunSettingData = {
@@ -53,7 +59,8 @@ const initialState: KunSettingData = {
   titleLanguage: 'zh-cn',
   showJapaneseSubtitle: false,
   showReleaseDate: false,
-  showNsfwBadge: true
+  showNsfwBadge: true,
+  showGalgamesWithoutResource: false
 }
 
 export const useSettingStore = defineStore('setting', {

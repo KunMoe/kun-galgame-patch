@@ -152,6 +152,10 @@ type galgameListRequest struct {
 	// 不连续月份集合 (CSV 1-12，如 "3,7,12")，叠加在年份区间上的 AND 过滤
 	// (wiki §17.10)。本地 SQL: EXTRACT(MONTH FROM release_date) IN (...)。
 	ReleasedMonths string `query:"released_months"`
+	// 是否包含「没有补丁资源」的 Galgame（resource_count = 0）。前端「显示设置」
+	// 里的开关，默认关闭：列表只显示有补丁资源的游戏。缺省 / false → 后端追加
+	// `resource_count > 0` 过滤；true → 不过滤，连同空补丁的游戏一起返回。
+	IncludeEmpty bool `query:"include_empty"`
 }
 
 // GetGalgameList GET /api/galgame
@@ -207,6 +211,12 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	// release_date btree range already narrowed.
 	if len(months) > 0 {
 		base = base.Where("EXTRACT(MONTH FROM release_date)::int IN ?", months)
+	}
+	// 默认隐藏没有补丁资源的游戏（resource_count 在资源增删时维护，见
+	// patch/service UpdateCount）。前端「显示设置」勾选后传 include_empty=true
+	// 才连空补丁的游戏一起返回。过滤在 base 上，Count 与 Find 都生效。
+	if !req.IncludeEmpty {
+		base = base.Where("resource_count > 0")
 	}
 
 	var total int64

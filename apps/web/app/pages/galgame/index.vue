@@ -5,6 +5,10 @@ import { GALGAME_SORT_FIELD_LABEL_MAP } from '~/constants/galgame'
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
+// Cookie-persisted display prefs; here we read the "显示无补丁资源的游戏" toggle,
+// which drives the `include_empty` list param (default off → only games with
+// patches). Read before useAsyncData so SSR's first fetch already honours it.
+const settingStore = useSettingStore()
 
 // SFW-by-default per useApi resolution — listing only contains sfw rows
 // for anonymous crawlers, so a rich keyword-laden description is safe.
@@ -64,6 +68,11 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
         'released_months',
         [...selectedMonths.value].sort((a, b) => a - b).join(',')
       )
+    }
+    // Display pref, not a filter chip: BE defaults to resource_count > 0, so we
+    // only opt-in to empties (send the param) when the toggle is on.
+    if (settingStore.data.showGalgamesWithoutResource) {
+      params.set('include_empty', 'true')
     }
 
     const res = await api.get<ListResponse>(`/galgame?${params.toString()}`)
@@ -145,6 +154,17 @@ const updateQuery = async () => {
   await router.replace({ query: buildQuery() })
   await refresh()
 }
+
+// Toggling "显示无补丁资源的游戏" changes both the rows and the total, so reset
+// to page 1 and refetch. The param itself isn't URL-synced (it's a persisted
+// preference, like title language), but page reset keeps the URL consistent.
+watch(
+  () => settingStore.data.showGalgamesWithoutResource,
+  () => {
+    page.value = 1
+    updateQuery()
+  }
+)
 
 const setType = (v: string) => {
   if (selectedType.value === v) return

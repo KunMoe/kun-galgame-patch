@@ -26,6 +26,12 @@ const showNsfwBadge = computed({
   get: () => settingStore.data.showNsfwBadge ?? true,
   set: (v: boolean) => settingStore.setData({ showNsfwBadge: v })
 })
+// Drives the /galgame list's `include_empty` query param (the index page
+// watches this and refetches) — not a card-render toggle like the others.
+const showGalgamesWithoutResource = computed({
+  get: () => settingStore.data.showGalgamesWithoutResource ?? false,
+  set: (v: boolean) => settingStore.setData({ showGalgamesWithoutResource: v })
+})
 
 const titleLanguageOptions = [
   { value: 'zh-cn' as const, label: '中文' },
@@ -78,6 +84,16 @@ const titleLanguageOptions = [
           <p class="text-default-500 text-xs">在卡片上显示全年龄 / R18 标识</p>
         </div>
         <KunSwitch v-model="showNsfwBadge" />
+      </div>
+
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-sm font-medium">显示无补丁资源的游戏</p>
+          <p class="text-default-500 text-xs">
+            列表中包含暂时没有补丁资源的 Galgame
+          </p>
+        </div>
+        <KunSwitch v-model="showGalgamesWithoutResource" />
       </div>
     </div>
   </KunModal>
