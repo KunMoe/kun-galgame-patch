@@ -46,6 +46,14 @@
 
 **查询参数**：`page`, `limit`, `tag_ids`（数组）
 
+### GET /tag/:id/galgame-ids
+
+返回某标签下所有 galgame 的 id 列表（下游按标签拉取 / 筛选用）。`official` / `engine` 同款：`GET /official/:id/galgame-ids`、`GET /engine/:id/galgame-ids`。
+
+**路径参数**：`:id`（tag id）
+
+**成功响应**：`{ "code": 0, "message": "...", "data": { "ids": [101, 102, ...] } }`（无匹配时 `ids: []`）。
+
 ### GET /tag/:name
 
 标签详情 + 关联的 galgame 列表。
