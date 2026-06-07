@@ -4,7 +4,7 @@ export interface KunNavItem {
 }
 
 // NOTE: /tag, /company, /character, /person, /release are deprecated per D8/D11/D12.
-// Their metadata is owned by the Galgame Wiki Service (galgame.kungal.com).
+// Their metadata is owned by the Galgame Wiki Service (wiki.kungal.com).
 export const kunNavItem: KunNavItem[] = [
   { name: '下载', href: '/galgame' },
   { name: '发布', href: '/edit/create' },

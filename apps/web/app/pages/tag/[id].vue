@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Standalone moyu tag detail page (replaces the previous external-link to
-// galgame.kungal.com/tag/:id from the patch introduction).
+// wiki.kungal.com/tag/:id from the patch introduction).
 //
 // Reads Wiki's `GET /tag/_?tag_id=N&page&limit` which returns the tag entity
 // + the associated paginated galgame list. `:name` segment is cosmetic on

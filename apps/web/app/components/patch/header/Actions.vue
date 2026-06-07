@@ -43,7 +43,7 @@ const props = defineProps<Props>()
 const config = useRuntimeConfig()
 const wikiOrigin =
   ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-  'https://galgame.kungal.com'
+  'https://wiki.kungal.com'
 
 const userStore = useUserStore()
 const api = useApi()

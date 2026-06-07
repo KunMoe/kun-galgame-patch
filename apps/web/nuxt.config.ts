@@ -100,7 +100,14 @@ export default defineNuxtConfig({
       oauthWebUrl:
         process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL || 'http://127.0.0.1:9420',
       oauthClientId: process.env.NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID || '',
-      oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || ''
+      oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || '',
+      // 鲲 Galgame Wiki 的公开 origin。用于：(1) 跳转 wiki 的 galgame 详情页
+      // `${wikiOrigin}/galgame/:id`；(2) /edit/draft 直连 wiki 读 API
+      // `${wikiOrigin}/api/galgame/:id`（wiki 对读端点开了 CORS）。
+      // 注意是 wiki.kungal.com，不是 galgame.kungal.com。运行时可由
+      // NUXT_PUBLIC_WIKI_ORIGIN 覆盖（Nitro 自动映射 camelCase→SCREAMING_SNAKE）。
+      wikiOrigin:
+        process.env.NUXT_PUBLIC_WIKI_ORIGIN || 'https://wiki.kungal.com'
     }
   }
 })

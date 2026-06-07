@@ -53,7 +53,7 @@ const config = useRuntimeConfig()
 const wikiOrigin = computed(
   () =>
     ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-    'https://galgame.kungal.com'
+    'https://wiki.kungal.com'
 )
 
 const { data: detail, pending } = await useAsyncData<WikiGalgame | null>(

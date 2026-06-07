@@ -98,6 +98,7 @@ services:
       NUXT_PUBLIC_OAUTH_WEB_URL: https://oauth.kungal.com
       NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
+      NUXT_PUBLIC_WIKI_ORIGIN: https://wiki.kungal.com         # 鲲 Galgame Wiki(不是 galgame.kungal.com)
     expose: ["3000"]
     depends_on:
       moyu-api: { condition: service_healthy }
