@@ -337,21 +337,24 @@ func (c *GalgameClient) MessageFeed(ctx, sinceID int64, limit int) ([]Message, e
 
 每日凌晨：
 
-```sql
--- kungal 本地
-SELECT MAX(wiki_message_last_id) FROM cron_state WHERE name = 'wiki_msg_sync';
-```
-
-调 `GET /galgame/messages/feed?since_id=<last>&limit=1000` 拉增量。对每条：
-
 ```go
-switch msg.Type {
-case "approved", "unbanned":
-    UPDATE galgame_stats SET wiki_status_snapshot = 0 WHERE galgame_id = msg.GalgameID
-case "declined":
-    UPDATE galgame_stats SET wiki_status_snapshot = 4 WHERE galgame_id = msg.GalgameID
-case "banned":
-    UPDATE galgame_stats SET wiki_status_snapshot = 1 WHERE galgame_id = msg.GalgameID
+// 实际实现以 moyu internal/infrastructure/cron/wiki_sync.go 为准（无 wiki_status_snapshot 列）。
+// 游标：cron_state(name='wiki_msg_sync', last_id)，last_id 即 since_id。
+sinceID := readCronCursor("wiki_msg_sync")
+feed := wiki.GetWikiMessageFeed(ctx, sinceID, N)   // GET /galgame/messages/feed?since_id=&limit=
+for _, m := range feed.Items {
+  // 每条一个事务：幂等插入 + 副作用 + 游标推进 一起提交（exactly-once）
+  if tx.Exec(`INSERT INTO wiki_message_processed(message_id) VALUES (?) ON CONFLICT DO NOTHING`, m.ID).RowsAffected == 0 {
+    continue // 已处理
+  }
+  switch m.Type {
+  case "approved": // 经 OAuth s2s 发 +3 + 缓存返回余额 + 写通知（不存本地状态列）
+    mp.Adjust(m.TargetUserID, +3, "content_approved", key="moyu:wiki_approved:"+m.ID)
+    writeNotification(m, "已通过审核，奖励 +3 萌萌点")
+  case "declined", "banned", "unbanned": // 仅写本地通知，不动萌萌点
+    writeNotification(m, "...")
+  }
+  advanceCronCursor("wiki_msg_sync", m.ID) // 同事务提交
 }
 ```
 
@@ -360,25 +363,12 @@ case "banned":
 `/messages/feed` 按 `target_user_id IS NOT NULL` 过滤，刚好对应这 4 种 admin 触发的事件。**kungal/moyu 自己触发**的操作（submit / claim / patch / delete）不需要 cron 同步——这些请求是 kungal 后端发出去的，wiki 的同步返回里就带了最新 `status`，按返回值更新本地即可：
 
 ```go
-// kungal 后端 — 用户提交
-result, _ := wiki.Submit(ctx, token, req)
-db.Exec(`INSERT INTO galgame_stats(galgame_id, wiki_status_snapshot) VALUES (?, ?)`,
-    result.ID, result.Status) // status=3
-
-// kungal 后端 — 用户认领草稿
-result, _ := wiki.Claim(ctx, token, gid)
-db.Exec(`INSERT INTO galgame_stats(galgame_id, wiki_status_snapshot) VALUES (?, ?)
-         ON CONFLICT (galgame_id) DO UPDATE SET wiki_status_snapshot = EXCLUDED.wiki_status_snapshot`,
-    result.ID, result.Status) // status=0
-
-// kungal 后端 — 用户编辑草稿（可能从 4 翻回 3）
-result, _ := wiki.PatchDraft(ctx, token, gid, req)
-db.Exec(`UPDATE galgame_stats SET wiki_status_snapshot = ? WHERE galgame_id = ?`,
-    result.Status, result.ID) // status=3
-
-// kungal 后端 — 用户撤回草稿
-_ = wiki.DeleteDraft(ctx, token, gid)
-db.Exec(`DELETE FROM galgame_stats WHERE galgame_id = ?`, gid)
+// 自己触发的操作走 RPC 返回值更新本地行（moyu 用 patch 行；无 wiki_status_snapshot 列）。
+// 例：认领草稿 —— 本地建行 + 经 OAuth s2s 发 +3（moyu RegisterClaimedGalgame）
+result, _ := wiki.Claim(ctx, token, gid)              // status 2→0
+patchID := registerLocalRow(result.ID)               // INSERT 本地行(zeros) + contributor，幂等
+mp.Award(userID, +3, "content_approved", key="moyu:claim:"+patchID) // 提交后异步
+// submit / patch-draft / delete-draft：按返回 status 建/改/删本地行即可，均不发萌萌点
 ```
 
 cron 是"被动事件流"，处理 admin 主动操作；用户操作走"主动 RPC + 同步本地"——两条路职责清晰互不重叠。

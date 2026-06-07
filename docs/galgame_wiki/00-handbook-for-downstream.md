@@ -147,7 +147,7 @@ wiki 事务:
   ↓
 moyu 后端事务:
   - INSERT galgame_stats(galgame_id=8329, all zeros) ← 这里需要 INSERT，因为 claim 即发布
-  - UPDATE user.moemoepoint += 3 (决策 1：claim 即时奖励)
+  - 经 OAuth s2s 发放 +3（`mp.Award` reason=content_approved，key=`moyu:claim:<gid>`，提交后异步、幂等；非本地 +=）
   ↓
 跳详情页
 ```
@@ -237,7 +237,7 @@ admin 在 wiki 后台审核队列看到这条
   │   moyu cron 每 5-15 分钟拉一次 /galgame/messages/feed
   │   ↓
   │   收到 type='approved'：
-  │     - UPDATE user.moemoepoint += 3 (决策 1：approved 才奖励)
+  │     - 经 OAuth s2s `POST /users/:id/moemoepoint` 发放 +3（reason=content_approved，key=`moyu:wiki_approved:<msgID>`），再缓存返回余额（同事务）
   │     - 发本地消息通知"您提交的《X》已通过审核"
   │     - 不需要建 galgame_stats（懒加载）
   │
@@ -440,7 +440,7 @@ func (c *WikiSyncCron) Run(ctx context.Context) error {
 
 ## 8. 萌萌点幂等性（important）
 
-cron 可能重跑同一批消息（崩溃恢复、人为重启）。如果 cron 直接 `moemoepoint += 3`，重跑就会重复奖励。
+cron 可能重跑同一批消息（崩溃恢复、人为重启）。萌萌点经 OAuth s2s 发放（非本地 `+=`）；若不去重，重跑会重复发放。OAuth 侧的 `idempotency_key` 是一层护甲，本地仍需消息级去重（下面 §8）。
 
 **解法 A（推荐，简单）**：用 `wiki_message_id` 做处理日志
 
@@ -474,7 +474,7 @@ cron 处理 admin 触发的事件；**用户自己触发**的事件不依赖 cro
 | 用户操作 | wiki 端结果 | moyu 后端在响应回来时做的事 |
 |---|---|---|
 | Submit | 创建 status=3 galgame | **不做事**（galgame_stats 懒加载） |
-| Claim | status 2→0 | INSERT galgame_stats(zeros) + moemoepoint += 3 |
+| Claim | status 2→0 | INSERT 本地行(zeros) + 经 OAuth s2s 发 +3（`mp.Award`，key=`moyu:claim:<gid>`，提交后异步幂等；moyu 实测在 `RegisterClaimedGalgame`）|
 | PatchDraft | 改字段 + 4→3 翻转 | **不做事** |
 | DeleteDraft | 硬删 galgame + relations | DELETE galgame_stats(galgame_id) — 如果有的话 |
 | 首次互动（like/comment） | (与 wiki 无关) | `INSERT ... ON CONFLICT DO UPDATE` galgame_stats |
