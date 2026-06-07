@@ -19,4 +19,4 @@ galgame **补丁 / 资源站**。`apps/api` = Go Fiber v3 + GORM + Postgres，`a
 ## 本仓要点
 
 - **迁移后极简鉴权**：无本地登录 / 2FA，**不签发任何 token**（身份完全归 OAuth，本服务只验签）。
-- `docs/image_service/03-api-design.md` 是**本仓自有变体**（记录「运行实现用扁平信封 `{code,message}`、非设计稿的 `{error}` 嵌套」这一实现修正 + moyu `pkg/imageclient` 踩坑）。它**不是镜像**，`docs:sync` 已配置跳过它，**勿删勿覆盖**；其余 `docs/{oauth,image_service,galgame_wiki}/` 文件都是 infra 镜像，要改去 infra 改。
+- `docs/{oauth,image_service,galgame_wiki}/` 全部是 infra 镜像（含 `image_service/03-api-design.md`——其早期实现修正已折回 infra 源，2026-06 起不再是变体）。要改去 infra 改、再 `docs:sync`，**勿动这里的副本**。

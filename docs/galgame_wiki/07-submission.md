@@ -28,6 +28,8 @@ kungal/moyu cron 每日
   → 写本地通知 + 经 OAuth s2s 发放萌萌点（游标存 since_id；无 wiki_status_snapshot 字段）
 ```
 
+> ⚠️ 本文示例中的 `galgame_stats.wiki_status_snapshot` / `cron_state.wiki_message_last_id` 是**示意性的下游本地列名**——forum/patch 当前并未建这些列（实测：patch 用 `cron_state.last_id` + API `since_id` 增量拉取，均无 wiki 状态快照列）。请按你站实际 schema 实现，勿照抄字段名。
+
 ### Status 取值
 
 | status | 含义 |
