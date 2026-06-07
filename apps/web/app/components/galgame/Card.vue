@@ -77,7 +77,7 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
     <div class="flex flex-col justify-between space-y-2 p-3">
       <div class="space-y-0.5">
         <h2
-          class="text-medium hover:text-primary-500 space-x-2 font-semibold transition-colors line-clamp-2 sm:text-lg"
+          class="text-medium hover:text-primary-500 space-x-2 font-semibold transition-colors line-clamp-3 sm:text-lg"
         >
           <span>{{ galgameName }}</span>
           <span

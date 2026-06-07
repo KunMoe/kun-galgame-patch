@@ -180,7 +180,9 @@ const sortedResources = computed(() => {
 // ─── "获取资源链接" — fetch minimal link info, reveal inline ──
 // Calls the lightweight GET /patch/resource/:id/link (only storage + links +
 // secrets — no Wiki enrich / recommendations / blake3). A second click
-// collapses. blake3 stays on the card; it's intentionally not duplicated here.
+// collapses. blake3 is folded INTO this reveal (rendered from the row's own
+// r.blake3, since the /link endpoint doesn't return it) so the hash + 校验文件
+// only show once the user reveals the download links.
 interface ResourceLinkInfo {
   storage: string
   content: string
@@ -559,26 +561,6 @@ watch(histPage, loadHistory)
         </div>
 
         <div
-          v-if="r.blake3"
-          class="text-default-400 flex flex-wrap items-center gap-2 text-xs"
-        >
-          <span class="shrink-0">BLAKE3</span>
-          <code
-            class="bg-default-100 max-w-full truncate rounded-lg px-2 py-1"
-          >
-            {{ r.blake3 }}
-          </code>
-          <NuxtLink
-            :to="`/check-hash?hash=${r.blake3}&content=${encodeURIComponent(r.content || '')}`"
-          >
-            <KunButton size="sm" variant="flat" color="primary" rounded="full">
-              <KunIcon name="lucide:shield-check" class="size-3.5" />
-              校验文件
-            </KunButton>
-          </NuxtLink>
-        </div>
-
-        <div
           class="border-default/15 flex flex-wrap items-center justify-between gap-2 border-t pt-3"
         >
           <div class="flex min-w-0 flex-col gap-1.5">
@@ -729,6 +711,26 @@ watch(histPage, loadHistory)
               variant="flat"
               size="sm"
             />
+          </div>
+
+          <!-- BLAKE3 + 校验文件 — folded into the reveal (was previously always
+               shown on the card). Uses the row's own r.blake3 / r.content. -->
+          <div
+            v-if="r.blake3"
+            class="text-default-400 flex flex-wrap items-center gap-2 text-xs"
+          >
+            <span class="shrink-0">BLAKE3</span>
+            <code class="bg-default-100 max-w-full truncate rounded-lg px-2 py-1">
+              {{ r.blake3 }}
+            </code>
+            <NuxtLink
+              :to="`/check-hash?hash=${r.blake3}&content=${encodeURIComponent(r.content || '')}`"
+            >
+              <KunButton size="sm" variant="flat" color="primary" rounded="full">
+                <KunIcon name="lucide:shield-check" class="size-3.5" />
+                校验文件
+              </KunButton>
+            </NuxtLink>
           </div>
         </div>
       </div>

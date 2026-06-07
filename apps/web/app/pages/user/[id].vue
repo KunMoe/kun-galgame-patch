@@ -256,7 +256,11 @@ const toggleFollow = async () => {
         </div>
       </div>
 
-      <div class="lg:col-span-2">
+      <!-- min-w-0: a grid item defaults to min-width:auto (= its content's
+           intrinsic width), so without this the KunTab strip's full width grows
+           this column past the viewport on mobile instead of letting KunTab's
+           own overflow-x-auto scroll. -->
+      <div class="min-w-0 lg:col-span-2">
         <KunTab
           v-model="currentTab"
           :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"

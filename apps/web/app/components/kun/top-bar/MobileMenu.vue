@@ -242,6 +242,24 @@ onUnmounted(() => {
               主菜单
             </p>
             <nav class="flex flex-col gap-0.5">
+              <!-- 首页 — kunMobileNavItem starts at 下载, so the menu had no way
+                   back to the homepage (the logged-in user card has no logo
+                   link). Pin an explicit 首页 entry at the top. -->
+              <NuxtLink
+                to="/"
+                class="hover:bg-default-100 active:bg-default-200 flex items-center gap-3 rounded-xl px-3 py-3.5 transition-colors"
+                @click="closeMenu"
+              >
+                <KunIcon
+                  name="lucide:house"
+                  class="text-default-500 size-5 shrink-0"
+                />
+                <span class="text-sm font-medium">首页</span>
+                <KunIcon
+                  name="lucide:chevron-right"
+                  class="text-default-300 ml-auto size-4"
+                />
+              </NuxtLink>
               <NuxtLink
                 v-for="item in primaryItems"
                 :key="item.href"
