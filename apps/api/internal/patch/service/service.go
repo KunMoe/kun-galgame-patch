@@ -1256,15 +1256,16 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceCreate",
 			"New resource added to patch",
-			fmt.Sprintf("/patch/%d/resource", patchID))
+			fmt.Sprintf("/patch/%d/resource", patchID), true)
 	}
 }
 
 // notifyResourceFavoritedUsers notifies every user subscribed to a SINGLE
 // resource that its file/link changed. Called from UpdateResource ONLY on a
 // file-substantive change (storage / s3_key / content) — metadata-only edits
-// don't notify. Dedup (keyed on type+sender+recipient+link) keeps repeated
-// saves from spamming a subscriber.
+// don't notify. redeliverAfterRead=true: repeated updates while the previous
+// notice is unread collapse into one, but a new update AFTER the subscriber has
+// read it re-notifies (so it isn't a one-time-only notification).
 func (s *PatchService) notifyResourceFavoritedUsers(resourceID, senderID int) {
 	var userIDs []int
 	s.db.Model(&model.UserPatchResourceFavoriteRelation{}).
@@ -1274,16 +1275,29 @@ func (s *PatchService) notifyResourceFavoritedUsers(resourceID, senderID int) {
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceUpdate",
 			"A subscribed resource was updated",
-			fmt.Sprintf("/resource/%d", resourceID))
+			fmt.Sprintf("/resource/%d", resourceID), true)
 	}
 }
 
-func (s *PatchService) createDedupMessage(senderID, recipientID int, msgType, content, link string) {
-	var count int64
-	s.db.Table("user_message").Where(
+// createDedupMessage inserts a user_message unless a matching one already exists.
+// redeliverAfterRead controls the dedup window:
+//   - false: dedup against ALL prior messages (type+sender+recipient+link) →
+//     notify at most once EVER. Anti-spam for social events (like / mention /
+//     reply) where a repeat from the same actor on the same target is noise.
+//   - true:  dedup only against UNREAD ones → multiple events while the previous
+//     notice is unread collapse into one, but once the recipient has READ it a
+//     new event re-notifies. For content subscriptions (new / updated resource),
+//     so they aren't a one-time-only notification.
+func (s *PatchService) createDedupMessage(senderID, recipientID int, msgType, content, link string, redeliverAfterRead bool) {
+	q := s.db.Table("user_message").Where(
 		"type = ? AND sender_id = ? AND recipient_id = ? AND link = ?",
 		msgType, senderID, recipientID, link,
-	).Count(&count)
+	)
+	if redeliverAfterRead {
+		q = q.Where("status = ?", 0) // only an UNREAD duplicate suppresses a new one
+	}
+	var count int64
+	q.Count(&count)
 
 	if count == 0 {
 		s.db.Table("user_message").Create(map[string]any{
@@ -1308,7 +1322,7 @@ func (s *PatchService) CreateMentionMessages(senderID, patchID int, content stri
 	for _, userID := range ids {
 		if userID != senderID {
 			s.createDedupMessage(senderID, userID, "mention", excerpt,
-				fmt.Sprintf("/patch/%d", patchID))
+				fmt.Sprintf("/patch/%d", patchID), false)
 		}
 	}
 }
@@ -1319,7 +1333,7 @@ func (s *PatchService) CreateCommentNotification(senderID int, comment *model.Pa
 		if err == nil && parent.UserID != senderID {
 			s.createDedupMessage(senderID, parent.UserID, "comment",
 				"Replied to your comment",
-				fmt.Sprintf("/patch/%d", comment.GalgameID))
+				fmt.Sprintf("/patch/%d", comment.GalgameID), false)
 		}
 	}
 }
@@ -1328,7 +1342,7 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 	if comment.UserID != senderID {
 		s.createDedupMessage(senderID, comment.UserID, "likeComment",
 			"Liked your comment",
-			fmt.Sprintf("/patch/%d", comment.GalgameID))
+			fmt.Sprintf("/patch/%d", comment.GalgameID), false)
 	}
 }
 
