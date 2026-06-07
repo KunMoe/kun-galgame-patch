@@ -63,7 +63,7 @@ export const kunMoyuMoe: KunSiteConfig = {
   ad: [
     {
       name: 'AIEro',
-      url: 'https://stats.kungal.org/q/W7Jb6JFlm'
+      url: 'https://umami.kungal.org/q/tuMHj3J6B'
     }
   ]
 }
