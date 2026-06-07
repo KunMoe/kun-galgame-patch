@@ -4,6 +4,8 @@
 
 # Galgame 创建与 Wiki 联动 — 下游接入手册（kungal / moyu）
 
+> ⚠️ **更正（2026-06，以代码为准）**：萌萌点是 **OAuth 单源**——下游经 s2s `POST /users/:id/moemoepoint`（reason=`content_approved` 等）发放、本地仅缓存余额；下文部分流程示例仍写本地 `user.moemoepoint += N`，那是**旧设计，勿照抄**（会造成与统一账本双写）。wiki 状态游标实际用 `cron_state.last_id` + API `since_id`，**无** `wiki_status_snapshot` 字段。
+
 > 此文档面向 **kungal / moyu 团队**，把"用户在站点发布一个 galgame"的端到端流程、wiki 提供的能力、下游需要实现的工作量、所有商议决策一次性梳理清楚。
 >
 > 设计文档：[docs/galgame_wiki/06-submission-and-review-design.md](../../galgame_wiki/06-submission-and-review-design.md)

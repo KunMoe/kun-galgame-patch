@@ -4,6 +4,8 @@
 
 # 03 — API 设计
 
+> ⚠️ **更正（2026-06，以代码为准）**：`DELETE /image/:hash`（调用方软删）与 admin 端点 `/api/v1/admin/image/*`（list / stats / :hash/review / :hash）**均已实现**；`GET /healthz` 实际只返回 `{"status":"ok"}`（无 postgres/storage/redis 级联）。下文 §5 标「V3」、「V1 不提供 DELETE」、healthz 级联依赖均为早期设计。
+
 ## 基础约定
 
 - **Base URL**：`https://image.api.example.com`（生产）/ `http://127.0.0.1:9278`（开发）
@@ -413,7 +415,7 @@ Prometheus 指标端点（标准 Go runtime + 自定义业务指标）。
 
 显式说明 **V1 故意不提供**：
 
-- ❌ `DELETE /image/:hash` — 调用方不主动删图（决策 0）。仅合规场景走 V3 的 admin-only `DELETE /admin/image/:hash?force=true`
+- `DELETE /image/:hash` — **更正：现已提供调用方软删**（见顶部更正）；admin 强删走 `/api/v1/admin/image/:hash`
 - ❌ `POST /image/upload-ticket` — V1 无前端直传，不需要签发临时凭证
 - ❌ `GET /image/:hash/variants/*` — 变体是固定静态 URL，不需要查询端点
 - ❌ Raw body 上传（`POST` + `Content-Type: image/*` + header `X-Preset`）——见上文 §1 body 格式说明
