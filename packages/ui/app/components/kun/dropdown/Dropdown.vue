@@ -86,7 +86,11 @@ const itemButtons = () =>
 
 const focusItem = (index: number) => {
   activeIndex.value = index
-  itemButtons()[index]?.focus()
+  // preventScroll: the menu is teleported to <body> and positioned by
+  // floating-ui only after mount, so focusing before that runs would scroll the
+  // page to the menu's initial (0,0) spot — i.e. jump to the very top (mobile
+  // "three-dots yanks me back to top" bug). floating-ui handles placement.
+  itemButtons()[index]?.focus({ preventScroll: true })
 }
 
 const open = (focus: 'first' | 'last' | 'none' = 'none') => {
@@ -104,7 +108,8 @@ const open = (focus: 'first' | 'last' | 'none' = 'none') => {
       focusItem(enabled[enabled.length - 1]!)
     } else {
       activeIndex.value = -1
-      menuRef.value?.focus()
+      // preventScroll: see focusItem — avoids the open-menu scroll-to-top jump.
+      menuRef.value?.focus({ preventScroll: true })
     }
   })
 }
@@ -114,7 +119,7 @@ const close = (returnFocus = false) => {
   isOpen.value = false
   activeIndex.value = -1
   emit('close')
-  if (returnFocus) nextTick(() => triggerRef.value?.focus())
+  if (returnFocus) nextTick(() => triggerRef.value?.focus({ preventScroll: true }))
 }
 
 const toggle = () => (isOpen.value ? close() : open('none'))
