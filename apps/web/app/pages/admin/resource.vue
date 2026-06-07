@@ -60,8 +60,8 @@ interface FileHistoryItem {
 const ACTOR_ROLE_LABEL: Record<number, string> = {
   0: '未知',
   1: '用户',
-  2: '协管',
-  3: '管理员'
+  2: '管理员',
+  3: '超级管理员'
 }
 
 const histOpen = ref(false)

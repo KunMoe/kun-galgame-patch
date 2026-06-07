@@ -29,9 +29,9 @@ const definitions: SettingDefinition[] = [
   },
   {
     key: 'creator-only',
-    name: '仅版主 / 管理员可发布 Galgame',
+    name: '仅管理员 / 超级管理员可发布 Galgame',
     description:
-      '开启后仅版主 / 管理员 (role > 2) 可以发布、认领或提交新的 Galgame 条目，普通用户将被拒绝',
+      '开启后仅管理员 / 超级管理员 (role > 2) 可以发布、认领或提交新的 Galgame 条目，普通用户将被拒绝',
     isInverse: false
   }
 ]

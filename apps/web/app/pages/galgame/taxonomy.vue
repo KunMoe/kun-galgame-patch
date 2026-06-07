@@ -266,7 +266,7 @@ const del = async (row: Row) => {
       deleting.value = null
       return
     }
-    useKunMessage(res.message || '删除失败（仅管理员 / 协管可操作）', 'error')
+    useKunMessage(res.message || '删除失败（仅超级管理员 / 管理员可操作）', 'error')
   } finally {
     deleting.value = null
   }

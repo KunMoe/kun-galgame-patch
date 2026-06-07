@@ -252,7 +252,7 @@ const toggleResourceFavorite = async (r: PatchResource) => {
 }
 
 // ─── 单资源操作菜单(卡片右上角三个点)──────────────────
-// 公共项:更改历史 / 分享(所有人,含未登录);作者 / 版主额外:编辑 / 删除 /
+// 公共项:更改历史 / 分享(所有人,含未登录);作者 / 管理员额外:编辑 / 删除 /
 // 禁用下载。KunDropdownItem 的形状(本地复刻,避免跨 layer 导入类型路径)。
 interface ResourceMenuItem {
   key: 'edit' | 'delete' | 'disable' | 'history' | 'share'
@@ -354,8 +354,8 @@ interface ResourceRevisionItem {
 const ACTOR_ROLE_LABEL: Record<number, string> = {
   0: '未知',
   1: '用户',
-  2: '协管',
-  3: '管理员'
+  2: '管理员',
+  3: '超级管理员'
 }
 const histOpen = ref(false)
 const histResource = ref<PatchResource | null>(null)
@@ -495,7 +495,7 @@ watch(histPage, loadHistory)
             </div>
           </div>
           <!-- 三个点固定在右上角(shrink-0,不随标题换行);更改历史 / 分享
-               所有人可见,编辑 / 删除 / 禁用下载 作者 / 版主可见。 -->
+               所有人可见,编辑 / 删除 / 禁用下载 作者 / 管理员可见。 -->
           <KunDropdown
             :items="menuItems(r)"
             position="bottom-end"
