@@ -128,22 +128,33 @@ func (r *PatchRepository) IncrementView(id int) error {
 		UpdateColumn("view", gorm.Expr("view + 1")).Error
 }
 
-func (r *PatchRepository) GetRandomPatchID() (int, error) {
+// includeEmpty=false hides games with no patch resources (the "显示无补丁资源的
+// 游戏" toggle, default off) so "随机游戏" never lands on a patch-less game.
+func (r *PatchRepository) GetRandomPatchID(includeEmpty bool) (int, error) {
 	var id int
-	err := r.db.Model(&model.Patch{}).Select("id").Order("RANDOM()").Limit(1).Scan(&id).Error
+	q := r.db.Model(&model.Patch{}).Select("id")
+	if !includeEmpty {
+		q = q.Where("resource_count > 0")
+	}
+	err := q.Order("RANDOM()").Limit(1).Scan(&id).Error
 	return id, err
 }
 
 // GetRandomPatchIDs returns up to n random patch ids. Used by the random-patch
 // endpoint so the service layer can ask wiki to filter the candidate set by
 // content_limit before picking one — a single RANDOM() pick has no way to
-// "retry" if it lands on a NSFW row under a sfw caller.
-func (r *PatchRepository) GetRandomPatchIDs(n int) ([]int, error) {
+// "retry" if it lands on a NSFW row under a sfw caller. includeEmpty=false also
+// drops patch-less games up front (see GetRandomPatchID).
+func (r *PatchRepository) GetRandomPatchIDs(n int, includeEmpty bool) ([]int, error) {
 	if n <= 0 {
 		return nil, nil
 	}
 	var ids []int
-	err := r.db.Model(&model.Patch{}).Select("id").Order("RANDOM()").Limit(n).Scan(&ids).Error
+	q := r.db.Model(&model.Patch{}).Select("id")
+	if !includeEmpty {
+		q = q.Where("resource_count > 0")
+	}
+	err := q.Order("RANDOM()").Limit(n).Scan(&ids).Error
 	return ids, err
 }
 

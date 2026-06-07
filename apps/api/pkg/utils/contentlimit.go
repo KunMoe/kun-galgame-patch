@@ -46,3 +46,20 @@ func ContentLimitForListBrowse(c *fiber.Ctx) string {
 	}
 	return ContentLimitSFW
 }
+
+// IncludeEmptyGalgames reports whether a browse-list caller opted in to seeing
+// galgames that have no patch resources (patch.resource_count = 0), via the
+// `include_empty` query parameter. Default (absent / unparseable / false) →
+// false → such games are hidden, so listings only surface games with patches.
+//
+// Driven by the frontend "显示设置 → 显示无补丁资源的游戏" toggle, which
+// apps/web composables/useApi.ts forwards (include_empty=true) on every request
+// when enabled. Every moyu-owned galgame-list endpoint (galgame list / home /
+// ranking / a user's patches / favorites / contributions) applies
+// `resource_count > 0` unless this returns true. resource_count is maintained
+// on resource create/delete (patch/service UpdateCount), so > 0 == "has at
+// least one patch resource". Wiki-delegated lists (tag / search) are NOT moyu
+// owned and intentionally don't honor this.
+func IncludeEmptyGalgames(c *fiber.Ctx) bool {
+	return c.QueryBool("include_empty", false)
+}

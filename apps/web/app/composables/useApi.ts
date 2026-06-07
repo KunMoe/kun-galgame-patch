@@ -104,6 +104,25 @@ export const useApi = () => {
     return `${endpoint}${sep}content_limit=${contentLimit}`
   }
 
+  // `include_empty`: the "显示设置 → 显示无补丁资源的游戏" display pref
+  // (settingStore). Appended GLOBALLY — like content_limit — so every moyu
+  // galgame-list surface (home / galgame / ranking / user patches / favorites /
+  // contributions) honors it; non-list endpoints ignore the extra query.
+  //
+  // Read LIVE here (NOT snapshotted like contentLimit above) on purpose: the
+  // 显示设置 panel lives only on /galgame, and toggling it there calls refresh()
+  // — reading the store at request time lets that refetch pick up the new value
+  // without the full location.reload() the NSFW switcher needs. Other pages
+  // remount on navigation and read the current value at mount anyway.
+  //
+  // Only sent when enabled: when off (the default) we omit it, and each backend
+  // list endpoint defaults to hiding resource-less games (utils.IncludeEmptyGalgames).
+  const appendIncludeEmpty = (endpoint: string): string => {
+    if (!setting.data.showGalgamesWithoutResource) return endpoint
+    const sep = endpoint.includes('?') ? '&' : '?'
+    return `${endpoint}${sep}include_empty=true`
+  }
+
   // Centralized auto-logout on a definitively-unauthenticated response.
   //
   // Without this the ONLY thing that reacts to a dead server-side session is
@@ -139,7 +158,7 @@ export const useApi = () => {
     options: ApiOptions = {}
   ): Promise<ApiResponse<T>> => {
     const { method = 'GET', body, headers = {} } = options
-    const url = `${baseUrl}${appendContentLimit(endpoint)}`
+    const url = `${baseUrl}${appendIncludeEmpty(appendContentLimit(endpoint))}`
 
     try {
       const res = await $fetch<ApiResponse<T>>(url, {

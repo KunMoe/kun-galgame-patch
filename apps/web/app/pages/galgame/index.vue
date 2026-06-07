@@ -5,9 +5,10 @@ import { GALGAME_SORT_FIELD_LABEL_MAP } from '~/constants/galgame'
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
-// Cookie-persisted display prefs; here we read the "显示无补丁资源的游戏" toggle,
-// which drives the `include_empty` list param (default off → only games with
-// patches). Read before useAsyncData so SSR's first fetch already honours it.
+// The "显示无补丁资源的游戏" toggle is forwarded to every request globally by
+// useApi (as include_empty) — so we don't build the param here. We only need
+// the store to WATCH the toggle: the 显示设置 panel lives on this page, so when
+// it flips we reset to page 1 and refetch (other pages remount on navigation).
 const settingStore = useSettingStore()
 
 // SFW-by-default per useApi resolution — listing only contains sfw rows
@@ -68,11 +69,6 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
         'released_months',
         [...selectedMonths.value].sort((a, b) => a - b).join(',')
       )
-    }
-    // Display pref, not a filter chip: BE defaults to resource_count > 0, so we
-    // only opt-in to empties (send the param) when the toggle is on.
-    if (settingStore.data.showGalgamesWithoutResource) {
-      params.set('include_empty', 'true')
     }
 
     const res = await api.get<ListResponse>(`/galgame?${params.toString()}`)

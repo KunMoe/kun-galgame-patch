@@ -66,10 +66,15 @@ func (r *UserRepository) CountUserFavorites(userID int) int64 {
 // count(*) on the shared statement, so the follow-up Find returns the count
 // row instead of the rows. See message/repository.go GetMessages.
 
-func (r *UserRepository) GetUserPatches(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
+func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
 	base := r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID)
+	// Honor the "显示无补丁资源的游戏" toggle (default hide). Applied to base
+	// before the Count/Find Session fork so the total matches the rows.
+	if !includeEmpty {
+		base = base.Where("resource_count > 0")
+	}
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -88,11 +93,14 @@ func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchMod
 	return resources, total, err
 }
 
-func (r *UserRepository) GetUserFavorites(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
+func (r *UserRepository) GetUserFavorites(userID, offset, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
 	subQuery := r.db.Table("user_patch_favorite_relation").Where("user_id = ?", userID).Select("galgame_id")
 	base := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
+	if !includeEmpty {
+		base = base.Where("resource_count > 0")
+	}
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -111,11 +119,14 @@ func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchMode
 	return comments, total, err
 }
 
-func (r *UserRepository) GetUserContributions(userID, offset, limit int) ([]patchModel.Patch, int64, error) {
+func (r *UserRepository) GetUserContributions(userID, offset, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
 	subQuery := r.db.Table("user_patch_contribute_relation").Where("user_id = ?", userID).Select("galgame_id")
 	base := r.db.Model(&patchModel.Patch{}).Where("id IN (?)", subQuery)
+	if !includeEmpty {
+		base = base.Where("resource_count > 0")
+	}
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}

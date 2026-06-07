@@ -102,7 +102,7 @@ func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserPatches(userID, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserPatches(userID, req.Page, req.Limit, utils.IncludeEmptyGalgames(c))
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -160,7 +160,7 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserFavorites(userID, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserFavorites(userID, req.Page, req.Limit, utils.IncludeEmptyGalgames(c))
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -211,7 +211,7 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserContributions(userID, req.Page, req.Limit)
+	patches, total, err := h.service.GetUserContributions(userID, req.Page, req.Limit, utils.IncludeEmptyGalgames(c))
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}

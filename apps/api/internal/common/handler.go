@@ -104,7 +104,13 @@ func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var comments []patchModel.PatchComment
 
-	h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12).Find(&patches)
+	// Recent galgames feed honors the "显示无补丁资源的游戏" toggle (default
+	// hide) just like the main /galgame list — see utils.IncludeEmptyGalgames.
+	patchQuery := h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").Limit(12)
+	if !utils.IncludeEmptyGalgames(c) {
+		patchQuery = patchQuery.Where("resource_count > 0")
+	}
+	patchQuery.Find(&patches)
 	// status = 0: don't promote disabled resources (pulled for virus etc.) in the home feed.
 	h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&resources)
 	// status = 0: hide comments pending review (comment-verify) from the home feed.
@@ -152,10 +158,8 @@ type galgameListRequest struct {
 	// 不连续月份集合 (CSV 1-12，如 "3,7,12")，叠加在年份区间上的 AND 过滤
 	// (wiki §17.10)。本地 SQL: EXTRACT(MONTH FROM release_date) IN (...)。
 	ReleasedMonths string `query:"released_months"`
-	// 是否包含「没有补丁资源」的 Galgame（resource_count = 0）。前端「显示设置」
-	// 里的开关，默认关闭：列表只显示有补丁资源的游戏。缺省 / false → 后端追加
-	// `resource_count > 0` 过滤；true → 不过滤，连同空补丁的游戏一起返回。
-	IncludeEmpty bool `query:"include_empty"`
+	// 注: include_empty（是否显示无补丁资源的游戏）不在此 struct 解析，统一走
+	// utils.IncludeEmptyGalgames(c)，与 home / ranking / user 列表共用一套逻辑。
 }
 
 // GetGalgameList GET /api/galgame
@@ -215,7 +219,7 @@ func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
 	// 默认隐藏没有补丁资源的游戏（resource_count 在资源增删时维护，见
 	// patch/service UpdateCount）。前端「显示设置」勾选后传 include_empty=true
 	// 才连空补丁的游戏一起返回。过滤在 base 上，Count 与 Find 都生效。
-	if !req.IncludeEmpty {
+	if !utils.IncludeEmptyGalgames(c) {
 		base = base.Where("resource_count > 0")
 	}
 
@@ -803,8 +807,14 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 	}
 
 	var patches []patchModel.Patch
-	err := h.db.Model(&patchModel.Patch{}).
-		Where("status = 0").
+	q := h.db.Model(&patchModel.Patch{}).Where("status = 0")
+	// Default hides games with no patch resources (display toggle); for a
+	// view/download/favorite ranking these sit at the bottom anyway, but we
+	// keep the filter consistent with every other moyu list.
+	if !utils.IncludeEmptyGalgames(c) {
+		q = q.Where("resource_count > 0")
+	}
+	err := q.
 		Order(fmt.Sprintf("%s DESC, id DESC", column)).
 		Limit(60).
 		Find(&patches).Error

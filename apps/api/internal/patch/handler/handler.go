@@ -714,7 +714,7 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 // patch into an anonymous (sfw-default) browser session. Service drains a
 // 60-row random sample through wiki batch and picks from the survivors.
 func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
-	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c))
+	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c), utils.IncludeEmptyGalgames(c))
 	if err != nil {
 		// "no candidate passes the content_limit filter" is a not-found, not a
 		// server fault — return 404 instead of a 500 that trips alerting (audit

@@ -26,8 +26,10 @@ const showNsfwBadge = computed({
   get: () => settingStore.data.showNsfwBadge ?? true,
   set: (v: boolean) => settingStore.setData({ showNsfwBadge: v })
 })
-// Drives the /galgame list's `include_empty` query param (the index page
-// watches this and refetches) — not a card-render toggle like the others.
+// Not a card-render toggle like the others: useApi forwards this as the global
+// `include_empty` query param, so every moyu galgame list (home / galgame /
+// ranking / a user's patches / favorites / contributions) hides resource-less
+// games by default and includes them when this is on.
 const showGalgamesWithoutResource = computed({
   get: () => settingStore.data.showGalgamesWithoutResource ?? false,
   set: (v: boolean) => settingStore.setData({ showGalgamesWithoutResource: v })

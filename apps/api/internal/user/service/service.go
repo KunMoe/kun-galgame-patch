@@ -287,8 +287,8 @@ func (s *UserService) GetMoemoepointLog(ctx context.Context, userID, limit int, 
 }
 
 // GetUserPatches retrieves the user's patch list.
-func (s *UserService) GetUserPatches(userID, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserPatches(userID, (page-1)*limit, limit)
+func (s *UserService) GetUserPatches(userID, page, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserPatches(userID, (page-1)*limit, limit, includeEmpty)
 }
 
 // GetUserResources retrieves the user's resource list with each resource
@@ -307,8 +307,8 @@ func (s *UserService) GetUserResources(ctx context.Context, userID, page, limit 
 }
 
 // GetUserFavorites retrieves the user's favorite list.
-func (s *UserService) GetUserFavorites(userID, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserFavorites(userID, (page-1)*limit, limit)
+func (s *UserService) GetUserFavorites(userID, page, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserFavorites(userID, (page-1)*limit, limit, includeEmpty)
 }
 
 // GetUserComments retrieves the user's comment list with each comment
@@ -325,8 +325,8 @@ func (s *UserService) GetUserComments(ctx context.Context, userID, page, limit i
 }
 
 // GetUserContributions retrieves the user's contribution list.
-func (s *UserService) GetUserContributions(userID, page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetUserContributions(userID, (page-1)*limit, limit)
+func (s *UserService) GetUserContributions(userID, page, limit int, includeEmpty bool) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetUserContributions(userID, (page-1)*limit, limit, includeEmpty)
 }
 
 // GetUserByID retrieves the local user row (site-local fields only).

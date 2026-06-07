@@ -45,11 +45,12 @@ export interface KunSettingData {
   showReleaseDate: boolean
   // Show the game's NSFW / age-rating badge on the card. Default on.
   showNsfwBadge: boolean
-  // Include galgames that have no patch resources (resource_count = 0) in the
-  // /galgame list. Default off → the list only shows games with patches.
-  // Unlike the other four (pure card rendering), this drives a backend filter:
-  // the /galgame index forwards it as the `include_empty` query param, so the
-  // list + pagination total stay correct.
+  // Include galgames that have no patch resources (resource_count = 0). Default
+  // off → lists only show games with patches. Unlike the other four (pure card
+  // rendering), this drives a backend filter applied to EVERY moyu galgame list
+  // (home / galgame / ranking / a user's patches / favorites / contributions):
+  // useApi forwards it as the global `include_empty` query param, so the rows +
+  // pagination total stay correct. Wiki-backed lists (tag / search) are exempt.
   showGalgamesWithoutResource: boolean
 }
 

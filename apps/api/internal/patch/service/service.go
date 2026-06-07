@@ -417,12 +417,12 @@ func (s *PatchService) IncrementView(id int) error {
 // ErrRecordNotFound (mapped to ErrInternal by the handler) when no candidate
 // passes the filter — extremely rare in practice (would need the entire
 // 60-row random sample to be NSFW).
-func (s *PatchService) GetRandomPatchID(ctx context.Context, contentLimit string) (int, error) {
+func (s *PatchService) GetRandomPatchID(ctx context.Context, contentLimit string, includeEmpty bool) (int, error) {
 	if contentLimit == "" {
-		return s.repo.GetRandomPatchID()
+		return s.repo.GetRandomPatchID(includeEmpty)
 	}
 	const sampleSize = 60
-	ids, err := s.repo.GetRandomPatchIDs(sampleSize)
+	ids, err := s.repo.GetRandomPatchIDs(sampleSize, includeEmpty)
 	if err != nil || len(ids) == 0 {
 		return 0, err
 	}
