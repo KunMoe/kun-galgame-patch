@@ -110,26 +110,9 @@ const tabs = computed(() => [
   <div v-if="patch" class="mx-auto w-full max-w-7xl space-y-6 px-3 py-4">
     <!-- ── Hero ───────────────────────────────────────── -->
     <div
-      class="border-default/20 relative overflow-hidden rounded-3xl border"
+      class="border-default/20 bg-content1/50 overflow-hidden rounded-3xl border"
     >
-      <div class="absolute inset-0">
-        <!-- Use the 'mini' variant (460×259) for this decorative blurred
-             backdrop. Saves 100-350 KB per page load vs the 1920×1080 main
-             image — `blur-2xl scale-110` makes the resolution drop invisible.
-             Matches the pattern resource/[id].vue already uses. -->
-        <KunImage
-          v-if="resolveBannerUrl(patch, 'mini')"
-          :src="resolveBannerUrl(patch, 'mini')"
-          :alt="displayName"
-          class-name="block size-full"
-          image-class-name="scale-110 blur-2xl"
-        />
-        <div
-          class="from-background via-background/85 to-background/55 absolute inset-0 bg-gradient-to-t"
-        />
-      </div>
-
-      <div class="relative flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
+      <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
         <!-- Single-item Gallery: lets the user click the hero cover to
              open it full-screen with zoom/pan/download. Single item
              still benefits from the toolbar (zoom into details), which

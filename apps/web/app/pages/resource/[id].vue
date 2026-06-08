@@ -5,10 +5,13 @@ import {
   SUPPORTED_LANGUAGE_MAP,
   SUPPORTED_PLATFORM_MAP
 } from '~/constants/resource'
+import {
+  GALGAME_AGE_LIMIT_DETAIL,
+  GALGAME_AGE_LIMIT_MAP
+} from '~/constants/galgame'
 
 const route = useRoute()
 const api = useApi()
-const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
 
 const resourceId = computed(() => Number(route.params.id))
@@ -33,17 +36,37 @@ const patchName = computed(() =>
   detail.value?.patch ? getPreferredLanguageText(detail.value.patch.name) : ''
 )
 
+// Alternate-language names of the owning game (shown under the game title in
+// the header, mirroring patch/[id].vue).
+const patchAlias = computed(() => {
+  const p = detail.value?.patch
+  if (!p) return [] as string[]
+  return Object.values(p.name).filter(
+    (v): v is string => !!v && v !== patchName.value
+  )
+})
+
 const bannerSrc = computed(() =>
   resolveBannerUrl(detail.value?.patch, 'mini')
 )
 
-// Composed title:
+// The resource's OWN title — this is what users came to see ("某某汉化补丁").
+// Falls back to "<游戏名> 的补丁资源" when the uploader left it blank.
+const resourceTitle = computed(() => {
+  const r = resource.value
+  if (!r) return ''
+  return r.name || `${patchName.value} 的补丁资源`
+})
+
+const updateTimeLabel = computed(() => {
+  const r = resource.value
+  if (!r) return ''
+  return formatDistanceToNow((r.update_time as string) || r.created)
+})
+
+// Composed SEO title (drives <title> only, not the visible heading):
 //   {gameName}{platforms}{languages}{modelName}{types}资源下载
 // e.g. ヴァンパイアクルセイダーズWindows简体中文claude-opus-4.7AI 翻译补丁资源下载
-//
-// Split into the leading game name + the attribute suffix so the H1 can render
-// the name as a link to the owning patch's resource page, while composedTitle
-// (name + suffix, a plain string) still drives the SEO <title>.
 const mapJoin = (arr: string[] | undefined, m: Record<string, string>) =>
   (arr ?? []).map((k) => m[k] ?? k).join('')
 
@@ -130,11 +153,6 @@ const recName = (r: PatchResource) =>
 //   - loaded + nsfw owning patch → disable (resource page exposes patch
 //     name + note → must not index)
 //   - null / not-found → disable
-//
-// detail.patch.content_limit is wiki-sourced via the resource detail enricher
-// (see common/handler.go GetResourceDetail → enricher.EnrichPatch which calls
-// applyGalgame). content_limit was D12-moved off the local patch row, but
-// the enricher restamps it on GalgameCard so this field IS current.
 const noteText = computed(() =>
   noteHtml.value ? noteHtml.value.replace(/<[^>]+>/g, '').slice(0, 140) : ''
 )
@@ -160,140 +178,104 @@ if (
     <KunLoading v-if="pending" description="加载资源中..." />
 
     <template v-else-if="detail && resource">
-      <!-- ── Hero ─────────────────────────────────────── -->
+      <!-- ── Game header (basic game info only) ──────────── -->
       <div
-        class="border-default/20 relative mb-6 overflow-hidden rounded-3xl border"
+        class="border-default/20 bg-content1/50 mb-6 overflow-hidden rounded-3xl border"
       >
-        <div class="absolute inset-0">
-          <KunImage
-            v-if="bannerSrc"
-            :src="bannerSrc"
-            :alt="patchName"
-            class-name="block size-full"
-            image-class-name="scale-110 blur-2xl"
-          />
-          <div
-            class="from-background via-background/85 to-background/60 absolute inset-0 bg-gradient-to-t"
-          />
-        </div>
-
-        <div class="relative flex flex-col gap-4 p-6 sm:flex-row sm:p-8">
+        <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
           <NuxtLink
             v-if="detail.patch"
             :to="`/patch/${detail.patch.id}/introduction`"
             class="group shrink-0"
           >
             <KunImage
-              v-if="bannerSrc"
-              :src="bannerSrc"
+              :src="resolveBannerUrl(detail.patch) || '/kungalgame-trans.webp'"
               :alt="patchName"
               aspect-ratio="16 / 9"
-              class-name="border-default/20 bg-default-100 w-full rounded-2xl border shadow-lg sm:w-64"
+              class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg sm:w-72"
               image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
             />
           </NuxtLink>
 
-          <div class="flex min-w-0 flex-1 flex-col justify-end gap-3">
-            <NuxtLink
-              v-if="detail.patch"
-              :to="`/patch/${detail.patch.id}/introduction`"
-              class="text-default-500 hover:text-primary inline-flex w-fit items-center gap-1 text-sm transition-colors"
+          <div class="flex min-w-0 flex-1 flex-col gap-3">
+            <p
+              class="text-default-500 hidden text-xs tracking-[0.3em] uppercase sm:block"
             >
-              <KunIcon name="lucide:corner-up-left" class="size-4" />
-              {{ patchName }}
-            </NuxtLink>
-
-            <!-- Game name is a link to the owning patch's resource page; the
-                 attribute suffix follows as plain text (no space between, to
-                 keep the same composed look as the SEO title). -->
-            <h1
-              class="text-2xl font-bold break-words sm:text-3xl lg:text-[2rem] lg:leading-tight"
-            ><NuxtLink
-                v-if="detail.patch"
-                :to="`/patch/${detail.patch.id}/resource`"
-                class="hover:text-primary transition-colors hover:underline"
-              >{{ titleName }}</NuxtLink><template v-else>{{ titleName }}</template>{{ titleSuffix }}</h1>
+              Galgame 补丁资源下载
+            </p>
 
             <div class="flex flex-wrap items-center gap-2">
-              <KunChip color="secondary" variant="flat" size="sm">
-                <KunIcon :name="storageIcon" class="size-3.5" />
-                {{ storageLabel }}
-              </KunChip>
-              <KunChip color="warning" variant="flat" size="sm">
-                <KunIcon name="lucide:database" class="size-3.5" />
-                {{ resource.size }}
-              </KunChip>
-            </div>
-
-            <!-- publisher: avatar + name, clickable → user profile -->
-            <div class="flex items-center gap-2">
-              <KunAvatar :user="resource.user" size="sm" />
-              <div class="text-sm leading-tight">
+              <h1 class="text-2xl font-bold break-words sm:text-3xl">
                 <NuxtLink
-                  v-if="resource.user?.id"
-                  :to="`/user/${resource.user.id}/resource`"
-                  class="hover:text-primary font-medium transition-colors"
+                  v-if="detail.patch"
+                  :to="`/patch/${detail.patch.id}/introduction`"
+                  class="hover:text-primary transition-colors"
                 >
-                  {{ resource.user?.name ?? '已注销用户' }}
+                  {{ patchName }}
                 </NuxtLink>
-                <span v-else class="font-medium">已注销用户</span>
-                <div class="text-default-500 text-xs">
-                  发布于
-                  {{
-                    formatDate(resource.created, {
-                      isShowYear: true,
-                      isPrecise: true
-                    })
-                  }}
-                </div>
-              </div>
+                <template v-else>{{ patchName }}</template>
+              </h1>
+              <KunTooltip
+                v-if="detail.patch"
+                :text="GALGAME_AGE_LIMIT_DETAIL[detail.patch.content_limit]"
+                position="right"
+              >
+                <KunChip
+                  :color="
+                    detail.patch.content_limit === 'sfw' ? 'success' : 'danger'
+                  "
+                  variant="flat"
+                >
+                  {{ GALGAME_AGE_LIMIT_MAP[detail.patch.content_limit] }}
+                </KunChip>
+              </KunTooltip>
             </div>
 
-            <!-- This page is scoped to ONE resource, so it only exposes
-                 收藏资源 (subscribe to this resource's updates). Game-level
-                 点赞 / 收藏游戏 live on the game page (/patch/:id); keeping them
-                 off here removes the like-vs-favorite confusion. -->
-            <div class="mt-1 flex flex-wrap items-center gap-3">
-              <KunButton
-                :variant="resource.is_favorite ? 'flat' : 'bordered'"
-                :color="resource.is_favorite ? 'warning' : 'default'"
-                size="md"
-                rounded="full"
-                :loading="resourceFavoriting"
-                :disabled="resourceFavoriting"
-                @click="toggleResourceFavorite"
-              >
-                <KunIcon
-                  name="lucide:star"
-                  :class="cn('size-4', resource.is_favorite && 'fill-current')"
-                />
-                {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
-              </KunButton>
-
+            <div
+              v-if="patchAlias.length"
+              class="flex flex-wrap gap-x-3 gap-y-1"
+            >
               <span
-                class="text-default-500 inline-flex items-center gap-1.5 text-sm"
+                v-for="alias in patchAlias"
+                :key="alias"
+                class="text-default-500 text-xs"
               >
-                <KunIcon name="lucide:download" class="size-4" />
-                {{ formatNumber(resource.download) }} 次下载
+                {{ alias }}
               </span>
             </div>
 
-            <!-- A star alone can't say "notify" — spell out what 收藏资源 does. -->
-            <p
-              :class="
-                cn(
-                  'flex items-center gap-1.5 text-xs',
-                  resource.is_favorite ? 'text-warning' : 'text-default-500'
-                )
-              "
-            >
-              <KunIcon name="lucide:bell" class="size-3.5 shrink-0" />
-              <span>{{
-                resource.is_favorite
-                  ? '已收藏此资源，下载链接或文件更新时会通知你'
-                  : '收藏此资源，下载链接或文件更新时通知你'
-              }}</span>
-            </p>
+            <KunPatchAttribute
+              v-if="detail.patch"
+              :types="detail.patch.type"
+              :languages="detail.patch.language"
+              :platforms="detail.patch.platform"
+              size="sm"
+            />
+
+            <div v-if="detail.patch" class="flex flex-wrap gap-3 pt-1">
+              <NuxtLink :to="`/patch/${detail.patch.id}/introduction`">
+                <KunButton
+                  color="primary"
+                  variant="flat"
+                  size="sm"
+                  rounded="full"
+                >
+                  <KunIcon name="lucide:info" class="size-4" />
+                  查看 Galgame 介绍
+                </KunButton>
+              </NuxtLink>
+              <NuxtLink :to="`/patch/${detail.patch.id}/resource`">
+                <KunButton
+                  color="secondary"
+                  variant="flat"
+                  size="sm"
+                  rounded="full"
+                >
+                  <KunIcon name="lucide:layers" class="size-4" />
+                  查看全部资源
+                </KunButton>
+              </NuxtLink>
+            </div>
           </div>
         </div>
       </div>
@@ -302,12 +284,39 @@ if (
            column, mirroring the legacy KunResourceDetail placement). -->
       <KunAdAIEroBanner class-name="mb-6 hidden sm:block" />
 
-      <!-- ── Body grid ────────────────────────────────── -->
+      <!-- ── Body grid (resource details) ─────────────────── -->
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <!-- main column -->
         <div class="space-y-6 lg:col-span-2">
           <KunCard :bordered="true" class-name="rounded-2xl">
             <div class="space-y-4 p-2">
+              <!-- Resource title — the patch resource's own name, now visible. -->
+              <div class="space-y-1">
+                <h2 class="text-xl font-bold break-words sm:text-2xl">
+                  {{ resourceTitle }}
+                </h2>
+                <p class="text-default-500 text-sm">
+                  该补丁资源最后更新于 {{ updateTimeLabel }}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <KunChip color="secondary" variant="flat" size="sm">
+                  <KunIcon :name="storageIcon" class="size-3.5" />
+                  {{ storageLabel }}
+                </KunChip>
+                <KunChip color="warning" variant="flat" size="sm">
+                  <KunIcon name="lucide:database" class="size-3.5" />
+                  {{ resource.size }}
+                </KunChip>
+                <span
+                  class="text-default-500 inline-flex items-center gap-1.5 text-sm"
+                >
+                  <KunIcon name="lucide:download" class="size-4" />
+                  {{ formatNumber(resource.download) }} 次下载
+                </span>
+              </div>
+
               <KunPatchAttribute
                 :types="resource.type"
                 :languages="resource.language"
@@ -317,6 +326,71 @@ if (
                 :storage-size="resource.size"
               />
 
+              <!-- publisher: avatar + name, clickable → user profile -->
+              <div
+                class="border-default/20 flex items-center gap-2 border-t pt-4"
+              >
+                <KunAvatar :user="resource.user" size="sm" />
+                <div class="text-sm leading-tight">
+                  <NuxtLink
+                    v-if="resource.user?.id"
+                    :to="`/user/${resource.user.id}/resource`"
+                    class="hover:text-primary font-medium transition-colors"
+                  >
+                    {{ resource.user?.name ?? '已注销用户' }}
+                  </NuxtLink>
+                  <span v-else class="font-medium">已注销用户</span>
+                  <div class="text-default-500 text-xs">
+                    发布于
+                    {{
+                      formatDate(resource.created, {
+                        isShowYear: true,
+                        isPrecise: true
+                      })
+                    }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- This page is scoped to ONE resource, so it only exposes
+                   收藏资源 (subscribe to this resource's updates). Game-level
+                   点赞 / 收藏游戏 live on the game page (/patch/:id). -->
+              <div class="space-y-2">
+                <KunButton
+                  :variant="resource.is_favorite ? 'flat' : 'bordered'"
+                  :color="resource.is_favorite ? 'warning' : 'default'"
+                  size="md"
+                  rounded="full"
+                  :loading="resourceFavoriting"
+                  :disabled="resourceFavoriting"
+                  @click="toggleResourceFavorite"
+                >
+                  <KunIcon
+                    name="lucide:star"
+                    :class="cn('size-4', resource.is_favorite && 'fill-current')"
+                  />
+                  {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
+                </KunButton>
+
+                <!-- A star alone can't say "notify" — spell out 收藏资源. -->
+                <p
+                  :class="
+                    cn(
+                      'flex items-center gap-1.5 text-xs',
+                      resource.is_favorite ? 'text-warning' : 'text-default-500'
+                    )
+                  "
+                >
+                  <KunIcon name="lucide:bell" class="size-3.5 shrink-0" />
+                  <span>{{
+                    resource.is_favorite
+                      ? '已收藏此资源，下载链接或文件更新时会通知你'
+                      : '收藏此资源，下载链接或文件更新时通知你'
+                  }}</span>
+                </p>
+              </div>
+
+              <!-- Resource note (备注) -->
               <div
                 v-if="noteHtml"
                 class="kun-prose border-default/20 border-t pt-4 text-sm"
