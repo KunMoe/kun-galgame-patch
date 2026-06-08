@@ -71,7 +71,23 @@ func (r *PatchRepository) UpdatePatch(patch *model.Patch) error {
 }
 
 func (r *PatchRepository) DeletePatch(id int) error {
-	return r.db.Delete(&model.Patch{}, id).Error
+	// user_message has NO FK to patch / patch_resource, so the DB CASCADE that
+	// wipes the owned rows leaves notification rows dangling — their links
+	// (/patch/:id/resource and each resource's /resource/:rid) would then 404.
+	// Delete them in the SAME tx, BEFORE the patch (and its CASCADE'd resources)
+	// go away, so the resource ids are still resolvable. (See migration 019 for
+	// the one-time cleanup of pre-existing dangling rows.)
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			`DELETE FROM user_message
+			 WHERE link = ?
+			    OR link IN (SELECT '/resource/' || id FROM patch_resource WHERE galgame_id = ?)`,
+			fmt.Sprintf("/patch/%d/resource", id), id,
+		).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Patch{}, id).Error
+	})
 }
 
 // GetPatchResourceS3Keys returns every non-empty s3_key on patch_resource
@@ -288,7 +304,18 @@ func (r *PatchRepository) GetResourceByID(id int) (*model.PatchResource, error) 
 // trail — keep the entry point at the service layer.
 
 func (r *PatchRepository) DeleteResource(id int) error {
-	return r.db.Delete(&model.PatchResource{}, id).Error
+	// Drop any notification linking to this resource's detail page in the same
+	// tx — user_message has no FK to cascade, so a deleted resource would
+	// otherwise leave a dangling /resource/:id link. (See migration 019.)
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"DELETE FROM user_message WHERE link = ?",
+			fmt.Sprintf("/resource/%d", id),
+		).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.PatchResource{}, id).Error
+	})
 }
 
 func (r *PatchRepository) IncrementResourceDownload(resourceID, patchID int) error {

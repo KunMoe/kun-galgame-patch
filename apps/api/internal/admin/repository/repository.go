@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	stderrors "errors"
+	"fmt"
 	"time"
 
 	adminModel "kun-galgame-patch-api/internal/admin/model"
@@ -111,7 +112,17 @@ func (r *AdminRepository) UpdateResource(resourceID int, note string) error {
 }
 
 func (r *AdminRepository) DeleteResource(resourceID int) error {
-	return r.db.Delete(&patchModel.PatchResource{}, resourceID).Error
+	// Drop any notification linking to this resource (no FK to cascade), in the
+	// same tx — mirrors PatchRepository.DeleteResource. (See migration 019.)
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"DELETE FROM user_message WHERE link = ?",
+			fmt.Sprintf("/resource/%d", resourceID),
+		).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&patchModel.PatchResource{}, resourceID).Error
+	})
 }
 
 // GetResourceByID exposes the resource row so the service layer can read
