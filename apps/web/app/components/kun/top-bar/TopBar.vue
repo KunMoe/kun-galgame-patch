@@ -109,11 +109,15 @@ watch(
           {{ item.name }}
         </NuxtLink>
 
-        <!-- AIEro ad button, sitting right after 关于我们 (the last nav link).
-             It lives inside this `hidden md:flex` nav group, so it's desktop /
-             tablet only — phones intentionally have no ad icon. -->
-        <KunAdAIEroNav />
       </div>
+
+      <!-- AIEro ad button. Pulled OUT of the `hidden md:flex` nav group above
+           so it stays visible on mobile too (phones previously had no ad icon).
+           The brand is itself `hidden md:flex`, so on mobile this sits next to
+           the hamburger with the left side otherwise empty; on desktop it still
+           trails the nav links. Non-moderators only (gated inside the
+           component). -->
+      <KunAdAIEroNav />
 
       <!-- KunTopBarUser already groups NSFW switcher + search + random +
            theme + bell + avatar (see User.vue). Don't add NSFWSwitcher here

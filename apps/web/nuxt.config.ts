@@ -74,9 +74,20 @@ export default defineNuxtConfig({
   },
 
   umami: {
-    id: process.env.KUN_VISUAL_NOVEL_FORUM_UMAMI_ID,
+    // Public website-id (it ships in the client tracker tag — not a secret). The
+    // `|| '<id>'` literal is the actual config: moyu-web is built GENERIC in CI
+    // (no build-args) and .env is gitignored, so at BUILD time the env var is
+    // undefined → nuxt-umami would bake an undefined id and every /api/send would
+    // 400. nuxt-umami reads `id` at build (a module option), not at runtime, so
+    // the default must be a literal here. (Same fix kungal-forum landed.)
+    id:
+      process.env.KUN_VISUAL_NOVEL_PATCH_UMAMI_ID ||
+      'da1440d0-60f7-4d5d-9a91-b4ccfb5d4b37',
     host: 'https://umami.kungal.org/',
-    autoTrack: true
+    autoTrack: true,
+    // One baked id runs in every deployment (incl. local dev) — keep dev traffic
+    // out of prod stats.
+    ignoreLocalhost: true
   },
 
   runtimeConfig: {
