@@ -311,6 +311,7 @@ const handleSubmit = async () => {
             <KunButton
               type="submit"
               color="primary"
+              class-name="shrink-0"
               :loading="searching"
               :disabled="searching || !searchQuery.trim()"
             >

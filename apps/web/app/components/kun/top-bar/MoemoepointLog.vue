@@ -114,7 +114,7 @@ watch(open, (v) => {
 </script>
 
 <template>
-  <KunModal v-model="open" inner-class-name="max-w-lg w-full">
+  <KunModal v-model="open" inner-class-name="max-w-lg w-full border-default-200">
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="flex items-center gap-2 text-lg font-semibold">
