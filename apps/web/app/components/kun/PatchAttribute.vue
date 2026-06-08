@@ -5,7 +5,7 @@ import {
   SUPPORTED_TYPE_MAP,
   SUPPORTED_RESOURCE_LINK_MAP
 } from '~/constants/resource'
-import type { KunUISize } from '@kun/ui/app/components/kun/ui/type'
+import type { KunUISize } from '@kungal/ui-core'
 
 interface Props {
   types: string[]

@@ -4,11 +4,13 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
 
-  // KunUI ships as a Nuxt layer (packages/ui). Extending it auto-imports
-  // every <KunButton> / <KunChip> / ... component plus the layer's
-  // app/composables, app/utils, shared/utils, and tailwindcss theme. moyu
-  // no longer maintains a local kun copy — single source of truth in @kun/ui.
-  extends: ['@kun/ui'],
+  // KunUI is consumed as the published npm Nuxt layer (@kungal/ui-nuxt). It
+  // auto-imports every <KunButton> / <KunChip> / ... component + composables
+  // from @kungal/ui-vue and injects NuxtLink / @nuxt/icon (fallback) / @nuxt/
+  // image. Unlike the old in-repo @kun/ui layer, it ships NO Tailwind entry —
+  // moyu owns that in styles/index.css (tokens + @source). Design tokens come
+  // from @kungal/ui-tokens; icons are registered in app/plugins/kun-icons.ts.
+  extends: ['@kungal/ui-nuxt'],
 
   devtools: { enabled: false },
 

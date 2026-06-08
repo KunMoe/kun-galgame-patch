@@ -6,7 +6,7 @@ import {
   KUN_CONTENT_LIMIT_MAP
 } from '~/constants/top-bar'
 import type { KunNsfwPreference } from '~/stores/settingStore'
-import { useBodyScrollLock } from '@kun/ui/app/composables/useBodyScrollLock'
+import { useBodyScrollLock } from '@kungal/ui-vue'
 
 interface Props {
   isOpen: boolean
@@ -95,7 +95,7 @@ const handleLogout = async () => {
   }
 }
 
-// Body scroll lock — use the shared singleton refcount from @kun/ui so
+// Body scroll lock — use the shared singleton refcount from @kungal/ui-vue so
 // opening the menu while a Modal is also up doesn't unlock the body when
 // the menu closes. (Previously this file wrote document.body.style
 // directly, which clobbered any concurrent overlay's lock.)

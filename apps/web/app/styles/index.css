@@ -1,18 +1,32 @@
 /*
- * tailwindcss theme is now owned by @kun/ui Nuxt layer
- * (packages/ui/app/styles/tailwindcss.css) and auto-loaded via
- * apps/web/nuxt.config.ts → extends: ['@kun/ui'].
- *
- * What stays here:
- *   - prose / editor / code-theme: moyu-specific
- *   - cropper-canvas styling: moyu-specific (uses tokens defined by the layer)
- *   - html/body solid background: moyu-app-shell concern, not a KunUI primitive
+ * Tailwind entry — moyu OWNS it now. The published @kungal/ui-nuxt layer ships
+ * no Tailwind entry of its own (unlike the old in-repo @kun/ui layer that
+ * auto-loaded its theme), so the three required lines live here. Order matters:
+ *   1. tailwindcss        — must come first; KunUI never imports it for you.
+ *   2. @kungal/ui-tokens  — theme tokens (colors 50–950, rounded-kun-*, z-kun-*,
+ *                           keyframes, the `.kun-dark-mode` dark variant) + base
+ *                           layer (page bg, font stack, .scrollbar-hide/visible).
+ *   3. @kungal/ui-vue/style.css — components' scoped styles (modal/drawer/
+ *                           lightbox transitions, spoiler blur, toast anims).
  */
+@import 'tailwindcss';
+@import '@kungal/ui-tokens';
+@import '@kungal/ui-vue/style.css';
+
+/* moyu-specific styles (prose / editor / code theme — not KunUI primitives). */
 @import './prose.css';
 @import './editor.css';
 @import './editor/code-mirror.css';
 @import './editor/katex.css';
 @import './code-theme.css';
+
+/*
+ * Tailwind v4 ignores node_modules, so it won't see the compiled KunUI classes
+ * (inline-flex, bg-primary, rounded-kun-md, …) unless we point it there. Paths
+ * are relative to THIS file (apps/web/app/styles/index.css → ../../node_modules).
+ */
+@source '../../node_modules/@kungal/ui-vue';
+@source '../../node_modules/@kungal/ui-core';
 
 @layer base {
   html,

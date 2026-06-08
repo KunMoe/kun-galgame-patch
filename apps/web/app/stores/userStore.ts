@@ -9,7 +9,7 @@ import { defineStore } from 'pinia'
 // this array directly.
 export interface UserState {
   // DB PK (Prisma user.id == Go MeResponse.id) — matches /user/:id,
-  // /ranking/user, and @kun/ui's KunUser. The legacy `uid` transport
+  // /ranking/user, and @kungal/ui-core's KunUser. The legacy `uid` transport
   // label was hard-cut to `id` everywhere (JWT claim, URL routes, Fiber
   // session JSON). See apps/api/internal/auth/dto/dto.go.
   id: number

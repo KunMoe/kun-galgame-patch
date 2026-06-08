@@ -37,7 +37,7 @@ const userDescription = computed(() => {
   >
     <div class="flex flex-col justify-between space-y-2">
       <div class="flex">
-        <KunUser :user="props.resource.user" :description="userDescription" />
+        <KunUserChip :user="props.resource.user" :description="userDescription" />
       </div>
 
       <h2

@@ -1,0 +1,12 @@
+/*
+ * @reference target for moyu's standalone CSS files (prose.css / editor.css).
+ *
+ * Tailwind v4 needs the theme + utility context to resolve `@apply` in a CSS
+ * file that isn't in the main entry's scope, but @reference must NOT emit any
+ * CSS (the real emit happens once in index.css). This file bundles exactly the
+ * context those @apply rules need — Tailwind itself + the KunUI design tokens —
+ * mirroring what the old in-repo @kun/ui layer's tailwindcss.css provided in a
+ * single referenceable file. Keep its imports in sync with index.css's first two.
+ */
+@import 'tailwindcss';
+@import '@kungal/ui-tokens';

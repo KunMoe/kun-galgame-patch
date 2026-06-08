@@ -11,7 +11,7 @@ import type {
   GalgamePRDetail,
   GalgameEditFields
 } from '~/composables/useGalgameEdit'
-import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
+import type { KunUIColor } from '@kungal/ui-core'
 
 const route = useRoute()
 const gid = computed(() => Number(route.params.id))

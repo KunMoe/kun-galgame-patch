@@ -15,7 +15,7 @@ import type {
   WikiSeries,
   TaxonomyRevision
 } from '~/composables/useGalgameEdit'
-import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
+import type { KunUIColor } from '@kungal/ui-core'
 
 // Admin/editor-only write surface (wiki §15.1: PUT/DELETE require
 // role > 1). No public content — disable SEO.

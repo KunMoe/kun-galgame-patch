@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
+import type { KunUIColor } from '@kungal/ui-core'
 // "My submissions" page — proxies GET /galgame/mine.
 //
 // Shows the caller's status ∈ {3, 4} drafts so they can:

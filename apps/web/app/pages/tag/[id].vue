@@ -7,7 +7,7 @@
 // Wiki side; we always pass "_" via the composable to keep our internal URL
 // tidy (`/tag/:id`).
 
-import type { KunUIColor } from '@kun/ui/app/components/kun/ui/type'
+import type { KunUIColor } from '@kungal/ui-core'
 
 const route = useRoute()
 const router = useRouter()

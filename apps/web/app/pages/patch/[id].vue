@@ -199,7 +199,7 @@ const tabs = computed(() => [
             <div
               class="border-default/20 flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center"
             >
-              <KunUser
+              <KunUserChip
                 :user="patch.user"
                 :description="`资源更新于 ${formatDistanceToNow(patch.resource_update_time)}`"
               />

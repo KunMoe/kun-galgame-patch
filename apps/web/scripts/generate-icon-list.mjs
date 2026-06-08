@@ -1,35 +1,37 @@
 #!/usr/bin/env node
 /**
- * Scans the app (apps/web/app) AND the shared UI layer (packages/ui/app) for
- * icon names used in `KunIcon` components, reads each icon's SVG body from the
- * installed `@iconify-json/*` data in node_modules, and writes the HARDCODED
- * registry consumed by KunIcon:
+ * Scans the app (apps/web/app) for icon names used in `KunIcon` components,
+ * reads each icon's SVG body from the installed `@iconify-json/*` data in
+ * node_modules, and writes a registration module consumed at startup:
  *
- *   packages/ui/app/components/kun/icon/icons.ts
- *     export const KUN_ICON_VIEWBOX = '0 0 24 24'
- *     export const KUN_ICONS: Record<string, string> = {
- *       'lucide:menu': '<path .../>', ...
+ *   app/utils/kunIcons.generated.ts
+ *     import type { KunIconData } from '@kungal/ui-core'
+ *     export const KUN_APP_ICONS: Record<string, KunIconData> = {
+ *       'lucide:menu': { body: '<path .../>' }, ...
  *     }
  *
- * WHY hardcode instead of @nuxt/icon: @nuxt/icon resolves icons at runtime —
- * it inlines them during SSR but client-fetches any not in the precomputed
- * client bundle, so server and client markup can differ and Vue 3.5 discards +
- * re-renders the mismatched subtree (a hydration "double load"). Inlining every
- * used icon as a static <svg> makes SSR and client emit identical markup with
- * no network round-trip — no @nuxt/icon, no hydration mismatch. KunIcon renders
- * straight from this map, so the `<KunIcon name="lucide:x">` API is unchanged
- * (incl. the dynamic `:name="var"` call sites, which a registry — not per-icon
- * components — is the only way to support).
+ * `app/plugins/kun-icons.ts` feeds this to `registerKunIcons()` so `<KunIcon>`
+ * (from @kungal/ui-vue) renders each as inline SVG.
  *
- * The full icon data lives in node_modules (`@iconify-json/<collection>/
- * icons.json`); this script copies just the used bodies into the committed
- * registry. Re-run after changing icon usage:
+ * WHY register instead of letting @nuxt/icon resolve: @nuxt/icon resolves icons
+ * at runtime — it inlines them during SSR but client-fetches any not in the
+ * precomputed client bundle, so server and client markup can differ and Vue 3.5
+ * discards + re-renders the mismatched subtree (a hydration "double load").
+ * Pre-registering every used icon makes SSR and client emit identical inline
+ * markup with no network round-trip. KunIcon only falls back to the layer's
+ * @nuxt/icon wrapper for names NOT in the registry — full coverage here keeps
+ * that fallback dormant, preserving moyu's no-fetch / no-hydration-mismatch
+ * behavior. The `<KunIcon name="lucide:x">` API is unchanged (incl. dynamic
+ * `:name="var"` bindings, which a string-keyed registry supports).
  *
- *   npm run icons
+ * KunUI's OWN component icons (close button, chevrons, …) are already bundled
+ * in @kungal/ui-core, so this only needs to cover moyu's app-level usage.
  *
- * Both static (`name="lucide:x"`) and ternary (`:name="cond ? 'a:b' : 'c:d'"`)
- * and map-value (`icon: 'lucide:x'`) usages are picked up. Names computed from
+ * Both static (`name="lucide:x"`), ternary (`:name="cond ? 'a:b' : 'c:d'"`) and
+ * map-value (`icon: 'lucide:x'`) usages are picked up. Names computed from
  * variables at runtime can't be found statically — add them to MANUAL_ICONS.
+ *
+ * Re-run after changing <KunIcon name="..."> usage:  npm run icons
  */
 
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises'
@@ -41,24 +43,9 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..') // apps/web
-const LAYER = join(ROOT, '..', '..', 'packages', 'ui', 'app')
-const SCAN_DIRS = [join(ROOT, 'app'), LAYER]
-const OUTPUT_FILE = join(
-  ROOT,
-  '..',
-  '..',
-  'packages',
-  'ui',
-  'app',
-  'components',
-  'kun',
-  'icon',
-  'icons.ts'
-)
-const PACKAGE_JSONS = [
-  join(ROOT, 'package.json'),
-  join(ROOT, '..', '..', 'packages', 'ui', 'package.json')
-]
+const SCAN_DIRS = [join(ROOT, 'app')]
+const OUTPUT_FILE = join(ROOT, 'app', 'utils', 'kunIcons.generated.ts')
+const PACKAGE_JSONS = [join(ROOT, 'package.json')]
 
 const SCAN_EXTENSIONS = new Set(['.vue', '.ts', '.tsx', '.js', '.mjs'])
 const SKIP_DIRS = new Set(['node_modules', '.nuxt', '.output', 'dist', '.git'])
@@ -85,7 +72,7 @@ const NON_ICON_PREFIXES = new Set([
   'not', 'group', 'peer', 'aria', 'data', 'supports', 'min', 'max', 'update'
 ])
 
-// Read the installed @iconify-json/* packages from the app + layer manifests.
+// Read the installed @iconify-json/* packages from the app manifest.
 const installedCollections = async () => {
   const set = new Set()
   for (const p of PACKAGE_JSONS) {
@@ -149,6 +136,9 @@ async function main() {
 
   for (const dir of SCAN_DIRS) {
     for await (const file of walk(dir)) {
+      // Don't fold the generated output back into the scan set (idempotent
+      // anyway, but skipping keeps the count honest).
+      if (file === OUTPUT_FILE) continue
       scanned++
       const content = await readFile(file, 'utf8')
       for (const match of content.matchAll(ICON_PATTERN)) {
@@ -167,8 +157,8 @@ async function main() {
 
   const names = [...found].sort()
 
-  // Resolve each name to its SVG body + per-icon viewBox from node_modules.
-  const entries = [] // [name, viewBox, body]
+  // Resolve each name to its SVG body + dimensions from node_modules.
+  const entries = [] // [name, body, width, height]
   const notFound = []
   const transformAliases = []
   for (const name of names) {
@@ -196,20 +186,21 @@ async function main() {
       notFound.push(name)
       continue
     }
+    // @kungal/ui-core's KunIcon renders `viewBox="0 0 ${width} ${height}"`
+    // (no left/top offset). lucide / svg-spinners / fa6-brands icons in the
+    // iconify datasets are 0-origin, so width/height fully describe them.
     const w = def.width ?? data.width ?? 24
     const h = def.height ?? data.height ?? 24
-    const left = def.left ?? 0
-    const top = def.top ?? 0
-    entries.push([name, `${left} ${top} ${w} ${h}`, def.body])
+    entries.push([name, def.body, w, h])
   }
 
   const out = render(entries)
   await mkdir(dirname(OUTPUT_FILE), { recursive: true })
   await writeFile(OUTPUT_FILE, out)
 
-  const rel = relative(join(ROOT, '..', '..'), OUTPUT_FILE)
+  const rel = relative(ROOT, OUTPUT_FILE)
   console.log(
-    `Scanned ${scanned} files (app + layer); wrote ${entries.length} hardcoded icons to ${rel}`
+    `Scanned ${scanned} app files; wrote ${entries.length} registered icons to ${rel}`
   )
 
   if (transformAliases.length) {
@@ -234,26 +225,38 @@ async function main() {
 
 function render(entries) {
   const lines = entries
-    .map(
-      ([name, viewBox, body]) =>
-        `  '${name}': { v: '${viewBox}', b: ${JSON.stringify(body)} }`
-    )
+    .map(([name, body, w, h]) => {
+      // width/height default to 24 in @kungal/ui-core — omit when 24 to keep
+      // the file lean (most lucide / svg-spinners icons are 24×24).
+      const dims = [
+        w !== 24 ? `width: ${w}` : null,
+        h !== 24 ? `height: ${h}` : null
+      ]
+        .filter(Boolean)
+        .join(', ')
+      const data = dims
+        ? `{ body: ${JSON.stringify(body)}, ${dims} }`
+        : `{ body: ${JSON.stringify(body)} }`
+      return `  '${name}': ${data}`
+    })
     .join(',\n')
-  return `/**
+  return `/* eslint-disable */
+/**
  * Auto-generated by scripts/generate-icon-list.mjs — DO NOT edit by hand.
  * Run \`npm run icons\` after changing <KunIcon name="..."> usage.
  *
- * Hardcoded SVG data for every icon the app + @kun/ui layer render, copied from
- * node_modules @iconify-json/* so icons are inlined statically (no @nuxt/icon
- * runtime, no hydration "double load"). KunIcon wraps each body in
- * <svg :viewBox="v">. \`v\` = viewBox, \`b\` = inner SVG markup.
+ * Inline SVG data for every icon moyu's app renders, copied from node_modules
+ * @iconify-json/* and registered into @kungal/ui-core's icon registry at startup
+ * (see app/plugins/kun-icons.ts). Inlining means no @nuxt/icon runtime fetch and
+ * no hydration "double load". KunUI's own component icons are bundled in
+ * @kungal/ui-core, so they are NOT duplicated here.
+ *
+ * eslint-disabled: the icon bodies are JSON.stringify'd (double-quoted SVG
+ * attrs), which trips the singlequote rule; this is generated output.
  */
-export interface KunIconData {
-  v: string
-  b: string
-}
+import type { KunIconData } from '@kungal/ui-core'
 
-export const KUN_ICONS: Record<string, KunIconData> = {
+export const KUN_APP_ICONS: Record<string, KunIconData> = {
 ${lines}
 }
 `
