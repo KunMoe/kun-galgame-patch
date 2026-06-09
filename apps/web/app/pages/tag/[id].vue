@@ -33,14 +33,19 @@ const CATEGORY_COLOR: Record<string, KunUIColor> = {
   technical: 'success'
 }
 
-const { data, pending, refresh } = await useAsyncData(
+const { data, pending } = await useAsyncData(
   () => `tag-detail-${tagID.value}-${page.value}`,
   async () => {
     const res = await ge.tagDetail(tagID.value, { page: page.value, limit })
     if (res.code !== 0) return null
     return res.data
   },
-  { watch: [page] }
+  // Refetch on page change AND tag change (navigating between /tag/:id without
+  // a full remount). Do NOT watch the derived `tag` entity and call refresh():
+  // each fetch yields a new `data` object → new `tag` ref → the watch re-fires →
+  // refresh() loops forever, pinning `pending` true, which disables every
+  // KunPagination button (is-loading) so paging gets stuck after one click.
+  { watch: [page, tagID] }
 )
 
 // Wiki shapes the response with `tag` for the entity + `items`/`galgames` +
@@ -66,8 +71,6 @@ if (tag.value) {
 } else {
   useKunDisableSeo('标签详情')
 }
-
-watch(tag, () => refresh(), { flush: 'post' })
 </script>
 
 <template>
