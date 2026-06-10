@@ -28,6 +28,35 @@
 @source '../../node_modules/@kungal/ui-vue';
 @source '../../node_modules/@kungal/ui-core';
 
+/* ─── Global corner-radius knob ─────────────────────────────────────────
+ * ONE control for every corner radius on the site — both moyu's own Tailwind
+ * `rounded-*` utilities AND every KunUI component (which reads --radius-kun-*).
+ * Change --kun-radius-scale to make the whole UI rounder (>1) or sharper (<1);
+ * both radius systems scale together from their current values, so 1 = the
+ * current look (e.g. 0 = square everywhere, 1.5 = 50% rounder, 2 = very round).
+ * `rounded-full` / `rounded-none` are intentionally NOT scaled (avatars, pills,
+ * switches stay circular; square stays square).
+ *
+ * Un-layered :root rules so they override Tailwind's @theme defaults and
+ * @kungal/ui-tokens' --radius-kun-* defaults (un-layered beats @layer). */
+:root {
+  --kun-radius-scale: 1;
+
+  /* Tailwind scale → moyu's own rounded-xs … rounded-3xl */
+  --radius-xs: calc(0.125rem * var(--kun-radius-scale));
+  --radius-sm: calc(0.25rem * var(--kun-radius-scale));
+  --radius-md: calc(0.375rem * var(--kun-radius-scale));
+  --radius-lg: calc(0.5rem * var(--kun-radius-scale));
+  --radius-xl: calc(0.75rem * var(--kun-radius-scale));
+  --radius-2xl: calc(1rem * var(--kun-radius-scale));
+  --radius-3xl: calc(1.5rem * var(--kun-radius-scale));
+
+  /* KunUI buckets → every @kungal/ui-* component (config.rounded default md) */
+  --radius-kun-sm: calc(0.25rem * var(--kun-radius-scale));
+  --radius-kun-md: calc(0.5rem * var(--kun-radius-scale));
+  --radius-kun-lg: calc(0.75rem * var(--kun-radius-scale));
+}
+
 @layer base {
   html,
   body {
