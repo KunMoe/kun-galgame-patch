@@ -7,6 +7,24 @@ useKunSeoMeta({
   description:
     '鲲 Galgame 补丁站的友情链接，汇集 Galgame 资讯、汉化补丁、轻小说翻译、二次元社区等同好站点。'
 })
+
+// Tag every outbound 友链 with our domain as utm_source so a友站 can see the
+// traffic we send. URL API preserves any existing query params; a non-absolute
+// or malformed link falls through untouched.
+const utmSource = new URL(kunMoyuMoe.domain.main).hostname
+const appendUtm = (link: string): string => {
+  try {
+    const url = new URL(link)
+    url.searchParams.set('utm_source', utmSource)
+    return url.toString()
+  } catch {
+    return link
+  }
+}
+const friends = kunFriends.map((friend) => ({
+  ...friend,
+  link: appendUtm(friend.link)
+}))
 </script>
 
 <template>
@@ -22,7 +40,7 @@ useKunSeoMeta({
       class="grid grid-cols-2 gap-2 sm:gap-6 md:grid-cols-3 lg:grid-cols-4"
     >
       <a
-        v-for="friend in kunFriends"
+        v-for="friend in friends"
         :key="friend.name"
         :href="friend.link"
         target="_blank"
