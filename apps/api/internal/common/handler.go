@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -327,8 +328,11 @@ func (h *CommonHandler) attachPatchSummaries(c *fiber.Ctx, comments []patchModel
 type resourceListRequest struct {
 	SortField string `query:"sort_field" validate:"required,oneof=update_time created download like_count"`
 	SortOrder string `query:"sort_order" validate:"required,oneof=asc desc"`
-	Page      int    `query:"page" validate:"required,min=1"`
-	Limit     int    `query:"limit" validate:"required,min=1,max=50"`
+	// Model, when set, filters resources by AI-translation model name (the
+	// /search "按模型搜索" mode). Substring, case-insensitive.
+	Model string `query:"model" validate:"omitempty,max=100"`
+	Page  int    `query:"page" validate:"required,min=1"`
+	Limit int    `query:"limit" validate:"required,min=1,max=50"`
 }
 
 // GetGlobalResources GET /api/resource
@@ -350,6 +354,12 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 
 	// status = 0: disabled resources are excluded from the global list.
 	base := h.db.Model(&patchModel.PatchResource{}).Where("status = 0")
+	if m := strings.TrimSpace(req.Model); m != "" {
+		// "按模型搜索": match resources whose model_name contains the query,
+		// case-insensitive. Applied to both count and find so the paginator is
+		// correct.
+		base = base.Where("model_name ILIKE ?", "%"+m+"%")
+	}
 	base.Session(&gorm.Session{}).Count(&total)
 
 	sortField := req.SortField

@@ -14,6 +14,15 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
+// Two search modes:
+//   - 'galgame' : full-text Galgame search (Meilisearch via POST /search)
+//   - 'model'   : find patch resources by AI-translation model name
+//                 (GET /resource?model=…); results link to /resource/:id
+type SearchMode = 'galgame' | 'model'
+const mode = ref<SearchMode>(
+  route.query.mode === 'model' ? 'model' : 'galgame'
+)
+
 const query = ref(String(route.query.q ?? ''))
 const page = ref(Number(route.query.page ?? 1))
 const limit = 24
@@ -24,6 +33,7 @@ const limit = 24
 const searchInIntroduction = ref(false)
 
 const results = ref<GalgameCard[]>([])
+const resourceResults = ref<PatchResource[]>([])
 const total = ref(0)
 const loading = ref(false)
 const hasSearched = ref(false)
@@ -74,37 +84,69 @@ const mapHit = (h: SearchHit): GalgameCard =>
     count: { favorite_by: 0, contribute_by: 0, resource: 0, comment: 0 }
   }) as GalgameCard
 
-const doSearch = async () => {
-  if (!query.value.trim()) {
+const resetResults = () => {
+  results.value = []
+  resourceResults.value = []
+  total.value = 0
+  hasSearched.value = false
+}
+
+const searchModel = async (q: string) => {
+  const params = new URLSearchParams({
+    model: q,
+    sort_field: 'created',
+    sort_order: 'desc',
+    page: String(page.value),
+    limit: String(limit)
+  })
+  const res = await api.get<{ items: PatchResource[]; total: number }>(
+    `/resource?${params.toString()}`
+  )
+  if (res.code === 0) {
+    resourceResults.value = res.data?.items ?? []
+    total.value = res.data?.total ?? 0
+  } else {
+    resourceResults.value = []
+    total.value = 0
+    useKunMessage(res.message || '搜索失败', 'error')
+  }
+  router.replace({ query: { q: query.value, page: page.value, mode: 'model' } })
+}
+
+const searchGalgame = async (q: string) => {
+  // Wire shape matches backend SearchRequest: `q` string, flat filters,
+  // required page/limit. Response is response.Paginated → data.{items,total}.
+  const res = await api.post<{ items: SearchHit[]; total: number }>('/search', {
+    q,
+    page: page.value,
+    limit,
+    include_intro: searchInIntroduction.value
+  })
+  if (res.code === 0) {
+    results.value = (res.data?.items ?? []).map(mapHit)
+    total.value = res.data?.total ?? 0
+  } else {
     results.value = []
     total.value = 0
-    hasSearched.value = false
+    useKunMessage(res.message || '搜索失败', 'error')
+  }
+  router.replace({ query: { q: query.value, page: page.value } })
+}
+
+const doSearch = async () => {
+  const q = query.value.trim()
+  if (!q) {
+    resetResults()
     return
   }
   loading.value = true
   try {
-    // Wire shape matches backend SearchRequest: `q` string, flat filters,
-    // required page/limit. Response is response.Paginated → data.{items,total}.
-    const res = await api.post<{ items: SearchHit[]; total: number }>(
-      '/search',
-      {
-        q: query.value.trim(),
-        page: page.value,
-        limit,
-        include_intro: searchInIntroduction.value
-      }
-    )
-    if (res.code === 0) {
-      results.value = (res.data?.items ?? []).map(mapHit)
-      total.value = res.data?.total ?? 0
-      hasSearched.value = true
-      router.replace({ query: { q: query.value, page: page.value } })
+    if (mode.value === 'model') {
+      await searchModel(q)
     } else {
-      results.value = []
-      total.value = 0
-      hasSearched.value = true
-      useKunMessage(res.message || '搜索失败', 'error')
+      await searchGalgame(q)
     }
+    hasSearched.value = true
   } finally {
     loading.value = false
   }
@@ -117,6 +159,12 @@ const debouncedSearch = useDebounceFn(() => {
 
 watch([query, searchInIntroduction], () => {
   debouncedSearch()
+})
+// Mode switches re-search immediately (a deliberate action, not typing).
+watch(mode, () => {
+  page.value = 1
+  resetResults()
+  doSearch()
 })
 
 onMounted(() => {
@@ -133,11 +181,40 @@ const onChangePage = (v: number) => {
 
 <template>
   <div class="container mx-auto my-4 space-y-6">
-    <KunHeader name="搜索" description="搜索本站的 Galgame 补丁" />
+    <KunHeader
+      name="搜索"
+      description="搜索本站的 Galgame 补丁，或按模型搜索补丁资源"
+    />
+
+    <!-- mode toggle -->
+    <div class="flex flex-wrap gap-2">
+      <KunButton
+        :variant="mode === 'galgame' ? 'flat' : 'light'"
+        :color="mode === 'galgame' ? 'primary' : 'default'"
+        rounded="full"
+        @click="mode = 'galgame'"
+      >
+        <KunIcon name="lucide:gamepad-2" class="size-4" />
+        搜索 Galgame
+      </KunButton>
+      <KunButton
+        :variant="mode === 'model' ? 'flat' : 'light'"
+        :color="mode === 'model' ? 'primary' : 'default'"
+        rounded="full"
+        @click="mode = 'model'"
+      >
+        <KunIcon name="lucide:bot" class="size-4" />
+        按模型搜索资源
+      </KunButton>
+    </div>
 
     <KunInput
       v-model="query"
-      placeholder="输入关键词搜索..."
+      :placeholder="
+        mode === 'model'
+          ? '输入模型名搜索补丁资源，例如 claude-opus-4.7'
+          : '输入关键词搜索...'
+      "
       size="lg"
       autofocus
     >
@@ -146,20 +223,35 @@ const onChangePage = (v: number) => {
       </template>
     </KunInput>
 
-    <div class="flex flex-wrap gap-4">
+    <div v-if="mode === 'galgame'" class="flex flex-wrap gap-4">
       <KunCheckBox v-model="searchInIntroduction" label="搜索简介内容" />
     </div>
 
     <KunLoading v-if="loading" description="正在搜索..." />
+
+    <!-- Galgame results -->
     <div
-      v-else-if="results.length"
+      v-else-if="mode === 'galgame' && results.length"
       class="grid grid-cols-2 gap-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
     >
       <GalgameCard v-for="p in results" :key="p.id" :patch="p" />
     </div>
+
+    <!-- Model (resource) results — link to /resource/:id via ResourceCard -->
+    <div
+      v-else-if="mode === 'model' && resourceResults.length"
+      class="grid grid-cols-1 gap-3 sm:gap-6 md:grid-cols-2"
+    >
+      <ResourceCard v-for="r in resourceResults" :key="r.id" :resource="r" />
+    </div>
+
     <KunNull
       v-else-if="hasSearched"
-      description="没有找到匹配的 Galgame"
+      :description="
+        mode === 'model'
+          ? '没有找到使用该模型的补丁资源'
+          : '没有找到匹配的 Galgame'
+      "
     />
 
     <div v-if="totalPages > 1" class="flex justify-center">
