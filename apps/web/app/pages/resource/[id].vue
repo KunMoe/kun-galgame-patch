@@ -205,16 +205,16 @@ if (
             </p>
 
             <div class="flex flex-wrap items-center gap-2">
-              <h1 class="text-2xl font-bold break-words sm:text-3xl">
-                <NuxtLink
+              <!-- Composed title (game name + platform/language/model/type +
+                   资源下载), the long-tail format matching the SEO <title>. The
+                   game name is a link to the patch's resource page; the
+                   attribute suffix follows as plain text with no space, so it
+                   reads as one title. -->
+              <h1 class="text-2xl font-bold break-words sm:text-3xl"><NuxtLink
                   v-if="detail.patch"
-                  :to="`/patch/${detail.patch.id}/introduction`"
+                  :to="`/patch/${detail.patch.id}/resource`"
                   class="hover:text-primary transition-colors"
-                >
-                  {{ patchName }}
-                </NuxtLink>
-                <template v-else>{{ patchName }}</template>
-              </h1>
+                >{{ titleName }}</NuxtLink><template v-else>{{ titleName }}</template>{{ titleSuffix }}</h1>
               <KunTooltip
                 v-if="detail.patch"
                 :text="GALGAME_AGE_LIMIT_DETAIL[detail.patch.content_limit]"
