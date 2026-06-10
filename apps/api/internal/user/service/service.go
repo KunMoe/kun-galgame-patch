@@ -231,7 +231,7 @@ func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) 
 	}
 	out := make([]model.UserBasic, 0, len(briefs))
 	for _, b := range briefs {
-		out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar})
+		out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash})
 	}
 	return out, nil
 }
@@ -243,7 +243,7 @@ func (s *UserService) briefsToUserBasic(ctx context.Context, ids []int) []model.
 	out := make([]model.UserBasic, 0, len(ids))
 	for _, id := range ids {
 		if b := briefs[id]; b != nil {
-			out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar})
+			out = append(out, model.UserBasic{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash})
 		}
 	}
 	return out

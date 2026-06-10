@@ -12,13 +12,24 @@ import { editorViewCtx } from '@milkdown/kit/core'
 import { linkSchema } from '@milkdown/kit/preset/commonmark'
 import { useInstance } from '@milkdown/vue'
 import { usePluginViewContext } from '@prosemirror-adapter/vue'
+import { getRandomSticker } from '@kungal/ui-core'
+import { resolveAvatarUrl } from '~/shared/utils/resolveAvatarUrl'
 import { getMentionApiBase } from './config'
 
 interface MentionUser {
   id: number
   name: string
   avatar?: string
+  // Hash-addressed avatar (image_service). Preferred over the legacy avatar
+  // URL — resolveAvatarUrl handles both, and the right `_100` variant. We
+  // resolve here + render a plain <img> rather than KunAvatar, because
+  // KunAvatar only uses .avatar and mangles small sizes to a `-100.webp` (dash)
+  // variant that the image_service (underscore `_100`) doesn't serve.
+  avatar_image_hash?: string
 }
+
+const avatarSrc = (u: MentionUser) =>
+  resolveAvatarUrl(u, '100') || getRandomSticker(u.name)
 
 const { view, prevState } = usePluginViewContext()
 const [, get] = useInstance()
@@ -57,6 +68,12 @@ const fetchUsers = async (q: string) => {
   }
 }
 
+// SlashProvider positions the dropdown from the cursor's viewport coords once
+// per update. Page/ancestor scroll moves the cursor but doesn't re-trigger an
+// update, so the dropdown drifts out of place — re-run update() on scroll/resize
+// to keep it pinned to the caret. `true` (capture) catches scrollable ancestors.
+const reposition = () => slashProvider?.update(view.value, prevState.value)
+
 onMounted(() => {
   const el = divRef.value
   if (!el) return
@@ -76,6 +93,8 @@ onMounted(() => {
     }
   })
   slashProvider.update(view.value, prevState.value)
+  window.addEventListener('scroll', reposition, true)
+  window.addEventListener('resize', reposition)
 })
 
 watch([view, prevState], () => {
@@ -84,6 +103,8 @@ watch([view, prevState], () => {
 
 onUnmounted(() => {
   if (debounceTimer) clearTimeout(debounceTimer)
+  window.removeEventListener('scroll', reposition, true)
+  window.removeEventListener('resize', reposition)
   slashProvider?.destroy()
 })
 
@@ -129,7 +150,11 @@ const pickUser = (user: MentionUser) => {
         class="hover:bg-default-100 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5"
         @mousedown.prevent="pickUser(u)"
       >
-        <KunAvatar :user="u" size="xs" :is-navigation="false" />
+        <img
+          :src="avatarSrc(u)"
+          :alt="u.name"
+          class="size-6 shrink-0 rounded-full object-cover"
+        />
         <span class="min-w-0 flex-1 truncate text-sm">{{ u.name }}</span>
       </li>
     </ul>

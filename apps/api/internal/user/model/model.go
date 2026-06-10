@@ -59,6 +59,10 @@ type UserBasic struct {
 	ID     int    `json:"id"`
 	Name   string `json:"name"`
 	Avatar string `json:"avatar"`
+	// AvatarImageHash is the image_service hash for a hash-addressed avatar.
+	// The frontend prefers it over the legacy Avatar URL (resolveAvatarUrl) —
+	// without it, a user who uploaded a new avatar shows their stale legacy one.
+	AvatarImageHash string `json:"avatar_image_hash"`
 }
 
 // UserFollowItem is UserBasic + a viewer-relative is_followed flag, used
