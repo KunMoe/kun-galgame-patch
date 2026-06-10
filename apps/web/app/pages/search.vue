@@ -51,12 +51,25 @@ interface SearchHit {
   name_zh_tw: string
   banner: string
   content_limit: string
+  release_date?: string | null
   has_patch: boolean
+  // The backend returns the FULL local patch row when this galgame has one here
+  // — the same fields the /galgame card is built from (enricher baseCard). Map
+  // them so search cards match the /galgame cards (tags, counts, stats) instead
+  // of showing empty/zero. Absent (galgame with no patch here) → safe defaults.
   patch?: {
     id: number
     view?: number
     download?: number
     created?: string
+    resource_update_time?: string
+    type?: string[]
+    language?: string[]
+    platform?: string[]
+    favorite_count?: number
+    contribute_count?: number
+    comment_count?: number
+    resource_count?: number
   } | null
 }
 
@@ -74,14 +87,23 @@ const mapHit = (h: SearchHit): GalgameCard =>
     banner: h.banner ?? '',
     view: h.patch?.view ?? 0,
     download: h.patch?.download ?? 0,
-    type: [],
-    language: [],
-    platform: [],
+    type: h.patch?.type ?? [],
+    language: h.patch?.language ?? [],
+    platform: h.patch?.platform ?? [],
     content_limit: (h.content_limit as KunContentLimit) || 'sfw',
     status: 0,
+    release_date: h.release_date ?? null,
     created: h.patch?.created ?? new Date().toISOString(),
-    resource_update_time: h.patch?.created ?? new Date().toISOString(),
-    count: { favorite_by: 0, contribute_by: 0, resource: 0, comment: 0 }
+    resource_update_time:
+      h.patch?.resource_update_time ??
+      h.patch?.created ??
+      new Date().toISOString(),
+    count: {
+      favorite_by: h.patch?.favorite_count ?? 0,
+      contribute_by: h.patch?.contribute_count ?? 0,
+      resource: h.patch?.resource_count ?? 0,
+      comment: h.patch?.comment_count ?? 0
+    }
   }) as GalgameCard
 
 const resetResults = () => {
