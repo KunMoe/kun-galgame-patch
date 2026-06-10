@@ -59,6 +59,7 @@ const posts = computed<HomeCarouselMetadata[]>(() =>
       <KunImage
         src="/kungalgame-trans.webp"
         :alt="kunMoyuMoe.titleShort"
+        loading="eager"
         aspect-ratio="16 / 9"
         class-name="rounded-2xl"
       />

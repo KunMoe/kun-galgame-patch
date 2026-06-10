@@ -132,6 +132,8 @@ const tabs = computed(() => [
             <KunImage
               :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
               :alt="displayName"
+              loading="eager"
+              fetchpriority="high"
               class-name="block size-full"
               image-class-name="transition-transform duration-300 hover:scale-[1.03]"
             />

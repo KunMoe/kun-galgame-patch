@@ -23,6 +23,8 @@ const post = computed(() => props.posts[props.currentSlide])
         :src="post.banner"
         :alt="post.title"
         provider="none"
+        loading="eager"
+        fetchpriority="high"
         class-name="block h-full w-full rounded-2xl"
       />
     </div>
