@@ -163,14 +163,12 @@ const form = reactive<FormState>({
 // Banner file held separately — FormData doesn't round-trip File through
 // reactive state cleanly.
 const bannerFile = ref<File | null>(null)
-const bannerPreview = ref<string | null>(null)
-watch(bannerFile, (f) => {
-  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
-  bannerPreview.value = f ? URL.createObjectURL(f) : null
-})
-onBeforeUnmount(() => {
-  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
-})
+// The cover cropper (ImageCropper) renders its own preview and hands back a
+// cropped + optionally mosaicked webp blob; wrap it as the File the submit
+// path uploads.
+const onBannerComplete = (blob: Blob) => {
+  bannerFile.value = new File([blob], 'cover.webp', { type: 'image/webp' })
+}
 
 // ─── Taxonomy ids (presence semantics, see buildPayload) ──────────────
 const tagIds = ref<number[]>([])
@@ -591,23 +589,13 @@ const handleSubmit = async () => {
               上传一张图，提交后自动成为当前 Banner
               （Wiki 把它推到 covers 的 sort_order=0，原来的 banner 降级保留）。
             </p>
-            <KunFileInput
-              v-model="bannerFile"
-              accept="image/jpeg,image/png,image/webp"
-              :max-size="10 * 1024 * 1024"
-              hint="JPEG / PNG / WebP，最大 10 MB"
-              trigger-text="选择新封面"
-              trigger-icon="lucide:image-plus"
-              @error-pick="useKunMessage($event, 'error')"
+            <KunCropperImageCropper
+              :aspect-ratio="16 / 9"
+              hint="点击或拖放图片选择新封面"
+              description="将按 16:9 裁剪，可选对敏感区域打码后提交"
+              @complete="onBannerComplete"
+              @remove="bannerFile = null"
             />
-            <div v-if="bannerPreview">
-              <KunImage
-                :src="bannerPreview"
-                alt="新 banner 预览"
-                object-fit="contain"
-                class-name="bg-default-100 block max-h-48 w-full rounded"
-              />
-            </div>
           </div>
 
           <div class="space-y-3">

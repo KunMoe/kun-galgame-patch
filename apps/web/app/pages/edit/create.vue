@@ -180,17 +180,13 @@ const submitForm = reactive<SubmitForm>({
   original_language: 'ja-jp'
 })
 
-// banner file is held separately from the reactive form. KunFileInput
-// drives bannerFile via v-model; we just need to maintain the preview URL.
+// Banner held separately from the reactive form. The cover cropper
+// (ImageCropper) renders its own preview and hands back a cropped + optionally
+// mosaicked webp blob, which we wrap as the File the submit path uploads.
 const bannerFile = ref<File | null>(null)
-const bannerPreview = ref<string | null>(null)
-watch(bannerFile, (f) => {
-  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
-  bannerPreview.value = f ? URL.createObjectURL(f) : null
-})
-onBeforeUnmount(() => {
-  if (bannerPreview.value) URL.revokeObjectURL(bannerPreview.value)
-})
+const onBannerComplete = (blob: Blob) => {
+  bannerFile.value = new File([blob], 'cover.webp', { type: 'image/webp' })
+}
 
 const startSubmit = () => {
   // Pre-fill name from the search query so users don't retype.
@@ -476,23 +472,13 @@ const handleSubmit = async () => {
 
         <section class="space-y-2">
           <h3 class="font-semibold">Banner（可选）</h3>
-          <KunFileInput
-            v-model="bannerFile"
-            accept="image/jpeg,image/png,image/webp"
-            :max-size="10 * 1024 * 1024"
-            hint="JPEG / PNG / WebP，最大 10 MB。上传后由后端转交 image_service。"
-            trigger-text="选择 Banner 图片"
-            trigger-icon="lucide:image-plus"
-            @error-pick="useKunMessage($event, 'error')"
+          <KunCropperImageCropper
+            :aspect-ratio="16 / 9"
+            hint="点击或拖放图片选择 Banner"
+            description="将按 16:9 裁剪，可选对敏感区域打码后提交（上传后由后端转交 image_service）"
+            @complete="onBannerComplete"
+            @remove="bannerFile = null"
           />
-          <div v-if="bannerPreview" class="mt-2">
-            <KunImage
-              :src="bannerPreview"
-              alt="banner 预览"
-              object-fit="contain"
-              class-name="bg-default-100 block max-h-48 w-full rounded"
-            />
-          </div>
         </section>
 
         <section class="space-y-2">

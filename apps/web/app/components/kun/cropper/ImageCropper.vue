@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type Cropper from 'cropperjs'
+import ImageMosaic from './ImageMosaic.vue'
 
 interface Props {
   aspectRatio?: number
@@ -100,36 +101,81 @@ const handleCancel = () => {
   }
 }
 
-const handleConfirm = async () => {
-  if (!cropperInstance) {
-    showCropper.value = false
-    return
-  }
+const cropToBlob = async (): Promise<Blob | null> => {
+  if (!cropperInstance) return null
   const selection = cropperInstance.getCropperSelection()
-  if (!selection) return
+  if (!selection) return null
+  const canvas = await selection.$toCanvas()
+  // Bound the upload: cap the width to 1920 (16:9 covers → ≤1920×1080),
+  // downscaling only (never upscaling a smaller crop) so we don't blur. Mirrors
+  // the legacy's fixed cover size; image_service still derives display variants.
+  let out = canvas
+  if (canvas.width > 1920) {
+    out = document.createElement('canvas')
+    out.width = 1920
+    out.height = Math.round((1920 * canvas.height) / canvas.width)
+    out.getContext('2d')?.drawImage(canvas, 0, 0, out.width, out.height)
+  }
+  return new Promise<Blob | null>((resolve) => {
+    out.toBlob((b) => resolve(b), 'image/webp', 0.9)
+  })
+}
 
-  try {
-    const canvas = await selection.$toCanvas()
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/webp', 0.9)
-    })
-    if (!blob) {
-      useKunMessage('裁剪失败', 'error')
-      return
-    }
-    if (previewUrl.value && !previewUrl.value.startsWith('http')) {
-      URL.revokeObjectURL(previewUrl.value)
-    }
-    previewUrl.value = URL.createObjectURL(blob)
-    emits('complete', blob)
-  } finally {
-    showCropper.value = false
-    if (cropperSrc.value) {
-      URL.revokeObjectURL(cropperSrc.value)
-      cropperSrc.value = ''
-    }
+const applyResult = (blob: Blob) => {
+  if (previewUrl.value && !previewUrl.value.startsWith('http')) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+  previewUrl.value = URL.createObjectURL(blob)
+  emits('complete', blob)
+}
+
+const closeCropper = () => {
+  showCropper.value = false
+  if (cropperSrc.value) {
+    URL.revokeObjectURL(cropperSrc.value)
+    cropperSrc.value = ''
   }
 }
+
+// 完成裁剪 — use the crop as-is (skip 打码).
+const handleConfirm = async () => {
+  const blob = await cropToBlob()
+  if (!blob) {
+    useKunMessage('裁剪失败', 'error')
+    return
+  }
+  applyResult(blob)
+  closeCropper()
+}
+
+// ─── 打码 (mosaic) — optional step after cropping ─────────────────────
+const showMosaic = ref(false)
+const mosaicSrc = ref('')
+
+// 裁剪并打码 — crop, then open the mosaic editor on the cropped result.
+const handleCropThenMosaic = async () => {
+  const blob = await cropToBlob()
+  if (!blob) {
+    useKunMessage('裁剪失败', 'error')
+    return
+  }
+  if (mosaicSrc.value) URL.revokeObjectURL(mosaicSrc.value)
+  mosaicSrc.value = URL.createObjectURL(blob)
+  closeCropper()
+  showMosaic.value = true
+}
+
+const onMosaicComplete = (blob: Blob) => {
+  applyResult(blob)
+}
+
+// Revoke the mosaic source when the mosaic modal closes (complete OR cancel).
+watch(showMosaic, (v) => {
+  if (!v && mosaicSrc.value) {
+    URL.revokeObjectURL(mosaicSrc.value)
+    mosaicSrc.value = ''
+  }
+})
 
 const handleRemove = () => {
   if (previewUrl.value && !previewUrl.value.startsWith('http')) {
@@ -142,6 +188,7 @@ const handleRemove = () => {
 onUnmounted(() => {
   destroyCropper()
   if (cropperSrc.value) URL.revokeObjectURL(cropperSrc.value)
+  if (mosaicSrc.value) URL.revokeObjectURL(mosaicSrc.value)
 })
 </script>
 
@@ -219,15 +266,29 @@ onUnmounted(() => {
             style="display: block; max-width: 100%"
           />
         </div>
-        <div class="flex justify-end gap-2">
+        <div class="flex flex-wrap justify-end gap-2">
           <KunButton variant="light" color="danger" @click="handleCancel">
             取消
           </KunButton>
+          <KunButton
+            variant="flat"
+            color="secondary"
+            @click="handleCropThenMosaic"
+          >
+            <KunIcon name="lucide:grid-2x2" class="size-4" />
+            裁剪并打码
+          </KunButton>
           <KunButton color="primary" @click="handleConfirm">
-            确定裁剪
+            完成裁剪
           </KunButton>
         </div>
       </div>
     </KunModal>
+
+    <ImageMosaic
+      v-model:open="showMosaic"
+      :src="mosaicSrc"
+      @complete="onMosaicComplete"
+    />
   </div>
 </template>
