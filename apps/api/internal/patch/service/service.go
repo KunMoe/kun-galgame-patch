@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	authModel "kun-galgame-patch-api/internal/auth/model"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
@@ -224,6 +225,18 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 	// to now. Bad/empty value → leave zero → autoCreateTime (safe fallback).
 	if t, pErr := time.Parse(time.RFC3339, brief.ResourceUpdateTime); pErr == nil {
 		row.ResourceUpdateTime = t
+	}
+	// The galgame's owner (Wiki user id) may never have logged into moyu, so
+	// there may be no local user anchor row — without one this insert fails
+	// patch_user_id_fkey (23503) and the galgame can never materialize. Provision
+	// a stub anchor first (id only; profile fields live on OAuth), the same shape
+	// AuthService.FindOrCreateUserByID writes on login.
+	if row.UserID > 0 {
+		if uErr := s.db.WithContext(ctx).
+			Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&authModel.User{ID: row.UserID}).Error; uErr != nil {
+			return nil, uErr
+		}
 	}
 	if cErr := s.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
