@@ -212,6 +212,26 @@
 
 ---
 
+### GET /galgame/user/:id/contributed
+
+列出某用户**贡献过**的 galgame，按贡献时间倒序、分页。下游个人主页「贡献的 Galgame」标签的数据源。
+
+「贡献」= **创建 _或_ 编辑过**（galgame_contributor 关系：创建该 galgame、或提交并合入过它的修订/PR 时被记入）。因此它是 [`/galgame/user/:id/galgames`](#get-galgameuseridgalgames)（**仅创建**，按 `galgame.user_id`）的**超集**——还包含用户只编辑、未创建的条目。例如某用户可能 `galgame_created=0` 却贡献了数百条（纯编辑者）；那些只能从本端点看到。
+
+**路径参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | int | 用户 ID |
+
+**查询参数**：与 `/galgame/user/:id/galgames` 完全一致（`page` / `limit` ≤100 / `content_limit` 默认 `sfw`，个人主页可被爬虫抓取）。
+
+**成功响应**：结构与 `/galgame/user/:id/galgames` **完全一致**（`data.galgames` 为 brief 列表，`data.total` 为过滤后的总数）。排序为**贡献时间**倒序（contributor 关系记录的 `created`，即该用户首次贡献该作的时间），而非 galgame 创建时间。
+
+只返回 status=0（已发布）的条目。注意与 `/galgame/user/:id/stats` 的 `galgame_contributed`（按 `user_id` 统计 galgame_contributor 的去重计数，**不过滤 status / content_limit**）口径略有差异：本列表只展示**已发布且符合 `content_limit`** 的子集，故列表 `total` 可能 ≤ 该统计值。
+
+---
+
 ### GET /galgame/check
 
 检查 VNDB ID 是否已存在 + 返回对应整数 `galgame_id`。
