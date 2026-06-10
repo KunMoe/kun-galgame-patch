@@ -29,16 +29,20 @@
 @source '../../node_modules/@kungal/ui-core';
 
 /* ─── Global corner-radius knob ─────────────────────────────────────────
- * ONE control for every corner radius on the site — both moyu's own Tailwind
- * `rounded-*` utilities AND every KunUI component (which reads --radius-kun-*).
- * Change --kun-radius-scale to make the whole UI rounder (>1) or sharper (<1);
- * both radius systems scale together from their current values, so 1 = the
- * current look (e.g. 0 = square everywhere, 1.5 = 50% rounder, 2 = very round).
- * `rounded-full` / `rounded-none` are intentionally NOT scaled (avatars, pills,
- * switches stay circular; square stays square).
+ * ONE control for every corner radius on the site. Change --kun-radius-scale
+ * to make the whole UI rounder (>1) or sharper (<1); 1 = the current look
+ * (0 = square everywhere, 1.5 = 50% rounder, 2 = very round). `rounded-full` /
+ * `rounded-none` are intentionally NOT scaled (avatars/pills/switches stay
+ * circular; square stays square).
  *
- * Un-layered :root rules so they override Tailwind's @theme defaults and
- * @kungal/ui-tokens' --radius-kun-* defaults (un-layered beats @layer). */
+ * This drives BOTH radius systems off the same variable:
+ *   - moyu's own Tailwind `rounded-*` → the --radius-* overrides below
+ *     (un-layered :root so they beat Tailwind's @theme defaults).
+ *   - every KunUI component → @kungal/ui-tokens@>=0.5.1 defines its
+ *     --radius-kun-* as calc(base * var(--kun-radius-scale, 1)) itself, so it
+ *     reads this variable natively. (We deliberately do NOT redeclare
+ *     --radius-kun-* here — the token's own :root wins that cascade, which is
+ *     why a direct override had no effect.) */
 :root {
   --kun-radius-scale: 1;
 
@@ -50,11 +54,6 @@
   --radius-xl: calc(0.75rem * var(--kun-radius-scale));
   --radius-2xl: calc(1rem * var(--kun-radius-scale));
   --radius-3xl: calc(1.5rem * var(--kun-radius-scale));
-
-  /* KunUI buckets → every @kungal/ui-* component (config.rounded default md) */
-  --radius-kun-sm: calc(0.25rem * var(--kun-radius-scale));
-  --radius-kun-md: calc(0.5rem * var(--kun-radius-scale));
-  --radius-kun-lg: calc(0.75rem * var(--kun-radius-scale));
 }
 
 @layer base {
