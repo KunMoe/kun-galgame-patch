@@ -112,12 +112,15 @@ const pickUser = (user: MentionUser) => {
 </script>
 
 <template>
-  <!-- SlashProvider toggles visibility + positions this element; it must always
-       be in the DOM. mousedown.prevent keeps editor focus so the insert's
-       selection math stays valid (a click would blur first). -->
+  <!-- SlashProvider positions this element at the cursor by setting inline
+       top/left (needs `absolute`) and toggles a data-show attribute
+       (data-[show='false']:hidden). It must always be in the DOM. The anchor is
+       ProseMirror's editable element, which is position:relative by default.
+       mousedown.prevent keeps editor focus so the insert's selection math stays
+       valid (a click would blur first). -->
   <div
     ref="divRef"
-    class="border-default-200 bg-content1 z-kun-popover max-h-64 w-64 overflow-y-auto rounded-lg border p-1 shadow-lg"
+    class="border-default-200 bg-content1 z-kun-popover absolute data-[show='false']:hidden max-h-64 w-64 overflow-y-auto rounded-lg border p-1 shadow-lg"
   >
     <ul v-if="users.length" class="space-y-0.5">
       <li

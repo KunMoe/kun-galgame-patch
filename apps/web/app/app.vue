@@ -14,7 +14,11 @@ onMounted(() => {
 
 <template>
   <div>
-    <NuxtLoadingIndicator color="var(--color-primary)" />
+    <!-- Tailwind v4 inlines @theme colors into utilities but doesn't emit the
+         bare `--color-primary` var to :root, so `var(--color-primary)` here is
+         undefined → an invisible (transparent) bar. Mirror how `bg-primary`
+         compiles: fall back to the raw `--primary-500` triplet. -->
+    <NuxtLoadingIndicator color="var(--color-primary, hsl(var(--primary-500)))" />
     <NuxtRouteAnnouncer />
     <KunAlertMessageContainer />
     <NuxtLayout>
