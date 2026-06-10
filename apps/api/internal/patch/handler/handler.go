@@ -307,7 +307,7 @@ func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
 	// owner about a comment that may be rejected.
 	if comment.Status == 0 {
 		go func() {
-			h.service.CreateMentionMessages(user.ID, patchID, req.Content)
+			h.service.CreateMentionMessages(user.ID, patchID, comment.ID, req.Content)
 			h.service.CreateCommentNotification(user.ID, comment)
 		}()
 	}
@@ -331,7 +331,7 @@ func (h *PatchHandler) ApproveComment(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(aerr.Error()))
 	}
 	go func() {
-		h.service.CreateMentionMessages(comment.UserID, comment.GalgameID, comment.Content)
+		h.service.CreateMentionMessages(comment.UserID, comment.GalgameID, comment.ID, comment.Content)
 		h.service.CreateCommentNotification(comment.UserID, comment)
 	}()
 	return response.OK(c, comment)

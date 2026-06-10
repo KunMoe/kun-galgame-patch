@@ -1313,16 +1313,19 @@ func (s *PatchService) createDedupMessage(senderID, recipientID int, msgType, co
 	}
 }
 
-func (s *PatchService) CreateMentionMessages(senderID, patchID int, content string) {
+// CreateMentionMessages notifies every @mentioned user. commentID is the
+// comment carrying the mention, so the notification deep-links straight to it
+// (/patch/:gid/comment#comment-:cid) instead of just the patch page.
+func (s *PatchService) CreateMentionMessages(senderID, patchID, commentID int, content string) {
 	ids := s.ExtractMentionUserIDs(content)
 	excerpt := content
 	if len(excerpt) > 233 {
 		excerpt = excerpt[:233]
 	}
+	link := fmt.Sprintf("/patch/%d/comment#comment-%d", patchID, commentID)
 	for _, userID := range ids {
 		if userID != senderID {
-			s.createDedupMessage(senderID, userID, "mention", excerpt,
-				fmt.Sprintf("/patch/%d", patchID), false)
+			s.createDedupMessage(senderID, userID, "mention", excerpt, link, false)
 		}
 	}
 }
@@ -1331,9 +1334,11 @@ func (s *PatchService) CreateCommentNotification(senderID int, comment *model.Pa
 	if comment.ParentID != nil {
 		parent, err := s.repo.GetCommentByID(*comment.ParentID)
 		if err == nil && parent.UserID != senderID {
+			// Deep-link to the reply so the recipient lands on it directly.
 			s.createDedupMessage(senderID, parent.UserID, "comment",
 				"Replied to your comment",
-				fmt.Sprintf("/patch/%d", comment.GalgameID), false)
+				fmt.Sprintf("/patch/%d/comment#comment-%d", comment.GalgameID, comment.ID),
+				false)
 		}
 	}
 }

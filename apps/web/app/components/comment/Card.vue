@@ -23,7 +23,7 @@ const patchName = computed(() =>
 )
 
 const target = computed(
-  () => `/patch/${props.comment.galgame_id}/comment`
+  () => `/patch/${props.comment.galgame_id}/comment#comment-${props.comment.id}`
 )
 
 // The card MUST NOT render as a NuxtLink (i.e. don't pass `:href`). Rendered

@@ -53,3 +53,20 @@ cropper-selection {
 cropper-handle[action='select'] {
   background: color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
+
+/* Deep-link highlight: briefly flash a comment scrolled to via
+   /patch/:id/comment#comment-:id. Global (unscoped) because the target lives in
+   a child component (comment/Item.vue). */
+@keyframes kun-comment-flash {
+  0%,
+  25% {
+    background-color: color-mix(in oklab, var(--color-primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.kun-comment-flash {
+  animation: kun-comment-flash 2s ease-out;
+  border-radius: 0.5rem;
+}

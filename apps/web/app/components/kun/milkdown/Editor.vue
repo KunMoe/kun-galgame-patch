@@ -18,6 +18,9 @@ import { activeTab } from './atom'
 import { createKunUploader, kunUploadWidgetFactory } from './plugins/upload/uploader'
 import { tooltipFactory } from '@milkdown/kit/plugin/tooltip'
 import Tooltip from './plugins/tooltip/Tooltip.vue'
+import { slashFactory } from '@milkdown/kit/plugin/slash'
+import Mention from './plugins/mention/Mention.vue'
+import { setMentionApiBase } from './plugins/mention/config'
 import { replaceAll } from '@milkdown/kit/utils'
 import {
   stopLinkCommand,
@@ -69,6 +72,7 @@ const emits = defineEmits<{
 const valueMarkdown = computed(() => props.valueMarkdown)
 
 const tooltip = tooltipFactory('Text')
+const mention = slashFactory('kun-mention')
 const pluginViewFactory = usePluginViewFactory()
 
 // Captured in setup (Nuxt context) so the runtime API base can be handed to
@@ -76,6 +80,8 @@ const pluginViewFactory = usePluginViewFactory()
 const runtimeConfig = useRuntimeConfig()
 const apiBase =
   (runtimeConfig.public.apiBase as string) || 'http://127.0.0.1:5214/api/v1'
+// Hand the API base to the mention dropdown (rendered outside Nuxt's setup tree).
+setMentionApiBase(apiBase)
 const container = ref<HTMLElement | null>(null)
 const toolbar = ref<HTMLElement | null>(null)
 const editorContent = ref('')
@@ -112,6 +118,12 @@ const editorInfo = useEditor((root) =>
       ctx.set(tooltip.key, {
         view: pluginViewFactory({
           component: Tooltip
+        })
+      })
+
+      ctx.set(mention.key, {
+        view: pluginViewFactory({
+          component: Mention
         })
       })
 
@@ -171,6 +183,7 @@ const editorInfo = useEditor((root) =>
     .use(indent)
     .use(trailing)
     .use(tooltip)
+    .use(mention)
     .use(upload)
     .use(codeBlockComponent)
     .use([kunSpoilerPlugin, stopLinkCommand, linkCustomKeymap].flat())

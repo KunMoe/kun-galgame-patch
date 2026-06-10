@@ -128,6 +128,29 @@ const drawerRoot = ref<PatchPageComment | null>(null)
 const openThread = (rootId: number) => {
   drawerRoot.value = data.value?.items.find((c) => c.id === rootId) ?? null
 }
+
+// ─── deep-link: scroll to + flash a specific comment ──
+// Links from messages / home / the global /comment page point at
+// /patch/:id/comment#comment-:cid. After the list renders, find that anchor,
+// scroll it into view, and flash it. Pagination isn't handled yet — if the
+// target lives on another page (or behind a thread drawer) the anchor won't be
+// found and this is a no-op (intentional; that's the next step).
+const flashTargetComment = () => {
+  const m = route.hash.match(/^#comment-(\d+)$/)
+  if (!m) return
+  nextTick(() => {
+    const el = document.getElementById(`comment-${m[1]}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('kun-comment-flash')
+    setTimeout(() => el.classList.remove('kun-comment-flash'), 2000)
+  })
+}
+
+onMounted(flashTargetComment)
+// Re-run when navigating between comments without a full reload (e.g. clicking
+// another comment notification while already on this page).
+watch(() => route.hash, flashTargetComment)
 </script>
 
 <template>

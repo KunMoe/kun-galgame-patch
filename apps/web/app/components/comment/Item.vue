@@ -158,7 +158,10 @@ const confirmDelete = async () => {
 </script>
 
 <template>
-  <div class="flex gap-3">
+  <!-- Anchor for deep-linking from messages / home / global comments
+       (/patch/:id/comment#comment-:id). scroll-mt keeps the target clear of the
+       sticky patch header when scrolled into view. -->
+  <div :id="`comment-${comment.id}`" class="flex scroll-mt-24 gap-3">
     <KunAvatar :user="comment.user" :size="depth === 0 ? 'sm' : 'xs'" />
 
     <div class="min-w-0 flex-1 space-y-1.5">

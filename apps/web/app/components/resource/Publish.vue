@@ -768,10 +768,14 @@ const existingFileName = computed(() => {
           <div class="text-default-500 text-sm">
             建议详细说明补丁的使用方法、注意事项、原创/授权声明、更新日志等。
           </div>
-          <KunTextarea
-            v-model="form.note"
-            placeholder="例如：注意事项 / 使用说明 / 原创或授权说明 / 更新日志"
-            :rows="6"
+          <!-- Rich markdown editor (same as comments / galgame intro): supports
+               formatting, image upload, and @mention. Uncontrolled — key by the
+               resource id so it remounts with the right initial note when the
+               edit modal is reused for a different resource. -->
+          <KunMilkdownDualEditorProvider
+            :key="`note-${props.resource?.id ?? 'new'}`"
+            :value-markdown="form.note"
+            @set-markdown="(val) => (form.note = val)"
           />
         </section>
 
