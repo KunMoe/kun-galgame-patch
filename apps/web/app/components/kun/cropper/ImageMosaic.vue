@@ -190,12 +190,15 @@ const complete = async () => {
       </p>
 
       <div
-        class="border-default-200 max-h-[60vh] overflow-auto rounded-lg border"
+        class="border-default-200 bg-default-100 flex justify-center rounded-lg border p-2"
       >
+        <!-- Bound by BOTH width and height so the canvas fits the modal on any
+             screen (desktop + mobile) at the image's aspect — no overflow
+             scroll, no oversized canvas. -->
         <canvas
           ref="canvasRef"
           aria-label="封面打码画布：在需要遮挡的区域涂抹打码"
-          class="block max-w-full cursor-crosshair touch-none select-none"
+          class="mx-auto block max-h-[55vh] max-w-full cursor-crosshair touch-none rounded select-none"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"

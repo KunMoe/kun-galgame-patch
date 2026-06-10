@@ -64,10 +64,22 @@ watch(showCropper, async (open) => {
       const mod = await import('cropperjs')
       const CropperClass = mod.default
       cropperInstance = new CropperClass(imgRef.value, {})
+      const instance = cropperInstance
+      const image = cropperInstance.getCropperImage()
       const selection = cropperInstance.getCropperSelection()
+      if (image) {
+        // Fit the (any-aspect) source inside the fixed-height cropper canvas so
+        // the crop area is a consistent size regardless of the source's pixels.
+        await image.$ready().catch(() => {})
+        // Modal may have been closed (cropper destroyed) during the decode.
+        if (cropperInstance !== instance) return
+        image.$center('contain')
+      }
       if (selection) {
         selection.aspectRatio = props.aspectRatio
-        selection.initialAspectRatio = props.aspectRatio
+        selection.initialCoverage = 0.9
+        // Re-apply aspect + coverage centered now that the image is laid out.
+        selection.$reset()
       }
     }
   } else {
@@ -257,13 +269,20 @@ onUnmounted(() => {
     >
       <div class="space-y-4">
         <h3 class="text-lg font-semibold">裁剪图片</h3>
-        <div class="max-h-[60vh] overflow-auto">
+        <p class="text-default-500 text-sm">
+          拖动选框选择封面区域，可缩放/拖动图片调整，完成后可继续打码。
+        </p>
+        <!-- The cropper canvas has a fixed responsive height (index.css
+             cropper-canvas) so the crop area is consistent for any source; the
+             raw <img> below is only shown for the brief moment before CropperJS
+             replaces it. -->
+        <div class="overflow-hidden rounded-lg">
           <img
             v-if="cropperSrc"
             ref="imgRef"
             :src="cropperSrc"
             alt="cropper source"
-            style="display: block; max-width: 100%"
+            class="block max-w-full"
           />
         </div>
         <div class="flex flex-wrap justify-end gap-2">

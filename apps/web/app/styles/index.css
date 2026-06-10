@@ -43,7 +43,12 @@
 
 cropper-canvas {
   background: color-mix(in oklab, var(--color-default) 20%, transparent);
-  min-height: 240px;
+  /* Fixed, viewport-bounded crop area so the cropper is a consistent size for
+     any source image (small / portrait / huge) instead of sizing to the image's
+     intrinsic dimensions. The image is fitted inside via image.$center('contain').
+     Responsive: ~52vh on desktop, smaller on short/mobile screens. */
+  width: 100%;
+  height: clamp(220px, 52vh, 560px);
 }
 
 cropper-selection {
