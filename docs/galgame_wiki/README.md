@@ -38,6 +38,7 @@
 > - **K-PR（2026-05-28，非破坏性）**：新增 `released_months`（逗号分隔 1–12）—— 在连续年份区间上叠加**不连续月份**过滤（如"历年三月发售"`released_months=3`、"2020–2024 的 3/7 月"`released_from=2020&released_to=2024&released_months=3,7`），两端点同款。搜索端需跑一次 `reindex-search` 回填 `released_month`。详见 [00-handbook §17.10](./00-handbook-for-downstream.md#1710-不连续月份筛选released_months2026-05-28-新增)。
 > - **K-PR（2026-05-28，bug fix）**：`release_date` 响应序列化从 RFC3339 `"2019-08-16T00:00:00Z"` 修正为文档承诺的纯日期 **`"2019-08-16"`**（消除 date-only 值的幻影时区，避免下游 off-by-one-day）。REST live / snapshot / search 三条路径现统一。详见 [00-handbook §17.7](./00-handbook-for-downstream.md#177-响应里-release_date-的格式yyyy-mm-dd不是-rfc3339)。并澄清 **`GET /galgame/batch` 轻量 DTO 不含 `release_date`**（要发售日期走详情/列表/搜索端点，§17.8）。
 > - **K-PR（2026-05-28，bug fix）**：所有 **timestamp 字段统一 UTC RFC3339**（`created` / `updated` / `resource_update_time` / `created_at` / `completed_time` 等）。修复前 raw-model 端点吐带本地 offset 的串（`...-07:00`，随机器时区漂移）、DTO 端点的硬编码 `Z` 实为本地钟面（差一个偏移量）。用自定义 `Timestamp` 类型（强制 `.UTC()`）统一为 `"2026-05-10T16:24:28Z"`。详见 [00-handbook §17.9](./00-handbook-for-downstream.md#179-所有-timestamp-字段统一-utc-rfc3339z)。
+> - **K-PR（2026-06-10，bug fix）**：**编辑/PR 无发售日期的 galgame 不再被拦**。`PUT /galgame/:gid` 与 PR/submit 入参的 `release_date: ""`（契约一直承诺的"清空为未知"）此前被输入校验误拒——`*string` 字段上 `omitempty` 看的是指针非空（`!IsNil`），非空指向 `""` 不会跳过，旧的 `datetime` 校验便对 `""` parse 失败。约 9% 的条目（无发售日期）因此无法保存。校验改用 `date_or_empty`（接受 `""` 或 `YYYY-MM-DD`），契约与行为现一致。**非破坏性、下游无需改动**（下游本就按契约发 `""`）。
 
 ---
 
