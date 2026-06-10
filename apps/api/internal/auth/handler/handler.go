@@ -152,7 +152,15 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 // UpdateMe PATCH /api/v1/auth/me
 // Proxies → OAuth PATCH /auth/me. Accepts {name, avatar, avatar_image_hash, bio}.
 func (h *AuthHandler) UpdateMe(c *fiber.Ctx) error {
-	return h.proxyUserOAuth(c, fiber.MethodPatch, "/auth/me")
+	err := h.proxyUserOAuth(c, fiber.MethodPatch, "/auth/me")
+	// The userclient caches OAuth briefs ~10min. After a self profile edit, evict
+	// this user's entry so the next /auth/me (the frontend's refreshMe) reflects
+	// the new name/bio immediately instead of the stale cached copy — otherwise
+	// the change "doesn't stick" until the cache expires ("个人签名无法更改").
+	if uid := middleware.GetUserID(c); uid > 0 {
+		h.users.Invalidate(uint(uid))
+	}
+	return err
 }
 
 // UploadAvatar POST /api/v1/auth/me/avatar
@@ -160,7 +168,13 @@ func (h *AuthHandler) UpdateMe(c *fiber.Ctx) error {
 // image_service upload internally and writes avatar_image_hash). Body is
 // forwarded as-is so the multipart boundary survives.
 func (h *AuthHandler) UploadAvatar(c *fiber.Ctx) error {
-	return h.proxyUserOAuth(c, fiber.MethodPost, "/auth/me/avatar")
+	err := h.proxyUserOAuth(c, fiber.MethodPost, "/auth/me/avatar")
+	// Same cache-staleness fix as UpdateMe: evict so the new avatar_image_hash
+	// shows on the next /auth/me instead of the ~10min-cached old avatar.
+	if uid := middleware.GetUserID(c); uid > 0 {
+		h.users.Invalidate(uint(uid))
+	}
+	return err
 }
 
 // proxyUserOAuth is the shared helper for the display-layer proxies.
