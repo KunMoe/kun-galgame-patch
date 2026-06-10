@@ -61,15 +61,18 @@ const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 // Wiki end already applies sfw default at /tag/:name (see
 // docs/galgame_wiki/00-handbook §16.2), so by construction the tag
 // detail's galgame list never leaks NSFW entries to the SSR HTML. SEO is
-// safe to enable on the loaded path. Disable when tag is missing /
-// wiki call failed (avoid indexing a 404 stub).
-if (tag.value) {
+// safe to enable on a loaded SFW tag. Disable when:
+//   - the tag is a sexual (NSFW) category — the tag name/description itself is
+//     a NSFW signal, so don't let search engines index it (mirrors the NSFW
+//     SEO gate on patch/[id].vue), or
+//   - the tag is missing / the wiki call failed (avoid indexing a 404 stub).
+if (tag.value && tag.value.category !== 'sexual') {
   useKunSeoMeta({
     title: `标签 · ${tag.value.name}`,
     description: `${tag.value.name}（${tag.value.galgame_count ?? '0'} 个 Galgame）汉化补丁、中文补丁资源下载合集`
   })
 } else {
-  useKunDisableSeo('标签详情')
+  useKunDisableSeo(tag.value ? `标签 · ${tag.value.name}` : '标签详情')
 }
 </script>
 

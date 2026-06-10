@@ -3,6 +3,7 @@ import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const route = useRoute()
 const api = useApi()
+const settingStore = useSettingStore()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -69,6 +70,15 @@ const TAG_CATEGORY_TEXT_CLASS: Record<TagCategory, string> = {
   technical: 'text-success-600'
 }
 
+// SFW (safe) mode never shows sexual tags — not even behind the toggle. The
+// category checkboxes only offer the categories allowed in the current mode.
+const isSafeMode = computed(() => settingStore.data.kunNsfwEnable === 'sfw')
+const availableCategories = computed<TagCategory[]>(() =>
+  isSafeMode.value
+    ? ['content', 'technical']
+    : ['content', 'sexual', 'technical']
+)
+
 const showSpoiler = ref(false)
 const visibleCategories = ref<Set<TagCategory>>(
   new Set(['content', 'sexual', 'technical'])
@@ -83,8 +93,10 @@ const toggleCategory = (c: TagCategory) => {
 const filteredTags = computed(() => {
   if (!detail.value?.tags) return []
   return detail.value.tags.filter((t) => {
-    if (!showSpoiler.value && (t.spoiler_level ?? 0) > 0) return false
     const cat = (t.category || 'content') as TagCategory
+    // SFW mode hard-hides sexual tags regardless of the manual toggle.
+    if (isSafeMode.value && cat === 'sexual') return false
+    if (!showSpoiler.value && (t.spoiler_level ?? 0) > 0) return false
     if (!visibleCategories.value.has(cat)) return false
     return true
   })
@@ -197,7 +209,7 @@ const wikiOrigin =
           </KunCheckBox>
           <span class="text-default-300">|</span>
           <KunCheckBox
-            v-for="c in (['content', 'sexual', 'technical'] as TagCategory[])"
+            v-for="c in availableCategories"
             :key="c"
             :model-value="visibleCategories.has(c)"
             color="primary"
