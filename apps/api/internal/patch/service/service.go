@@ -1343,6 +1343,54 @@ func (s *PatchService) CreateCommentNotification(senderID int, comment *model.Pa
 	}
 }
 
+// LocateCommentResult tells the FE which page of the paginated comment list a
+// comment lives on, so a deep-link (/patch/:id/comment#comment-:cid) can jump
+// straight to it. RootID is the owning top-level comment (== the comment itself
+// when it's not a reply); IsReply lets the FE expand the thread drawer if the
+// reply isn't among the inline-shown ones.
+type LocateCommentResult struct {
+	Page      int  `json:"page"`
+	RootID    int  `json:"root_id"`
+	IsReply   bool `json:"is_reply"`
+	GalgameID int  `json:"galgame_id"`
+}
+
+// LocateComment resolves a comment id to its page in the root-comment listing.
+// limit MUST match the list's page size (clamped to the same 1..30 bound).
+func (s *PatchService) LocateComment(commentID, limit int) (*LocateCommentResult, error) {
+	if limit <= 0 || limit > 30 {
+		limit = 30
+	}
+	c, err := s.repo.GetCommentByID(commentID)
+	if err != nil {
+		return nil, fmt.Errorf("comment not found")
+	}
+	root := c
+	isReply := false
+	if c.ParentID != nil {
+		isReply = true
+		root, err = s.repo.GetCommentByID(*c.ParentID)
+		if err != nil {
+			return nil, fmt.Errorf("comment not found")
+		}
+	}
+	// Only approved roots ever render in the public list, so anything else
+	// (pending/removed root) isn't locatable.
+	if root.Status != 0 || root.ParentID != nil {
+		return nil, fmt.Errorf("comment not locatable")
+	}
+	before, err := s.repo.CountRootCommentsBefore(root.GalgameID, root.Created, root.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &LocateCommentResult{
+		Page:      int(before)/limit + 1,
+		RootID:    root.ID,
+		IsReply:   isReply,
+		GalgameID: root.GalgameID,
+	}, nil
+}
+
 func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *model.PatchComment) {
 	if comment.UserID != senderID {
 		s.createDedupMessage(senderID, comment.UserID, "likeComment",

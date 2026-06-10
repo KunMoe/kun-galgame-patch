@@ -68,6 +68,7 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Get("/:id/contributor", a.PatchHandler.GetContributors)
 	patchRoutes.Put("/:id/view", a.PatchHandler.IncrementView)
 	patchRoutes.Get("/comment/:commentId/markdown", a.PatchHandler.GetCommentMarkdown)
+	patchRoutes.Get("/comment/:commentId/locate", optionalAuth, a.PatchHandler.LocateComment)
 
 	// Authenticated
 	patchRoutes.Put("/:id", auth, a.PatchHandler.UpdatePatch)

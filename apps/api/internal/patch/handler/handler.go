@@ -420,6 +420,34 @@ func (h *PatchHandler) GetCommentMarkdown(c *fiber.Ctx) error {
 	return response.OK(c, map[string]string{"markdown": md})
 }
 
+// LocateComment GET /api/patch/comment/:commentId/locate?limit=N
+//
+// Resolves a comment id to {page, root_id, is_reply, galgame_id} in the
+// paginated root-comment list so a deep-link can jump straight to it.
+// NSFW-gated like GetCommentMarkdown so a NSFW comment's location can't be
+// probed anonymously.
+func (h *PatchHandler) LocateComment(c *fiber.Ctx) error {
+	commentID, err := getIDParam(c, "commentId")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+
+	patchID, pErr := h.service.GetCommentPatchID(commentID)
+	if pErr != nil {
+		return response.Error(c, errors.ErrNotFound("comment not found"))
+	}
+	if !h.gatePatchByContentLimit(c, patchID) {
+		return response.Error(c, errors.ErrNotFound("comment not found"))
+	}
+
+	limit, _ := strconv.Atoi(c.Query("limit", "30"))
+	res, lErr := h.service.LocateComment(commentID, limit)
+	if lErr != nil {
+		return response.Error(c, errors.ErrNotFound("comment not found"))
+	}
+	return response.OK(c, res)
+}
+
 // ===== Resources =====
 
 // GetResources GET /api/patch/:id/resource

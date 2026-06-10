@@ -5,11 +5,20 @@
 // the Item/Thread components call the APIs and emit results, which the handlers
 // below apply optimistically (no refetch, no loading flash).
 const route = useRoute()
+const router = useRouter()
 const api = useApi()
 const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
 
 const galgameId = computed(() => Number(route.params.id))
+
+const LIMIT = 30
+const page = computed({
+  get: () => Number(route.query.page) || 1,
+  set: (v: number) => {
+    router.push({ query: { ...route.query, page: v }, hash: route.hash })
+  }
+})
 
 interface CommentListResponse {
   items: PatchPageComment[]
@@ -17,17 +26,22 @@ interface CommentListResponse {
 }
 
 const { data, pending } = await useAsyncData<CommentListResponse>(
-  () => `patch-comments-${galgameId.value}`,
+  () => `patch-comments-${galgameId.value}-${page.value}`,
   async () => {
     const res = await api.get<CommentListResponse>(
-      `/patch/${galgameId.value}/comment?page=1&limit=30`
+      `/patch/${galgameId.value}/comment?page=${page.value}&limit=${LIMIT}`
     )
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
-  { default: () => ({ items: [], total: 0 }) }
+  { default: () => ({ items: [], total: 0 }), watch: [page, galgameId] }
 )
 
 const comments = computed(() => data.value?.items ?? [])
+// total = APPROVED root-comment count (the server paginates over roots), so it
+// drives the paginator directly.
+const totalPage = computed(() =>
+  Math.max(1, Math.ceil((data.value?.total ?? 0) / LIMIT))
+)
 
 // ─── new top-level comment composer ───────────────────
 const content = ref('')
@@ -92,7 +106,7 @@ const onReplyAdded = (reply: PatchPageComment) => {
   reply.reply = reply.reply ?? []
   if (!root.reply) root.reply = []
   root.reply.push(reply)
-  data.value.total++
+  // total = root count → a reply doesn't change it (keeps totalPage correct).
 }
 
 const onEdited = (updated: PatchPageComment) => {
@@ -107,9 +121,9 @@ const onRemoved = (id: number) => {
   if (!data.value) return
   const rootIdx = data.value.items.findIndex((c) => c.id === id)
   if (rootIdx >= 0) {
-    const removed = 1 + (data.value.items[rootIdx]?.reply?.length ?? 0)
     data.value.items.splice(rootIdx, 1)
-    data.value.total = Math.max(0, data.value.total - removed)
+    // total = root count → removing a root drops it by exactly 1.
+    data.value.total = Math.max(0, data.value.total - 1)
     if (drawerRoot.value?.id === id) drawerRoot.value = null
     return
   }
@@ -117,7 +131,7 @@ const onRemoved = (id: number) => {
     const i = c.reply?.findIndex((x) => x.id === id) ?? -1
     if (i >= 0) {
       c.reply.splice(i, 1)
-      data.value.total = Math.max(0, data.value.total - 1)
+      // reply removal doesn't affect the root count / paginator
       return
     }
   }
@@ -129,28 +143,85 @@ const openThread = (rootId: number) => {
   drawerRoot.value = data.value?.items.find((c) => c.id === rootId) ?? null
 }
 
-// ─── deep-link: scroll to + flash a specific comment ──
-// Links from messages / home / the global /comment page point at
-// /patch/:id/comment#comment-:cid. After the list renders, find that anchor,
-// scroll it into view, and flash it. Pagination isn't handled yet — if the
-// target lives on another page (or behind a thread drawer) the anchor won't be
-// found and this is a no-op (intentional; that's the next step).
-const flashTargetComment = () => {
-  const m = route.hash.match(/^#comment-(\d+)$/)
-  if (!m) return
-  nextTick(() => {
-    const el = document.getElementById(`comment-${m[1]}`)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('kun-comment-flash')
-    setTimeout(() => el.classList.remove('kun-comment-flash'), 2000)
-  })
+// ─── deep-link: jump to a specific comment, across pages ──
+// Links (messages / home / global /comment) point at
+// /patch/:id/comment#comment-:cid. Try the current page first; if the target
+// isn't here, ask the server which page it's on (GET .../locate), navigate
+// there, then scroll. A collapsed reply (only the first 3 show inline) is
+// revealed by opening its thread drawer. Once found, scroll + flash it.
+const flash = (el: HTMLElement) => {
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('kun-comment-flash')
+  setTimeout(() => el.classList.remove('kun-comment-flash'), 2000)
 }
 
-onMounted(flashTargetComment)
-// Re-run when navigating between comments without a full reload (e.g. clicking
-// another comment notification while already on this page).
-watch(() => route.hash, flashTargetComment)
+const tryScroll = (id: number) => {
+  const el = document.getElementById(`comment-${id}`)
+  if (el) {
+    flash(el)
+    return true
+  }
+  return false
+}
+
+// A collapsed reply only renders once its thread drawer is open. The drawer
+// mounts asynchronously, so poll briefly for the reply element to appear.
+const revealReplyInDrawer = (rootId: number, id: number) => {
+  openThread(rootId)
+  let tries = 0
+  const tick = () => {
+    if (tryScroll(id) || tries++ > 12) return
+    setTimeout(tick, 60)
+  }
+  nextTick(tick)
+}
+
+// Set while waiting for a page navigation's data to load (consumed by watch).
+const pendingTarget = ref<{
+  id: number
+  rootId: number
+  isReply: boolean
+} | null>(null)
+
+const resolveTarget = async () => {
+  const m = route.hash.match(/^#comment-(\d+)$/)
+  if (!m) return
+  const id = Number(m[1])
+  await nextTick()
+  if (tryScroll(id)) return
+
+  const res = await api
+    .get<{ page: number; root_id: number; is_reply: boolean }>(
+      `/patch/comment/${id}/locate?limit=${LIMIT}`
+    )
+    .catch(() => null)
+  if (!res || res.code !== 0) return
+  const { page: targetPage, root_id: rootId, is_reply: isReply } = res.data
+
+  if (targetPage !== page.value) {
+    // Navigate; the watch(data) below finishes the jump once the page loads.
+    pendingTarget.value = { id, rootId, isReply }
+    page.value = targetPage
+    return
+  }
+  // Right page but not inline → a collapsed reply.
+  if (isReply) revealReplyInDrawer(rootId, id)
+}
+
+// Finish a jump after the navigated-to page's data arrives (useAsyncData
+// replaces data.value on refetch, so this fires on page change, not on the
+// in-place optimistic mutations).
+watch(data, async () => {
+  const t = pendingTarget.value
+  if (!t) return
+  pendingTarget.value = null
+  await nextTick()
+  if (tryScroll(t.id)) return
+  if (t.isReply) revealReplyInDrawer(t.rootId, t.id)
+})
+
+onMounted(resolveTarget)
+watch(() => route.hash, resolveTarget)
 </script>
 
 <template>
@@ -212,6 +283,14 @@ watch(() => route.hash, flashTargetComment)
       />
     </div>
     <KunNull v-else description="暂无评论, 快来抢沙发吧~" />
+
+    <KunPagination
+      v-if="totalPage > 1"
+      v-model:current-page="page"
+      :total-page="totalPage"
+      :is-loading="pending"
+      class="mt-2"
+    />
 
     <CommentThreadDrawer
       v-model:root="drawerRoot"

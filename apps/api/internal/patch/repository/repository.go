@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"time"
 
 	"kun-galgame-patch-api/internal/patch/model"
 
@@ -216,6 +217,19 @@ func (r *PatchRepository) GetCommentByID(id int) (*model.PatchComment, error) {
 	var comment model.PatchComment
 	err := r.db.First(&comment, id).Error
 	return &comment, err
+}
+
+// CountRootCommentsBefore returns how many APPROVED root comments of the patch
+// sort BEFORE the given root under the list order (created DESC, id DESC).
+// (created, id) > (created, id) row-comparison reproduces "earlier in a DESC
+// sort". Used by LocateComment to compute which page a comment lands on.
+func (r *PatchRepository) CountRootCommentsBefore(galgameID int, created time.Time, id int) (int64, error) {
+	var n int64
+	err := r.db.Model(&model.PatchComment{}).
+		Where("galgame_id = ? AND parent_id IS NULL AND status = 0", galgameID).
+		Where("(created, id) > (?, ?)", created, id).
+		Count(&n).Error
+	return n, err
 }
 
 func (r *PatchRepository) UpdateComment(comment *model.PatchComment) error {
