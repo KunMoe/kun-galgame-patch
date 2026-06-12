@@ -42,18 +42,29 @@
  *     --radius-kun-* as calc(base * var(--kun-radius-scale, 1)) itself, so it
  *     reads this variable natively. (We deliberately do NOT redeclare
  *     --radius-kun-* here — the token's own :root wins that cascade, which is
- *     why a direct override had no effect.) */
+ *     why a direct override had no effect.)
+ *
+ * The base values below are ALIGNED to KunUI 0.9.0's HeroUI-style scale so
+ * moyu's own rounded elements match the components beside them. KunUI:
+ * sm=6px, md=12px (the default radius of every control / card), lg=16px
+ * (containers / floating panels). Mapped BY ROLE, not by name — moyu's
+ * workhorse `rounded-lg` (cards / panels / banners, ~78 uses) is its default
+ * card radius, so it maps to KunUI's default 12px (md); the larger buckets
+ * step up to KunUI's 16px container radius. Pre-0.9 these were the stock
+ * Tailwind values (lg=8px) which read noticeably squarer than the upgraded
+ * KunUI components. `rounded` (bare) is a Tailwind literal (4px), not driven
+ * by these vars — left as-is (≈ KunUI sm). */
 :root {
   --kun-radius-scale: 1;
 
-  /* Tailwind scale → moyu's own rounded-xs … rounded-3xl */
-  --radius-xs: calc(0.125rem * var(--kun-radius-scale));
-  --radius-sm: calc(0.25rem * var(--kun-radius-scale));
-  --radius-md: calc(0.375rem * var(--kun-radius-scale));
-  --radius-lg: calc(0.5rem * var(--kun-radius-scale));
-  --radius-xl: calc(0.75rem * var(--kun-radius-scale));
-  --radius-2xl: calc(1rem * var(--kun-radius-scale));
-  --radius-3xl: calc(1.5rem * var(--kun-radius-scale));
+  /* Tailwind scale → moyu's own rounded-xs … rounded-3xl, aligned to KunUI */
+  --radius-xs: calc(0.25rem * var(--kun-radius-scale)); /* 4px */
+  --radius-sm: calc(0.375rem * var(--kun-radius-scale)); /* 6px  = KunUI sm */
+  --radius-md: calc(0.5rem * var(--kun-radius-scale)); /* 8px */
+  --radius-lg: calc(0.75rem * var(--kun-radius-scale)); /* 12px = KunUI md (default card/control) */
+  --radius-xl: calc(1rem * var(--kun-radius-scale)); /* 16px = KunUI lg (containers/panels) */
+  --radius-2xl: calc(1rem * var(--kun-radius-scale)); /* 16px = KunUI lg */
+  --radius-3xl: calc(1.25rem * var(--kun-radius-scale)); /* 20px  hero surfaces */
 }
 
 @layer base {
