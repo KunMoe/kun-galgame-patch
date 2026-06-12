@@ -153,7 +153,7 @@ const vndbLink = (v: string) =>
                 {{ isPlaceholder(p.vndb_id) ? '未填' : '格式无效' }}
               </KunChip>
               <code
-                class="bg-default-100 rounded px-2 py-0.5 text-xs"
+                class="bg-default-100 rounded-sm px-2 py-0.5 text-xs"
               >
                 {{ p.vndb_id }}
               </code>

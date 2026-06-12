@@ -153,7 +153,7 @@ const remove = async (hash: string) => {
           :src="imageServiceUrl(s.image_hash)"
           :alt="s.caption || s.image_hash.slice(0, 8)"
           aspect-ratio="16 / 9"
-          class-name="bg-default-100 rounded"
+          class-name="bg-default-100 rounded-sm"
         />
         <KunInput
           :model-value="s.caption"

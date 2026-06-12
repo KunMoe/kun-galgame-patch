@@ -55,7 +55,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
             v-if="resolveBannerUrl(g, 'mini')"
             :src="resolveBannerUrl(g, 'mini')"
             :alt="getPreferredLanguageText(g.name)"
-            class-name="bg-default-100 h-16 w-28 rounded"
+            class-name="bg-default-100 h-16 w-28 rounded-sm"
           />
           <div class="flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2">
@@ -65,7 +65,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
               >
                 {{ getPreferredLanguageText(g.name) || `补丁 #${g.id}` }}
               </NuxtLink>
-              <code class="bg-default-100 rounded px-2 py-0.5 text-xs">
+              <code class="bg-default-100 rounded-sm px-2 py-0.5 text-xs">
                 {{ g.vndb_id }}
               </code>
             </div>

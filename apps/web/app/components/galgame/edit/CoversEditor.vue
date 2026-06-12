@@ -70,12 +70,12 @@ const remove = async (hash: string) => {
           :src="imageServiceUrl(c.image_hash, 'mini') || imageServiceUrl(c.image_hash)"
           :alt="c.image_hash.slice(0, 8)"
           aspect-ratio="16 / 9"
-          class-name="bg-default-100 rounded"
+          class-name="bg-default-100 rounded-sm"
         />
         <div class="mt-2 flex items-center justify-between">
           <span
             v-if="c.sort_order === 0"
-            class="bg-primary/15 text-primary rounded px-1.5 py-0.5 text-xs font-medium"
+            class="bg-primary/15 text-primary rounded-sm px-1.5 py-0.5 text-xs font-medium"
           >
             当前 Banner
           </span>

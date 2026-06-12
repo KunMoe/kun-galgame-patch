@@ -133,7 +133,7 @@ const toggleFollow = async () => {
               <div class="text-default-500 mt-2 flex gap-3 text-sm">
                 <button
                   type="button"
-                  class="hover:text-primary inline-flex items-center gap-1 rounded transition-colors"
+                  class="hover:text-primary inline-flex items-center gap-1 rounded-sm transition-colors"
                   @click="openFollowList('follower')"
                 >
                   粉丝
@@ -143,7 +143,7 @@ const toggleFollow = async () => {
                 </button>
                 <button
                   type="button"
-                  class="hover:text-primary inline-flex items-center gap-1 rounded transition-colors"
+                  class="hover:text-primary inline-flex items-center gap-1 rounded-sm transition-colors"
                   @click="openFollowList('following')"
                 >
                   关注

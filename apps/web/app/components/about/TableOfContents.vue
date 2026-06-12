@@ -76,7 +76,7 @@ onBeforeUnmount(() => observer?.disconnect())
         <a
           :href="`#${item.id}`"
           :class="[
-            'hover:text-primary block rounded px-2 py-1 transition-colors',
+            'hover:text-primary block rounded-sm px-2 py-1 transition-colors',
             activeId === item.id
               ? 'text-primary font-medium'
               : 'text-default-600'

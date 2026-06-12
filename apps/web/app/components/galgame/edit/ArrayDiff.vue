@@ -82,7 +82,7 @@ const diff = computed(() => {
         <span
           v-for="(v, i) in diff.added"
           :key="'a' + i"
-          class="bg-success/10 mr-1 inline-block rounded px-1 py-0.5"
+          class="bg-success/10 mr-1 inline-block rounded-sm px-1 py-0.5"
         >
           {{ display(v) }}
         </span>
@@ -94,7 +94,7 @@ const diff = computed(() => {
         <span
           v-for="(v, i) in diff.removed"
           :key="'r' + i"
-          class="bg-danger/10 mr-1 inline-block rounded px-1 py-0.5"
+          class="bg-danger/10 mr-1 inline-block rounded-sm px-1 py-0.5"
         >
           {{ display(v) }}
         </span>
