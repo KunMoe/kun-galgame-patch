@@ -120,12 +120,12 @@
 
   /* Keyboard shortcuts */
   & kbd {
-    @apply bg-default-100 border-default-300 text-default-700 rounded border px-2 py-1 font-mono text-sm;
+    @apply bg-default-100 border-default-300 text-default-700 rounded-sm border px-2 py-1 font-mono text-sm;
   }
 
   /* Mark text */
   & mark {
-    @apply bg-warning-100 text-warning-800 rounded px-1;
+    @apply bg-warning-100 text-warning-800 rounded-sm px-1;
   }
 
   /* Inline code */

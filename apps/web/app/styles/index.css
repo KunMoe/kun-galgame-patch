@@ -67,6 +67,19 @@
   --radius-3xl: calc(1.25rem * var(--kun-radius-scale)); /* 20px  hero surfaces */
 }
 
+/* Bare `rounded` (no suffix) is a Tailwind LITERAL (.rounded{border-radius:.25rem}),
+ * NOT driven by --radius-*, so on its own it neither scales with --kun-radius-scale
+ * nor aligns with the rest of the radii. One un-layered override fixes EVERY bare
+ * `rounded` at once — current and future — by pointing it at --radius-sm (= the
+ * value `rounded-sm` already resolves to; in Tailwind v4 bare `rounded` and
+ * `rounded-sm` are the same 0.25rem bucket, so this just keeps them in lockstep).
+ * Un-layered so it beats Tailwind's `@layer utilities .rounded`. NB: this does NOT
+ * reach `@apply rounded` (that inlines the literal at build time) — those are
+ * written as `@apply rounded-sm` directly in prose.css / editor.css. */
+.rounded {
+  border-radius: var(--radius-sm);
+}
+
 @layer base {
   html,
   body {
