@@ -184,10 +184,28 @@ const tabs = computed(() => [
             <div
               class="border-default/20 flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center"
             >
-              <KunUserChip
-                :user="patch.user"
-                :description="`资源更新于 ${formatDistanceToNow(patch.resource_update_time)}`"
-              />
+              <!-- 词条创建者 = wiki galgame.user_id（单一可信源，与 kungal 对齐）。
+                   缺数据时回退展示补丁发布者，避免空白。补丁发布者(patch.user)
+                   是 moyu 本地数据，仅当与创建者不是同一人时单独标注。 -->
+              <div class="flex flex-col gap-1.5">
+                <KunUserChip
+                  :user="patch.creator ?? patch.user"
+                  :description="patch.creator ? '词条创建者' : '补丁发布者'"
+                />
+                <KunUserChip
+                  v-if="
+                    patch.creator &&
+                    patch.user &&
+                    patch.user.id !== patch.creator.id
+                  "
+                  :user="patch.user"
+                  description="补丁发布者"
+                  size="sm"
+                />
+                <p class="text-default-500 text-xs">
+                  资源更新于 {{ formatDistanceToNow(patch.resource_update_time) }}
+                </p>
+              </div>
               <KunCardStats
                 :patch="{ ...patch, created: patch.created }"
                 :disable-tooltip="false"

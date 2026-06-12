@@ -31,7 +31,15 @@ interface GalgameCard {
     resource: number
     comment: number
   }
+  // PATCH PUBLISHER (moyu patch.user_id — who registered this galgame on moyu /
+  // uploaded its patches). Owner-gating (edit/delete) keys on this. NOT the
+  // entry creator — see `creator`.
   user?: KunUser
+  // GALGAME ENTRY CREATOR — Galgame Wiki's galgame.user_id (single source of
+  // truth, the same id kungal shows), resolved to a user brief by the backend.
+  // Display the "词条创建者" position from this; absent when wiki has no
+  // creator / lookup miss (fall back to `user`).
+  creator?: KunUser
   // Optional: raw Wiki galgame object (includes age_limit, original_language, etc.)
   // U1 (2026-05-18): release_date / release_date_tba replaced the old `released`
   // string. release_date is "YYYY-MM-DD" or null (unknown); release_date_tba=true

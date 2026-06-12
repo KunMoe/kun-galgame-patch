@@ -46,29 +46,38 @@ type Counts struct {
 // GalgameCard is the Go mirror of the frontend `interface GalgameCard`.
 // All JSON tags are snake_case to match the backend-wide convention.
 type GalgameCard struct {
-	ID                 int                         `json:"id"`
-	Name               KunLanguage                 `json:"name"`
-	VndbID             string                      `json:"vndb_id"`
-	BID                *int                        `json:"bid"`
-	Banner             string                      `json:"banner"`
-	View               int                         `json:"view"`
-	Download           int                         `json:"download"`
-	Type               patchModel.JSONArray        `json:"type"`
-	Language           patchModel.JSONArray        `json:"language"`
-	Platform           patchModel.JSONArray        `json:"platform"`
-	ContentLimit       string                      `json:"content_limit"`
-	Status             int                         `json:"status"`
-	Created            time.Time                   `json:"created"`
-	ResourceUpdateTime time.Time                   `json:"resource_update_time"`
+	ID                 int                  `json:"id"`
+	Name               KunLanguage          `json:"name"`
+	VndbID             string               `json:"vndb_id"`
+	BID                *int                 `json:"bid"`
+	Banner             string               `json:"banner"`
+	View               int                  `json:"view"`
+	Download           int                  `json:"download"`
+	Type               patchModel.JSONArray `json:"type"`
+	Language           patchModel.JSONArray `json:"language"`
+	Platform           patchModel.JSONArray `json:"platform"`
+	ContentLimit       string               `json:"content_limit"`
+	Status             int                  `json:"status"`
+	Created            time.Time            `json:"created"`
+	ResourceUpdateTime time.Time            `json:"resource_update_time"`
 	// ReleaseDate is the locally-mirrored wiki galgame.release_date (date
 	// only; see migration 010 + backfill). Null when unknown. Surfaced so
 	// list cards can render the release month and the date filter result is
 	// legible. Day-precision time.Time → JSON RFC3339; the frontend formats
 	// to YYYY-MM / YYYY-MM-DD.
-	ReleaseDate *time.Time                  `json:"release_date,omitempty"`
-	Count       Counts                      `json:"count"`
-	User        *patchModel.PatchUser       `json:"user,omitempty"`
-	Galgame     *galgameClient.GalgameBrief `json:"galgame,omitempty"`
+	ReleaseDate *time.Time `json:"release_date,omitempty"`
+	Count       Counts     `json:"count"`
+	// User is the PATCH PUBLISHER (moyu's local patch.user_id — who registered
+	// this galgame on moyu / uploaded its patches). It is moyu-owned data and
+	// is what owner-gating (edit/delete) keys on. NOT the entry creator.
+	User *patchModel.PatchUser `json:"user,omitempty"`
+	// Creator is the GALGAME ENTRY CREATOR — the single source of truth owned by
+	// Galgame Wiki (galgame.user_id, surfaced as GalgameBrief.UserID). Resolved
+	// from the same OAuth user directory as User; kept SEPARATE so the "谁创建了
+	// 这个词条" position uses wiki's value (aligned with kungal) while the patch
+	// publisher stays its own thing. Nil when wiki has no creator / lookup miss.
+	Creator *patchModel.PatchUser       `json:"creator,omitempty"`
+	Galgame *galgameClient.GalgameBrief `json:"galgame,omitempty"`
 }
 
 // EnrichPatches enriches a batch of local patches with Wiki data into GalgameCards the frontend can render directly.
@@ -176,6 +185,28 @@ func attachUsersToCards(ctx context.Context, users *userclient.Client, patches [
 	}
 }
 
+// resolveUser turns a single OAuth user id into a PatchUser brief (name /
+// avatar / roles) via the short-TTL userclient cache. Returns nil for a nil
+// client, a non-positive id, or a lookup miss, so callers can treat "unknown
+// user" uniformly (the frontend renders its anonymous fallback). Shared by the
+// publisher (patch.user_id) and entry-creator (wiki galgame.user_id) lookups.
+func resolveUser(ctx context.Context, users *userclient.Client, id int) *patchModel.PatchUser {
+	if users == nil || id <= 0 {
+		return nil
+	}
+	b, _ := users.User(ctx, uint(id))
+	if b == nil {
+		return nil
+	}
+	return &patchModel.PatchUser{
+		ID:              int(b.ID),
+		Name:            b.Name,
+		Avatar:          b.Avatar,
+		AvatarImageHash: b.AvatarImageHash,
+		Roles:           b.Roles,
+	}
+}
+
 // BuildPatchSummaryMap fetches Wiki briefs for the given patch IDs and returns
 // a map keyed by patch_id (the local row id) of compact summaries. Patches
 // whose galgame_id is missing or whose Wiki fetch fails are still included
@@ -256,17 +287,7 @@ func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *usercli
 		return nil
 	}
 	card := baseCard(p)
-	if users != nil && p.UserID > 0 {
-		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
-			card.User = &patchModel.PatchUser{
-				ID:              int(b.ID),
-				Name:            b.Name,
-				Avatar:          b.Avatar,
-				AvatarImageHash: b.AvatarImageHash,
-				Roles:           b.Roles,
-			}
-		}
-	}
+	card.User = resolveUser(ctx, users, p.UserID) // 补丁发布者 (moyu patch.user_id)
 	if wiki == nil || p.ID <= 0 {
 		if contentLimit != "" {
 			return nil
@@ -286,6 +307,11 @@ func EnrichPatch(ctx context.Context, wiki *galgameClient.Client, users *usercli
 		return nil
 	}
 	applyGalgame(&card, &briefs[0])
+	// 词条创建者 = wiki galgame.user_id (单一可信源，与 kungal 对齐)。applyGalgame
+	// 已把 brief 挂到 card.Galgame，其 UserID 即创建者；与发布者分开解析，互不覆盖。
+	if card.Galgame != nil {
+		card.Creator = resolveUser(ctx, users, card.Galgame.UserID)
+	}
 	return &card
 }
 
@@ -346,17 +372,7 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	base.Officials = []PatchDetailOfficial{}
 	base.WikiEngineIDs = []int{}
 
-	if users != nil && p.UserID > 0 {
-		if b, _ := users.User(ctx, uint(p.UserID)); b != nil {
-			base.User = &patchModel.PatchUser{
-				ID:              int(b.ID),
-				Name:            b.Name,
-				Avatar:          b.Avatar,
-				AvatarImageHash: b.AvatarImageHash,
-				Roles:           b.Roles,
-			}
-		}
-	}
+	base.User = resolveUser(ctx, users, p.UserID) // 补丁发布者 (moyu patch.user_id)
 
 	if wiki == nil || p.ID <= 0 {
 		if contentLimit != "" {

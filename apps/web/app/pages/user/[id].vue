@@ -227,7 +227,9 @@ const toggleFollow = async () => {
                 <div class="text-xl font-bold">
                   {{ user.patch_count }}
                 </div>
-                <div class="text-default-500 text-xs">Galgame</div>
+                <!-- patch.user_id 计数 = 在 moyu 发布/登记的 Galgame（非 wiki 词条
+                     创建者口径）。措辞用「发布」与各 Tab 一致，避免被读成「创建」。 -->
+                <div class="text-default-500 text-xs">发布 Galgame</div>
               </div>
             </div>
           </KunCard>
