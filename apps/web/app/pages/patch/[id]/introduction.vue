@@ -229,8 +229,8 @@ const wikiOrigin =
               :options="spoilerOptions"
             />
           </div>
-          <!-- 分类：多选。label 包一层 ml-1.5 给方框和文字留间距
-               （KunCheckBox 自身的方框与 label 之间没有 gap）。 -->
+          <!-- 分类：多选。span 仅用于按类别上色；方框与文字的间距由
+               KunCheckBox 自带的 gap 提供（@kungal/ui-vue >= 0.6.2）。 -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span class="text-default-500 shrink-0">分类</span>
             <KunCheckBox
@@ -240,7 +240,7 @@ const wikiOrigin =
               color="primary"
               @change="toggleCategory(c)"
             >
-              <span :class="['ml-1.5', TAG_CATEGORY_TEXT_CLASS[c]]">
+              <span :class="TAG_CATEGORY_TEXT_CLASS[c]">
                 {{ CATEGORY_LABEL[c] }}
               </span>
             </KunCheckBox>
