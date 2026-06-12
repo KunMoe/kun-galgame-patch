@@ -216,7 +216,9 @@
 
 列出某用户**贡献过**的 galgame，按贡献时间倒序、分页。下游个人主页「贡献的 Galgame」标签的数据源。
 
-「贡献」= **创建 _或_ 编辑过**（galgame_contributor 关系：创建该 galgame、或提交并合入过它的修订/PR 时被记入）。因此它是 [`/galgame/user/:id/galgames`](#get-galgameuseridgalgames)（**仅创建**，按 `galgame.user_id`）的**超集**——还包含用户只编辑、未创建的条目。例如某用户可能 `galgame_created=0` 却贡献了数百条（纯编辑者）；那些只能从本端点看到。
+「贡献」= **创建 _或_ 编辑过**，判定为 `galgame.user_id = 该用户`（创建）**∪** `galgame_contributor` 命中（创建 / 编辑 / 合入修订时记入）。因此它是 [`/galgame/user/:id/galgames`](#get-galgameuseridgalgames)（**仅创建**，按 `galgame.user_id`）的**超集**——还包含用户只编辑、未创建的条目。例如某用户可能 `galgame_created=0` 却贡献了数百条（纯编辑者）；那些只能从本端点看到。
+
+> ⚠️ 用 `galgame.user_id ∪ galgame_contributor`（而非只 JOIN `galgame_contributor`）是**有意为之**：约 35% 的已发布条目是早期迁移 / VNDB 同步进来的，创建者只写了 `galgame.user_id`、**没有**对应的 `galgame_contributor` 行；只查后者会把这些用户**自己创建的**条目从「贡献」里漏掉（曾有用户因此反馈"看不到自己贡献的 Galgame"）。`status=2` 的 VNDB 草稿因 `status=0` 过滤天然不进。
 
 **路径参数**：
 
@@ -226,9 +228,9 @@
 
 **查询参数**：与 `/galgame/user/:id/galgames` 完全一致（`page` / `limit` ≤100 / `content_limit` 默认 `sfw`，个人主页可被爬虫抓取）。
 
-**成功响应**：结构与 `/galgame/user/:id/galgames` **完全一致**（`data.galgames` 为 brief 列表，`data.total` 为过滤后的总数）。排序为**贡献时间**倒序（contributor 关系记录的 `created`，即该用户首次贡献该作的时间），而非 galgame 创建时间。
+**成功响应**：结构与 `/galgame/user/:id/galgames` **完全一致**（`data.galgames` 为 brief 列表，`data.total` 为过滤后的总数）。排序为**贡献时间**倒序，取 `COALESCE(contributor.created, galgame.created)`——编辑过的用 contributor 关系的 `created`（首次贡献该作的时间），只创建、未被记入 contributor 的则退回 galgame 自身的 `created`。
 
-只返回 status=0（已发布）的条目。注意与 `/galgame/user/:id/stats` 的 `galgame_contributed`（按 `user_id` 统计 galgame_contributor 的去重计数，**不过滤 status / content_limit**）口径略有差异：本列表只展示**已发布且符合 `content_limit`** 的子集，故列表 `total` 可能 ≤ 该统计值。
+只返回 status=0（已发布）的条目。注意与 `/galgame/user/:id/stats` 的 `galgame_contributed`（同样按**创建 ∪ 贡献**计数，但**不过滤 status / content_limit**）口径略有差异：本列表只展示**已发布且符合 `content_limit`** 的子集，故列表 `total` 可能 ≤ 该统计值。
 
 ---
 
