@@ -119,7 +119,7 @@ if (tag.value && tag.value.category !== 'sexual') {
       <!-- Associated Galgames -->
       <section class="mt-6">
         <div class="mb-4 flex items-center gap-3">
-          <div class="bg-primary h-6 w-1 rounded-sm" />
+          <div class="bg-primary h-6 w-1 rounded" />
           <h2 class="text-xl font-bold">包含此标签的 Galgame</h2>
         </div>
 

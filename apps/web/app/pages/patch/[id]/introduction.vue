@@ -134,7 +134,7 @@ const wikiOrigin =
   <div v-if="detail" class="space-y-8">
     <section>
       <div class="mb-4 flex flex-wrap items-center gap-3">
-        <div class="bg-primary h-6 w-1 rounded-sm" />
+        <div class="bg-primary h-6 w-1 rounded" />
         <h2 class="text-2xl font-bold">简介</h2>
         <KunSelect
           :model-value="lang"
@@ -216,7 +216,7 @@ const wikiOrigin =
         class="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
         <div class="flex items-center gap-3">
-          <div class="bg-primary h-6 w-1 rounded-sm" />
+          <div class="bg-primary h-6 w-1 rounded" />
           <h2 class="text-2xl font-bold">标签</h2>
         </div>
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
@@ -283,7 +283,7 @@ const wikiOrigin =
 
     <section v-if="detail.officials?.length">
       <div class="mb-4 flex items-center gap-3">
-        <div class="bg-primary h-6 w-1 rounded-sm" />
+        <div class="bg-primary h-6 w-1 rounded" />
         <h2 class="text-2xl font-bold">会社</h2>
       </div>
       <div class="flex flex-wrap gap-2">
@@ -309,7 +309,7 @@ const wikiOrigin =
          keep the original semantic without nesting an extra element. -->
     <section v-if="detail.galgame?.screenshots?.length">
       <div class="mb-4 flex items-center gap-3">
-        <div class="bg-primary h-6 w-1 rounded-sm" />
+        <div class="bg-primary h-6 w-1 rounded" />
         <h2 class="text-2xl font-bold">截图 / 画廊</h2>
       </div>
       <KunLightboxGallery>

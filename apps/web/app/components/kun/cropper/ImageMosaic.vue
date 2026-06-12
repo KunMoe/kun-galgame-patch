@@ -198,7 +198,7 @@ const complete = async () => {
         <canvas
           ref="canvasRef"
           aria-label="封面打码画布：在需要遮挡的区域涂抹打码"
-          class="mx-auto block max-h-[55vh] max-w-full cursor-crosshair touch-none rounded-sm select-none"
+          class="mx-auto block max-h-[55vh] max-w-full cursor-crosshair touch-none rounded select-none"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"

@@ -234,7 +234,7 @@ const histTotalPages = computed(() =>
               </div>
               <div
                 v-if="h.reason"
-                class="border-default/20 mt-2 rounded-sm border-l-2 pl-2 italic"
+                class="border-default/20 mt-2 rounded border-l-2 pl-2 italic"
               >
                 {{ h.reason }}
               </div>

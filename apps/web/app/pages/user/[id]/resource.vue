@@ -53,7 +53,7 @@ const patchBanner = (r: UserResourceItem) =>
         <KunImage
           :src="patchBanner(r)"
           :alt="patchName(r)"
-          class-name="bg-default-100 h-24 w-40 shrink-0 rounded-sm"
+          class-name="bg-default-100 h-24 w-40 shrink-0 rounded"
         />
         <div class="flex-1 space-y-2">
           <div class="flex flex-wrap items-center justify-between gap-2">

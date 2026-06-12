@@ -87,7 +87,7 @@ const handleCheckIn = async () => {
            the full ledger (OAuth is the source of truth). -->
       <button
         type="button"
-        class="text-foreground/80 hover:bg-default-100 flex w-full items-center justify-between rounded-sm px-2 py-1 text-sm"
+        class="text-foreground/80 hover:bg-default-100 flex w-full items-center justify-between rounded px-2 py-1 text-sm"
         @click="openModal('log')"
       >
         <span class="flex items-center gap-2">
@@ -101,21 +101,21 @@ const handleCheckIn = async () => {
       </button>
       <NuxtLink
         :to="`/user/${userStore.user.id}/resource`"
-        class="hover:bg-default-100 flex items-center gap-2 rounded-sm px-2 py-2 text-sm"
+        class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:user-round" class="size-4" />
         用户主页
       </NuxtLink>
       <NuxtLink
         to="/settings/user"
-        class="hover:bg-default-100 flex items-center gap-2 rounded-sm px-2 py-2 text-sm"
+        class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:settings" class="size-4" />
         信息设置
       </NuxtLink>
       <NuxtLink
         to="/doc/notice/feedback"
-        class="hover:bg-default-100 flex items-center gap-2 rounded-sm px-2 py-2 text-sm"
+        class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:circle-help" class="size-4" />
         帮助与反馈
@@ -127,7 +127,7 @@ const handleCheckIn = async () => {
       <NuxtLink
         v-if="userStore.isModerator"
         to="/admin"
-        class="hover:bg-default-100 flex items-center gap-2 rounded-sm px-2 py-2 text-sm"
+        class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:shield-check" class="size-4" />
         管理面板
