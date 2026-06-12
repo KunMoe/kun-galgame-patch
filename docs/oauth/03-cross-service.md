@@ -43,7 +43,8 @@
         "avatar_image_hash": "abc123...",
         "bio": "KUN IS THE CUTEST!",
         "status": 0,
-        "roles": ["admin"]
+        "roles": ["admin"],
+        "created_at": "2023-10-29T10:41:34Z"
       }
     ],
     "not_found": [9999]
@@ -61,6 +62,7 @@
 | users[].bio | 个人简介 |
 | users[].status | 0=正常；非 0 时调用方应隐藏或脱敏渲染 |
 | users[].roles | 角色名称数组，如 `["admin"]` |
+| users[].created_at | 用户 **OAuth 注册时间**，UTC RFC3339（如 `2023-10-29T10:41:34Z`）。渲染「注册 / 加入时间」**必须用此字段**——不要用下游本地行的 created（未登录过本站的用户根本没有本地行→空白；首次登录晚于注册的用户本地时间也是错的）。 |
 | not_found | 请求中存在但 OAuth 库里查不到的 ID 列表 |
 
 **错误响应**：
@@ -71,7 +73,7 @@
 | 400  | 9    | `ids` 个数超过 100 |
 | 401  | 10001/15001/15009 | Basic Auth 缺失/格式错/client_id 不存在/secret 错误 |
 
-**注意**：响应中**不包含** `email`、`moemoepoint`、`created_at` 等隐私字段。
+**注意**：响应中**不包含** `email`、`moemoepoint` 等隐私字段（`created_at` 是公开的注册时间，**已包含**——见上表）。
 若调用方需要邮箱（如发邮件通知），应该走专门的 RPC 而不是渲染管线。
 
 **客户端实现**：OAuth 这边**不发布 SDK 代码**。每个 consumer 自己实现一个薄客户端（30 行起步，按工作负载需要加 TTL 缓存 / singleflight / 分片）。完整的实现指南、可直接复用的 Go 参考代码、以及决定层级的判断标准，见 [docs/migration/user/08-downstream-integration.md §4](../../migration/user/08-downstream-integration.md#4-客户端实现指南)。
@@ -101,7 +103,7 @@
   "message": "成功",
   "data": {
     "users": [
-      { "id": 2, "uuid": "...", "name": "鲲", "avatar": "...", "bio": "...", "status": 0, "roles": ["admin"] },
+      { "id": 2, "uuid": "...", "name": "鲲", "avatar": "...", "bio": "...", "status": 0, "roles": ["admin"], "created_at": "2023-10-29T10:41:34Z" },
       { "id": 79063, "uuid": "...", "name": "鲲1", ... },
       { "id": 38359, "uuid": "...", "name": "鲲114514", ... }
     ]
