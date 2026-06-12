@@ -79,7 +79,23 @@ const availableCategories = computed<TagCategory[]>(() =>
     : ['content', 'sexual', 'technical']
 )
 
-const showSpoiler = ref(false)
+// Spoiler filtering follows VNDB's 3-level model (tag.spoiler_level 0/1/2 =
+// none / minor / major). The control picks the MAX level to reveal, so it's a
+// graduated 剧透等级 filter, not just a show/hide toggle:
+//   none  → only spoiler_level 0   (default; safe)
+//   minor → spoiler_level <= 1
+//   all   → everything (incl. major)
+type SpoilerMode = 'none' | 'minor' | 'all'
+const spoilerMode = ref<SpoilerMode>('none')
+const spoilerThreshold = computed(() =>
+  spoilerMode.value === 'all' ? 2 : spoilerMode.value === 'minor' ? 1 : 0
+)
+const spoilerOptions = [
+  { value: 'none', label: '隐藏剧透' },
+  { value: 'minor', label: '轻微剧透' },
+  { value: 'all', label: '完全剧透' }
+]
+
 const visibleCategories = ref<Set<TagCategory>>(
   new Set(['content', 'sexual', 'technical'])
 )
@@ -96,7 +112,7 @@ const filteredTags = computed(() => {
     const cat = (t.category || 'content') as TagCategory
     // SFW mode hard-hides sexual tags regardless of the manual toggle.
     if (isSafeMode.value && cat === 'sexual') return false
-    if (!showSpoiler.value && (t.spoiler_level ?? 0) > 0) return false
+    if ((t.spoiler_level ?? 0) > spoilerThreshold.value) return false
     if (!visibleCategories.value.has(cat)) return false
     return true
   })
@@ -203,22 +219,32 @@ const wikiOrigin =
           <div class="bg-primary h-6 w-1 rounded" />
           <h2 class="text-2xl font-bold">标签</h2>
         </div>
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-          <KunCheckBox v-model="showSpoiler" color="primary">
-            显示剧透
-          </KunCheckBox>
-          <span class="text-default-300">|</span>
-          <KunCheckBox
-            v-for="c in availableCategories"
-            :key="c"
-            :model-value="visibleCategories.has(c)"
-            color="primary"
-            @change="toggleCategory(c)"
-          >
-            <span :class="TAG_CATEGORY_TEXT_CLASS[c]">
-              {{ CATEGORY_LABEL[c] }}
-            </span>
-          </KunCheckBox>
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+          <!-- 剧透等级：互斥单选（隐藏 / 轻微 / 完全） -->
+          <div class="flex items-center gap-2">
+            <span class="text-default-500 shrink-0">剧透</span>
+            <KunRadioGroup
+              v-model="spoilerMode"
+              orientation="horizontal"
+              :options="spoilerOptions"
+            />
+          </div>
+          <!-- 分类：多选。label 包一层 ml-1.5 给方框和文字留间距
+               （KunCheckBox 自身的方框与 label 之间没有 gap）。 -->
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span class="text-default-500 shrink-0">分类</span>
+            <KunCheckBox
+              v-for="c in availableCategories"
+              :key="c"
+              :model-value="visibleCategories.has(c)"
+              color="primary"
+              @change="toggleCategory(c)"
+            >
+              <span :class="['ml-1.5', TAG_CATEGORY_TEXT_CLASS[c]]">
+                {{ CATEGORY_LABEL[c] }}
+              </span>
+            </KunCheckBox>
+          </div>
         </div>
       </div>
       <div class="flex flex-wrap gap-2">

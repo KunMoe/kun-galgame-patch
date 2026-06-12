@@ -337,9 +337,11 @@ const chipClass = (active: boolean) => [
 
       <div
         v-if="showFilters"
-        class="bg-default-50 space-y-4 rounded-lg border p-3"
+        class="border-default-200 bg-default-50 space-y-4 rounded-lg border p-3"
       >
-        <div class="text-primary border-b pb-1 text-sm font-semibold">
+        <div
+          class="text-primary border-default-200 border-b pb-1 text-sm font-semibold"
+        >
           发售日期
         </div>
 
