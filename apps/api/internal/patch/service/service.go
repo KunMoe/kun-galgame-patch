@@ -74,9 +74,14 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 		return 0, ErrWikiGalgameMissing
 	}
 
-	// 2. Local dedup
+	// 2. Local dedup — idempotent "选择此条目". If this galgame already has a
+	// local patch row (it was created/selected before, possibly by another
+	// user), selecting it again just returns that id so the frontend navigates
+	// to the existing page — NOT a 400. Returning early here skips the +3
+	// reward + contributor registration below, so re-selecting an existing
+	// entry neither double-rewards nor mis-attributes a contribution.
 	if existing, _ := s.repo.FindPatchByVndbID(vndbID); existing != nil && existing.ID != 0 {
-		return 0, fmt.Errorf("该 VNDB ID 已经存在对应的补丁")
+		return existing.ID, nil
 	}
 
 	// Mirror Wiki's release_date locally so /api/galgame can sort/filter by
