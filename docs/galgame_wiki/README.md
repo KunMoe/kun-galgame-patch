@@ -41,6 +41,7 @@
 > - **K-PR（2026-06-10，bug fix）**：**编辑/PR 无发售日期的 galgame 不再被拦**。`PUT /galgame/:gid` 与 PR/submit 入参的 `release_date: ""`（契约一直承诺的"清空为未知"）此前被输入校验误拒——`*string` 字段上 `omitempty` 看的是指针非空（`!IsNil`），非空指向 `""` 不会跳过，旧的 `datetime` 校验便对 `""` parse 失败。约 9% 的条目（无发售日期）因此无法保存。校验改用 `date_or_empty`（接受 `""` 或 `YYYY-MM-DD`），契约与行为现一致。**非破坏性、下游无需改动**（下游本就按契约发 `""`）。
 > - **K-PR（2026-06-10，非破坏性·新增）**：新增 **`GET /galgame/user/:id/contributed`** —— 列出用户**贡献过**（创建 _或_ 编辑，galgame_contributor 关系）的 galgame，按贡献时间倒序、分页，响应结构同 `/user/:id/galgames`。是 `/user/:id/galgames`（仅创建）的**超集**：纯编辑者（`galgame_created=0` 却贡献数百条）只能从这里看到。个人主页「贡献的 Galgame」标签数据源；公开、默认 sfw。详见 [01-galgame.md GET /galgame/user/:id/contributed](./01-galgame.md#get-galgameuseridcontributed)。
 > - **K-PR（2026-06-12，bug fix）**：**`GET /galgame/:gid` 详情现对审核者开放待审 / 被拒草稿**。此前非 0 状态只对**提交者本人**可见，admin/moderator 点审核队列的「查看」打开他人的 `status=3` 待审稿会拿到 404 —— 与 [00-handbook §2 状态表](./00-handbook-for-downstream.md#2-status-状态机5-档)「admin + 提交者本人可见」的承诺不一致。现详情端点会解 JWT 里的 `roles`，**admin / moderator 可查看任意 `status=3/4` 提交**（并对草稿绕过其自身 `content_limit`，以便审核 NSFW 待审稿）；`status=1`（封禁）/ `status=2`（VNDB 草稿）仍不走此端点。**非破坏性**（仅放宽可见性，下游无需改动；审核队列现有的「查看」直接生效）。详见 [01-galgame.md GET /galgame/:gid 可见性](./01-galgame.md#get-galgamegid)。
+> - **K-PR（2026-06-12，非破坏性·新增）**：消息内嵌的 **`MessageGalgameBrief` 新增 `vndb_id`**。`name_*` 全空（VNDB 占位提交）时,消费端可兜底显示「VNDB v4136」而非裸 `#id`,**所有消息类型一致生效**（此前只有 `submitted` 的 `payload.vndb_id` 有,审核队列的 `edited_pending` 与通知中心其它类型拿不到）。口径与 `GalgameBrief.vndb_id` 一致。详见 [08-messages.md](./08-messages.md)。
 
 ---
 
