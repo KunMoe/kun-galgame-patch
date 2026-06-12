@@ -63,9 +63,21 @@ const (
 	// one Redis. A shared cookie name + key prefix made kungal and moyu
 	// read/refresh/delete each other's sessions, producing cross-site
 	// logout (client_id_mismatch on the OAuth server). Keep site-unique.
-	SessionCookieName     = "moyu_session"
-	SessionTTL            = 7 * 24 * time.Hour
-	SessionPrefix         = "moyu:session:"
+	SessionCookieName = "moyu_session"
+	// SessionTTL is the SLIDING session lifetime (Redis entry + cookie),
+	// re-extended on activity by renewSlidingSession. 90 days matches the OAuth
+	// refresh_token default so the local session and the upstream grant lapse
+	// together for an idle user; an active user slides both forward. The hard
+	// cap is the upstream refresh_token — once it can't refresh,
+	// refreshOAuthToken deletes the session regardless of this window. Was a
+	// FIXED 7 days set once at login and never renewed → logged everyone out
+	// ~weekly regardless of activity.
+	SessionTTL    = 90 * 24 * time.Hour
+	SessionPrefix = "moyu:session:"
+	// sessionRenewPrefix keys the per-session cookie-renewal throttle marker,
+	// kept OFF SessionPrefix so RevokeUserSessions' "moyu:session:*" scan never
+	// picks it up.
+	sessionRenewPrefix    = "moyu:session-renew:"
 	userContextKey        = "user"
 	rolesContextKey       = "oauth_roles"
 	accessTokenContextKey = "oauth_access_token"
@@ -176,6 +188,12 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 			}(session)
 		}
 
+		// Rolling session: slide the cookie + Redis TTL forward while the user
+		// is active (throttled to once per half-window) so an active user is
+		// never logged out at the fixed window; the upstream refresh_token is
+		// the absolute cap. Anonymous callers already returned above.
+		renewSlidingSession(c, rdb, sessionID)
+
 		c.Locals(userContextKey, &session.UserInfo)
 		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
 		c.Locals(accessTokenContextKey, session.OAuthAccessToken)
@@ -228,6 +246,12 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 				}
 			}(session)
 		}
+
+		// Rolling session: slide the cookie + Redis TTL forward while the user
+		// is active (throttled to once per half-window) so an active user is
+		// never logged out at the fixed window; the upstream refresh_token is
+		// the absolute cap. Anonymous callers already returned above.
+		renewSlidingSession(c, rdb, sessionID)
 
 		c.Locals(userContextKey, &session.UserInfo)
 		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
@@ -337,6 +361,39 @@ func CreateSession(c *fiber.Ctx, rdb *redis.Client, session *SessionData) error 
 	})
 
 	return nil
+}
+
+// renewSlidingSession implements the rolling half of the session-timeout
+// model: while the user is active it slides the cookie + Redis TTL forward, so
+// a returning user is never logged out as long as they came back within
+// SessionTTL of their last visit. The absolute ceiling is the upstream OAuth
+// refresh_token — once it can no longer refresh, refreshOAuthToken deletes the
+// session and the user re-logs in regardless of this window.
+//
+// To avoid a Set-Cookie on every request it renews at most once per
+// half-window — the heuristic ASP.NET Core's SlidingExpiration uses. The
+// throttle is a marker key whose SetNX succeeds only after the previous marker
+// has expired (>SessionTTL/2 since the last renewal).
+//
+// The TTL is slid with EXPIRE, NOT a blob rewrite, so it can never race the
+// background token refresh / rotation and clobber freshly-rotated tokens.
+// Best-effort: a Redis hiccup just skips this round. Call only with a
+// validated session present.
+func renewSlidingSession(c *fiber.Ctx, rdb *redis.Client, sessionID string) {
+	ctx := c.Context()
+	if ok, _ := rdb.SetNX(ctx, sessionRenewPrefix+sessionID, "1", SessionTTL/2).Result(); !ok {
+		return
+	}
+	rdb.Expire(ctx, SessionPrefix+sessionID, SessionTTL)
+	c.Cookie(&fiber.Cookie{
+		Name:     SessionCookieName,
+		Value:    sessionID,
+		MaxAge:   int(SessionTTL.Seconds()),
+		HTTPOnly: true,
+		Secure:   SecureCookies,
+		SameSite: "Lax",
+		Path:     "/",
+	})
 }
 
 func DestroySession(c *fiber.Ctx, rdb *redis.Client) error {

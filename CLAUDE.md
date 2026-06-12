@@ -18,5 +18,5 @@ galgame **补丁 / 资源站**。`apps/api` = Go Fiber v3 + GORM + Postgres，`a
 
 ## 本仓要点
 
-- **迁移后极简鉴权**：无本地登录 / 2FA，**不签发任何 token**（身份完全归 OAuth，本服务只验签）。
+- **迁移后极简鉴权**：无本地登录 / 2FA，**不签发任何 token**（身份完全归 OAuth，本服务只验签）。会话本身是 **BFF 不透明会话**（`moyu_session` cookie + Redis 存 OAuth token，见 `internal/middleware/auth.go`），**90 天滑动续期**（活跃用户不再每周掉线）——模型与 2026-06 修复见 `docs/proj/session-lifetime.md`。
 - `docs/{oauth,image_service,galgame_wiki}/` 全部是 infra 镜像（含 `image_service/03-api-design.md`——其早期实现修正已折回 infra 源，2026-06 起不再是变体）。要改去 infra 改、再 `docs:sync`，**勿动这里的副本**。
