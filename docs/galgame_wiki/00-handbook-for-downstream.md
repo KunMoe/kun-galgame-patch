@@ -36,8 +36,8 @@
 | 0 | 已发布 | 所有人 | admin 直接 POST、claim 草稿、approved 审核 |
 | 1 | 封禁 | admin | admin `PUT /admin/galgame/:gid/status` |
 | 2 | VNDB 草稿（系统建） | admin + 任何用户走 claim 入口 | `sync-vndb` 每日 cron |
-| **3** | **用户提交，待审核** | admin + 提交者本人 | `POST /galgame/submit` |
-| **4** | **审核拒绝** | admin + 提交者本人 | admin decline 审核结果 |
+| **3** | **用户提交，待审核** | admin / moderator（审核者）+ 提交者本人 | `POST /galgame/submit` |
+| **4** | **审核拒绝** | admin / moderator（审核者）+ 提交者本人 | admin decline 审核结果 |
 
 完整转换表见 [06-submission-and-review-design.md §3](../../galgame_wiki/06-submission-and-review-design.md#3-status-状态机扩展)。
 

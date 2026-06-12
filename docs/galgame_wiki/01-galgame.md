@@ -299,6 +299,14 @@ return r2.data.galgame
 |------|------|------|--------|------|
 | content_limit | string | 否 | **（不过滤）** | NSFW 过滤。`sfw` / `nsfw` / `all`。**与 list/search 不同：详情默认不过滤** — 直接 URL 访问（书签、深链）是有意为之；如果想让详情访问也按 list 同样的过滤口径，前端调用时显式带上该参数。不匹配的条目返回 404（与 status 过滤同形）。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
 
+**可见性（按 status）**：详情端点是 viewer-aware 的（带 Bearer 时 wiki 解 JWT 得调用者 `id` + `roles`）：
+
+- `status=0`（已发布）→ 任何人可见；
+- `status=3 / 4`（待审 / 被拒草稿）→ **提交者本人**，以及 **admin / moderator（审核者）** 可见 —— 后者让审核队列的「查看」可直接预览他人的待审提交（此前审核者非提交者会拿到 404）；
+- `status=1`（封禁）/ `status=2`（VNDB 草稿）/ 其它 → 404（封禁经 admin 端点、VNDB 草稿经 search + claim，均不走此端点）。
+
+审核者预览非 0 草稿时**绕过 `content_limit` 过滤**（否则带 `sfw` 的审核者会看不到 NSFW 待审稿）；`status=0` 浏览仍照常按 `content_limit` 过滤。
+
 **成功响应**：
 
 ```json
