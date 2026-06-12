@@ -189,14 +189,18 @@ const onBannerComplete = (blob: Blob) => {
 }
 
 const startSubmit = () => {
-  // Pre-fill name from the search query so users don't retype.
-  if (!submitForm.name_zh_cn && !submitForm.name_ja_jp) {
-    const q = searchQuery.value.trim()
+  // Pre-fill name from the search query so users don't retype — but ONLY when
+  // it looks like a real title. A VNDB / release id (e.g. "v21497" / "r1984")
+  // is an identifier the user searched, not a name; seeding it into name_en_us
+  // produced entries whose English name was literally "v21497".
+  const q = searchQuery.value.trim()
+  const looksLikeVndbOrReleaseId = /^[vr]\d+$/i.test(q)
+  if (q && !looksLikeVndbOrReleaseId && !submitForm.name_zh_cn && !submitForm.name_ja_jp) {
     if (/[一-龥]/.test(q)) {
       submitForm.name_zh_cn = q
     } else if (/[぀-ゟ゠-ヿ]/.test(q)) {
       submitForm.name_ja_jp = q
-    } else if (q) {
+    } else {
       submitForm.name_en_us = q
     }
   }
@@ -457,9 +461,14 @@ const handleSubmit = async () => {
         </section>
 
         <div class="border-default/20 bg-default-50 rounded-lg border p-3 text-xs text-default-600">
-          提示：VNDB 收录的游戏已由 Wiki 自动同步，可在上一步「搜索」中
-          直接「认领并发布」。此处提交的是 <strong>VNDB 没有</strong> 的作品，
-          因此无需填写 VNDB ID。
+          这个表单只用于 <strong>VNDB 还没有收录</strong> 的作品（原创、同人、冷门等），
+          所以不需要填 VNDB ID。
+          <br />
+          已经在 VNDB 有条目的游戏，一般已被 Wiki 自动同步，请优先回到上一步用
+          <strong>名字或 VNDB ID 搜索</strong>，搜到后点「认领并发布」即可。
+          <br />
+          如果你确定它在 VNDB 有条目却怎么都搜不到，多半是刚收录、Wiki 还没同步过来，
+          可以先核对一下 ID、过一两天再来认领；不必在这里把 VNDB ID 当作名字填进去。
         </div>
 
         <section class="space-y-2">
