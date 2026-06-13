@@ -92,8 +92,9 @@ export const useUserStore = defineStore('user', {
   // available (name / avatar / roles / counts). Without this the page would
   // render anonymously on the server and only "fill in" after onMounted on
   // the client, producing a visible flicker. cookieOptions (maxAge 7d,
-  // sameSite=strict) come from the global piniaPluginPersistedstate config
-  // in nuxt.config.ts.
+  // sameSite=lax — Lax not Strict so the cookie survives a cross-site link
+  // click into a detail page; see nuxt.config.ts for the full rationale) come
+  // from the global piniaPluginPersistedstate config in nuxt.config.ts.
   persist: {
     key: 'kun-patch-user-store',
     storage: piniaPluginPersistedstate.cookies()

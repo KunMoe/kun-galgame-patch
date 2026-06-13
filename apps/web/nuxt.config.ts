@@ -53,9 +53,22 @@ export default defineNuxtConfig({
   },
 
   piniaPluginPersistedstate: {
+    // These cookies (userStore / settingStore) are JS-readable DISPLAY/PREF
+    // mirrors — identity for first-paint (name/avatar/roles) + the NSFW
+    // content_limit preference. The real auth boundary is the httpOnly
+    // `moyu_session` cookie, which is SameSite=Lax (see api auth.go).
+    //
+    // They MUST be Lax, not Strict: Strict cookies are withheld on a cross-site
+    // top-level navigation (clicking a moyu link FROM another site), so the SSR
+    // pass reads user.id=0 + kunNsfwEnable=sfw and bakes content_limit=sfw into
+    // the first wiki call — which 404s a logged-in user's NSFW detail page
+    // ("资源不存在") until a same-site refresh re-sends the cookie. Lax sends the
+    // cookie on top-level GET navigations (fixing that) while still blocking it
+    // on cross-site POST/iframe/subrequests, so there's no CSRF exposure — and
+    // it matches the session cookie these mirror.
     cookieOptions: {
       maxAge: 60 * 60 * 24 * 7,
-      sameSite: 'strict'
+      sameSite: 'lax'
     }
   },
 
