@@ -63,6 +63,10 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 
 **鉴权**：与 [`/users/batch`](./03-cross-service.md) 相同 —— **OAuth Client Basic Auth**。`source_app` 服务端从认证 client 推导，不信任请求体自报。
 
+**铸币白名单（POST 专属，2026-06-13 新增）**：**写入**（`POST` 调整余额）额外要求该 client `oauth_clients.moemoepoint_awarder = true`。萌萌点是**全生态共享的单一钱包**，只有合法发放方（论坛 / 补丁）在白名单内；其它任何已注册 client 默认 **fail-closed**（`awarder=false`），POST 返回 `403 / 16005`。**读取**（`GET` 余额 / 流水）不受影响，对任意已注册 client 开放。
+
+> **为什么要白名单**：一个定位不同的站点（例如成人向资源站 letmoe）可能**读取**用户余额来**一次性 1:1 初始化自己的本地积分**——这没问题；但它**绝不能往共享钱包铸币**，否则会把自己的 provenance 戳进每个用户的全生态流水。"读取做种"放行，"铸币"按 **parent Site.Domain** 显式授权（`cmd/migrate` 按 `www.kungal.com` / `www.moyu.moe` 幂等回填，不硬编码 per-env `client_id`）。新增一个合法发放方 = 往该域名列表加一行；新增一个只读站点 = 什么都不用做（保持 fail-closed）。
+
 | 端点 | 方法 | 用途 |
 |------|------|------|
 | `/users/:id/moemoepoint` | POST | **调整**余额（发放 / 扣除），幂等 |
@@ -99,7 +103,7 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 
 `applied=false` 表示幂等键命中、未重复执行。
 
-**错误**（HTTP 400 + 对应 code，除非另注）：`16002` delta 为 0 或超 ±1,000,000；`16003` reason 非法 / 用了保留 reason；`16004` 幂等键已存在但请求体不一致；`404/10005` 用户不存在；`401` Basic Auth 失败。
+**错误**（HTTP 400 + 对应 code，除非另注）：`16002` delta 为 0 或超 ±1,000,000；`16003` reason 非法 / 用了保留 reason；`16004` 幂等键已存在但请求体不一致；`403/16005` client 不在铸币白名单（`moemoepoint_awarder=false`）；`404/10005` 用户不存在；`401` Basic Auth 失败。
 
 > 余额**允许为负**（精简取舍：不做非负约束，保证回收/反转永不被挡）。
 
@@ -152,8 +156,9 @@ OAuth **不发布 SDK**，每个 consumer 自己写薄客户端（同 `/users/ba
 | 16002 | `ErrMoemoepointInvalidDelta` | delta 为 0 或 \|delta\| > 1,000,000 |
 | 16003 | `ErrMoemoepointInvalidReason` | reason 不在枚举内，或 s2s 用了保留 reason（admin_*/migration）|
 | 16004 | `ErrMoemoepointIdemConflict` | idempotency_key 已存在但请求体不一致 |
+| 16005 | `ErrMoemoepointNotAwarder` | client 无铸币权限（`moemoepoint_awarder=false`，仅 POST 调整，HTTP 403）|
 
-> 已实现状态：上述 3 个码 + `moemoepoint_log` 表 + s2s/admin 端点 + 管理端 UI **均已落地**（待 oauth 后端重启生效）。下游消费 + 数据合并迁移（§6/§7）仍待各站对接。
+> 已实现状态：上述 4 个码 + `moemoepoint_log` 表 + s2s/admin 端点 + 管理端 UI **均已落地**（待 oauth 后端重启生效）。铸币白名单（`16005` + `moemoepoint_awarder` 列 + `cmd/migrate` 按域名回填论坛/补丁）于 2026-06-13 落地。下游消费 + 数据合并迁移（§6/§7）仍待各站对接。
 > 并发同键竞态：唯一索引兜底（不会重复加分），极少数并发同键会得到一次性 500，调用方重试即转为 `applied:false`。
 
 ## 9. 刻意没做的（将来需要时再升级）

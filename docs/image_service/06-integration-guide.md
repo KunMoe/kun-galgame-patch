@@ -62,6 +62,23 @@ WHERE client_id = '<galgame_wiki_client_id>';
 
 新站点接入时，平台团队把上面这份 UPDATE 作为"新站准入"的模板。
 
+### 独立图床域名（`image_cdn_base`，2026-06-13 新增）
+
+默认所有站点的图片 URL 共用全局 `KUN_IMAGE_CDN_BASE`（一个 CDN 域名）。给某个 Client 设 `image_cdn_base`，即可让**它的**图片 URL 走自己的域名：
+
+```sql
+UPDATE oauth_clients SET
+  image_cdn_base = 'https://img.letmoe.com/img'   -- 无尾斜杠
+WHERE id = '<client_id>';
+```
+
+- 服务端按**调用方 Client** 解析：`POST /image/upload` 的响应、`GET /image/:hash` 的 `url` / `variant_urls` 都用该 Client 的 `image_cdn_base`（空 → 全局默认）。存储仍是**同一个内容寻址桶**，只换 URL 前缀，无数据迁移。
+- **隔离的是品牌 / 域名信誉 / 支付通道，不是内容**：同一个 hash 在任意站点域名下都取得到（URL = `{base}/{hash[:2]}/{hash[2:4]}/{hash}.ext`，key 与全局一致）。要物理隔离需拆独立桶（默认不做，会丢跨站去重、得不偿失）。
+- **运维**：把新域名（如 `img.letmoe.com`）作为第二个 CDN / 自定义域指向**同一个**对象存储桶即可，对象 key 不变。
+- **下游自建 URL**：若调用方不调 image_service、而是自己从 hash 拼 URL，把它的 `imageclient.CDNBase` 配成同一个值即可（用官方 `imageclient.MainURL(base, hash, ext)`）。**不要**对 image_service 返回的 URL 做字符串域名替换——那是脆弱 hack，全局 base 一改就崩。
+
+> 适用场景：定位不同的站点（如成人向 letmoe）要把封面 / 图片放在自己域名下，避免从 galgame 的 CDN 域名吐图（尤其 R18），把品牌与共享 CDN 解耦。
+
 ## 二、业务库 migration
 
 ### 需要加的字段（按调用方业务实体逐一）
