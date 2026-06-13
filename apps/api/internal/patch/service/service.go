@@ -1088,6 +1088,44 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 	// can reconcile (content_removed reverses content_approved).
 	go s.mp.Award(context.Background(), resource.UserID, -3, "content_removed",
 		fmt.Sprintf("resource:%d", resource.ID), fmt.Sprintf("moyu:resource_delete:%d", resource.ID))
+
+	// Notify the OWNER when a moderator/admin deletes their resource (caller is
+	// not the owner). Without this the uploader's resource + its +3 just vanish
+	// with no explanation — the exact "资源没了、消息里也没有删除通知" user report.
+	// Self-deletes (owner == caller) need no notice. A "system" message renders
+	// in the notification center (same type the wiki-sync uses) and links to the
+	// galgame's resource tab for context. Direct insert, not createDedupMessage:
+	// each deletion is a distinct event (dedup keys on type+sender+recipient+link
+	// and every delete shares the same /patch/:id/resource link, so it would
+	// collapse multiple deletions into one).
+	//
+	// Best-effort + isolated: this runs OUTSIDE the delete (the row is already
+	// committed above), so a failed insert only logs — it can't roll back the
+	// delete. The owner usually exists (they uploaded while logged in), but may
+	// SINCE have been deleted (admin user-removal) → recipient_id FK fails; we
+	// then just skip. We deliberately do NOT anchor/recreate the user here to
+	// force the notice through (that's right for the wiki-sync cron, whose
+	// targets are legit never-logged-in submitters — but here a missing owner is
+	// a *deleted* account and must not be resurrected).
+	if resource.UserID != userID {
+		content := "您发布的一个补丁资源已被管理员删除。如有疑问可联系管理员。"
+		if resource.Name != "" {
+			content = fmt.Sprintf("您发布的补丁资源「%s」已被管理员删除。如有疑问可联系管理员。", resource.Name)
+		}
+		if err := s.db.Table("user_message").Create(map[string]any{
+			"type":         "system",
+			"content":      content,
+			"status":       0,
+			"link":         fmt.Sprintf("/patch/%d/resource", resource.GalgameID),
+			"sender_id":    nil,
+			"recipient_id": resource.UserID,
+			"created":      time.Now(),
+			"updated":      time.Now(),
+		}).Error; err != nil {
+			slog.Warn("DeleteResource: 写资源删除通知失败",
+				"resource_id", resourceID, "owner", resource.UserID, "error", err)
+		}
+	}
 	return nil
 }
 
