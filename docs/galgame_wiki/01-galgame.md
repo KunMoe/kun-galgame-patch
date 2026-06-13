@@ -375,7 +375,11 @@ return r2.data.galgame
           }
         }
       ],
-      "link": [{"id": 1, "name": "VNDB", "link": "https://vndb.org/v12345"}],
+      "link": [
+        {"id": 1, "name": "官网镜像", "link": "https://example.com", "source": "", "source_key": ""},
+        {"id": 2, "name": "VNDB", "link": "https://vndb.org/v12345", "source": "vndb", "source_key": "vndb"},
+        {"id": 3, "name": "Steam", "link": "https://store.steampowered.com/app/123/", "source": "vndb", "source_key": "steam"}
+      ],
       "contributor": [{"id": 1, "user_id": 1}],
       "created": "...",
       "updated": "..."
@@ -392,6 +396,11 @@ return r2.data.galgame
 > 🆕 **2026-05-22 (K-PR)**：每个 `tag.tag`、`official.official` 和 `engine.engine` 对象**新增 `galgame_count` 字段**，表示该 tag / 开发商 / 引擎下已发布（`status = 0`）的 galgame 数。这与独立的 `GET /tag`、`GET /official` 和 `GET /engine` 列表端点使用的计数口径一致（同款 `LEFT JOIN ... COUNT(*)` 子查询，drafts 不计入）。下游可直接在 galgame 详情页面渲染"标签名 +N / 会社名 +N / 引擎名 +N" badge，**不再需要为每个嵌入实体各发一次单独的 `GET /tag/:id`、`GET /official/:id`、`GET /engine/:id` 请求**。
 >
 > 字段为 `int`，**没有 `omitempty`**：值为 0 是"该实体当前 0 部已发布作品"的有效语义，不应被序列化省略。
+
+> 🔗 **链接来源（`link[].source` / `link[].source_key`）+ vndb 链接为 sync 托管**：每条链接带 `source`/`source_key` 标明来源：
+> - `source=""`（空）= **用户链接**，可经 `PUT /galgame/:gid` 的 `links` 字段自由增删改。
+> - `source="vndb"` = wiki 每日 `sync-vndb` cron 从 VNDB 拉取并 curate 的**商店/官网链接**（`source_key` 是 VNDB 站点名，如 `steam`/`dlsite`/`website`/`vndb`）。这些链接**由 sync 托管**——与 `bid` 同理**对用户编辑只读**：`PUT` 的 `links` 只替换用户链接的子集，`source="vndb"` 的链接恒从当前状态保留，无法经 `PUT` 增删改。
+> - 因此下游编辑表单**可以照旧回传全量 `links`**（含 vndb 那几条，按 `{name, link}`）——服务端按 host 去重、保留权威 vndb 集合；也可以只回传用户链接。两种都正确。**建议下游把 `source="vndb"` 的链接渲染为只读**（不给删除/编辑按钮，用户的改动不会生效）。
 
 ---
 
@@ -515,7 +524,7 @@ return r2.data.galgame
 > - 与标量字段一致：传了就改、不传就不动。整个编辑是**一次事务、一条 revision**（原子；集合语义、顺序无关，进 revision 快照与 PR diff）。
 > - **`release_date` / `release_date_tba`**（取代旧 `released` 字符串）现可经此端点编辑，各自走 presence 语义：`release_date` 用 `*string`（`null`/省略 = 保持，`""` = 清空为未知，`"YYYY-MM-DD"` = 设置）；`release_date_tba` 用 `*bool`。两者独立——可同时给值表达"预计 X 年某月 + TBA"。详见 §00-handbook BREAKING 段。
 >
-> `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。
+> `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。**`links` 的"权威全量替换"仅作用于用户链接（`source=""`）；`source="vndb"` 的链接同 `bid` 一样为 sync 托管、对编辑只读，恒被保留**（见上文链接来源小节）。
 
 `is_minor` 为 `true` 时标记为小修改，在版本历史中可被过滤。
 

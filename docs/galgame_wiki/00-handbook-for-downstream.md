@@ -670,6 +670,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 > - **传数组（含空 `[]`）** = **权威全量集合**，服务端"清空旧的 → 按此重建"；`[]` = 清空全部。
 > - 因此 kungal/moyu 的 galgame 编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增删后整体回传），**绝不能只传"新增/删除的那几个"**——会被当成"替换成只剩这几个"。这是之前"kungal 改 tag/engine/official 不生效"的根因（旧实现整段忽略；现已按 snapshot overlay 根治，详见 [docs/galgame_wiki/01-revision-system-design.md §1.5/§6.1/§6.2](../../galgame_wiki/01-revision-system-design.md)）。
 > - `aliases`/`links` 现已是本端点一等字段（推荐整表单一次性提交，单条原子 revision）；`/galgame/:gid/aliases|links` 增删端点保留为便捷糖。`bid`/Bangumi ID 为保留字段，sync 托管，暂不可编辑。
+> - ⚠️ **`links` 的全量替换语义只作用于用户链接（`source=""`）**：`source="vndb"` 的商店/官网链接由 `sync-vndb` cron 托管、对编辑只读（同 `bid`），`PUT` 恒保留、无法增删改。下游可照旧回传全量 `links`（vndb 那几条会按 host 去重保留），**建议把 `source="vndb"` 链接渲染为只读**。详见 [01-galgame.md 链接来源小节](./01-galgame.md)。
 > - 不变量：create/submit/update/patch/merge/revert **全部走同一个 ApplySnapshot 写入路径**，`Snapshot` 每个可编辑字段都能被编辑 API 改到（`bid` 是唯一保留例外），有单测护栏防回归。
 
 > 🔴 **BREAKING — `banner_image_hash` 字段 + 列彻底移除（PR5 一刀切）**：
