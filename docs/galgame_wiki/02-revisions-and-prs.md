@@ -292,9 +292,9 @@ PR 详情，包含与 base revision 的差异。
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | aliases | string[] | 别名数组（替换全部） |
-| tag_ids | int[] | 标签 ID 数组（替换全部） |
-| official_ids | int[] | 开发商 ID 数组（替换全部） |
-| engine_ids | int[] | 引擎 ID 数组（替换全部） |
+| tag_ids | int[] | 标签 ID 数组（替换全部**用户标签**）。`source="vndb"` 的标签由 sync 托管、恒被保留，PUT 无法增删改；回传它们也无妨（按 id 去重）。详见 01-galgame.md 链接/标签来源小节。 |
+| official_ids | int[] | 开发商 ID 数组（替换全部**用户开发商**）。同 tag_ids：`source="vndb"` 子集由 sync 托管、恒被保留。 |
+| engine_ids | int[] | 引擎 ID 数组（替换全部）。引擎不来自 VNDB（wiki 自管），无 sync 托管子集。 |
 | links | object[] | 链接数组 `[{name, link}]`（替换全部**用户链接**）。`source="vndb"` 的链接由 sync 托管、恒被保留，PUT 无法增删改；回传它们也无妨（按 host 去重）。详见 01-galgame.md 链接小节。 |
 | covers | CoverInput[] | image_service hash 数组（替换全部），`sort_order=0` = 钉住封面（同 01-galgame.md PUT 端点说明） |
 | screenshots | ScreenshotInput[] | image_service hash 数组（替换全部），无"钉住"约束 |

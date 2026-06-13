@@ -339,6 +339,7 @@ return r2.data.galgame
           "galgame_id": 1,
           "tag_id": 2,
           "spoiler_level": 0,
+          "source": "vndb",
           "tag": {
             "id": 2,
             "name": "RPG",
@@ -352,6 +353,7 @@ return r2.data.galgame
         {
           "galgame_id": 1,
           "official_id": 3,
+          "source": "vndb",
           "official": {
             "id": 3,
             "name": "开发商",
@@ -401,6 +403,8 @@ return r2.data.galgame
 > - `source=""`（空）= **用户链接**，可经 `PUT /galgame/:gid` 的 `links` 字段自由增删改。
 > - `source="vndb"` = wiki 每日 `sync-vndb` cron 从 VNDB 拉取并 curate 的**商店/官网链接**（`source_key` 是 VNDB 站点名，如 `steam`/`dlsite`/`website`/`vndb`）。这些链接**由 sync 托管**——与 `bid` 同理**对用户编辑只读**：`PUT` 的 `links` 只替换用户链接的子集，`source="vndb"` 的链接恒从当前状态保留，无法经 `PUT` 增删改。
 > - 因此下游编辑表单**可以照旧回传全量 `links`**（含 vndb 那几条，按 `{name, link}`）——服务端按 host 去重、保留权威 vndb 集合；也可以只回传用户链接。两种都正确。**建议下游把 `source="vndb"` 的链接渲染为只读**（不给删除/编辑按钮，用户的改动不会生效）。
+
+> 🏷️ **标签 / 开发商来源（`tag[].source` / `official[].source`）同理为 sync 托管**：标签和开发商关联也带 `source`（`""`=用户加，`"vndb"`=每日 cron 从 VNDB 同步）。`PUT` 的 `tag_ids` / `official_ids` **只替换用户子集**，`source="vndb"` 的标签/开发商**对编辑只读、恒被保留**（同 `links`、`bid`）。下游回传 `tag_ids`/`official_ids` 时可含可不含 vndb 那几个 id（服务端按 id 去重保留）；**建议把 `source="vndb"` 的标签/开发商渲染为只读**。引擎（`engine_ids`）不来自 VNDB（wiki 自管），是纯用户全量替换、无 sync 托管子集。
 
 ---
 
@@ -459,8 +463,8 @@ return r2.data.galgame
 | covers | 否 | image_service 哈希数组，PR2 起的新字段；`sort_order=0` 的那张是钉住封面（DB 强制每作品至多一张）。详见下面 PUT 端点说明 |
 | screenshots | 否 | image_service 哈希数组，与 covers 同 shape，无"钉住"约束 |
 | aliases | 否 | 逗号分隔的别名字符串 |
-| tag_ids | 否 | 标签 ID 数组 |
-| official_ids | 否 | 开发商 ID 数组 |
+| tag_ids | 否 | 标签 ID 数组（替换用户子集；`source="vndb"` 标签 sync 托管、恒保留，见上文标签来源小节） |
+| official_ids | 否 | 开发商 ID 数组（同 tag_ids：`source="vndb"` 子集 sync 托管、恒保留） |
 | engine_ids | 否 | 引擎 ID 数组 |
 | content_limit | 否 | `sfw` (默认) 或 `nsfw` |
 | age_limit | 否 | `r18` (默认) 或 `all` |
@@ -524,7 +528,7 @@ return r2.data.galgame
 > - 与标量字段一致：传了就改、不传就不动。整个编辑是**一次事务、一条 revision**（原子；集合语义、顺序无关，进 revision 快照与 PR diff）。
 > - **`release_date` / `release_date_tba`**（取代旧 `released` 字符串）现可经此端点编辑，各自走 presence 语义：`release_date` 用 `*string`（`null`/省略 = 保持，`""` = 清空为未知，`"YYYY-MM-DD"` = 设置）；`release_date_tba` 用 `*bool`。两者独立——可同时给值表达"预计 X 年某月 + TBA"。详见 §00-handbook BREAKING 段。
 >
-> `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。**`links` 的"权威全量替换"仅作用于用户链接（`source=""`）；`source="vndb"` 的链接同 `bid` 一样为 sync 托管、对编辑只读，恒被保留**（见上文链接来源小节）。
+> `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。**`links` / `tag_ids` / `official_ids` 的"权威全量替换"仅作用于用户子集（`source=""`）；`source="vndb"` 的链接 / 标签 / 开发商同 `bid` 一样为 sync 托管、对编辑只读，恒被保留**（见上文链接/标签来源小节）。`engine_ids` 无此例外（引擎 wiki 自管，纯全量替换）。
 
 `is_minor` 为 `true` 时标记为小修改，在版本历史中可被过滤。
 
