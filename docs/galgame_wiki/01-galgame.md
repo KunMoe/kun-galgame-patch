@@ -496,6 +496,8 @@ return r2.data.galgame
 }
 ```
 
+> 🖼️ **简介不含图片（wiki 写入时强制剥离）**：`intro_*`(4 语言)**不得包含图片**——图片走画廊(`covers` / `screenshots`)。wiki 在**唯一写入路径**上对 create / submit / `PUT` / PR-merge / revert 的简介**自动剥离** Markdown `![](url)` 与 BBCode `[img]…[/img]`(全语言;无图简介原样通过)。**这是真源侧的硬保证**:下游(kungal / moyu)编辑器即使没在 schema 层拦住用户手敲裸 `![](url)`,提交到 wiki 后也不会有图片留在简介里。下游可选地在前端做软提示(更好的 UX),但**无需做硬拦截**。剥离只去图片标记,**不动**简介里的其它内容/链接。
+
 > **PR5 BREAKING — `banner_image_hash` 字段已彻底移除。** Banner 现在唯一通过 `covers[sort_order=0]` 表达；详见
 > [00-handbook §15 PR5 BREAKING 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
