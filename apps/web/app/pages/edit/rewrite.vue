@@ -479,6 +479,7 @@ const handleSubmit = async () => {
             <KunMilkdownDualEditorProvider
               :value-markdown="activeIntro"
               :language="activeLang"
+              :allow-image="false"
               @set-markdown="setActiveIntro"
             />
           </label>

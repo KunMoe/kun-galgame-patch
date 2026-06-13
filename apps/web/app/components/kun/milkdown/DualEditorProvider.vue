@@ -3,10 +3,17 @@ import { MilkdownProvider } from '@milkdown/vue'
 import { ProsemirrorAdapterProvider } from '@prosemirror-adapter/vue'
 import { activeTab } from './atom'
 
-defineProps<{
-  valueMarkdown: string
-  language?: Language
-}>()
+withDefaults(
+  defineProps<{
+    valueMarkdown: string
+    language?: Language
+    // Pass false to strip every image affordance (upload button, sticker
+    // picker, paste/drop upload) — used by the galgame intro editor. Defaults
+    // true so comments / resource notes keep images.
+    allowImage?: boolean
+  }>(),
+  { allowImage: true, language: 'zh-cn' }
+)
 
 const emits = defineEmits<{
   setMarkdown: [value: string]
@@ -34,6 +41,7 @@ const setCmAPI = (api: { update: (markdown: string) => void }) => {
           :value-markdown="valueMarkdown"
           @save-markdown="saveMarkdown"
           :language="language ?? 'zh-cn'"
+          :allow-image="allowImage"
         >
           <template #footer>
             <slot />

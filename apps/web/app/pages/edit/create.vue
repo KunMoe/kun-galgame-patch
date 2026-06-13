@@ -475,6 +475,7 @@ const handleSubmit = async () => {
           <h3 class="font-semibold">简介（简体中文）</h3>
           <KunMilkdownDualEditorProvider
             :value-markdown="submitForm.intro_zh_cn"
+            :allow-image="false"
             @set-markdown="(val) => (submitForm.intro_zh_cn = val)"
           />
         </section>

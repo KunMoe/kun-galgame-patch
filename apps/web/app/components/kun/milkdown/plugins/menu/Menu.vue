@@ -9,7 +9,11 @@ import type { CmdKey } from '@milkdown/kit/core'
 
 const props = defineProps<{
   editorInfo: UseEditorReturn
-  isShowUploadImage: boolean
+  // Gates every image-producing affordance: the upload-image button AND the
+  // sticker picker (stickers insert image markdown via insertImageCommand).
+  // false for the galgame intro editor — intro carries no images; they move to
+  // the Wiki gallery. true everywhere else (comments / resource notes).
+  allowImage: boolean
 }>()
 
 const { get } = props.editorInfo
@@ -83,7 +87,7 @@ const currentTabLabel = computed(() => {
 
       <KunButton
         :is-icon-only="true"
-        v-if="props.isShowUploadImage"
+        v-if="props.allowImage"
         variant="light"
         class-name="text-xl"
         @click="input?.click()"
@@ -108,7 +112,7 @@ const currentTabLabel = computed(() => {
         <KunMilkdownPluginsEmojiContainer :editor-info="editorInfo" />
       </KunPopover>
 
-      <KunPopover inner-class="-left-28">
+      <KunPopover v-if="props.allowImage" inner-class="-left-28">
         <template #trigger>
           <KunButton variant="light" class-name="text-xl" :is-icon-only="true">
             <KunIcon class="text-foreground" name="lucide:sticker" />

@@ -60,10 +60,19 @@ import { remarkMathBlockPlugin, remarkMathPlugin } from './plugins/katex/remark'
 import katex from 'katex'
 import type { KatexOptions } from 'katex'
 
-const props = defineProps<{
-  valueMarkdown: string
-  language: Language
-}>()
+const props = withDefaults(
+  defineProps<{
+    valueMarkdown: string
+    language: Language
+    // When false, every image affordance is removed: the toolbar upload-image
+    // button, the sticker picker (stickers are images), AND the upload plugin
+    // (paste / drag-drop image upload). Used by the galgame intro editor — intro
+    // carries no images; they move to the Wiki gallery. Defaults true so
+    // comments / resource notes are unaffected.
+    allowImage?: boolean
+  }>(),
+  { allowImage: true }
+)
 
 const emits = defineEmits<{
   saveMarkdown: [markdown: string]
@@ -95,8 +104,8 @@ const renderLatex = (content: string, options?: KatexOptions) => {
   return html
 }
 
-const editorInfo = useEditor((root) =>
-  Editor.make()
+const editorInfo = useEditor((root) => {
+  const editor = Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, root)
       ctx.set(defaultValueCtx, valueMarkdown.value)
@@ -109,11 +118,15 @@ const editorInfo = useEditor((root) =>
         }
       })
 
-      ctx.update(uploadConfig.key, (prev) => ({
-        ...prev,
-        uploader: createKunUploader(apiBase),
-        uploadWidgetFactory: kunUploadWidgetFactory
-      }))
+      // Only configure the upload plugin when it's actually registered below;
+      // touching uploadConfig.key without `.use(upload)` throws (missing slice).
+      if (props.allowImage) {
+        ctx.update(uploadConfig.key, (prev) => ({
+          ...prev,
+          uploader: createKunUploader(apiBase),
+          uploadWidgetFactory: kunUploadWidgetFactory
+        }))
+      }
 
       ctx.set(tooltip.key, {
         view: pluginViewFactory({
@@ -184,7 +197,6 @@ const editorInfo = useEditor((root) =>
     .use(trailing)
     .use(tooltip)
     .use(mention)
-    .use(upload)
     .use(codeBlockComponent)
     .use([kunSpoilerPlugin, stopLinkCommand, linkCustomKeymap].flat())
     .use(remarkMathPlugin)
@@ -194,7 +206,14 @@ const editorInfo = useEditor((root) =>
     .use(mathBlockInputRule)
     .use(blockKatexSchema)
     .use(toggleLatexCommand)
-)
+
+  // Image upload (paste / drag-drop) is opt-out: the intro editor skips it so
+  // no image can be added there. The uploadConfig above is guarded the same way.
+  if (props.allowImage) {
+    editor.use(upload)
+  }
+  return editor
+})
 
 const textCount = computed(() => markdownToText(props.valueMarkdown).length)
 
@@ -211,7 +230,7 @@ watch(
     <KunMilkdownPluginsMenu
       ref="toolbar"
       :editor-info="editorInfo"
-      :is-show-upload-image="true"
+      :allow-image="allowImage"
     />
 
     <template v-if="activeTab === 'preview'">
@@ -232,8 +251,14 @@ watch(
       </div>
 
       <div class="text-default-500 text-sm">
-        特殊语法: 您可以使用 ||隐藏文本|| 来隐藏图片或者文字 (目前依然禁止 R18
-        图片内容)
+        <template v-if="allowImage">
+          特殊语法: 您可以使用 ||隐藏文本|| 来隐藏图片或者文字 (目前依然禁止 R18
+          图片内容)
+        </template>
+        <template v-else>
+          特殊语法: 您可以使用 ||隐藏文本|| 来隐藏文字。简介不支持图片，图片请使用
+          Wiki 画廊
+        </template>
       </div>
     </template>
   </div>
