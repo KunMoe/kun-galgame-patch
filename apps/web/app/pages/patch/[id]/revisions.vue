@@ -207,7 +207,7 @@ const snapshotEntries = computed(() =>
       />
     </div>
 
-    <KunModal v-model="modalOpen" :is-show-close-button="true">
+    <KunModal v-model="modalOpen" size="xl" :is-show-close-button="true">
       <div class="max-h-[80vh] w-[92vw] max-w-2xl overflow-y-auto p-5">
         <h3 class="mb-4 text-lg font-semibold">
           版本 #{{ activeRev }} ·

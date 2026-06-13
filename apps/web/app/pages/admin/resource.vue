@@ -28,6 +28,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
 const handleDelete = async (id: number) => {
   const ok = await useKunAlert({
     title: '删除补丁资源',
+    type: 'danger',
     message: '确定要删除这个补丁资源吗？此操作不可恢复。'
   })
   if (!ok) return
@@ -186,7 +187,7 @@ const histTotalPages = computed(() =>
     </div>
 
     <!-- MOYU-PR5 / M3 — File history modal -->
-    <KunModal v-model="histOpen" :is-show-close-button="true">
+    <KunModal v-model="histOpen" size="xl" :is-show-close-button="true">
       <div class="max-h-[85vh] w-[92vw] max-w-2xl space-y-3 overflow-y-auto p-5">
         <h3 class="text-lg font-semibold">
           资源 #{{ histResourceId }} · 文件替换历史

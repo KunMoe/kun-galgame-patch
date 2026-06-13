@@ -214,7 +214,7 @@ const currentAvatarUrl = computed(() => {
             v-model="profileForm.name"
             label="用户名"
             placeholder="2-17 个字符，全局唯一"
-            helper-text="改名后老的 @用户名 不会自动重定向。"
+            description="改名后老的 @用户名 不会自动重定向。"
             autocomplete="username"
             name="username"
           />
@@ -268,7 +268,7 @@ const currentAvatarUrl = computed(() => {
               v-model="avatarFile"
               accept="image/*"
               :max-size="4 * 1024 * 1024"
-              hint="JPEG / PNG / WebP，≤ 4 MiB"
+              description="JPEG / PNG / WebP，≤ 4 MiB"
               trigger-text="选择新头像"
               trigger-icon="lucide:image-plus"
               @error-pick="useKunMessage($event, 'error')"

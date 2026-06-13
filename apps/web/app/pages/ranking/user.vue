@@ -31,8 +31,12 @@ const sortOptions = [
   { value: 'comment_count', label: '评论数' }
 ]
 
-const onChangeSort = async (v: string | number) => {
-  sortBy.value = String(v)
+// KunSelect's v-model widened to `string | string[] | null` in KunUI 0.14.0
+// (multiple/clearable support). This is a single select → only a string ever
+// arrives; guard the other shapes to satisfy the type.
+const onChangeSort = async (v: string | string[] | null) => {
+  if (typeof v !== 'string') return
+  sortBy.value = v
   await router.replace({ query: { ...route.query, sort_by: sortBy.value } })
   await refresh()
 }

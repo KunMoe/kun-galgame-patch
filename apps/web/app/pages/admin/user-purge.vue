@@ -127,6 +127,7 @@ const execute = async () => {
     : ''
   const ok = await useKunAlert({
     title: '⚠️ 清除用户全部痕迹',
+    type: 'danger',
     message:
       `将【不可恢复地】删除用户 #${uidNum.value} 的本地账号，及其全部评论 (${p.comments})、` +
       `补丁资源 (${p.resources}，含 ${p.resource_s3_files} 个云端文件)、点赞 / 收藏 / 关注、` +

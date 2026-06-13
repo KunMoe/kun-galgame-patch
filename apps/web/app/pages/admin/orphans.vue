@@ -76,6 +76,7 @@ const handleRebind = async (galgameId: number) => {
 const handleDelete = async (galgameId: number) => {
   const ok = await useKunAlert({
     title: '删除补丁',
+    type: 'danger',
     message: `确定删除补丁 #${galgameId}？会级联删除其资源、评论、收藏关系，不可恢复！`
   })
   if (!ok) return

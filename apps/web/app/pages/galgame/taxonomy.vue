@@ -229,6 +229,7 @@ const deleting = ref<number | null>(null)
 const del = async (row: Row) => {
   const ok = await useKunAlert({
     title: '删除',
+    type: 'danger',
     message: `确定删除「${row.name || '#' + row.id}」？`
   })
   if (!ok) return
@@ -250,6 +251,7 @@ const del = async (row: Row) => {
     if (res.code === 7 && tab.value !== 'series') {
       const okForce = await useKunAlert({
         title: '强制删除',
+        type: 'danger',
         message: `${res.message}\n\n强制删除会清除它在所有作品上的关联，且不可恢复。确定继续？`
       })
       if (!okForce) {
@@ -515,7 +517,7 @@ const fmtSnapshotValue = (v: unknown): string => {
     </KunModal>
 
     <!-- W3 / PR4 — Revision history modal (per entity) -->
-    <KunModal v-model="histOpen" :is-show-close-button="true">
+    <KunModal v-model="histOpen" size="xl" :is-show-close-button="true">
       <div class="max-h-[85vh] w-[92vw] max-w-2xl space-y-3 overflow-y-auto p-5">
         <h3 class="text-lg font-semibold">
           编辑历史 ·

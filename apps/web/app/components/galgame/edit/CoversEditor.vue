@@ -39,6 +39,7 @@ const pin = (hash: string) => {
 const remove = async (hash: string) => {
   const ok = await useKunAlert({
     title: '移除封面',
+    type: 'danger',
     message: '确定移除该封面？将在保存后从 Wiki 集合里删除。'
   })
   if (!ok) return

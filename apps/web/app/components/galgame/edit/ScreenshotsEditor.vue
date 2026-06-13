@@ -113,6 +113,7 @@ const move = (hash: string, dir: -1 | 1) => {
 const remove = async (hash: string) => {
   const ok = await useKunAlert({
     title: '移除截图',
+    type: 'danger',
     message: '确定移除该截图？将在保存后从 Wiki 集合里删除。'
   })
   if (!ok) return

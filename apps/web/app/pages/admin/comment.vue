@@ -50,6 +50,7 @@ const handleApprove = async (id: number) => {
 const handleDelete = async (id: number) => {
   const ok = await useKunAlert({
     title: '删除评论',
+    type: 'danger',
     message: '确定要删除这条评论吗？此操作不可恢复。'
   })
   if (!ok) return

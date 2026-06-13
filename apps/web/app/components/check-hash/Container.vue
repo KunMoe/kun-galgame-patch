@@ -104,7 +104,7 @@ const handleFileSelect = (files: File[]) => {
           size="lg"
           color="primary"
           :model-value="hashValue"
-          helper-text="您可以输入文件 BLAKE3 Hash 值以进行校验 (如果您是从本站跳转, 本站会为您自动补全 Hash)"
+          description="您可以输入文件 BLAKE3 Hash 值以进行校验 (如果您是从本站跳转, 本站会为您自动补全 Hash)"
           @update:model-value="updateHash(String($event))"
         />
       </div>

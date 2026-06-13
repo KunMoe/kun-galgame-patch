@@ -260,7 +260,7 @@ const doDecline = async () => {
           v-model="bannerFile"
           accept="image/jpeg,image/png,image/webp"
           :max-size="10 * 1024 * 1024"
-          hint="新 Banner（可选）"
+          description="新 Banner（可选）"
           trigger-text="选择新 Banner"
           trigger-icon="lucide:image-plus"
           trigger-size="sm"
@@ -329,7 +329,7 @@ const doDecline = async () => {
     </div>
 
     <!-- PR detail modal -->
-    <KunModal v-model="modalOpen" :is-show-close-button="true">
+    <KunModal v-model="modalOpen" size="xl" :is-show-close-button="true">
       <div class="max-h-[80vh] w-[92vw] max-w-2xl overflow-y-auto p-5">
         <KunLoading v-if="modalLoading" description="加载中..." />
         <template v-else-if="detail">

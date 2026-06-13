@@ -66,17 +66,20 @@ const handleCheckIn = async () => {
 <template>
   <KunPopover ref="popover" position="bottom-end" inner-class="p-2 min-w-64">
     <template #trigger>
-      <!-- Avatar is its own clickable affordance — wrapping it in a
-           KunButton + colored ring/border felt foreign next to the rest
-           of the top bar. KunAvatar already renders a rounded image with
-           hover/cursor styling; the popover trigger fires from clicking
-           anywhere on it. -->
-      <KunAvatar
-        :user="userStore.user"
-        :is-navigation="false"
-        size="sm"
-        class-name="cursor-pointer"
-      />
+      <!-- Bare <button> (no KunButton ring/border — that felt foreign next to
+           the rest of the top bar) purely so the trigger is keyboard-focusable
+           and Enter/Space-activatable: since KunUI 0.15.0 the KunPopover wrapper
+           is no longer a role="button"/focusable element, so the slotted trigger
+           must carry its own focusability. KunAvatar renders a plain (non-
+           focusable) image; a native button's activation click bubbles to the
+           popover's own @click. -->
+      <button
+        type="button"
+        aria-label="账号菜单"
+        class="block cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <KunAvatar :user="userStore.user" :is-navigation="false" size="sm" />
+      </button>
     </template>
 
     <div class="space-y-1">
