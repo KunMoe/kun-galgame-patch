@@ -32,11 +32,13 @@ import (
 	"fmt"
 	"log/slog"
 
+	authModel "kun-galgame-patch-api/internal/auth/model"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	userModel "kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -148,6 +150,23 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 				"message_id", m.ID, "type", m.Type)
 		}
 		return nil
+	}
+
+	// Ensure the target has a LOCAL user anchor before any user-FK'd write
+	// below (the user_message notification insert, and the approved-path
+	// moemoepoint cache UPDATE). A wiki message can target someone who exists
+	// in OAuth (they submitted to the wiki) but has NEVER logged into moyu, so
+	// no local `user` row exists yet → user_message_recipient_id_fkey (23503)
+	// rolls the whole per-message tx back, the feed cursor never advances, and
+	// the sync wedges permanently — starving every later message of its
+	// notification + moemoepoint award (observed in prod: ~90 failures/72h,
+	// stuck at cursor 98). Provision a stub {ID} row (all other columns default;
+	// enriched on the user's next moyu login) — the same FK-anchor pattern patch
+	// ownership uses (service.ensureLocalPatch). OnConflict DoNothing so an
+	// existing row is left untouched.
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&authModel.User{ID: *m.TargetUserID}).Error; err != nil {
+		return fmt.Errorf("ensure recipient user anchor (uid=%d): %w", *m.TargetUserID, err)
 	}
 
 	switch m.Type {
@@ -270,4 +289,3 @@ func displayGalgameName(g *galgameClient.WikiMessageGalgame) string {
 	}
 	return fmt.Sprintf("#%d", g.ID)
 }
-
