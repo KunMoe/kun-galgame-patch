@@ -16,11 +16,19 @@ export const APPLICANT_STATUS_COLOR_MAP: Record<
 }
 
 export const ADMIN_LOG_TYPE_MAP: Record<string, string> = {
+  // Legacy types (historical rows written by the retired Next.js admin —
+  // their content is full Chinese prose, so these still read fine).
   create: '创建',
   delete: '删除',
   approve: '同意',
   decline: '拒绝',
-  update: '更改'
+  update: '更改',
+  // Current types (written by the Go admin's CreateLog — type + JSON content).
+  deleteResource: '删除补丁资源',
+  updateResource: '更改补丁资源',
+  deleteComment: '删除评论',
+  updateComment: '更改评论',
+  purgeUser: '清除用户'
 }
 
 export const ADMIN_STATS_SUM_MAP: Record<string, string> = {

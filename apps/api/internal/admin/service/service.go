@@ -13,6 +13,7 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/pkg/errors"
 
@@ -24,10 +25,16 @@ type AdminService struct {
 	rdb     *redis.Client // sessions only (user-purge revocation); settings now live in `setting`
 	setting *settingService.Service
 	s3      *storage.S3Client
+	// patch is the canonical owner of resource/comment mutations (delete handles
+	// S3 cleanup + moemoepoint reconciliation + owner notification + count
+	// upkeep). The admin panel delegates the ACTION to it and only layers the
+	// admin_log audit on top — so a delete via the admin panel behaves exactly
+	// like one via the public Option-B path (no divergent re-implementation).
+	patch *patchService.PatchService
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, s3 *storage.S3Client) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, setting: setting, s3: s3}
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, s3 *storage.S3Client, patch *patchService.PatchService) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, s3: s3, patch: patch}
 }
 
 // ===== Comments =====
@@ -51,7 +58,10 @@ func (s *AdminService) UpdateComment(commentID int, content string, adminUID int
 }
 
 func (s *AdminService) DeleteComment(commentID, adminUID int) error {
-	if err := s.repo.DeleteComment(commentID); err != nil {
+	// Delegate to the canonical delete (privileged) — it also decrements the
+	// patch's comment_count (incl. replies), which the old admin-local delete
+	// skipped, leaving the count drifting. Then audit-log.
+	if err := s.patch.DeleteComment(commentID, adminUID, true); err != nil {
 		return err
 	}
 	s.repo.CreateLog(adminUID, "deleteComment", map[string]any{"comment_id": commentID})
@@ -77,40 +87,14 @@ func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int)
 }
 
 func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
-	// Snapshot Storage + S3Key AND the file_history's old_s3_keys BEFORE
-	// deleting the row so we can clean up the S3 objects afterwards. Read
-	// failures aren't fatal — fall through and let the DB delete still
-	// happen (matches the patch-side DeleteResource: deleting the row is
-	// the primary operation, S3 cleanup is best-effort).
-	resource, readErr := s.repo.GetResourceByID(resourceID)
-	historyKeys, hErr := s.repo.GetResourceFileHistoryS3Keys(resourceID)
-	if hErr != nil {
-		slog.Warn("admin DeleteResource: failed to enumerate history old_s3_keys for cleanup", "resource_id", resourceID, "error", hErr)
-		historyKeys = nil
-	}
-
-	if err := s.repo.DeleteResource(resourceID); err != nil {
+	// Delegate to the canonical delete (privileged): it handles S3 + history
+	// cleanup, the owner's -3 moemoepoint reversal, AND the owner notification —
+	// all of which the old admin-local re-implementation skipped (it only deleted
+	// the row + cleaned S3, so admin deletions silently dropped the user's points
+	// and gave no notice). Then layer the admin_log audit on top.
+	if err := s.patch.DeleteResource(resourceID, adminUID, true); err != nil {
 		return err
 	}
-
-	// Drain both sources. The two key sets are disjoint by construction —
-	// history rows only record keys that have already been replaced by a
-	// newer one, so they never overlap with the live resource.S3Key.
-	if s.s3 != nil && s.s3.Ready() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if readErr == nil && resource.Storage == "s3" && resource.S3Key != "" {
-			if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
-				slog.Warn("admin DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
-			}
-		}
-		for _, key := range historyKeys {
-			if err := s.s3.DeleteObject(ctx, key); err != nil {
-				slog.Warn("admin DeleteResource: 删除 S3 历史对象失败", "s3_key", key, "resource_id", resourceID, "error", err)
-			}
-		}
-	}
-
 	s.repo.CreateLog(adminUID, "deleteResource", map[string]any{"resource_id": resourceID})
 	return nil
 }
