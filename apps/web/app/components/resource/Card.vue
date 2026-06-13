@@ -37,7 +37,15 @@ const userDescription = computed(() => {
   >
     <div class="flex flex-col justify-between space-y-2">
       <div class="flex">
-        <KunUserChip :user="props.resource.user" :description="userDescription" />
+        <!-- is-navigation=false: this whole card is already a <KunCard :href>
+             link to the resource. Since 0.12.0 KunUserChip renders a real <a>
+             to the publisher when navigable, which would nest <a> inside <a>.
+             Keep the card the single link; the chip stays plain. -->
+        <KunUserChip
+          :user="props.resource.user"
+          :description="userDescription"
+          :is-navigation="false"
+        />
       </div>
 
       <h2
