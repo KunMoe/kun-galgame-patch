@@ -26,6 +26,28 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
 watch(page, () => refresh())
 
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
+
+// Render a log row's content. Legacy rows (retired Next.js admin) store full
+// Chinese prose → show verbatim. Current rows (Go admin / patch-service audit)
+// store JSON ({resource_id, owner_id, galgame_id, name, reason, ...}) → flatten
+// to a readable line so the audit is legible without reading raw JSON.
+const formatLogContent = (l: AdminLog): string => {
+  const c = (l.content ?? '').trim()
+  if (!c.startsWith('{')) return c
+  try {
+    const d = JSON.parse(c) as Record<string, unknown>
+    const parts: string[] = []
+    if (d.name) parts.push(`「${d.name}」`)
+    if (d.resource_id) parts.push(`资源 #${d.resource_id}`)
+    if (d.comment_id) parts.push(`评论 #${d.comment_id}`)
+    if (d.galgame_id) parts.push(`galgame ${d.galgame_id}`)
+    if (d.owner_id) parts.push(`作者 #${d.owner_id}`)
+    if (d.reason) parts.push(`原因：${d.reason}`)
+    return parts.length ? parts.join(' · ') : c
+  } catch {
+    return c
+  }
+}
 </script>
 
 <template>

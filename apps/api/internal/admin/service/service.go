@@ -58,14 +58,11 @@ func (s *AdminService) UpdateComment(commentID int, content string, adminUID int
 }
 
 func (s *AdminService) DeleteComment(commentID, adminUID int) error {
-	// Delegate to the canonical delete (privileged) — it also decrements the
-	// patch's comment_count (incl. replies), which the old admin-local delete
-	// skipped, leaving the count drifting. Then audit-log.
-	if err := s.patch.DeleteComment(commentID, adminUID, true); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "deleteComment", map[string]any{"comment_id": commentID})
-	return nil
+	// Pure delegate to the canonical privileged delete — it decrements
+	// comment_count, notifies the author, AND writes the audit_log (via the
+	// AuditLogger injected into patch-service). Deleting from the admin panel is
+	// now identical to the game-detail page; no reason is captured here.
+	return s.patch.DeleteComment(commentID, adminUID, true, "")
 }
 
 // ===== Resources =====
@@ -87,16 +84,11 @@ func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int)
 }
 
 func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
-	// Delegate to the canonical delete (privileged): it handles S3 + history
-	// cleanup, the owner's -3 moemoepoint reversal, AND the owner notification —
-	// all of which the old admin-local re-implementation skipped (it only deleted
-	// the row + cleaned S3, so admin deletions silently dropped the user's points
-	// and gave no notice). Then layer the admin_log audit on top.
-	if err := s.patch.DeleteResource(resourceID, adminUID, true); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "deleteResource", map[string]any{"resource_id": resourceID})
-	return nil
+	// Pure delegate to the canonical privileged delete — it handles S3 + history
+	// cleanup, the owner's -3 moemoepoint reversal, the owner notification, AND
+	// the audit_log (via the AuditLogger). No reason is captured from the admin
+	// panel; the game-detail page is the path that collects one.
+	return s.patch.DeleteResource(resourceID, adminUID, true, "")
 }
 
 // User management (GetUsers / UpdateUser / DeleteUser) was removed when

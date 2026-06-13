@@ -139,11 +139,22 @@ const submitEdit = async () => {
 // ─── Delete ────────────────────────────────────────────
 const deleteOpen = ref(false)
 const deleting = ref(false)
+const deleteReason = ref('')
+// A moderator deleting SOMEONE ELSE'S comment → offer a reason, recorded in the
+// author's notification + the admin audit log. Author self-deletes need none.
+const isForeignDelete = computed(() => !isAuthor.value)
+const askDelete = () => {
+  deleteReason.value = ''
+  deleteOpen.value = true
+}
 
 const confirmDelete = async () => {
   deleting.value = true
   try {
-    const res = await api.delete(`/patch/comment/${props.comment.id}`)
+    const res = await api.delete(
+      `/patch/comment/${props.comment.id}`,
+      isForeignDelete.value ? { reason: deleteReason.value.trim() } : undefined
+    )
     if (res.code === 0) {
       emit('removed', props.comment.id)
       useKunMessage('已删除', 'success')
@@ -249,7 +260,7 @@ const confirmDelete = async () => {
           color="danger"
           size="xs"
           rounded="full"
-          @click="deleteOpen = true"
+          @click="askDelete"
         >
           <KunIcon name="lucide:trash-2" class="size-3.5" />
           删除
@@ -292,6 +303,15 @@ const confirmDelete = async () => {
         <p class="text-default-600 text-sm">
           此操作不可恢复{{ depth === 0 ? '，该评论下的所有回复也会一并删除' : '' }}。
         </p>
+        <div v-if="isForeignDelete" class="space-y-1">
+          <label class="text-default-600 text-sm">
+            删除原因（可选，会通知作者并记入管理日志）
+          </label>
+          <KunInput
+            v-model="deleteReason"
+            placeholder="例如：垃圾广告 / 人身攻击 / 违规内容"
+          />
+        </div>
         <div class="flex justify-end gap-2">
           <KunButton variant="light" :disabled="deleting" @click="deleteOpen = false">
             取消

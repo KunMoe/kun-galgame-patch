@@ -114,9 +114,16 @@ const hasBeenEdited = (r: PatchResource) => {
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const pendingDelete = ref<PatchResource | null>(null)
+const deleteReason = ref('')
+// A moderator deleting SOMEONE ELSE'S resource → offer a reason, recorded in the
+// author's notification + the admin audit log. Owner self-deletes need none.
+const isForeignDelete = computed(
+  () => !!pendingDelete.value && pendingDelete.value.user_id !== userStore.user.id
+)
 
 const askDelete = (r: PatchResource) => {
   pendingDelete.value = r
+  deleteReason.value = ''
   deleteOpen.value = true
 }
 
@@ -125,7 +132,10 @@ const confirmDelete = async () => {
   if (!r) return
   deleting.value = true
   try {
-    const res = await api.delete(`/patch/resource/${r.id}`)
+    const res = await api.delete(
+      `/patch/resource/${r.id}`,
+      isForeignDelete.value ? { reason: deleteReason.value.trim() } : undefined
+    )
     if (res.code === 0) {
       useKunMessage('已删除资源', 'success')
       if (resources.value) {
@@ -780,6 +790,15 @@ watch(histPage, loadHistory)
           <span class="text-default-400">资源名称：</span>
           <strong class="text-foreground">{{ pendingDelete.name }}</strong>
         </p>
+        <div v-if="isForeignDelete" class="space-y-1">
+          <label class="text-default-600 text-sm">
+            删除原因（可选，会通知作者并记入管理日志）
+          </label>
+          <KunInput
+            v-model="deleteReason"
+            placeholder="例如：转载自付费站 / 违规内容 / 重复发布"
+          />
+        </div>
         <div class="flex justify-end gap-2">
           <KunButton
             variant="light"

@@ -367,11 +367,27 @@ func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.DeleteComment(commentID, user.ID, isPrivileged); err != nil {
+	if err := h.service.DeleteComment(commentID, user.ID, isPrivileged, parseDeleteReason(c)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	return response.OKMessage(c, "Comment deleted")
+}
+
+// parseDeleteReason reads an OPTIONAL moderation reason from the request body
+// ({"reason":"..."}) sent when a mod/admin deletes someone else's content from
+// the game-detail page. Absent / non-JSON body → "" (owner self-deletes send
+// nothing). Trimmed + rune-capped at 500 so it fits admin_log.content cleanly.
+func parseDeleteReason(c *fiber.Ctx) string {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.BodyParser(&body)
+	r := strings.TrimSpace(body.Reason)
+	if rs := []rune(r); len(rs) > 500 {
+		r = string(rs[:500])
+	}
+	return r
 }
 
 // ToggleCommentLike PUT /api/patch/comment/:commentId/like
@@ -572,7 +588,7 @@ func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
 	// from the public page; non-privileged callers fall through to the
 	// owner check inside the service.
 	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
-	if err := h.service.DeleteResource(resourceID, user.ID, isPrivileged); err != nil {
+	if err := h.service.DeleteResource(resourceID, user.ID, isPrivileged, parseDeleteReason(c)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 

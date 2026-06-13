@@ -108,9 +108,15 @@ func New(cfg *config.Config) *App {
 	// Site settings (source of truth for admin toggles; shared by patch + admin)
 	settingSvc := settingService.New(db)
 
+	// Admin repo is built early: its CreateLog is the single audit sink, used
+	// BOTH by the admin module and (as patch-service's AuditLogger) by every
+	// privileged resource/comment delete — so a moderation delete from any entry
+	// point lands one audit_log row.
+	adminRepository := adminRepo.New(db)
+
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli, mpAwarder)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli, mpAwarder, adminRepository)
 	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
@@ -123,8 +129,7 @@ func New(cfg *config.Config) *App {
 	messageSvc := messageService.New(messageRepository)
 	messageHdl := messageHandler.New(messageSvc, usrCli)
 
-	// Admin module
-	adminRepository := adminRepo.New(db)
+	// Admin module (adminRepository built above — also patch-service's AuditLogger)
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, s3, patchSvc)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 

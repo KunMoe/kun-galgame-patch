@@ -31,6 +31,17 @@ import (
 // via code = 44001 and render a "前往 Wiki 创建" CTA.
 var ErrWikiGalgameMissing = errors.New("wiki galgame missing for vndb_id")
 
+// AuditLogger records privileged moderation actions to the admin audit log.
+// It's defined HERE — in the canonical owner of resource/comment deletes — so
+// every delete entry point (public game-detail-page button, admin panel, any
+// future caller) audits a privileged-delete-of-someone-else's-content
+// automatically; the audit can't be forgotten at a call site. The admin repo's
+// CreateLog satisfies it (dependency inversion: patch-service depends only on
+// this interface, app.go wires the admin repo in). Nil = no audit sink (tests).
+type AuditLogger interface {
+	CreateLog(actorID int, action string, data any) error
+}
+
 type PatchService struct {
 	repo    *repository.PatchRepository
 	setting *settingService.Service
@@ -39,10 +50,11 @@ type PatchService struct {
 	wiki    *galgameClient.Client
 	users   *userclient.Client
 	mp      *moemoepoint.Awarder
+	audit   AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users, mp: mp}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users, mp: mp, audit: audit}
 }
 
 // ===== Patch =====
@@ -621,7 +633,9 @@ func (s *PatchService) UpdateComment(commentID, userID int, content string) (*mo
 	return comment, nil
 }
 
-func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool) error {
+// reason: optional moderation reason, recorded in the author notification +
+// audit when a privileged user deletes someone else's comment.
+func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool, reason string) error {
 	comment, err := s.repo.GetCommentByID(commentID)
 	if err != nil {
 		return fmt.Errorf("comment not found")
@@ -635,6 +649,39 @@ func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool) e
 		return err
 	}
 	s.repo.UpdateCount(comment.GalgameID, "comment_count", -int(count))
+
+	// Privileged-foreign delete (a mod/admin removed someone else's comment):
+	// notify the author + audit, mirroring DeleteResource. Best-effort; the
+	// author may be a since-deleted account (FK fails → skipped, not resurrected).
+	if comment.UserID != userID {
+		content := "您发布的评论已被管理员删除。"
+		if reason != "" {
+			content += "原因：" + reason
+		} else {
+			content += "如有疑问可联系管理员。"
+		}
+		if err := s.db.Table("user_message").Create(map[string]any{
+			"type":         "system",
+			"content":      content,
+			"status":       0,
+			"link":         fmt.Sprintf("/patch/%d/comment", comment.GalgameID),
+			"sender_id":    nil,
+			"recipient_id": comment.UserID,
+			"created":      time.Now(),
+			"updated":      time.Now(),
+		}).Error; err != nil {
+			slog.Warn("DeleteComment: 写评论删除通知失败",
+				"comment_id", commentID, "owner", comment.UserID, "error", err)
+		}
+		if s.audit != nil {
+			_ = s.audit.CreateLog(userID, "deleteComment", map[string]any{
+				"comment_id": commentID,
+				"owner_id":   comment.UserID,
+				"galgame_id": comment.GalgameID,
+				"reason":     reason,
+			})
+		}
+	}
 	return nil
 }
 
@@ -1030,7 +1077,10 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	return existing, nil
 }
 
-func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool) error {
+// reason is the optional moderation reason, recorded in BOTH the owner
+// notification and the audit log when a privileged user deletes someone else's
+// resource. Empty for self-deletes (and for callers that don't collect one).
+func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool, reason string) error {
 	resource, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return fmt.Errorf("resource not found")
@@ -1108,9 +1158,15 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 	// targets are legit never-logged-in submitters — but here a missing owner is
 	// a *deleted* account and must not be resurrected).
 	if resource.UserID != userID {
-		content := "您发布的一个补丁资源已被管理员删除。如有疑问可联系管理员。"
+		subject := "一个补丁资源"
 		if resource.Name != "" {
-			content = fmt.Sprintf("您发布的补丁资源「%s」已被管理员删除。如有疑问可联系管理员。", resource.Name)
+			subject = fmt.Sprintf("补丁资源「%s」", resource.Name)
+		}
+		content := fmt.Sprintf("您发布的%s已被管理员删除。", subject)
+		if reason != "" {
+			content += "原因：" + reason
+		} else {
+			content += "如有疑问可联系管理员。"
 		}
 		if err := s.db.Table("user_message").Create(map[string]any{
 			"type":         "system",
@@ -1124,6 +1180,18 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool)
 		}).Error; err != nil {
 			slog.Warn("DeleteResource: 写资源删除通知失败",
 				"resource_id", resourceID, "owner", resource.UserID, "error", err)
+		}
+
+		// Audit the moderation action (every privileged-foreign delete, from any
+		// entry point, lands here — see AuditLogger). Best-effort; nil sink in tests.
+		if s.audit != nil {
+			_ = s.audit.CreateLog(userID, "deleteResource", map[string]any{
+				"resource_id": resource.ID,
+				"owner_id":    resource.UserID,
+				"galgame_id":  resource.GalgameID,
+				"name":        resource.Name,
+				"reason":      reason,
+			})
 		}
 	}
 	return nil
