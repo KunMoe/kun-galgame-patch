@@ -20,6 +20,8 @@ useKunSeoMeta({
 })
 
 const page = ref(Number(route.query.page ?? 1))
+// Crawlable pagination: render <a href> preserving filters/sort. See usePageHref.
+const pageHref = usePageHref()
 const selectedType = ref(String(route.query.type ?? 'all'))
 const sortField = ref(String(route.query.sort_field ?? 'resource_update_time'))
 const sortOrder = ref(String(route.query.sort_order ?? 'desc'))
@@ -414,6 +416,7 @@ const chipClass = (active: boolean) => [
         :current-page="page"
         :total-page="totalPages"
         :is-loading="pending"
+        :page-href="pageHref"
         @update:current-page="onChangePage"
       />
     </div>

@@ -20,6 +20,7 @@ const page = computed({
     router.push({ query: { ...route.query, page: v } })
   }
 })
+const pageHref = usePageHref() // crawlable pagination (<a href>)
 const limit = 24
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -145,6 +146,7 @@ if (tag.value && tag.value.category !== 'sexual') {
           v-model:current-page="page"
           :total-page="totalPage"
           :is-loading="pending"
+          :page-href="pageHref"
           class="mt-6"
         />
       </section>

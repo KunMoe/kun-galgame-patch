@@ -13,6 +13,7 @@ useKunSeoMeta({
 })
 
 const page = ref(Number(route.query.page ?? 1))
+const pageHref = usePageHref() // crawlable pagination (<a href>)
 const limit = 20
 
 // /api/v1/resource is a paginated list — see apps/api/internal/common/handler.go
@@ -69,6 +70,7 @@ const onChangePage = async (v: number) => {
         :current-page="page"
         :total-page="totalPages"
         :is-loading="pending"
+        :page-href="pageHref"
         @update:current-page="onChangePage"
       />
     </div>

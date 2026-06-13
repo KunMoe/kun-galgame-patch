@@ -13,6 +13,7 @@ useKunSeoMeta({
 })
 
 const page = ref(Number(route.query.page ?? 1))
+const pageHref = usePageHref() // crawlable pagination (<a href>)
 const limit = 20
 
 // commentListRequest requires sort_field / sort_order.
@@ -65,6 +66,7 @@ const onChangePage = async (v: number) => {
         :current-page="page"
         :total-page="totalPages"
         :is-loading="pending"
+        :page-href="pageHref"
         @update:current-page="onChangePage"
       />
     </div>
