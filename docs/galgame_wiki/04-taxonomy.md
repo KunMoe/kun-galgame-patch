@@ -16,6 +16,9 @@
 |------|------|------|------|
 | page | int | 1 | 页码 |
 | limit | int | 50 | 每页数量（max 100） |
+| content_limit | string | `sfw` | `sfw`=隐藏 `sexual`（NSFW）分类标签（**安全默认**）；`nsfw`=只返回 `sexual`；`all`=全部分类。过滤同时作用于 `total` 与当前页，下游可直接转发 `page`+`limit`+`content_limit` 并代理 `total` 做真正的服务端分页。 |
+
+> **2026-06-14 (K-PR)**：`GET /tag` 列表新增 `content_limit`，且**安全默认为 `sfw`**（与 [`GET /tag/:name`](#get-tagname) 等列表端点一致，见 [handbook §16](./00-handbook-for-downstream.md)）。`sexual` 分类即 NSFW 标签集。**这是行为变更**：以前不带参数返回全部分类，现在不带参数 = `sfw`。下游 SFW 模式省略该参数（或传 `sfw`）即可正常分页；NSFW 模式传 `content_limit=all`；需要完整标签目录（如 wiki 自身管理视图）传 `content_limit=all`。**不要再在下游全量拉取后做 client-side 过滤**——分级门控应作为查询参数下推到 wiki（§16）。
 
 > **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `tag.tag` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游可在 galgame 详情页直接渲染"标签 +N" badge，**不再需要为每个嵌入 tag 单独发 `GET /tag/:name` 请求**。同款扩展也加到了 `official` 和 `engine`，见下文。
 
