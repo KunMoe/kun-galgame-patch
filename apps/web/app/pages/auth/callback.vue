@@ -23,7 +23,7 @@ onMounted(async () => {
 
   const params = verifyOAuthCallback()
   if (!params) {
-    error.value = 'OAuth callback verification failed'
+    error.value = '登录回调校验失败，请重新登录'
     setTimeout(() => navigateTo('/'), 2000)
     return
   }
@@ -57,19 +57,29 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex min-h-[50vh] items-center justify-center">
-    <KunCard class-name="w-full max-w-sm" :bordered="false">
-      <div class="flex flex-col items-center gap-4 py-8">
+  <!-- w-full is required: the default layout wraps the page in a flex ROW, so
+       without it this node shrinks to content width and pins left instead of
+       centering. Card mirrors the sibling /account-banned status page. -->
+  <div class="flex min-h-[60vh] w-full items-center justify-center px-4">
+    <KunCard class-name="w-full max-w-sm">
+      <div class="flex flex-col items-center gap-4 px-6 py-10 text-center">
         <template v-if="error">
-          <p class="text-danger text-center">{{ error }}</p>
-          <p class="text-default-400 text-sm">Redirecting to home...</p>
+          <KunIcon name="lucide:triangle-alert" class="text-danger size-12" />
+          <div class="space-y-1">
+            <h1 class="text-foreground text-lg font-bold">登录失败</h1>
+            <p class="text-default-500 text-sm">{{ error }}</p>
+          </div>
+          <p class="text-default-400 text-xs">即将返回首页…</p>
         </template>
         <template v-else>
           <KunIcon
             name="svg-spinners:90-ring-with-bg"
-            class="text-primary size-10"
+            class="text-primary size-12"
           />
-          <p class="text-default-500">正在完成登录...</p>
+          <div class="space-y-1">
+            <h1 class="text-foreground text-lg font-bold">正在完成登录</h1>
+            <p class="text-default-500 text-sm">请稍候，正在验证您的身份…</p>
+          </div>
         </template>
       </div>
     </KunCard>
