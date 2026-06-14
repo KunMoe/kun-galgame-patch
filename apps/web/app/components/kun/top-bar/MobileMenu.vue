@@ -89,9 +89,11 @@ const handleLogout = async () => {
   } finally {
     loggingOut.value = false
     userStore.logout()
-    useKunMessage('您已经成功登出!', 'success')
     closeMenu()
-    await navigateTo('/')
+    // RP-initiated logout: also clear the central OP session, else the next
+    // login silently re-consents into the same account. Top-level redirect to
+    // the OP logout entrypoint, which returns to '/'. See docs/oauth/07-logout.md.
+    startOAuthLogout()
   }
 }
 

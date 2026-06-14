@@ -169,8 +169,10 @@ const handleReset = async () => {
     if (typeof localStorage !== 'undefined') localStorage.clear()
     resetOpen.value = false
     useKunMessage('您已成功清除网站所有数据, 请重新登录', 'success')
+    // Also clear the central OP session so re-login doesn't silently restore
+    // the same account (RP-initiated logout). See docs/oauth/07-logout.md.
     setTimeout(() => {
-      window.location.href = '/'
+      startOAuthLogout()
     }, 1500)
   } finally {
     resetting.value = false

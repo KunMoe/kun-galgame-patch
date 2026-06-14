@@ -109,6 +109,26 @@ export const startOAuthRegister = async (): Promise<void> => {
   window.location.href = `${oauthWebUrl}/auth/register?redirect=${encodeURIComponent(authorizeUrl)}`
 }
 
+// RP-initiated logout. Clearing only moyu's own session is NOT enough: the
+// central OP (oauth.kungal.com) session survives (its localStorage user is
+// cross-origin and its refresh cookie is cross-site), so the next login would
+// silently re-consent (first-party auto_consent) and log the user straight back
+// into the same account. After clearing the local session, callers top-level
+// navigate here, which sends the browser to the OP logout entrypoint
+// (`{oauthServerUrl}/oauth/logout`, symmetric with /oauth/authorize). The OP
+// clears its session and redirects back to `redirect` (validated against this
+// client's registered redirect_uris). See docs/oauth/07-logout.md.
+export const startOAuthLogout = (): void => {
+  const config = useRuntimeConfig()
+  const oauthServerUrl = config.public.oauthServerUrl as string
+  const clientId = config.public.oauthClientId as string
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect: `${window.location.origin}/`
+  })
+  window.location.href = `${oauthServerUrl}/oauth/logout?${params}`
+}
+
 export const verifyOAuthCallback = (): {
   code: string
   codeVerifier: string
