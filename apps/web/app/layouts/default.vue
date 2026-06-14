@@ -29,5 +29,9 @@
     <!-- App-wide login/register modal. Mounted once here; opened from anywhere
          via useAuthModal() (top-bar button, login-required actions, page gates). -->
     <AuthLoginModal />
+
+    <!-- App-wide logout-scope chooser. Mounted once; opened via useLogoutModal()
+         from the top-bar dropdown + mobile menu. -->
+    <LogoutModal />
   </div>
 </template>

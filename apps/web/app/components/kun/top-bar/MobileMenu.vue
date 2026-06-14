@@ -17,7 +17,6 @@ const emit = defineEmits<{ 'update:isOpen': [value: boolean] }>()
 const closeMenu = () => emit('update:isOpen', false)
 
 const userStore = useUserStore()
-const api = useApi()
 
 // Theme switcher (mirrored from the desktop KunTopBarThemeSwitcher popover —
 // reproduced as a horizontal 3-segmented control here so phone users get the
@@ -80,21 +79,12 @@ const handleLoginClick = () => {
   openAuthModal()
 }
 
-// Logout (mirrors UserDropdown.handleLogout but routed through the menu).
-const loggingOut = ref(false)
-const handleLogout = async () => {
-  loggingOut.value = true
-  try {
-    await api.post('/auth/logout')
-  } finally {
-    loggingOut.value = false
-    userStore.logout()
-    closeMenu()
-    // RP-initiated logout: also clear the central OP session, else the next
-    // login silently re-consents into the same account. Top-level redirect to
-    // the OP logout entrypoint, which returns to '/'. See docs/oauth/07-logout.md.
-    startOAuthLogout()
-  }
+// Logout opens the app-wide scope chooser (this site vs + OAuth). Close the
+// drawer first so the modal isn't behind it. See LogoutModal / useLogoutModal.
+const { openLogoutModal } = useLogoutModal()
+const openLogout = () => {
+  closeMenu()
+  openLogoutModal()
 }
 
 // Body scroll lock — use the shared singleton refcount from @kungal/ui-vue so
@@ -191,9 +181,7 @@ onUnmounted(() => {
               size="sm"
               is-icon-only
               aria-label="退出登录"
-              :loading="loggingOut"
-              :disabled="loggingOut"
-              @click="handleLogout"
+              @click="openLogout"
             >
               <KunIcon name="lucide:log-out" class="size-4" />
             </KunButton>

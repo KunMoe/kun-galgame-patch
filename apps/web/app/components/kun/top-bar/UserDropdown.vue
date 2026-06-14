@@ -1,9 +1,8 @@
 <script setup lang="ts">
 const userStore = useUserStore()
 const api = useApi()
+const { openLogoutModal } = useLogoutModal()
 
-const logoutOpen = ref(false)
-const loggingOut = ref(false)
 const checking = ref(false)
 const logOpen = ref(false)
 
@@ -21,23 +20,7 @@ watch(
 const openModal = (target: 'log' | 'logout') => {
   popover.value?.close()
   if (target === 'log') logOpen.value = true
-  else logoutOpen.value = true
-}
-
-const handleLogout = async () => {
-  loggingOut.value = true
-  try {
-    await api.post('/auth/logout')
-  } finally {
-    loggingOut.value = false
-    logoutOpen.value = false
-    userStore.logout()
-    // RP-initiated logout: clearing moyu's own session isn't enough — also
-    // clear the central OP session, else the next login silently re-consents
-    // into the same account. Top-level redirect to the OP logout entrypoint,
-    // which returns to '/'. See docs/oauth/07-logout.md.
-    startOAuthLogout()
-  }
+  else openLogoutModal()
 }
 
 const handleCheckIn = async () => {
@@ -178,32 +161,4 @@ const handleCheckIn = async () => {
   </KunPopover>
 
   <KunTopBarMoemoepointLog v-model="logOpen" />
-
-  <KunModal v-model="logoutOpen" inner-class-name="max-w-md">
-    <div class="space-y-4">
-      <h3 class="text-lg font-semibold">您确定要登出网站吗?</h3>
-      <p class="text-foreground/80 text-sm">
-        登出将会清除您的登录状态, 但是不会清除您的编辑草稿 (Galgame,
-        回复等), 您可以稍后继续登录
-      </p>
-      <div class="flex justify-end gap-2">
-        <KunButton
-          color="danger"
-          variant="light"
-          :disabled="loggingOut"
-          @click="logoutOpen = false"
-        >
-          关闭
-        </KunButton>
-        <KunButton
-          color="primary"
-          :loading="loggingOut"
-          :disabled="loggingOut"
-          @click="handleLogout"
-        >
-          确定
-        </KunButton>
-      </div>
-    </div>
-  </KunModal>
 </template>
