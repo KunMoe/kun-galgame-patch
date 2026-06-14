@@ -107,7 +107,7 @@ const logout = async () => {
 
 **注册要求**：回跳地址（`redirect`）的 origin 必须与该 client 注册的某个 `redirect_uri` 同源。例如 `redirect_uri = https://www.moyu.moe/auth/callback`，则 `redirect = https://www.moyu.moe/...` 合法。
 
-> ⚠️ 不要只在前端「清得更干净」就完事 —— `localStorage` 跨 origin 清不掉 OP 的，必须顶层跳转到 OP 登出入口。
+> 注意：不要只在前端「清得更干净」就完事 —— `localStorage` 跨 origin 清不掉 OP 的，必须顶层跳转到 OP 登出入口。
 
 ## 与既有端点的关系
 

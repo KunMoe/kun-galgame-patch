@@ -2,7 +2,7 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/07-submission.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[06 — 管理统计](./06-admin.md) · 下一节：[08 — 消息](./08-messages.md)
+> [文档索引](./README.md) · 上一节：[06 — 管理统计](./06-admin.md) · 下一节：[08 — 消息](./08-messages.md)
 
 ## 用户投稿与审核
 
@@ -28,7 +28,7 @@ kungal/moyu cron 每日
   → 写本地通知 + 经 OAuth s2s 发放萌萌点（游标存 since_id；无 wiki_status_snapshot 字段）
 ```
 
-> ⚠️ 本文示例中的 `galgame_stats.wiki_status_snapshot` / `cron_state.wiki_message_last_id` 是**示意性的下游本地列名**——forum/patch 当前并未建这些列（实测：patch 用 `cron_state.last_id` + API `since_id` 增量拉取，均无 wiki 状态快照列）。请按你站实际 schema 实现，勿照抄字段名。
+> 注意：本文示例中的 `galgame_stats.wiki_status_snapshot` / `cron_state.wiki_message_last_id` 是**示意性的下游本地列名**——forum/patch 当前并未建这些列（实测：patch 用 `cron_state.last_id` + API `since_id` 增量拉取，均无 wiki 状态快照列）。请按你站实际 schema 实现，勿照抄字段名。
 
 ### Status 取值
 

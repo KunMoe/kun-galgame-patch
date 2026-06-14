@@ -2,9 +2,9 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/02-revisions-and-prs.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[01 — Galgame 核心 CRUD](./01-galgame.md) · 下一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md)
+> [文档索引](./README.md) · 上一节：[01 — Galgame 核心 CRUD](./01-galgame.md) · 下一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md)
 
-> 🔴 **下游强制范围**：本节的修订历史与 PR 编辑操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐，不得只做子集）。已不再是「wiki-only，下游不做」。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+> **下游强制范围**：本节的修订历史与 PR 编辑操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐，不得只做子集）。已不再是「wiki-only，下游不做」。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
 ## 版本历史 (Wiki)
 
@@ -138,7 +138,7 @@
 
 `old` 和 `new` 是完整的 snapshot 对象，前端可以只展示 `changed_keys` 中标记的字段。对于大文本字段（intro_*），前端可以用 diff 库展示行级差异。
 
-> 🆕 **2026-05-22 (K-PR)**：响应新增 `names` 字段。包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园, 治愈"而不是"tag added: 1, 2"，避免 N+1 后续请求。
+> **2026-05-22 (K-PR)**：响应新增 `names` 字段。包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园, 治愈"而不是"tag added: 1, 2"，避免 N+1 后续请求。
 >
 > **被删除的实体**：如果某个 ID 在 snapshot 里存在但 DB 里已被 soft-delete / 硬删，对应 key **不会出现在 names 里**。前端应该 fallback 渲染成 `已删除 #<id>`。
 >
@@ -262,7 +262,7 @@ PR 详情，包含与 base revision 的差异。
 
 `status`：`0` = pending, `1` = merged, `2` = declined
 
-> 🆕 **2026-05-22 (K-PR)**：响应同样新增 `names` 字段，覆盖 base + pr snapshot 涉及的 tag / official / engine / series ID。语义和性能详见 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff) 末尾 callout。
+> **2026-05-22 (K-PR)**：响应同样新增 `names` 字段，覆盖 base + pr snapshot 涉及的 tag / official / engine / series ID。语义和性能详见 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff) 末尾 callout。
 
 ---
 
@@ -323,7 +323,7 @@ PR 详情，包含与 base revision 的差异。
 }
 ```
 
-> 🔗 **下游依赖（动态时间线）**：kungal / moyu 在「提出更新请求」提交成功后，用本响应的 `data.id`（PR 主键）+ `data.galgame_id` + `data.user_id` + `data.created` 在各自的动态时间线（论坛 `galgame_activity`）记一条 PR 创建动态。**PR 创建（`status=0`）不进 [GET /galgame/revisions/recent](#get-galgamerevisionsrecent)**——那个全站 feed 只含 `action='merged'`（编辑落地），不含 pending PR；所以「提出更新请求」这条动态必须在此处同步落地，不能等 feed 拉取。
+> **下游依赖（动态时间线）**：kungal / moyu 在「提出更新请求」提交成功后，用本响应的 `data.id`（PR 主键）+ `data.galgame_id` + `data.user_id` + `data.created` 在各自的动态时间线（论坛 `galgame_activity`）记一条 PR 创建动态。**PR 创建（`status=0`）不进 [GET /galgame/revisions/recent](#get-galgamerevisionsrecent)**——那个全站 feed 只含 `action='merged'`（编辑落地），不含 pending PR；所以「提出更新请求」这条动态必须在此处同步落地，不能等 feed 拉取。
 
 ---
 

@@ -57,7 +57,7 @@
 | IA → Archive | `last_referenced_at` > 180 天未更新 | 转归档存储（R2 没这层可跳过） |
 | 软删 → 物理删 | `deleted_at < now - 30d` | 物理删除 |
 
-#### ⚠️ TTL 语义澄清：针对"真正无人引用的孤儿"，不是"60 天没被访问"
+#### TTL 语义澄清：针对"真正无人引用的孤儿"，不是"60 天没被访问"
 
 - `last_referenced_at` **不是** CDN/最终用户的访问时间
 - `last_referenced_at` **是** 调用方 `POST /image/reference-ping` 的刷新时间

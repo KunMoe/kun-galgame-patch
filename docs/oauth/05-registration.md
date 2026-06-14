@@ -6,7 +6,7 @@
 
 返回 [README](./README.md)
 
-> 🔒 **重要：注册是身份层操作。下游 kungal / moyu / wiki 不应在自己前端做注册表单**——和[改邮箱 / 改密码一样](./02-user-profile.md#身份操作-vs-展示操作)。本文档描述统一的"跳转到 OAuth 注册 → 自动回跳并登录"流程。
+> **重要：注册是身份层操作。下游 kungal / moyu / wiki 不应在自己前端做注册表单**——和[改邮箱 / 改密码一样](./02-user-profile.md#身份操作-vs-展示操作)。本文档描述统一的"跳转到 OAuth 注册 → 自动回跳并登录"流程。
 
 ## 整体设计
 
@@ -47,7 +47,7 @@
 
 整条链路是**注册 + OAuth code 流程合一**：用户先通过邮箱验证码证明邮箱所有权，OAuth 后端验码通过后才创建账号并发 token。注册成功后 OAuth web 复用 `?redirect=` 直接跳到 `/oauth/authorize`，由于 client 是第一方（`auto_consent=true`），同意页跳过，code 立刻发回 kungal，kungal 用现成的 OAuth callback 流程完成本站登录。**用户感知是"点注册 → 填表单 → 收码 → 回到原站点已登录"**，中间 OAuth 域名的存在被淡化到一闪而过。
 
-> 🔒 **为什么强制邮箱验证**：注册是身份创建动作，邮箱不被验证就建账号 = 任何人都能用别人邮箱去抢注 + 后续找回密码邮件会发到无效地址。两步验证 = 邮箱所有权证明 + 反垃圾注册。同款模式见[改邮箱](./02-user-profile.md#post-authemailsend-code)。
+> **为什么强制邮箱验证**：注册是身份创建动作，邮箱不被验证就建账号 = 任何人都能用别人邮箱去抢注 + 后续找回密码邮件会发到无效地址。两步验证 = 邮箱所有权证明 + 反垃圾注册。同款模式见[改邮箱](./02-user-profile.md#post-authemailsend-code)。
 
 ## 为什么不在 kungal/moyu 自己前端做注册
 
@@ -105,7 +105,7 @@
 | 400  | 10012 | 该邮箱 15 分钟（默认，可通过 `KUN_AUTH_VERIFICATION_CODE_TTL_MINUTES` 调整）内已发过验证码（限流） |
 | 429  | — | 同 IP 触发 strict 限流（10/分钟） |
 
-> ⚠️ **错误码 10006 + 10007 会泄露"该邮箱/用户名是否已注册"** —— 这是有意权衡：用户体验上需要明确告知"换一个吧"，而注册场景的账号枚举攻击面比登录小（登录页只回笼统的"账号或密码错误"）。如果产品需要更严的反枚举，未来可改为"如果该邮箱可注册，验证码已寄出"统一文案 + 后端静默吞错。
+> **错误码 10006 + 10007 会泄露"该邮箱/用户名是否已注册"** —— 这是有意权衡：用户体验上需要明确告知"换一个吧"，而注册场景的账号枚举攻击面比登录小（登录页只回笼统的"账号或密码错误"）。如果产品需要更严的反枚举，未来可改为"如果该邮箱可注册，验证码已寄出"统一文案 + 后端静默吞错。
 
 ---
 
@@ -182,7 +182,7 @@
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| client_id | ✓ | OAuth client ID |
+| client_id | 是 | OAuth client ID |
 
 **成功响应**：
 
@@ -282,9 +282,9 @@ const handleOAuthRegister = async () => {
 `oauth_clients.auto_consent` boolean，默认 `false`。**为 true 表示这个 client 在 `/oauth/authorize` 流程中跳过用户同意 UI**——前端不渲染"该应用将获得以下权限"卡片，直接 POST `/oauth/authorize/consent`。
 
 **何时设 true**：
-- ✅ **第一方 client**（owner 是 OAuth 平台自己，比如 kungal / moyu / wiki / AI / sticker）
-- ❌ 第三方接入应用
-- ❌ 任何不在你直接控制下的 client
+- **设 true**：第一方 client（owner 是 OAuth 平台自己，比如 kungal / moyu / wiki / AI / sticker）
+- **保持 false**：第三方接入应用
+- **保持 false**：任何不在你直接控制下的 client
 
 **安全模型**：auto_consent 不是降低安全等级，是承认"用户已经在使用 kungal，不需要再问一次 kungal 是否可以读他的 OAuth 资料"。这是 SSO 的标准做法——Google 内部应用之间也不会重复问同意。
 
@@ -312,10 +312,10 @@ const handleOAuthRegister = async () => {
 
 ## 不在范围内（明确排除）
 
-- ❌ 邀请码 / 内测注册——目前不限制
-- ❌ 手机号注册——目前邮箱-only
-- ❌ 用户名 vs 邮箱选择——目前 name + email 都必填
-- ❌ 二次邮箱验证后才能登录——注册即登录，邮箱验证留给后续防滥用迭代
-- ❌ ToS / 隐私政策点击确认——目前没有，加的话只在 OAuth web 这一处加
+- 邀请码 / 内测注册——目前不限制
+- 手机号注册——目前邮箱-only
+- 用户名 vs 邮箱选择——目前 name + email 都必填
+- 二次邮箱验证后才能登录——注册即登录，邮箱验证留给后续防滥用迭代
+- ToS / 隐私政策点击确认——目前没有，加的话只在 OAuth web 这一处加
 
 这些都是 L2+ 议题；L1 只做"注册流程从 legacy 完全迁移到 OAuth 托管"。

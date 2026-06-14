@@ -4,7 +4,7 @@
 
 # 01 — 设计原理
 
-> ⚠️ **更正（2026-06，以代码为准）**：调用方**可**对自己用过的图主动软删 `DELETE /image/:hash`（`cmd/image/main.go` 的 `SoftDelete`；OAuth 注销 / 匿名化回收头像即走此路径）。下文「调用方不主动删图（决策 0）」为早期设计，已被实现取代。
+> **更正（2026-06，以代码为准）**：调用方**可**对自己用过的图主动软删 `DELETE /image/:hash`（`cmd/image/main.go` 的 `SoftDelete`；OAuth 注销 / 匿名化回收头像即走此路径）。下文「调用方不主动删图（决策 0）」为早期设计，已被实现取代。
 
 ## 背景
 
@@ -35,9 +35,9 @@
 
 ## 非目标
 
-- ❌ 不做通用文件服务（仅图片）
-- ❌ 不做图片编辑器（旋转、滤镜、水印等）
-- ❌ 不做面向最终用户的公开上传端点
+- 不做通用文件服务（仅图片）
+- 不做图片编辑器（旋转、滤镜、水印等）
+- 不做面向最终用户的公开上传端点
 - 调用方**可**软删自己用过的图：`DELETE /image/:hash`（见决策 0）
 
 ## 服务边界 — 管什么 / 不管什么
@@ -46,11 +46,11 @@
 
 | 上传类型 | 文件类型 | 归属 |
 |---------|---------|------|
-| 用户头像 | PNG / JPG / WebP | ✅ image_service（preset=`avatar`） |
-| 用户 topic / 个人页图片 | PNG / JPG / WebP / GIF（首帧） | ✅ image_service（preset=`topic`） |
-| galgame 封面 / banner | PNG / JPG / WebP | ✅ image_service（preset=`galgame_banner`） |
-| 补丁资源 / 游戏压缩包 | .zip / .rar / .7z / .iso | ❌ **不归 image_service**，走各站自己的 S3 presigned 直传 |
-| 视频 / 音频 / PDF / 其他文件 | 任意非图片 | ❌ 不归 image_service |
+| 用户头像 | PNG / JPG / WebP | image_service（preset=`avatar`） |
+| 用户 topic / 个人页图片 | PNG / JPG / WebP / GIF（首帧） | image_service（preset=`topic`） |
+| galgame 封面 / banner | PNG / JPG / WebP | image_service（preset=`galgame_banner`） |
+| 补丁资源 / 游戏压缩包 | .zip / .rar / .7z / .iso | **不归 image_service**，走各站自己的 S3 presigned 直传 |
+| 视频 / 音频 / PDF / 其他文件 | 任意非图片 | 不归 image_service |
 | 补丁 banner（moyu 历史） | —— | 已废除，改从 galgame wiki 的 `galgame.banner` 读取 |
 
 **硬规则**：image_service 只接受 `image/*` MIME（经 magic number 嗅探确认），上传输出**恒定为 WebP**。任何非图片文件请走调用方自己的直传链路。

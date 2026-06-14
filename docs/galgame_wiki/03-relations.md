@@ -2,9 +2,9 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/03-relations.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[02 — 版本历史 + PR](./02-revisions-and-prs.md) · 下一节：[04 — 分类轴 (Tag/Official/Engine/Series)](./04-taxonomy.md)
+> [文档索引](./README.md) · 上一节：[02 — 版本历史 + PR](./02-revisions-and-prs.md) · 下一节：[04 — 分类轴 (Tag/Official/Engine/Series)](./04-taxonomy.md)
 
-> 🔴 **下游强制范围**：本节的链接 / 别名 / 贡献者增删操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+> **下游强制范围**：本节的链接 / 别名 / 贡献者增删操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
 ## 链接
 
@@ -123,7 +123,7 @@
 | 字段 | covers | screenshots |
 |------|--------|-------------|
 | 主键 | `(galgame_id, image_hash)` | `(galgame_id, image_hash)` |
-| `sort_order=0` 唯一 | ✅（DB 强制部分唯一索引 `idx_galgame_cover_pinned WHERE sort_order=0`） | ❌（无约束） |
+| `sort_order=0` 唯一 | 是（DB 强制部分唯一索引 `idx_galgame_cover_pinned WHERE sort_order=0`） | 否（无约束） |
 | 派生展示字段 | `galgame.effective_banner_hash`（= `sort_order=0` 那张的 `image_hash`） | 无（前端按 `sort_order` 排序展示） |
 | 同 PR2 之前的 banner | 取代 `banner_image_hash`（PR5 退役） | 取代旧 album / preview 链接 |
 

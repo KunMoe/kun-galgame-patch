@@ -8,14 +8,14 @@
 
 | 站点 | 旧路径 | 类型 | 迁移策略 |
 |------|--------|------|---------|
-| kungal | `topic/user_${uid}/${userName}-${unixMS}.webp` | 内容型，markdown 硬编码 | ❌ **不迁移**，老桶只读永久保留 |
-| kungal | `avatar/user_${uid}/avatar.webp` | 实体型，DB 可查 | ❌ **不迁移**（见下方"已压缩老图豁免"原则） |
-| kungal | `avatar/user_${uid}/avatar-100.webp` | 派生图 | ❌ 不迁移（同上） |
-| moyu | `topic/user_${uid}/${userName}-${unixMS}.webp` | 同 kungal | ❌ 不迁移 |
-| moyu | `avatar/user_${uid}/avatar.webp` / `avatar.avif` | 实体型，DB 可查 | ❌ **不迁移**（同样豁免） |
-| moyu | `avatar/user_${uid}/avatar-mini.webp` / `avatar-mini.avif` | 派生图 | ❌ 不迁移 |
-| galgame wiki | `galgame/${gid}/banner/banner.webp` | 实体型，DB 可查 | ✅ **迁移** —— 需要新 `_mini` 460×259 变体 |
-| galgame wiki | `galgame/${gid}/banner/banner-mini.webp` | 派生图 | ❌ 丢弃（新服务以 `_mini` 变体重新生成） |
+| kungal | `topic/user_${uid}/${userName}-${unixMS}.webp` | 内容型，markdown 硬编码 | **不迁移**，老桶只读永久保留 |
+| kungal | `avatar/user_${uid}/avatar.webp` | 实体型，DB 可查 | **不迁移**（见下方"已压缩老图豁免"原则） |
+| kungal | `avatar/user_${uid}/avatar-100.webp` | 派生图 | 不迁移（同上） |
+| moyu | `topic/user_${uid}/${userName}-${unixMS}.webp` | 同 kungal | 不迁移 |
+| moyu | `avatar/user_${uid}/avatar.webp` / `avatar.avif` | 实体型，DB 可查 | **不迁移**（同样豁免） |
+| moyu | `avatar/user_${uid}/avatar-mini.webp` / `avatar-mini.avif` | 派生图 | 不迁移 |
+| galgame wiki | `galgame/${gid}/banner/banner.webp` | 实体型，DB 可查 | **迁移** —— 需要新 `_mini` 460×259 变体 |
+| galgame wiki | `galgame/${gid}/banner/banner-mini.webp` | 派生图 | 丢弃（新服务以 `_mini` 变体重新生成） |
 
 ### 已压缩老图豁免原则
 
@@ -52,7 +52,7 @@ kungal / moyu 的所有历史图片（topic 图床 + 用户头像）都按同一
 
 **最终方案**：
 
-> 🔒 **kungal / moyu 老 avatar / topic 老 URL 永久保留只读，不迁移、不 rewrite、不二次压缩。新上传全部走新服务，新老数据自然分野。**
+> **kungal / moyu 老 avatar / topic 老 URL 永久保留只读，不迁移、不 rewrite、不二次压缩。新上传全部走新服务，新老数据自然分野。**
 
 理由：
 - 二次压缩对已是 WebP@82 的图只会让画质退化，没有任何收益
@@ -90,7 +90,7 @@ uploadToImageService(file) → 写 users.avatar_image_hash
 
 ### 阶段 2：调用方侧迁移（仅对必须迁移的字段）
 
-> 🔧 **平台侧不提供迁移脚本**。原因：迁移的本质是"翻转业务库的外键"，而**只有调用方知道哪个老 URL 属于哪个 entity**。平台再多扫桶 / 写 `images` 表也替代不了调用方那条 `UPDATE galgame SET banner_image_hash = ? WHERE id = ?`。让调用方直接走标准 `POST /image/upload` API 一步到位最简单。
+> **平台侧不提供迁移脚本**。原因：迁移的本质是"翻转业务库的外键"，而**只有调用方知道哪个老 URL 属于哪个 entity**。平台再多扫桶 / 写 `images` 表也替代不了调用方那条 `UPDATE galgame SET banner_image_hash = ? WHERE id = ?`。让调用方直接走标准 `POST /image/upload` API 一步到位最简单。
 >
 > image_service 的 sha256 内容寻址 + 跨站去重已经保证：第二次以同样 bytes 调 `Upload` 是 dedup-hit（不重处理、不重存）。
 
@@ -271,13 +271,13 @@ func recordFailure(db *sql.DB, gid int64, attempts int16, cause error) {
 
 **骨架特性**：
 
-- ✅ **死链跳过**：`banner_migration_status != 2` 把重复失败 ≥ 3 次的行排除；不会无限重试
-- ✅ **断点续跑**：`banner_image_hash IS NULL` + 状态过滤是天然幂等谓词
-- ✅ **配额超限自动退出**：`errors.Is(err, imageclient.ErrQuotaExceeded)` 命中就 break，避免在 429 上空转 1 万次
-- ✅ **进度可观测**：每 1000 行 INFO 一行，含速率和 elapsed
-- ✅ **收尾自动 ping**：迁移结束前把所有刚成功的 hash 显式 `ReferencePing` 一次
-- ✅ **不删 `banner_url_legacy`**：保留作前端回退兜底（阶段 3）；半年观察期后再决定是否清字段
-- ✅ **失败明细表**：`image_migration_log` 留事后排查（必要时人工 fix 后清 status 让脚本重试）
+- **死链跳过**：`banner_migration_status != 2` 把重复失败 ≥ 3 次的行排除；不会无限重试
+- **断点续跑**：`banner_image_hash IS NULL` + 状态过滤是天然幂等谓词
+- **配额超限自动退出**：`errors.Is(err, imageclient.ErrQuotaExceeded)` 命中就 break，避免在 429 上空转 1 万次
+- **进度可观测**：每 1000 行 INFO 一行，含速率和 elapsed
+- **收尾自动 ping**：迁移结束前把所有刚成功的 hash 显式 `ReferencePing` 一次
+- **不删 `banner_url_legacy`**：保留作前端回退兜底（阶段 3）；半年观察期后再决定是否清字段
+- **失败明细表**：`image_migration_log` 留事后排查（必要时人工 fix 后清 status 让脚本重试）
 
 **预估耗时（galgame wiki banner 示例）**：
 

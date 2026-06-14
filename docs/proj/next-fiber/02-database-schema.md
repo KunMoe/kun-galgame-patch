@@ -1,6 +1,6 @@
 # 数据库 Schema 与 GORM 模型映射
 
-> **⚠️ 变更（2026-04-21）：Galgame 元数据外移到 Wiki Service**
+> **变更（2026-04-21）：Galgame 元数据外移到 Wiki Service**
 >
 > 以下 Prisma schema 文件的所有模型**不再在本项目中实现**，对应的 Go 模型/仓储/迁移均跳过：
 >

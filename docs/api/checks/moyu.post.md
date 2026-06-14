@@ -10,8 +10,8 @@
 
 ## 图例（简）
 
-审计：✅ 无问题 · 🔧 已修 · ⏭️ 有意保持 · ⏳ 待审计 · 🆕 新增
-鉴权：🌐 公开 · 🔐 OptionalAuth · 🔒 登录 · 🛡️ admin/mod · ⚙️ 仅 admin · ⏱️ 限流
+审计：对齐 = 无问题 · 已修 = 已修复 · 保持 = 有意保持 · 待审计 · 新增
+鉴权：公开 · 可选登录 = OptionalAuth · 登录 · 管理 = admin/mod · 仅admin · 限流
 
 ## 统计
 
@@ -24,28 +24,28 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/auth/oauth/callback` | 🌐 | `authH.OAuthCallback` | ✅ | 校验/换码错误路径实测；成功路径需真实 OAuth code（静态核对，banned→10014→/account-banned）|
-| `POST /api/v1/auth/logout` | 🌐 | `authH.Logout` | ✅ | 未实测（会销毁审计会话）；静态核对：revoke refresh_token + 销毁 session + 清 cookie |
-| `POST /api/v1/auth/me/avatar` | 🔒 | `authH.UploadAvatar` | ✅ | 代理 OAuth multipart（raw body 透传，boundary 存活）；无文件→OAuth 原样回 400 实测 |
+| `POST /api/v1/auth/oauth/callback` | 公开 | `authH.OAuthCallback` | 对齐 | 校验/换码错误路径实测；成功路径需真实 OAuth code（静态核对，banned→10014→/account-banned）|
+| `POST /api/v1/auth/logout` | 公开 | `authH.Logout` | 对齐 | 未实测（会销毁审计会话）；静态核对：revoke refresh_token + 销毁 session + 清 cookie |
+| `POST /api/v1/auth/me/avatar` | 登录 | `authH.UploadAvatar` | 对齐 | 代理 OAuth multipart（raw body 透传，boundary 存活）；无文件→OAuth 原样回 400 实测 |
 
 ## 2. 补丁 / 评论 / 资源 `/patch`
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/patch/` | 🔒 | `patchH.CreatePatch` | ✅ | `{vndb_id}`→`{id}`；缺失走 44001 CTA；+3 萌萌点幂等(`moyu:patch_create:<id>`)|
-| `POST /api/v1/patch/:id/comment` | 🔒 | `patchH.CreateComment` | 🔧 | **CRITICAL**：DTO `galgame_id` 标 `required`，校验早于路径注入→评论恒 422 不可用。改 `omitempty`（实测创建成功，已回滚测试数据）|
-| `POST /api/v1/patch/:id/resource` | 🔒 | `patchH.CreateResource` | ✅ | s3 分支校验 key 前缀；+3 萌萌点(`moyu:resource_publish:<id>`)、贡献者、通知收藏者（去重）|
+| `POST /api/v1/patch/` | 登录 | `patchH.CreatePatch` | 对齐 | `{vndb_id}`→`{id}`；缺失走 44001 CTA；+3 萌萌点幂等(`moyu:patch_create:<id>`)|
+| `POST /api/v1/patch/:id/comment` | 登录 | `patchH.CreateComment` | 已修 | **CRITICAL**：DTO `galgame_id` 标 `required`，校验早于路径注入→评论恒 422 不可用。改 `omitempty`（实测创建成功，已回滚测试数据）|
+| `POST /api/v1/patch/:id/resource` | 登录 | `patchH.CreateResource` | 对齐 | s3 分支校验 key 前缀；+3 萌萌点(`moyu:resource_publish:<id>`)、贡献者、通知收藏者（去重）|
 
 ## 3. Galgame 投稿 / 编辑代理 `/galgame`（→ Wiki）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/galgame/submit` | 🔒 | `patchH.SubmitGalgame` | ✅ | 代理 Wiki，回传 20003/4/6/7/8/9 |
-| `POST /api/v1/galgame/:gid/claim` | 🔒 | `patchH.ClaimGalgame` | ✅ | +3 萌萌点；RegisterClaimedGalgame 已存在则 early-return，无重复奖励（实测）|
-| `POST /api/v1/galgame/:gid/revert` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理（Wiki 强制 admin/mod）|
-| `POST /api/v1/galgame/:gid/prs` | 🔒 | `patchH.WikiPRSubmit` | ✅ | JSON / multipart(`data`+`file` banner) 均支持，10MB 上限 |
-| `POST /api/v1/galgame/:gid/links` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理（Wiki 强制 owner/admin）|
-| `POST /api/v1/galgame/:gid/aliases` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `POST /api/v1/galgame/submit` | 登录 | `patchH.SubmitGalgame` | 对齐 | 代理 Wiki，回传 20003/4/6/7/8/9 |
+| `POST /api/v1/galgame/:gid/claim` | 登录 | `patchH.ClaimGalgame` | 对齐 | +3 萌萌点；RegisterClaimedGalgame 已存在则 early-return，无重复奖励（实测）|
+| `POST /api/v1/galgame/:gid/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理（Wiki 强制 admin/mod）|
+| `POST /api/v1/galgame/:gid/prs` | 登录 | `patchH.WikiPRSubmit` | 对齐 | JSON / multipart(`data`+`file` banner) 均支持，10MB 上限 |
+| `POST /api/v1/galgame/:gid/links` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理（Wiki 强制 owner/admin）|
+| `POST /api/v1/galgame/:gid/aliases` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
 
 ## 4. 分类代理 `/tag /official /engine /series`（→ Wiki）
 
@@ -53,63 +53,63 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/tag` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/official` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/engine` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/series/modal` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理（literal 先于 `:id`）|
-| `POST /api/v1/series` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `POST /api/v1/tag` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/official` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/engine` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/series/modal` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理（literal 先于 `:id`）|
+| `POST /api/v1/series` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
 
 ### 4.2 回滚（4 = 4 实体 × 1）—— Wiki 强制 admin/mod
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/tag/:id/revert` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/official/:id/revert` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/engine/:id/revert` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
-| `POST /api/v1/series/:id/revert` | 🔒 | `patchH.WikiEditProxy` | ⏭️ | 代理 |
+| `POST /api/v1/tag/:id/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/official/:id/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/engine/:id/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+| `POST /api/v1/series/:id/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
 
 ## 5. 用户 `/user`
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/user/image` | 🔒 | `userH.UploadImage` | ✅ | 文件上传未实测；`daily_image_count` 限 20/日；被 `/upload/image-service` 取代，无 FE 调用方 |
-| `POST /api/v1/user/check-in` | 🔒 | `userH.CheckIn` | ✅ | `{moemoepoint}`；DB flag 先置位再异步发奖（幂等键 `moyu:checkin:<uid>:<date>`，replay-safe）|
+| `POST /api/v1/user/image` | 登录 | `userH.UploadImage` | 对齐 | 文件上传未实测；`daily_image_count` 限 20/日；被 `/upload/image-service` 取代，无 FE 调用方 |
+| `POST /api/v1/user/check-in` | 登录 | `userH.CheckIn` | 对齐 | `{moemoepoint}`；DB flag 先置位再异步发奖（幂等键 `moyu:checkin:<uid>:<date>`，replay-safe）|
 
 ## 6. 消息 `/message`（组级 `auth`）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| ~~`POST /api/v1/message/`~~ | ~~🔒~~ | ~~`messageH.CreateMessage`~~ | 🔧 | **已删除**：任意登录用户可向任意收件箱写任意通知（recipient_id 可控、无限流、无 FE 调用方）—— 垃圾/钓鱼面。整条死链一并移除 |
+| ~~`POST /api/v1/message/`~~ | ~~登录~~ | ~~`messageH.CreateMessage`~~ | 已修 | **已删除**：任意登录用户可向任意收件箱写任意通知（recipient_id 可控、无限流、无 FE 调用方）—— 垃圾/钓鱼面。整条死链一并移除 |
 
 ## 7. 管理 `/admin`
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/admin/user/:id/purge` | ⚙️ | `adminH.PurgeUser` | ✅ | 未执行（不可逆）；静态核对：单事务、清 RESTRICT FK、重算计数、撤销 session，admin-only |
+| `POST /api/v1/admin/user/:id/purge` | 仅admin | `adminH.PurgeUser` | 对齐 | 未执行（不可逆）；静态核对：单事务、清 RESTRICT FK、重算计数、撤销 session，admin-only |
 
 ## 8. 聊天 `/chat`（组级 `auth`）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/chat/room` | 🔒 | `chatH.CreateRoom` | ✅ | admin-only（`HasRole("admin")`）；无 FE 调用方 |
-| `POST /api/v1/chat/room/join` | 🔒 | `chatH.JoinRoom` | ✅ | OnConflict DoNothing 幂等 |
-| `POST /api/v1/chat/room/private` | 🔒 | `chatH.StartPrivate` | ✅ | 自聊双重拦截；link 归一 `<low>-<high>`；唯一索引 + race fallback |
-| `POST /api/v1/chat/room/:link/message` | 🔒 | `chatH.CreateMessage` | ✅ | 空内容+空文件拒；返回富化单条 |
-| `POST /api/v1/chat/message/:id/reaction` | 🔒 | `chatH.ToggleReaction` | 🔧 | **IDOR**：原未校验房间成员，可对私聊房间他人消息加表情（实测复现）→ 加 `IsMember` 校验 |
+| `POST /api/v1/chat/room` | 登录 | `chatH.CreateRoom` | 对齐 | admin-only（`HasRole("admin")`）；无 FE 调用方 |
+| `POST /api/v1/chat/room/join` | 登录 | `chatH.JoinRoom` | 对齐 | OnConflict DoNothing 幂等 |
+| `POST /api/v1/chat/room/private` | 登录 | `chatH.StartPrivate` | 对齐 | 自聊双重拦截；link 归一 `<low>-<high>`；唯一索引 + race fallback |
+| `POST /api/v1/chat/room/:link/message` | 登录 | `chatH.CreateMessage` | 对齐 | 空内容+空文件拒；返回富化单条 |
+| `POST /api/v1/chat/message/:id/reaction` | 登录 | `chatH.ToggleReaction` | 已修 | **IDOR**：原未校验房间成员，可对私聊房间他人消息加表情（实测复现）→ 加 `IsMember` 校验 |
 
 ## 9. 上传 `/upload`（组级 `auth`，D10：minio-go 预签名直传）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/upload/small/init` | 🔒 | `uploadH.InitSmall` | ✅ | 扩展名白名单 + 200MB + 配额预检；shape 对齐（实测）|
-| `POST /api/v1/upload/small/complete` | 🔒 | `uploadH.CompleteSmall` | 🔧 | 幂等标记早于扣减→扣减瞬时失败后重试不扣配额。改：失败 defer 释放标记 |
-| `POST /api/v1/upload/multipart/init` | 🔒 | `uploadH.InitMultipart` | 🔧 | `part_count` 未与 `file_size` 核对（放大）→ 强制 `== ceil(size/10MiB)`（实测）|
-| `POST /api/v1/upload/multipart/complete` | 🔒 | `uploadH.CompleteMultipart` | 🔧 | 同 small/complete（共用 `verifyAndFinalize`）|
-| `POST /api/v1/upload/multipart/abort` | 🔒 | `uploadH.AbortMultipart` | ✅ | 无配额；key 为不可猜随机串 |
-| `POST /api/v1/upload/image-service` | 🔒 | `uploadH.UploadImageService` | ✅ | 校验实测；真实上传需上游 image_service（静态核对，UploadResult 对齐）|
+| `POST /api/v1/upload/small/init` | 登录 | `uploadH.InitSmall` | 对齐 | 扩展名白名单 + 200MB + 配额预检；shape 对齐（实测）|
+| `POST /api/v1/upload/small/complete` | 登录 | `uploadH.CompleteSmall` | 已修 | 幂等标记早于扣减→扣减瞬时失败后重试不扣配额。改：失败 defer 释放标记 |
+| `POST /api/v1/upload/multipart/init` | 登录 | `uploadH.InitMultipart` | 已修 | `part_count` 未与 `file_size` 核对（放大）→ 强制 `== ceil(size/10MiB)`（实测）|
+| `POST /api/v1/upload/multipart/complete` | 登录 | `uploadH.CompleteMultipart` | 已修 | 同 small/complete（共用 `verifyAndFinalize`）|
+| `POST /api/v1/upload/multipart/abort` | 登录 | `uploadH.AbortMultipart` | 对齐 | 无配额；key 为不可猜随机串 |
+| `POST /api/v1/upload/image-service` | 登录 | `uploadH.UploadImageService` | 对齐 | 校验实测；真实上传需上游 image_service（静态核对，UploadResult 对齐）|
 
 ## 10. 搜索
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `POST /api/v1/search` | 🌐 | `searchH.Search` | ✅ | 代理 Wiki Meilisearch；shape 对齐 |
+| `POST /api/v1/search` | 公开 | `searchH.Search` | 对齐 | 代理 Wiki Meilisearch；shape 对齐 |

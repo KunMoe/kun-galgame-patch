@@ -4,7 +4,7 @@
 
 # 03 — API 设计
 
-> ⚠️ **更正（2026-06，以代码为准）**：`DELETE /image/:hash`（调用方软删）与 admin 端点 `/api/v1/admin/image/*`（list / stats / :hash/review / :hash）**均已实现**；`GET /healthz` 实际只返回 `{"status":"ok"}`（无 postgres/storage/redis 级联）。下文 §5 标「V3」、「V1 不提供 DELETE」、healthz 级联依赖均为早期设计。
+> **更正（2026-06，以代码为准）**：`DELETE /image/:hash`（调用方软删）与 admin 端点 `/api/v1/admin/image/*`（list / stats / :hash/review / :hash）**均已实现**；`GET /healthz` 实际只返回 `{"status":"ok"}`（无 postgres/storage/redis 级联）。下文 §5 标「V3」、「V1 不提供 DELETE」、healthz 级联依赖均为早期设计。
 
 ## 基础约定
 
@@ -22,7 +22,7 @@
 
 ## 错误响应
 
-> ⚠️ 本节已对齐实现（2026-05 核对）。早期草案写的是嵌套
+> 本节已对齐实现（2026-05 核对）。早期草案写的是嵌套
 > `{"error":{"code":"quota_exceeded"}}`（字符串 code）——**那是过期设计，
 > 从未落地**。实际服务端走全系统统一的扁平信封 `pkg/response`，`code` 是
 > **整数**。`pkg/imageclient` 也按整数 `code` 解析/分类，二者一致（moyu 的 `pkg/imageclient` 曾按旧草案解析导致上传成功却回空 hash/url，2026-05-30 已修正）。
@@ -99,8 +99,8 @@ avatar
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `file` | file | ✅ | 图片二进制，支持 `image/jpeg` `image/png` `image/webp` `image/gif`（首帧） |
-| `preset` | string | ✅ | 处理预设名（`avatar` / `galgame_banner` / `topic`），必须在本站 `image_allowed_presets` 中 |
+| `file` | file | 是 | 图片二进制，支持 `image/jpeg` `image/png` `image/webp` `image/gif`（首帧） |
+| `preset` | string | 是 | 处理预设名（`avatar` / `galgame_banner` / `topic`），必须在本站 `image_allowed_presets` 中 |
 
 > **注意**：V1 **不接受** `keep_original` 参数（主图永远是 `webp@82 fit 1920×1080`）。未来如需保留原图，新加 preset 或字段。
 
@@ -416,9 +416,9 @@ Prometheus 指标端点（标准 Go runtime + 自定义业务指标）。
 显式说明 **V1 故意不提供**：
 
 - `DELETE /image/:hash` — **更正：现已提供调用方软删**（见顶部更正）；admin 强删走 `/api/v1/admin/image/:hash`
-- ❌ `POST /image/upload-ticket` — V1 无前端直传，不需要签发临时凭证
-- ❌ `GET /image/:hash/variants/*` — 变体是固定静态 URL，不需要查询端点
-- ❌ Raw body 上传（`POST` + `Content-Type: image/*` + header `X-Preset`）——见上文 §1 body 格式说明
+- `POST /image/upload-ticket` — V1 无前端直传，不需要签发临时凭证
+- `GET /image/:hash/variants/*` — 变体是固定静态 URL，不需要查询端点
+- Raw body 上传（`POST` + `Content-Type: image/*` + header `X-Preset`）——见上文 §1 body 格式说明
 
 ## CORS
 

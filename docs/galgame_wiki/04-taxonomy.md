@@ -2,9 +2,9 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/04-taxonomy.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md) · 下一节：[05 — 搜索](./05-search.md)
+> [文档索引](./README.md) · 上一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md) · 下一节：[05 — 搜索](./05-search.md)
 
-> 🔴 **下游强制范围**：本节 tag / official / engine / series 的增删改查（含本次新增的 `POST /tag` `POST /official` `POST /engine` 与各 `DELETE`），**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端「选已有/没有就新建」UI，功能与 wiki 对齐，不得只做子集）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+> **下游强制范围**：本节 tag / official / engine / series 的增删改查（含本次新增的 `POST /tag` `POST /official` `POST /engine` 与各 `DELETE`），**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端「选已有/没有就新建」UI，功能与 wiki 对齐，不得只做子集）。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
 ## 标签 (Tag)
 
@@ -17,7 +17,7 @@
 | page | int | 1 | 页码 |
 | limit | int | 50 | 每页数量（max 100） |
 
-> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `tag.tag` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游可在 galgame 详情页直接渲染"标签 +N" badge，**不再需要为每个嵌入 tag 单独发 `GET /tag/:name` 请求**。同款扩展也加到了 `official` 和 `engine`，见下文。
+> **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `tag.tag` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游可在 galgame 详情页直接渲染"标签 +N" badge，**不再需要为每个嵌入 tag 单独发 `GET /tag/:name` 请求**。同款扩展也加到了 `official` 和 `engine`，见下文。
 
 ### GET /tag/search
 
@@ -58,7 +58,7 @@
 
 标签详情 + 关联的 galgame 列表。
 
-> ⚠️ **`:name` 路径段仅用于 URL 美观 / 分享**（如 `/tag/校园?tag_id=42`），实际的查询条件是 `tag_id` query 参数。后端不读 `:name`，传任意字符串都会按 `tag_id` 查找。这与 Wikipedia 的 `/wiki/Article_Name?oldid=N` 设计一致。
+> **`:name` 路径段仅用于 URL 美观 / 分享**（如 `/tag/校园?tag_id=42`），实际的查询条件是 `tag_id` query 参数。后端不读 `:name`，传任意字符串都会按 `tag_id` 查找。这与 Wikipedia 的 `/wiki/Article_Name?oldid=N` 设计一致。
 
 **查询参数**：
 
@@ -134,7 +134,7 @@
 
 开发商列表。**查询参数**：`page`, `limit`
 
-> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `official` / `engine` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游不再需要为渲染"会社名 +N 部作品" badge 而对每个嵌入的 official 单独发一次 `GET /official/:name` 请求。
+> **2026-05-22 (K-PR)**：`galgame_count` 字段（已发布作品数）现在**也会同步出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应嵌入的 `official` / `engine` 对象上**。两处计数口径完全一致（同款 `LEFT JOIN ... COUNT(*) WHERE status = 0` 子查询）。下游不再需要为渲染"会社名 +N 部作品" badge 而对每个嵌入的 official 单独发一次 `GET /official/:name` 请求。
 
 ### GET /official/search
 
@@ -151,7 +151,7 @@
 
 详情 + 关联 galgame。
 
-> ⚠️ **`:name` 路径段仅用于 URL 美观**，实际查询字段是 `official_id` query 参数（同 [GET /tag/:name](#get-tagname) 的设计）。
+> **`:name` 路径段仅用于 URL 美观**，实际查询字段是 `official_id` query 参数（同 [GET /tag/:name](#get-tagname) 的设计）。
 
 **查询参数**：
 
@@ -216,13 +216,13 @@
 
 全量列表（数据量小，不分页）。
 
-> 🆕 **2026-05-22 (K-PR)**：`galgame_count` 同时也会出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应里每个 `engine.engine` 对象上，见上面 "GET /official" 同款说明。
+> **2026-05-22 (K-PR)**：`galgame_count` 同时也会出现在 [`GET /galgame/:gid`](./01-galgame.md#get-galgamegid) 详情响应里每个 `engine.engine` 对象上，见上面 "GET /official" 同款说明。
 
 ### GET /engine/:name
 
 详情 + 关联 galgame。
 
-> ⚠️ **`:name` 路径段仅用于 URL 美观**，实际查询字段是 `engine_id` query 参数（同 [GET /tag/:name](#get-tagname) 的设计）。
+> **`:name` 路径段仅用于 URL 美观**，实际查询字段是 `engine_id` query 参数（同 [GET /tag/:name](#get-tagname) 的设计）。
 
 **查询参数**：
 
@@ -335,7 +335,7 @@
 
 ## 修订与回滚（PR4 新增，4 实体同款）
 
-> 🟢 **ADDITIVE — taxonomy 编辑现已全量审计 + 可 revert**：
+> **ADDITIVE — taxonomy 编辑现已全量审计 + 可 revert**：
 > 每次 tag/official/engine/series 的 create / update / delete 都会写一条 `taxonomy_revision` 行（多态单表：`entity` 列区分）。下面 4 实体 × 3 端点 = 12 条新路由，shape **完全一致**。
 > 详见 [00-handbook §15 ADDITIVE 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖) + [`docs/galgame_wiki/01-revision-system-design.md §14`](../../galgame_wiki/01-revision-system-design.md)。
 

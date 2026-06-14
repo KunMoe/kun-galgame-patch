@@ -81,7 +81,7 @@ OAuth Server 重定向回 redirect_uri，带上 code 和 state
 完成登录
 ```
 
-> 📝 **注册流程是登录流程的超集**：用户点"注册"按钮时，跳转目标从 `/oauth/authorize?<params>` 换成 `/auth/register?redirect=<encoded(/oauth/authorize?<params>)>`。OAuth web 注册成功后会自动把用户串到 `/oauth/authorize`，第一方 client（`auto_consent=true`）跳过同意页直接发 code，剩下的流程和登录完全相同。详见 [05-registration.md](./05-registration.md)。下游可以把"登录"和"注册"两个按钮共用同一段 PKCE 生成代码，只把跳转 URL 拼接方式区分开。
+> **注册流程是登录流程的超集**：用户点"注册"按钮时，跳转目标从 `/oauth/authorize?<params>` 换成 `/auth/register?redirect=<encoded(/oauth/authorize?<params>)>`。OAuth web 注册成功后会自动把用户串到 `/oauth/authorize`，第一方 client（`auto_consent=true`）跳过同意页直接发 code，剩下的流程和登录完全相同。详见 [05-registration.md](./05-registration.md)。下游可以把"登录"和"注册"两个按钮共用同一段 PKCE 生成代码，只把跳转 URL 拼接方式区分开。
 
 ---
 

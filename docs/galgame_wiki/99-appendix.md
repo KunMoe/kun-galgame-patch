@@ -2,7 +2,7 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/99-appendix.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[06 — 管理统计](./06-admin.md)
+> [文档索引](./README.md) · 上一节：[06 — 管理统计](./06-admin.md)
 
 ## 错误码
 
@@ -87,7 +87,7 @@
 | **CRUD 触发** | write-through Hook | 每次 Galgame / Tag / Official 创建或编辑成功后启 goroutine upsert 到 MS；fire-and-forget，失败只 log |
 | **手动批量** | `cmd/reindex-search` | 全量从 Postgres 重建索引；唯一的 backfill 路径 |
 
-### 🔴 fresh Meilisearch 实例（无 `data.ms`）必须做的一步
+### fresh Meilisearch 实例（无 `data.ms`）必须做的一步
 
 **默认情况下，wiki 服务启动时不会自动从 Postgres 推文档到 MS。** 这是 by design 的"撤销=重跑"哲学，避免每次启动都跑 1 分钟的全量重建。
 

@@ -30,35 +30,35 @@
 
 | 状态 | 发现 | 说明 |
 |---|---|---|
-| 🔧 已修 + 实测 | **F004** | `CreateMessage` 校验引用消息属于本房间 + `enrichMessages` 按房间过滤引用。实测：跨房间引用 → `400 无效的引用消息`（0 行写入），同房间引用 → 200 正常 |
-| 🔧 已修 | **GPT-H01** | `pkg/imageclient` 改解 `{code,message,data}` 信封（成功取 `data`，错误取扁平 `{code,message}` + 整数码映射）；订正 `docs/image_service/03-api-design.md`。（image_service 当前未运行，按 image_service 自带测试确认的信封 + 代码逻辑核对；上传链路待上游起来后实测）|
-| 🔧 已修 | **F025** | wiki 同步改**逐消息事务**：保留 exactly-once，但在途 OAuth HTTP 从单事务最多 1000 次降为每事务 1 次，消除连接钉死/整页毒化 |
-| 🔧 已修 + 实测 | **F029** | follow/unfollow 的关系写入 + 计数更新合进单事务。实测：follow/unfollow 计数与关系表精确同步、无关系 unfollow 被拒（计数不变）、FK→`用户不存在` |
-| 🔧 已修 + 实测 | **GPT-M03 / F069** | `/resource/:id`、`/patch/resource/:id/download` 加 `optionalAuth + RateLimit(60/min)`。实测 `/resource/:id`：60 通过后 429 |
-| 🔧 已修 + 实测 | **GPT-M04** | 签到改 `WHERE daily_check_in=0` 原子 check-and-set。实测：首次 `{moemoepoint:4}`、立即再签 → `already checked in today` |
-| 🔧 已修 | **F066** | `CreateUser` 用 `ON CONFLICT DO NOTHING` + 回查规范行（并发首登不再 500）|
-| 🔧 已修 | **F068** | nil `target_user_id` 的可执行消息记 `slog.Warn` |
-| 🔧 已修 | **F070** | 评论被赞接上 `CreateLikeCommentNotification`（去重）|
-| 🔧 已修 | **F073** | room list 的 `LatestMessagePerRoom` 错误改为记日志 |
-| 🔧 已修 | **F074** | 四个 profile 计数 helper 改为出错记日志（不再静默 0）|
-| 🔧 已修 | **F075** | `GetOrphanPatches` 捕获 count 错误 → 失败返回 500 而非假 0 |
-| 🔧 已修 | **F077** | refresh 永久拒集合加入 `10014/15005/15008`，不再只靠 HTTP 状态码 |
-| 🔧 已修 | **F083** | `GetRandomPatch` 对 `ErrRecordNotFound` 返回 404 而非 500 |
-| 🔧 已修 | **F085** | cron `WithLocation(Asia/Shanghai)` + 签到键日期对齐同时区 |
-| 🔧 已修 | **GPT-L02** | `KUN_IMAGE_SERVICE_BASE_URL`/`KUN_IMAGE_CDN_BASE` 在 prod 模式 fail-fast；`.env.example` 补齐 `KUN_IMAGE_*` |
-| 🔧 部分修 | **F034** | 三个 toggle 端点（评论/资源/收藏点赞）的 not-found 由 400 改 404（其 service 仅返回 not-found，安全）。其余 ~20 处错误映射的广面治理（typed error 化）留待后续——改动面大且可能影响前端依赖的业务文案 |
-| ⏭️ 保留 | **F067** | 可逆奖励按 relation id 作幂等键：与全仓 best-effort 发奖设计一致，accept-and-document（同 §1 备注）|
-| ⏭️ 保留 | **F072 · F024/F032** | 见 [§二 有意保持](#二有意by-design-可接受--机制属实但为有意权衡)：聊天全局审核删除、下游"仅验签"封禁滞后窗口 |
+| 已修 + 实测 | **F004** | `CreateMessage` 校验引用消息属于本房间 + `enrichMessages` 按房间过滤引用。实测：跨房间引用 → `400 无效的引用消息`（0 行写入），同房间引用 → 200 正常 |
+| 已修 | **GPT-H01** | `pkg/imageclient` 改解 `{code,message,data}` 信封（成功取 `data`，错误取扁平 `{code,message}` + 整数码映射）；订正 `docs/image_service/03-api-design.md`。（image_service 当前未运行，按 image_service 自带测试确认的信封 + 代码逻辑核对；上传链路待上游起来后实测）|
+| 已修 | **F025** | wiki 同步改**逐消息事务**：保留 exactly-once，但在途 OAuth HTTP 从单事务最多 1000 次降为每事务 1 次，消除连接钉死/整页毒化 |
+| 已修 + 实测 | **F029** | follow/unfollow 的关系写入 + 计数更新合进单事务。实测：follow/unfollow 计数与关系表精确同步、无关系 unfollow 被拒（计数不变）、FK→`用户不存在` |
+| 已修 + 实测 | **GPT-M03 / F069** | `/resource/:id`、`/patch/resource/:id/download` 加 `optionalAuth + RateLimit(60/min)`。实测 `/resource/:id`：60 通过后 429 |
+| 已修 + 实测 | **GPT-M04** | 签到改 `WHERE daily_check_in=0` 原子 check-and-set。实测：首次 `{moemoepoint:4}`、立即再签 → `already checked in today` |
+| 已修 | **F066** | `CreateUser` 用 `ON CONFLICT DO NOTHING` + 回查规范行（并发首登不再 500）|
+| 已修 | **F068** | nil `target_user_id` 的可执行消息记 `slog.Warn` |
+| 已修 | **F070** | 评论被赞接上 `CreateLikeCommentNotification`（去重）|
+| 已修 | **F073** | room list 的 `LatestMessagePerRoom` 错误改为记日志 |
+| 已修 | **F074** | 四个 profile 计数 helper 改为出错记日志（不再静默 0）|
+| 已修 | **F075** | `GetOrphanPatches` 捕获 count 错误 → 失败返回 500 而非假 0 |
+| 已修 | **F077** | refresh 永久拒集合加入 `10014/15005/15008`，不再只靠 HTTP 状态码 |
+| 已修 | **F083** | `GetRandomPatch` 对 `ErrRecordNotFound` 返回 404 而非 500 |
+| 已修 | **F085** | cron `WithLocation(Asia/Shanghai)` + 签到键日期对齐同时区 |
+| 已修 | **GPT-L02** | `KUN_IMAGE_SERVICE_BASE_URL`/`KUN_IMAGE_CDN_BASE` 在 prod 模式 fail-fast；`.env.example` 补齐 `KUN_IMAGE_*` |
+| 部分修 | **F034** | 三个 toggle 端点（评论/资源/收藏点赞）的 not-found 由 400 改 404（其 service 仅返回 not-found，安全）。其余 ~20 处错误映射的广面治理（typed error 化）留待后续——改动面大且可能影响前端依赖的业务文案 |
+| 保留 | **F067** | 可逆奖励按 relation id 作幂等键：与全仓 best-effort 发奖设计一致，accept-and-document（同 §1 备注）|
+| 保留 | **F072 · F024/F032** | 见 [§二 有意保持](#二有意by-design-可接受--机制属实但为有意权衡)：聊天全局审核删除、下游"仅验签"封禁滞后窗口 |
 
 > 注：本仓 API 端点字段审计（`docs/api/checks/`）的修复在 2026-05-29 已完成并标注；本节是 2026-05-30 对上述跨仓审计 OPEN 项的修复。
 
-> ⚠️ **两条 HIGH 建议优先修复**：`F004`（聊天引用预览泄露任意私聊消息内容+发送者名，IDOR）、`GPT-H01`（图床客户端解析错信封 → 上传成功却回空 hash/url，截图/编辑器配图静默坏图）。两者本仓今日 API 审计**未覆盖**。
+> **两条 HIGH 建议优先修复**：`F004`（聊天引用预览泄露任意私聊消息内容+发送者名，IDOR）、`GPT-H01`（图床客户端解析错信封 → 上传成功却回空 hash/url，截图/编辑器配图静默坏图）。两者本仓今日 API 审计**未覆盖**。
 
 ---
 
 ## 一、成立（OPEN）— 建议处理
 
-### 🔴 高危
+### 高危
 
 #### F004 · 聊天 `reply_to_id` 未做房间归属校验 → 引用预览泄露任意私聊消息（IDOR）
 
@@ -78,9 +78,9 @@
   - 误导根源：本仓 `docs/image_service/03-api-design.md`（约 97-110 行）画的是**无信封**的成功体（且把错误体画成 `{error:{...}}`），与运行中的服务（`{code,message,data}`，错误也是 `{code,message}`）都不一致 —— 客户端的成功体**和**错误体解析双双照这份过期文档写错了。
 - 影响：`POST /api/v1/upload/image-service`（截图编辑器/milkdown 配图，`apps/web` 的 `useGalgameEdit.ts` 读 `data.hash/url/variant_urls`）上传成功却拿到空 hash/url → 插入空图/坏图。**静默失败**。
 - 修复：`client.go:163` 改解 `var env struct{ Data UploadResult \`json:"data"\` }` 取 `env.Data`（对齐权威 SDK）；并订正 `docs/image_service/03-api-design.md` 的信封。
-- 备注：GPT 原报告还点了 `/img` URL helper（`MainURL`/`VariantURL`），经核对这些 helper 在上传路径**未被调用**（dead code），真正的 bug 是上面的**信封不匹配**。今日 API 审计把该端点标了 ✅ 但注明“上游未实测”——正是没实测才漏了它。
+- 备注：GPT 原报告还点了 `/img` URL helper（`MainURL`/`VariantURL`），经核对这些 helper 在上传路径**未被调用**（dead code），真正的 bug 是上面的**信封不匹配**。今日 API 审计把该端点标了通过 但注明“上游未实测”——正是没实测才漏了它。
 
-### 🟠 中危
+### 中危
 
 #### F025 · wiki 同步在单个 DB 事务内串行调用 OAuth 发奖 HTTP（I/O-in-tx，最大批 1000）
 
@@ -88,7 +88,7 @@
 - 影响：OAuth 慢/抖时，一次 cron tick 可让单个 Postgres 事务持开数十秒（受 `cron.go` 2min ctx 上限），串行 ≤1000 次 HTTP，钉住连接 + 持锁；一条坏消息回滚整页、每 tick 重复中毒。正确性（幂等）无损，是**可用性/运维**风险。
 - 修复：事务内只做幂等 INSERT + 通知写入；发奖 + 缓存镜像移到 commit 之后用 `Awarder.Award`（已为 post-commit、按稳定键 `moyu:wiki_approved:<id>` replay-safe）；或大幅调小 `wikiBatchLimit`。
 
-### 🟡 低危（成立，建议成批治理）
+### 低危（成立，建议成批治理）
 
 | ID | 端点/位置（当前代码）| 问题 | 建议修复 |
 |---|---|---|---|

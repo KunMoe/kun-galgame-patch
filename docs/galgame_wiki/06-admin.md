@@ -2,7 +2,7 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/06-admin.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[05 — 搜索](./05-search.md) · 下一节：[附录 — 错误码与端点总览](./99-appendix.md)
+> [文档索引](./README.md) · 上一节：[05 — 搜索](./05-search.md) · 下一节：[附录 — 错误码与端点总览](./99-appendix.md)
 
 ## 管理统计 (Admin)
 

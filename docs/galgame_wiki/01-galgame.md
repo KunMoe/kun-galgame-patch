@@ -2,7 +2,7 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/01-galgame.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 下一节：[02 — 版本历史 + PR](./02-revisions-and-prs.md)
+> [文档索引](./README.md) · 下一节：[02 — 版本历史 + PR](./02-revisions-and-prs.md)
 
 ## Galgame 核心 CRUD
 
@@ -63,7 +63,7 @@
 
 批量获取 galgame 轻量信息（跨服务展示用，不加载关联数据）。
 
-> ⚠️ **batch 是轻量 DTO，字段是白名单的**。返回**只有**下方响应示例里那些字段（id / vndb_id / name_* / banner / effective_banner_hash / content_limit / status / user_id / resource_update_time / original_language / age_limit）。
+> **batch 是轻量 DTO，字段是白名单的**。返回**只有**下方响应示例里那些字段（id / vndb_id / name_* / banner / effective_banner_hash / content_limit / status / user_id / resource_update_time / original_language / age_limit）。
 >
 > **不包含**：`release_date` / `release_date_tba` / `intro_*` / `tag` / `official` / `engine` / `series` / `cover` / `screenshot` / `alias` 等。要这些字段请用 **`GET /galgame/:gid`**（单条详情）、**`GET /galgame`**（列表）或 **`GET /galgame/search`**（搜索）—— 这三个端点都带 `release_date`。
 >
@@ -218,7 +218,7 @@
 
 「贡献」= **创建 _或_ 编辑过**，判定为 `galgame.user_id = 该用户`（创建）**∪** `galgame_contributor` 命中（创建 / 编辑 / 合入修订时记入）。因此它是 [`/galgame/user/:id/galgames`](#get-galgameuseridgalgames)（**仅创建**，按 `galgame.user_id`）的**超集**——还包含用户只编辑、未创建的条目。例如某用户可能 `galgame_created=0` 却贡献了数百条（纯编辑者）；那些只能从本端点看到。
 
-> ⚠️ 用 `galgame.user_id ∪ galgame_contributor`（而非只 JOIN `galgame_contributor`）是**有意为之**：约 35% 的已发布条目是早期迁移 / VNDB 同步进来的，创建者只写了 `galgame.user_id`、**没有**对应的 `galgame_contributor` 行；只查后者会把这些用户**自己创建的**条目从「贡献」里漏掉（曾有用户因此反馈"看不到自己贡献的 Galgame"）。`status=2` 的 VNDB 草稿因 `status=0` 过滤天然不进。
+> 注意：用 `galgame.user_id ∪ galgame_contributor`（而非只 JOIN `galgame_contributor`）是**有意为之**：约 35% 的已发布条目是早期迁移 / VNDB 同步进来的，创建者只写了 `galgame.user_id`、**没有**对应的 `galgame_contributor` 行；只查后者会把这些用户**自己创建的**条目从「贡献」里漏掉（曾有用户因此反馈"看不到自己贡献的 Galgame"）。`status=2` 的 VNDB 草稿因 `status=0` 过滤天然不进。
 
 **路径参数**：
 
@@ -395,16 +395,16 @@ return r2.data.galgame
 
 `users` 是一个 user_id → 用户信息的 map，包含 galgame 创建者和所有贡献者的信息。
 
-> 🆕 **2026-05-22 (K-PR)**：每个 `tag.tag`、`official.official` 和 `engine.engine` 对象**新增 `galgame_count` 字段**，表示该 tag / 开发商 / 引擎下已发布（`status = 0`）的 galgame 数。这与独立的 `GET /tag`、`GET /official` 和 `GET /engine` 列表端点使用的计数口径一致（同款 `LEFT JOIN ... COUNT(*)` 子查询，drafts 不计入）。下游可直接在 galgame 详情页面渲染"标签名 +N / 会社名 +N / 引擎名 +N" badge，**不再需要为每个嵌入实体各发一次单独的 `GET /tag/:id`、`GET /official/:id`、`GET /engine/:id` 请求**。
+> **2026-05-22 (K-PR)**：每个 `tag.tag`、`official.official` 和 `engine.engine` 对象**新增 `galgame_count` 字段**，表示该 tag / 开发商 / 引擎下已发布（`status = 0`）的 galgame 数。这与独立的 `GET /tag`、`GET /official` 和 `GET /engine` 列表端点使用的计数口径一致（同款 `LEFT JOIN ... COUNT(*)` 子查询，drafts 不计入）。下游可直接在 galgame 详情页面渲染"标签名 +N / 会社名 +N / 引擎名 +N" badge，**不再需要为每个嵌入实体各发一次单独的 `GET /tag/:id`、`GET /official/:id`、`GET /engine/:id` 请求**。
 >
 > 字段为 `int`，**没有 `omitempty`**：值为 0 是"该实体当前 0 部已发布作品"的有效语义，不应被序列化省略。
 
-> 🔗 **链接来源（`link[].source` / `link[].source_key`）+ vndb 链接为 sync 托管**：每条链接带 `source`/`source_key` 标明来源：
+> **链接来源（`link[].source` / `link[].source_key`）+ vndb 链接为 sync 托管**：每条链接带 `source`/`source_key` 标明来源：
 > - `source=""`（空）= **用户链接**，可经 `PUT /galgame/:gid` 的 `links` 字段自由增删改。
 > - `source="vndb"` = wiki 每日 `sync-vndb` cron 从 VNDB 拉取并 curate 的**商店/官网链接**（`source_key` 是 VNDB 站点名，如 `steam`/`dlsite`/`website`/`vndb`）。这些链接**由 sync 托管**——与 `bid` 同理**对用户编辑只读**：`PUT` 的 `links` 只替换用户链接的子集，`source="vndb"` 的链接恒从当前状态保留，无法经 `PUT` 增删改。
 > - 因此下游编辑表单**可以照旧回传全量 `links`**（含 vndb 那几条，按 `{name, link}`）——服务端按 host 去重、保留权威 vndb 集合；也可以只回传用户链接。两种都正确。**建议下游把 `source="vndb"` 的链接渲染为只读**（不给删除/编辑按钮，用户的改动不会生效）。
 
-> 🏷️ **标签 / 开发商来源（`tag[].source` / `official[].source`）同理为 sync 托管**：标签和开发商关联也带 `source`（`""`=用户加，`"vndb"`=每日 cron 从 VNDB 同步）。`PUT` 的 `tag_ids` / `official_ids` **只替换用户子集**，`source="vndb"` 的标签/开发商**对编辑只读、恒被保留**（同 `links`、`bid`）。下游回传 `tag_ids`/`official_ids` 时可含可不含 vndb 那几个 id（服务端按 id 去重保留）；**建议把 `source="vndb"` 的标签/开发商渲染为只读**。引擎（`engine_ids`）不来自 VNDB（wiki 自管），是纯用户全量替换、无 sync 托管子集。
+> **标签 / 开发商来源（`tag[].source` / `official[].source`）同理为 sync 托管**：标签和开发商关联也带 `source`（`""`=用户加，`"vndb"`=每日 cron 从 VNDB 同步）。`PUT` 的 `tag_ids` / `official_ids` **只替换用户子集**，`source="vndb"` 的标签/开发商**对编辑只读、恒被保留**（同 `links`、`bid`）。下游回传 `tag_ids`/`official_ids` 时可含可不含 vndb 那几个 id（服务端按 id 去重保留）；**建议把 `source="vndb"` 的标签/开发商渲染为只读**。引擎（`engine_ids`）不来自 VNDB（wiki 自管），是纯用户全量替换、无 sync 托管子集。
 
 ---
 
@@ -412,7 +412,7 @@ return r2.data.galgame
 
 创建 Galgame。**需要认证 + admin/moderator 角色**。
 
-> ⚠️ **此端点已锁到 admin/moderator**。它是 admin 直接发布的旁路：创建 `status=0` 条目，跳过审核队列。
+> **此端点已锁到 admin/moderator**。它是 admin 直接发布的旁路：创建 `status=0` 条目，跳过审核队列。
 >
 > **普通用户必须走 [POST /galgame/submit](./07-submission.md#post-galgamesubmit)**——创建 `status=3` 待审稿，无需 VNDB ID，进入审核队列。
 >
@@ -509,7 +509,7 @@ return r2.data.galgame
 }
 ```
 
-> 🖼️ **简介不含图片（wiki 写入时强制剥离）**：`intro_*`(4 语言)**不得包含图片**——图片走画廊(`covers` / `screenshots`)。wiki 在**唯一写入路径**上对 create / submit / `PUT` / PR-merge / revert 的简介**自动剥离** Markdown `![](url)` 与 BBCode `[img]…[/img]`(全语言;无图简介原样通过)。**这是真源侧的硬保证**:下游(kungal / moyu)编辑器即使没在 schema 层拦住用户手敲裸 `![](url)`,提交到 wiki 后也不会有图片留在简介里。下游可选地在前端做软提示(更好的 UX),但**无需做硬拦截**。剥离只去图片标记,**不动**简介里的其它内容/链接。
+> **简介不含图片（wiki 写入时强制剥离）**：`intro_*`(4 语言)**不得包含图片**——图片走画廊(`covers` / `screenshots`)。wiki 在**唯一写入路径**上对 create / submit / `PUT` / PR-merge / revert 的简介**自动剥离** Markdown `![](url)` 与 BBCode `[img]…[/img]`(全语言;无图简介原样通过)。**这是真源侧的硬保证**:下游(kungal / moyu)编辑器即使没在 schema 层拦住用户手敲裸 `![](url)`,提交到 wiki 后也不会有图片留在简介里。下游可选地在前端做软提示(更好的 UX),但**无需做硬拦截**。剥离只去图片标记,**不动**简介里的其它内容/链接。
 
 > **PR5 BREAKING — `banner_image_hash` 字段已彻底移除。** Banner 现在唯一通过 `covers[sort_order=0]` 表达；详见
 > [00-handbook §15 PR5 BREAKING 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
@@ -521,7 +521,7 @@ return r2.data.galgame
 - presence 语义同 `tag_ids`：不传 = 保持原集合不变；传 `[]` = 清空全部；传非空数组 = 权威全量替换（**必须回传该作当前全量**，不要只回传新增/删除的那几条）。
 - 响应里有派生字段 `effective_banner_hash`（= covers 里 `sort_order=0` 的那张的 `image_hash`；无则 null）。**前端封面展示通过 `resolveBannerUrl` helper，只看 `effective_banner_hash → banner` 两级。**
 
-> ⚠️ **多值字段（`tag_ids` / `official_ids` / `engine_ids` / `aliases` / `links`）= presence 语义全量替换，必须看懂**：
+> **多值字段（`tag_ids` / `official_ids` / `engine_ids` / `aliases` / `links`）= presence 语义全量替换，必须看懂**：
 > - **不传该字段** → 该 galgame 的对应集合**保持不变**（只改名字时绝不会清空 tag/别名）。
 > - **传数组（含空 `[]`）** → 该字段是**权威全量集合**：服务端"清空旧的 → 按此重建"。`[]` = 显式清空全部。
 > - 因此下游（kungal/moyu）编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增/删后整体回传），**不要只回传"新增的"那几个**——会被当成"替换成只剩这几个"。

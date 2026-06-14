@@ -25,14 +25,14 @@
 
 ## 关键决策速查
 
-- ✅ **决策 0：生命周期 TTL 驱动** —— 由 `last_referenced_at` + TTL 软清理，调用方改自己库外键即可；**亦可主动软删** `DELETE /image/:hash`（OAuth 注销 / 匿名化回收头像即走此路径，见 `cmd/image/main.go` 的 `SoftDelete`）
-- ✅ **复用 OAuth** —— 不新增 API Key 体系，沿用 `oauth_client` 作为"站点"的 source of truth
-- ✅ **内容寻址** —— 存储 key = `sha256(content)`，无 site 前缀，跨站彻底物理去重
-- ✅ **`UNIQUE(hash)` 单行** —— 物理 + 审核态都是单行；站点维度用独立 `image_site_usage` 审计表
-- ✅ **调用方管引用** —— `users.avatar_image_hash` 放在各调用方库里，不在图片服务
-- ✅ **上传时预生成固定变体** —— 按 preset 生成已知变体（avatar-100、banner-mini 等），不走 imgproxy
-- ✅ **软清理** —— 靠 `last_referenced_at` + TTL，不用引用计数
-- ✅ **审核 + Admin 端点已上线** —— `/api/v1/admin/image/{list,stats,:hash/review,:hash}` 已挂在 OAuth 进程（`cmd/oauth/main.go`）；`review_status` 默认 `approved`
+- **决策 0：生命周期 TTL 驱动** —— 由 `last_referenced_at` + TTL 软清理，调用方改自己库外键即可；**亦可主动软删** `DELETE /image/:hash`（OAuth 注销 / 匿名化回收头像即走此路径，见 `cmd/image/main.go` 的 `SoftDelete`）
+- **复用 OAuth** —— 不新增 API Key 体系，沿用 `oauth_client` 作为"站点"的 source of truth
+- **内容寻址** —— 存储 key = `sha256(content)`，无 site 前缀，跨站彻底物理去重
+- **`UNIQUE(hash)` 单行** —— 物理 + 审核态都是单行；站点维度用独立 `image_site_usage` 审计表
+- **调用方管引用** —— `users.avatar_image_hash` 放在各调用方库里，不在图片服务
+- **上传时预生成固定变体** —— 按 preset 生成已知变体（avatar-100、banner-mini 等），不走 imgproxy
+- **软清理** —— 靠 `last_referenced_at` + TTL，不用引用计数
+- **审核 + Admin 端点已上线** —— `/api/v1/admin/image/{list,stats,:hash/review,:hash}` 已挂在 OAuth 进程（`cmd/oauth/main.go`）；`review_status` 默认 `approved`
 
 ## V1 必要性下限（不可拆）
 
@@ -50,7 +50,7 @@ V1 上线**必须**包含以下一揽子，少一块就会翻车：
 
 ## 非目标
 
-- ❌ 不是通用 CDN / 文件仓库（只接图片，不接视频、PDF、任意文件）
-- ❌ 不做图片编辑器（裁剪、滤镜、水印等由调用方自行处理后再上传）
-- ❌ 不做图床（不对外公开上传接口，仅服务已注册的 OAuth Client）
+- 不是通用 CDN / 文件仓库（只接图片，不接视频、PDF、任意文件）
+- 不做图片编辑器（裁剪、滤镜、水印等由调用方自行处理后再上传）
+- 不做图床（不对外公开上传接口，仅服务已注册的 OAuth Client）
 - 调用方**可**软删自己用过的图：`DELETE /image/:hash`（软删 + TTL GC 物理回收）；只是不做面向最终用户的公开删除 UI

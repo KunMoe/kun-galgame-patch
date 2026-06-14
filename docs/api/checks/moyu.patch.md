@@ -10,14 +10,14 @@
 
 ## 图例（简）
 
-审计：✅ 无问题 · 🔧 已修 · ⏭️ 有意保持 · ⏳ 待审计 · 🆕 新增
-鉴权：🌐 公开 · 🔐 OptionalAuth · 🔒 登录 · 🛡️ admin/mod · ⚙️ 仅 admin · ⏱️ 限流
+审计：对齐 = 无问题 · 已修 = 已修复 · 保持 = 有意保持 · 待审计 · 新增
+鉴权：公开 · 可选登录 = OptionalAuth · 登录 · 管理 = admin/mod · 仅admin · 限流
 
 ## 统计
 
 - 本服务 PATCH 端点：**2**
   - 认证 1 · Galgame 代理 1
-- 本轮：✅ 全部对齐无误
+- 本轮：全部对齐无误
 
 ---
 
@@ -25,10 +25,10 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PATCH /api/v1/auth/me` | 🔒 | `authH.UpdateMe` | ✅ | 代理 OAuth 改**展示层**（name/bio/avatar）；原样回传 OAuth 状态码+envelope；FE 仅读 `code` 后 refetch `/auth/me`，故 OAuth 富 body 不被绑定（实测空 body no-op 200）。身份层（改密码/邮箱/2FA/注销）不代理，跳转 oauth.kungal.com/profile |
+| `PATCH /api/v1/auth/me` | 登录 | `authH.UpdateMe` | 对齐 | 代理 OAuth 改**展示层**（name/bio/avatar）；原样回传 OAuth 状态码+envelope；FE 仅读 `code` 后 refetch `/auth/me`，故 OAuth 富 body 不被绑定（实测空 body no-op 200）。身份层（改密码/邮箱/2FA/注销）不代理，跳转 oauth.kungal.com/profile |
 
 ## 2. Galgame 投稿代理 `/galgame`（→ Wiki）
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PATCH /api/v1/galgame/:gid` | 🔒 | `patchH.PatchGalgameDraft` | ✅ | 改草稿投稿（代理 Wiki；草稿态走 PATCH，已发布走 PUT）；路由顺序 literal 先于 `:gid`，无 shadowing |
+| `PATCH /api/v1/galgame/:gid` | 登录 | `patchH.PatchGalgameDraft` | 对齐 | 改草稿投稿（代理 Wiki；草稿态走 PATCH，已发布走 PUT）；路由顺序 literal 先于 `:gid`，无 shadowing |

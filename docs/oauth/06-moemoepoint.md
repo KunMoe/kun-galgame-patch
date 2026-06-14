@@ -6,7 +6,7 @@
 
 返回 [README](./README.md)
 
-> ✅ **状态：已实现**。`moemoepoint_log` 表 + s2s 端点 `POST/GET /users/:id/moemoepoint`（`Adjust` 幂等 / `GetBalance`）+ 用户自助 `GET /auth/me/moemoepoint/log` 均已上线。实现见 `internal/platform/auth/handler/moemoepoint_handler.go`，路由注册见 `cmd/oauth/main.go`。
+> **状态：已实现**。`moemoepoint_log` 表 + s2s 端点 `POST/GET /users/:id/moemoepoint`（`Adjust` 幂等 / `GetBalance`）+ 用户自助 `GET /auth/me/moemoepoint/log` 均已上线。实现见 `internal/platform/auth/handler/moemoepoint_handler.go`，路由注册见 `cmd/oauth/main.go`。
 
 ## 0. 决策与定位
 

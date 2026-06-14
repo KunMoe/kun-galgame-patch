@@ -11,7 +11,7 @@
 | 开发 | `http://127.0.0.1:9277/api/v1` |
 | 生产 | `https://oauth.kungal.com/api/v1` |
 
-## 🔒 重要约定：身份操作必须在 OAuth 完成
+## 重要约定：身份操作必须在 OAuth 完成
 
 下游 kungal / moyu / wiki **不要在自己前端实现下列操作**：
 
@@ -40,9 +40,9 @@
 | 02 | [user-profile.md](./02-user-profile.md) | 用户自助：`GET/PATCH /auth/me` + `POST /auth/me/avatar`（含头像上传） |
 | 03 | [cross-service.md](./03-cross-service.md) | 服务到服务：`/users/batch`、`/users/search`（OAuth Client Basic Auth） |
 | 04 | [tokens-and-errors.md](./04-tokens-and-errors.md) | JWT Access Token claims + 完整错误码速查（OAuth 15xxx / 认证 10xxx / 通用） |
-| 05 | [registration.md](./05-registration.md) | 🆕 用户注册流程：跳转 OAuth 注册 + 邮箱验证码 + 自动 SSO 回跳；`POST /auth/register/send-code` + `POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例 |
-| 06 | [moemoepoint.md](./06-moemoepoint.md) | 🚧 **设计规范（精简版）**：萌萌点全站统一货币（单一真源在 OAuth）。可变余额列 + append-only 审计日志 + 幂等发放/扣除 RPC + 迁移与下游接入；含"刻意没做的"清单（将来需要再升级）|
-| 07 | [logout.md](./07-logout.md) | 🆕 **登出与单点登出（RP-Initiated Logout）**：修复「登出后再登录直接静默登回原账号」。RP 登出须顶层跳转 OP 登出入口 `GET /auth/logout`；含 `GET /oauth/post-logout-redirect` 白名单校验 + `prompt=login` 强制重登；下游接入步骤 |
+| 05 | [registration.md](./05-registration.md) | 用户注册流程：跳转 OAuth 注册 + 邮箱验证码 + 自动 SSO 回跳；`POST /auth/register/send-code` + `POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例 |
+| 06 | [moemoepoint.md](./06-moemoepoint.md) | **设计规范（精简版）**：萌萌点全站统一货币（单一真源在 OAuth）。可变余额列 + append-only 审计日志 + 幂等发放/扣除 RPC + 迁移与下游接入；含"刻意没做的"清单（将来需要再升级）|
+| 07 | [logout.md](./07-logout.md) | **登出与单点登出（RP-Initiated Logout）**：修复「登出后再登录直接静默登回原账号」。RP 登出须顶层跳转 OP 登出入口 `GET /auth/logout`；含 `GET /oauth/post-logout-redirect` 白名单校验 + `prompt=login` 强制重登；下游接入步骤 |
 
 ### 完整接入指南
 
@@ -63,7 +63,7 @@
 }
 ```
 
-> ⚠️ **认证失败返回 HTTP 401 / 403**：`/auth/me` / `/auth/*` 等受保护端点（protected 组，挂 `middleware.Auth`，见 `cmd/oauth/main.go`）在 token 缺失 / 失效 / 过期时返回 **HTTP 401** + `{ code: 10001 | 10002 | 10003, message }`；权限不足返回 **HTTP 403**。下游客户端应同时检查 HTTP status 与 `code`。完整列表见 [04-tokens-and-errors.md §认证错误](./04-tokens-and-errors.md#认证错误-10xxx)。
+> **认证失败返回 HTTP 401 / 403**：`/auth/me` / `/auth/*` 等受保护端点（protected 组，挂 `middleware.Auth`，见 `cmd/oauth/main.go`）在 token 缺失 / 失效 / 过期时返回 **HTTP 401** + `{ code: 10001 | 10002 | 10003, message }`；权限不足返回 **HTTP 403**。下游客户端应同时检查 HTTP status 与 `code`。完整列表见 [04-tokens-and-errors.md §认证错误](./04-tokens-and-errors.md#认证错误-10xxx)。
 
 ## 认证
 
@@ -81,14 +81,14 @@ OAuth 一共有三种鉴权方式，按场景区分：
 
 ## 变更摘要
 
-> 🆕 **2026-06-14 登出修复（RP-Initiated Logout）**：新增 [07-logout.md](./07-logout.md)。修复「在 wiki / 补丁站登出后，再点登录/注册会静默登回刚才的账号」——根因是 RP 登出没清掉 OP（`oauth.kungal.com`）的会话（OP 的 `localStorage` 跨 origin 清不掉 + 跨站 cookie 带不过去）。方案：RP 登出时**顶层跳转**到 OP 登出入口 `GET https://oauth.kungal.com/auth/logout?client_id=&redirect=`，由 OP 清会话再回跳。新增后端 `GET /oauth/post-logout-redirect` 白名单校验 + `GET /oauth/authorize` 的 `prompt=login` 参数。**下游 kungal / moyu 必须改登出实现**（见 07）。
+> **2026-06-14 登出修复（RP-Initiated Logout）**：新增 [07-logout.md](./07-logout.md)。修复「在 wiki / 补丁站登出后，再点登录/注册会静默登回刚才的账号」——根因是 RP 登出没清掉 OP（`oauth.kungal.com`）的会话（OP 的 `localStorage` 跨 origin 清不掉 + 跨站 cookie 带不过去）。方案：RP 登出时**顶层跳转**到 OP 登出入口 `GET https://oauth.kungal.com/auth/logout?client_id=&redirect=`，由 OP 清会话再回跳。新增后端 `GET /oauth/post-logout-redirect` 白名单校验 + `GET /oauth/authorize` 的 `prompt=login` 参数。**下游 kungal / moyu 必须改登出实现**（见 07）。
 
-> 🆕 **2026-05-23 注册流程统一（L1，重要）**：新增 [05-registration.md](./05-registration.md) 文档；引入**邮箱验证码两步注册**——`POST /auth/register/send-code` 寄码 + `POST /auth/register` 带 code 创建账号并发 token（**注册即登录**，返回 access_token + 写 refresh cookie）；新增 [GET /oauth/client-info](./05-registration.md#get-oauthclient-info) 公开元数据端点；`oauth_clients` 加 `auto_consent` 列，5 个第一方 client 默认开启——同意页对第一方静默跳过，用户感知是"注册完一闪回到原站点已登录"。下游 kungal / moyu 的 legacy 注册端点全部删除，"注册"按钮改为复用登录的 PKCE 跳转模式（目标 URL 换成 `/auth/register?redirect=<authorize_url>`）。
+> **2026-05-23 注册流程统一（L1，重要）**：新增 [05-registration.md](./05-registration.md) 文档；引入**邮箱验证码两步注册**——`POST /auth/register/send-code` 寄码 + `POST /auth/register` 带 code 创建账号并发 token（**注册即登录**，返回 access_token + 写 refresh cookie）；新增 [GET /oauth/client-info](./05-registration.md#get-oauthclient-info) 公开元数据端点；`oauth_clients` 加 `auto_consent` 列，5 个第一方 client 默认开启——同意页对第一方静默跳过，用户感知是"注册完一闪回到原站点已登录"。下游 kungal / moyu 的 legacy 注册端点全部删除，"注册"按钮改为复用登录的 PKCE 跳转模式（目标 URL 换成 `/auth/register?redirect=<authorize_url>`）。
 
-> 🔒 **2026-05-23 政策**：明确"身份层 vs 展示层"分类。下游禁止在自己前端做改邮箱 / 改密码 / 注销账号等身份操作，必须跳转 OAuth profile。详见上方"重要约定"小节和 [02-user-profile.md](./02-user-profile.md#身份操作-vs-展示操作)。
+> **2026-05-23 政策**：明确"身份层 vs 展示层"分类。下游禁止在自己前端做改邮箱 / 改密码 / 注销账号等身份操作，必须跳转 OAuth profile。详见上方"重要约定"小节和 [02-user-profile.md](./02-user-profile.md#身份操作-vs-展示操作)。
 
-> 🆕 **2026-05-23**：新增 [POST /auth/me/avatar](./02-user-profile.md#post-authmeavatar) 端点。一次性的"上传头像图片 → 写库" multipart 端点，**避免下游 kungal / moyu 自己维护 image_service client**。配额从 OAuth 一侧扣；老的两步法（`PATCH /auth/me { avatar_image_hash }`）继续保留。
+> **2026-05-23**：新增 [POST /auth/me/avatar](./02-user-profile.md#post-authmeavatar) 端点。一次性的"上传头像图片 → 写库" multipart 端点，**避免下游 kungal / moyu 自己维护 image_service client**。配额从 OAuth 一侧扣；老的两步法（`PATCH /auth/me { avatar_image_hash }`）继续保留。
 
-> 🆕 **2026-05-23**：正式收录 [POST /auth/email/send-code](./02-user-profile.md#post-authemailsend-code) / [PUT /auth/email](./02-user-profile.md#put-authemail) / [PUT /auth/password](./02-user-profile.md#put-authpassword) 端点文档（以前只有口头提及）。同时把对应的错误码 10004 / 10006 / 10010-10013 补全到 [04-tokens-and-errors.md](./04-tokens-and-errors.md#认证错误-10xxx)。
+> **2026-05-23**：正式收录 [POST /auth/email/send-code](./02-user-profile.md#post-authemailsend-code) / [PUT /auth/email](./02-user-profile.md#put-authemail) / [PUT /auth/password](./02-user-profile.md#put-authpassword) 端点文档（以前只有口头提及）。同时把对应的错误码 10004 / 10006 / 10010-10013 补全到 [04-tokens-and-errors.md](./04-tokens-and-errors.md#认证错误-10xxx)。
 
-> 📦 **文档拆分（2026-05-23）**：原 `api-reference.md` 拆为 4 个主题文件（01-04）。所有内容保留，按"OAuth 协议 / 用户自助 / 跨服务 / Token 与错误"四块组织。完整 OAuth 接入指南仍是单独的 [oauth-integration-guide.md](./oauth-integration-guide.md)。
+> **文档拆分（2026-05-23）**：原 `api-reference.md` 拆为 4 个主题文件（01-04）。所有内容保留，按"OAuth 协议 / 用户自助 / 跨服务 / Token 与错误"四块组织。完整 OAuth 接入指南仍是单独的 [oauth-integration-guide.md](./oauth-integration-guide.md)。

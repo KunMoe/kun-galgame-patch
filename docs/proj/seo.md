@@ -150,9 +150,9 @@ D12 (2026-04-21) 后所有 galgame 元数据归 wiki。SEO 用到的字段映射
 ## 3. 逐页 SEO 清单
 
 > 表格按路由路径排序。"状态" 一列：
-> - 🟢 **SEO** — 调用 `useKunSeoMeta` 生成完整 SEO meta + JSON-LD
-> - 🔴 **NO SEO** — 调用 `useKunDisableSeo`，注入 `noindex,nofollow` + 空 JSON-LD
-> - ⚪ **N/A** — 不声明（redirect 中间件 / 嵌套子路由由父 layout 处理）
+> - **SEO** — 调用 `useKunSeoMeta` 生成完整 SEO meta + JSON-LD
+> - **无 SEO** — 调用 `useKunDisableSeo`，注入 `noindex,nofollow` + 空 JSON-LD
+> - **N/A** — 不声明（redirect 中间件 / 嵌套子路由由父 layout 处理）
 >
 > "JSON-LD" 一列：当前所有页面只有 nuxt-schema-org 自动生成的 `Organization + WebSite + WebPage` 三件套；详情页 / 文章页 / 面包屑等富类型暂未注入（见 §6）。所以列出的是"自动 schema 是否含真实内容"。
 
@@ -160,75 +160,75 @@ D12 (2026-04-21) 后所有 galgame 元数据归 wiki。SEO 用到的字段映射
 
 | 路径 | 状态 | JSON-LD | Title | Description (摘要) | 字段来源 / 备注 |
 |---|---|---|---|---|---|
-| `/` | 🟢 SEO | ✅ 实质内容 | `首页 - ...` | 站点定位（开源 / 免费 / 多平台补丁下载） | 静态文案 |
-| `/galgame` | 🟢 SEO | ✅ 实质内容 | `Galgame 列表 - ...` | 收录 + 排序 + 多平台筛选关键词 | 静态文案 |
-| `/comment` | 🟢 SEO | ✅ 实质内容 | `最新评论 - ...` | 全站评论流引导 | 后端已 NSFW filter，payload 安全 |
-| `/resource` | 🟢 SEO | ✅ 实质内容 | `最新补丁资源 - ...` | 多平台 / 翻译类型关键词 | 后端已 NSFW filter，payload 安全 |
-| `/ranking` | ⚪ N/A | — | — | — | redirect → `/ranking/user` |
-| `/ranking/patch` | 🟢 SEO | ✅ 实质内容 | `Galgame 补丁排行榜 - ...` | 浏览量 / 下载量 / 收藏数排序 | 后端已 NSFW filter |
-| `/ranking/user` | 🟢 SEO | ✅ 实质内容 | `用户排行榜 - ...` | 萌萌点 / 贡献排名 | 仅用户信息，无 NSFW 风险 |
-| `/friend-link` | 🟢 SEO | ✅ 实质内容 | `友情链接 - ...` | 同好站点导航 | 静态文案 |
-| `/check-hash` | 🟢 SEO | ✅ 实质内容 | `BLAKE3 文件校验工具 - ...` | 在线 BLAKE3 校验工具说明 | 静态文案 |
+| `/` | SEO | 有 | `首页 - ...` | 站点定位（开源 / 免费 / 多平台补丁下载） | 静态文案 |
+| `/galgame` | SEO | 有 | `Galgame 列表 - ...` | 收录 + 排序 + 多平台筛选关键词 | 静态文案 |
+| `/comment` | SEO | 有 | `最新评论 - ...` | 全站评论流引导 | 后端已 NSFW filter，payload 安全 |
+| `/resource` | SEO | 有 | `最新补丁资源 - ...` | 多平台 / 翻译类型关键词 | 后端已 NSFW filter，payload 安全 |
+| `/ranking` | N/A | — | — | — | redirect → `/ranking/user` |
+| `/ranking/patch` | SEO | 有 | `Galgame 补丁排行榜 - ...` | 浏览量 / 下载量 / 收藏数排序 | 后端已 NSFW filter |
+| `/ranking/user` | SEO | 有 | `用户排行榜 - ...` | 萌萌点 / 贡献排名 | 仅用户信息，无 NSFW 风险 |
+| `/friend-link` | SEO | 有 | `友情链接 - ...` | 同好站点导航 | 静态文案 |
+| `/check-hash` | SEO | 有 | `BLAKE3 文件校验工具 - ...` | 在线 BLAKE3 校验工具说明 | 静态文案 |
 
 ### 3.2 详情页（条件式：数据状态决定 SEO 开关）
 
 | 路径 | 状态 | JSON-LD | 触发分支 |
 |---|---|---|---|
-| `/patch/[id]` | 🟢 / 🔴 (条件) | 条件 | `patch.value && patch.value.content_limit === 'sfw'` → 🟢 SEO（title=patch.name，desc 含"中文补丁 / 汉化补丁 / AI 翻译补丁"长尾，og:image=banner）<br>其他全部分支 → 🔴 NO SEO（NSFW patch 实际可见但 noindex / 404 stub / NSFW 确认 placeholder） |
-| `/patch/[id]/index` | ⚪ N/A | — | 嵌套子，父 layout `patch/[id].vue` 已处理 |
-| `/patch/[id]/introduction` | ⚪ N/A | — | 同上 |
-| `/patch/[id]/comment` | ⚪ N/A | — | 同上 |
-| `/patch/[id]/resource` | ⚪ N/A | — | 同上 |
-| `/patch/[id]/revisions` | ⚪ N/A | — | 同上 |
-| `/patch/[id]/prs` | ⚪ N/A | — | 同上 |
-| `/resource/[id]` | 🟢 / 🔴 (条件) | 条件 | `detail && resource && owningPatch && owningPatch.content_limit === 'sfw'` → 🟢 SEO（title 为 composed 长尾："{游戏名}{平台}{语言}{模型}{类型}资源下载"；desc 用 note_html 文本；og:image=banner）<br>其他 → 🔴 NO SEO |
-| `/tag/[id]` | 🟢 / 🔴 (条件) | 条件 | `tag.value` 存在 → 🟢（title=`标签 · ${name}`，desc 含 galgame_count）<br>null → 🔴 |
-| `/official/[id]` | 🟢 / 🔴 (条件) | 条件 | 同 tag pattern |
-| `/user/[id]` | 🟢 / 🔴 (条件) | 条件 | `user.value && user.value.name` → 🟢（title=`${name} 的主页`，desc=`bio` 或 fallback 文案，og:image=avatar）<br>null → 🔴 |
-| `/user/[id]/index` | ⚪ N/A | — | 嵌套子，父 layout `user/[id].vue` |
-| `/user/[id]/galgame` | ⚪ N/A | — | 同上 |
-| `/user/[id]/resource` | ⚪ N/A | — | 同上 |
-| `/user/[id]/comment` | ⚪ N/A | — | 同上 |
-| `/user/[id]/contribute` | ⚪ N/A | — | 同上 |
-| `/user/[id]/favorite` | ⚪ N/A | — | 同上 |
-| `/about` | 🟢 SEO | ✅ 实质内容 | `关于我们 - ...` 静态描述 |
-| `/about/[...slug]` | 🟢 SEO | ✅ 实质内容 | 用 mdx frontmatter 的 title + description；缺 description 时拼"${title} - 鲲 Galgame 补丁站"；frontmatter.banner 当 og:image。**如果 mdx 不存在，前置 `createError(404)` throw fatal 让 Nuxt error page 接管**，根本不会执行 useKunSeoMeta。 |
+| `/patch/[id]` | SEO / 无 SEO (条件) | 条件 | `patch.value && patch.value.content_limit === 'sfw'` → SEO（title=patch.name，desc 含"中文补丁 / 汉化补丁 / AI 翻译补丁"长尾，og:image=banner）<br>其他全部分支 → 无 SEO（NSFW patch 实际可见但 noindex / 404 stub / NSFW 确认 placeholder） |
+| `/patch/[id]/index` | N/A | — | 嵌套子，父 layout `patch/[id].vue` 已处理 |
+| `/patch/[id]/introduction` | N/A | — | 同上 |
+| `/patch/[id]/comment` | N/A | — | 同上 |
+| `/patch/[id]/resource` | N/A | — | 同上 |
+| `/patch/[id]/revisions` | N/A | — | 同上 |
+| `/patch/[id]/prs` | N/A | — | 同上 |
+| `/resource/[id]` | SEO / 无 SEO (条件) | 条件 | `detail && resource && owningPatch && owningPatch.content_limit === 'sfw'` → SEO（title 为 composed 长尾："{游戏名}{平台}{语言}{模型}{类型}资源下载"；desc 用 note_html 文本；og:image=banner）<br>其他 → 无 SEO |
+| `/tag/[id]` | SEO / 无 SEO (条件) | 条件 | `tag.value` 存在 → SEO（title=`标签 · ${name}`，desc 含 galgame_count）<br>null → 无 SEO |
+| `/official/[id]` | SEO / 无 SEO (条件) | 条件 | 同 tag pattern |
+| `/user/[id]` | SEO / 无 SEO (条件) | 条件 | `user.value && user.value.name` → SEO（title=`${name} 的主页`，desc=`bio` 或 fallback 文案，og:image=avatar）<br>null → 无 SEO |
+| `/user/[id]/index` | N/A | — | 嵌套子，父 layout `user/[id].vue` |
+| `/user/[id]/galgame` | N/A | — | 同上 |
+| `/user/[id]/resource` | N/A | — | 同上 |
+| `/user/[id]/comment` | N/A | — | 同上 |
+| `/user/[id]/contribute` | N/A | — | 同上 |
+| `/user/[id]/favorite` | N/A | — | 同上 |
+| `/about` | SEO | 有 | `关于我们 - ...` 静态描述 |
+| `/about/[...slug]` | SEO | 有 | 用 mdx frontmatter 的 title + description；缺 description 时拼"${title} - 鲲 Galgame 补丁站"；frontmatter.banner 当 og:image。**如果 mdx 不存在，前置 `createError(404)` throw fatal 让 Nuxt error page 接管**，根本不会执行 useKunSeoMeta。 |
 
 ### 3.3 搜索
 
 | 路径 | 状态 | JSON-LD | 原因 |
 |---|---|---|---|
-| `/search` | 🔴 NO SEO | 空壳 | 后端 `/api/search` 故意不应用 NSFW 过滤（搜索是用户主动行为，应返回完整结果集）。爬虫扫到 `?q=<nsfw 词>` 时仍能从 SSR HTML 拿到 NSFW 结果。disable SEO 双重保险：(1) `/search?q=...` URL 不被索引；(2) 即便有人指到该 URL，爬虫读到 noindex 就不会拾取 payload。 |
+| `/search` | 无 SEO | 空壳 | 后端 `/api/search` 故意不应用 NSFW 过滤（搜索是用户主动行为，应返回完整结果集）。爬虫扫到 `?q=<nsfw 词>` 时仍能从 SSR HTML 拿到 NSFW 结果。disable SEO 双重保险：(1) `/search?q=...` URL 不被索引；(2) 即便有人指到该 URL，爬虫读到 noindex 就不会拾取 payload。 |
 
 ### 3.4 私密 / 写入 / 中转页（一律禁 SEO）
 
 | 路径 | 状态 | JSON-LD | 原因 |
 |---|---|---|---|
-| `/account-banned` | 🔴 NO SEO | 空壳 | 错误页，不该被索引（避免"账号被封禁"snippet 出现在搜索结果） |
-| `/auth/callback` | 🔴 NO SEO | 空壳 | OAuth 中转页，仅交换 code 然后 redirect，无内容可索引 |
-| `/check-hash` | 🟢 SEO | ✅ | （已在 §3.1 — 工具页应索引以引流） |
-| `/settings/user` | 🔴 NO SEO | 空壳 | 账户设置 — 仅 owner 可见，索引无意义且隐私风险 |
-| `/me/submissions` | 🔴 NO SEO | 空壳 | 私人 wiki 提交记录（含 pending / declined 草稿） |
-| `/edit` | ⚪ N/A | — | redirect → `/edit/create` |
-| `/edit/create` | 🔴 NO SEO | 空壳 | 发布 Galgame 写入页 — 表单不该被索引 |
-| `/edit/draft` | 🔴 NO SEO | 空壳 | 草稿编辑 |
-| `/edit/rewrite` | 🔴 NO SEO | 空壳 | Galgame 元数据编辑 |
-| `/galgame/taxonomy` | 🔴 NO SEO | 空壳 | Tag / Official / Engine / Series CRUD — wiki §15.1 admin/editor-only |
+| `/account-banned` | 无 SEO | 空壳 | 错误页，不该被索引（避免"账号被封禁"snippet 出现在搜索结果） |
+| `/auth/callback` | 无 SEO | 空壳 | OAuth 中转页，仅交换 code 然后 redirect，无内容可索引 |
+| `/check-hash` | SEO | 有 | （已在 §3.1 — 工具页应索引以引流） |
+| `/settings/user` | 无 SEO | 空壳 | 账户设置 — 仅 owner 可见，索引无意义且隐私风险 |
+| `/me/submissions` | 无 SEO | 空壳 | 私人 wiki 提交记录（含 pending / declined 草稿） |
+| `/edit` | N/A | — | redirect → `/edit/create` |
+| `/edit/create` | 无 SEO | 空壳 | 发布 Galgame 写入页 — 表单不该被索引 |
+| `/edit/draft` | 无 SEO | 空壳 | 草稿编辑 |
+| `/edit/rewrite` | 无 SEO | 空壳 | Galgame 元数据编辑 |
+| `/galgame/taxonomy` | 无 SEO | 空壳 | Tag / Official / Engine / Series CRUD — wiki §15.1 admin/editor-only |
 
 ### 3.5 消息中心（10 个 page，全部禁 SEO）
 
 | 路径 | 状态 | JSON-LD | 原因 |
 |---|---|---|---|
-| `/message` | 🔴 NO SEO | 空壳 | 消息中心父 layout |
-| `/message/index` | ⚪ N/A | — | redirect → `/message/notice` |
-| `/message/notice` | 🔴 NO SEO | 空壳 | 通知收件箱 |
-| `/message/follow` | 🔴 NO SEO | 空壳 | 关注消息 |
-| `/message/mention` | 🔴 NO SEO | 空壳 | @ 消息 |
-| `/message/system` | 🔴 NO SEO | 空壳 | 系统消息 |
-| `/message/patch-resource-create` | 🔴 NO SEO | 空壳 | 订阅的新补丁通知 |
-| `/message/patch-resource-update` | 🔴 NO SEO | 空壳 | 订阅的补丁更新通知 |
-| `/message/chat` | 🔴 NO SEO | 空壳 | 私聊列表 |
-| `/message/chat/[link]` | 🔴 NO SEO | 空壳 | 私聊会话 — 包含双方私人对话内容 |
+| `/message` | 无 SEO | 空壳 | 消息中心父 layout |
+| `/message/index` | N/A | — | redirect → `/message/notice` |
+| `/message/notice` | 无 SEO | 空壳 | 通知收件箱 |
+| `/message/follow` | 无 SEO | 空壳 | 关注消息 |
+| `/message/mention` | 无 SEO | 空壳 | @ 消息 |
+| `/message/system` | 无 SEO | 空壳 | 系统消息 |
+| `/message/patch-resource-create` | 无 SEO | 空壳 | 订阅的新补丁通知 |
+| `/message/patch-resource-update` | 无 SEO | 空壳 | 订阅的补丁更新通知 |
+| `/message/chat` | 无 SEO | 空壳 | 私聊列表 |
+| `/message/chat/[link]` | 无 SEO | 空壳 | 私聊会话 — 包含双方私人对话内容 |
 
 → 所有消息相关页面共同特点：**per-user inbox，无公共内容**。索引这些页面对 SEO 无价值（爬虫拿不到登录态，看到的就是空 inbox 或登录 prompt），且消息内容可能引用 NSFW patch 链接造成间接泄漏。
 
@@ -236,14 +236,14 @@ D12 (2026-04-21) 后所有 galgame 元数据归 wiki。SEO 用到的字段映射
 
 | 路径 | 状态 | JSON-LD | 原因 |
 |---|---|---|---|
-| `/admin` | 🔴 NO SEO | 空壳 | 管理面板父 layout |
-| `/admin/index` | 🔴 NO SEO | 空壳 | 统计面板（user_count / galgame_count 等内部数字，禁泄） |
-| `/admin/galgame` | 🔴 NO SEO | 空壳 | 全 patch 列表（含 NSFW，admin 视图按设计应看全集） |
-| `/admin/comment` | 🔴 NO SEO | 空壳 | 评论管理（含 NSFW patch 的评论） |
-| `/admin/resource` | 🔴 NO SEO | 空壳 | 资源管理（含 NSFW） |
-| `/admin/log` | 🔴 NO SEO | 空壳 | 审计日志（内部操作记录） |
-| `/admin/orphans` | 🔴 NO SEO | 空壳 | 孤儿补丁列表（数据修复工具） |
-| `/admin/setting` | 🔴 NO SEO | 空壳 | 网站设置切换 |
+| `/admin` | 无 SEO | 空壳 | 管理面板父 layout |
+| `/admin/index` | 无 SEO | 空壳 | 统计面板（user_count / galgame_count 等内部数字，禁泄） |
+| `/admin/galgame` | 无 SEO | 空壳 | 全 patch 列表（含 NSFW，admin 视图按设计应看全集） |
+| `/admin/comment` | 无 SEO | 空壳 | 评论管理（含 NSFW patch 的评论） |
+| `/admin/resource` | 无 SEO | 空壳 | 资源管理（含 NSFW） |
+| `/admin/log` | 无 SEO | 空壳 | 审计日志（内部操作记录） |
+| `/admin/orphans` | 无 SEO | 空壳 | 孤儿补丁列表（数据修复工具） |
+| `/admin/setting` | 无 SEO | 空壳 | 网站设置切换 |
 
 → 后端路由全 `moderatorAuth` 守护，爬虫拿不到数据，但加 `noindex` 是兜底（防止某次 middleware 出 bug 时数据暴露）+ 避免 admin URL 出现在搜索引擎"sitelinks" 里污染观感。
 
@@ -251,10 +251,10 @@ D12 (2026-04-21) 后所有 galgame 元数据归 wiki。SEO 用到的字段映射
 
 ```
 56 个 pages 总数
-├─ 🟢 SEO 启用            15 (公开浏览页 + 详情页的"数据 OK + SFW"分支)
-├─ 🔴 SEO 禁用            31 (私密/admin/message/edit/settings/search/错误页)
-└─ ⚪ N/A                 10 (redirect 中间件 3 + 嵌套子 tab 7)
-                          + 6 个详情页根据状态在 🟢 / 🔴 切换
+├─ SEO 启用            15 (公开浏览页 + 详情页的"数据 OK + SFW"分支)
+├─ SEO 禁用            31 (私密/admin/message/edit/settings/search/错误页)
+└─ N/A                 10 (redirect 中间件 3 + 嵌套子 tab 7)
+                          + 6 个详情页根据状态在 SEO / 无 SEO 切换
 ```
 
 详情页（patch/resource/tag/official/user/about-slug）的 SEO 状态在运行时由数据决定，不固定一种 — 上表条件式行展示了切换逻辑。

@@ -48,7 +48,7 @@ var AllowedResourceExtensions = []string{".zip", ".rar", ".7z"}
 
 - 校验点：`service.go:150`（`validatePreUpload`，发 presigned URL 前），不在白名单报「不支持的文件类型」。
 - 前端镜像：`apps/web/app/constants/resource.ts` 的 `ALLOWED_EXTENSIONS = ['.zip', '.rar', '.7z']`，`resource/Publish.vue` 选文件时按扩展名预检。
-- ⚠️ 该文件里还有一个 `ALLOWED_MIME_TYPES`（`application/zip` / `application/x-lz4` / `application/x-rar-compressed`），但**后端并不按 MIME 校验**，扩展名才是唯一真源。改类型只需动两处扩展名常量。
+- 注意：该文件里还有一个 `ALLOWED_MIME_TYPES`（`application/zip` / `application/x-lz4` / `application/x-rar-compressed`），但**后端并不按 MIME 校验**，扩展名才是唯一真源。改类型只需动两处扩展名常量。
 
 ### 1.3 命名与 S3 key
 
@@ -124,7 +124,7 @@ var AllowedResourceExtensions = []string{".zip", ".rar", ".7z"}
 
 - **大小上限 10 MB**：`fh.Size > 10*1024*1024` 报「文件超过 10MB 上限」（`handler.go:125`）。这同时也被 Fiber 全局 `BodyLimit`（§4）兜底。
 - **preset**（必填）转发给 image_service，决定处理与配额：
-  - `topic`：正文图 / 编辑器截图（默认）。⚠️ topic preset **拒绝 AVIF**（无解码器），上传前需先把 AVIF 转 PNG（见 memory `image-service-upload-contract`）。
+  - `topic`：正文图 / 编辑器截图（默认）。注意：topic preset **拒绝 AVIF**（无解码器），上传前需先把 AVIF 转 PNG（见 memory `image-service-upload-contract`）。
   - `galgame_banner`：galgame 封面（需 OAuth client 开启该 preset）。
   - `avatar`：用户头像。
 - 每 preset 的大小/格式细则 + 每 client 每日配额由 **image_service 侧**强制，moyu 只兜 10 MB 上限。

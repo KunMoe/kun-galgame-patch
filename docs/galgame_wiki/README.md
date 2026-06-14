@@ -26,9 +26,9 @@
 | 08 | [messages.md](./08-messages.md) | 消息系统（投稿事件流，wiki 单一来源） |
 | 99 | [appendix.md](./99-appendix.md) | 错误码、端点总览、Meilisearch 运维 |
 
-> 🔴 **强制范围变更**：galgame 的编辑面（PR、修订历史、关系、分类轴增删改）**不再是 wiki-only**——kungal 与 moyu **各自必须完整实现一份**（后端代理 + 前端 UI，与 wiki 对齐）。权威清单见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
+> **强制范围变更**：galgame 的编辑面（PR、修订历史、关系、分类轴增删改）**不再是 wiki-only**——kungal 与 moyu **各自必须完整实现一份**（后端代理 + 前端 UI，与 wiki 对齐）。权威清单见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
-> 📦 **2026-Q2 升级摘要（PR1–PR5，已上线）**：
+> **2026-Q2 升级摘要（PR1–PR5，已上线）**：
 > - **PR1**：`released` 字符串拆为 `release_date` (`YYYY-MM-DD` 或 `""`) + `release_date_tba` (bool)。两者均参与 revision/PR diff。详见 [01-galgame.md PUT 端点](./01-galgame.md#put-galgamegid)。
 > - **PR2 / PR5**：新增 `galgame_cover` / `galgame_screenshot` 关联表（hash 化的 image_service 资源）；`banner_image_hash` **字段已退役**，banner 由 `covers[sort_order=0]` 唯一表达；响应里有派生只读字段 `effective_banner_hash`。详见 [03-relations.md 封面/截图段](./03-relations.md#封面--截图pr2-新增) 与 [00-handbook §15 PR5 BREAKING](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 > - **PR4**：tag / official / engine / series 4 种 taxonomy 实体获得**完整版本历史 + 回滚**，端点形态与 galgame 修订完全对齐（`GET /tag/:id/revisions`, `POST /tag/:id/revert` 等共 12 个新端点）。详见 [04-taxonomy.md §修订与回滚](./04-taxonomy.md#修订与回滚-pr4-新增4-实体同款)。

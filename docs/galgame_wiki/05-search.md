@@ -2,7 +2,7 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/integration/galgame_wiki/05-search.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-> [📖 文档索引](./README.md) · 上一节：[04 — 分类轴](./04-taxonomy.md) · 下一节：[06 — 管理统计](./06-admin.md)
+> [文档索引](./README.md) · 上一节：[04 — 分类轴](./04-taxonomy.md) · 下一节：[06 — 管理统计](./06-admin.md)
 
 ## 搜索 (Search)
 

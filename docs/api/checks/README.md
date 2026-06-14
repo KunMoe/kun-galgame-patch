@@ -21,7 +21,7 @@
 其余端点对齐无误或为有意的代理透传。所有修复均已 `go build` / `go test` /
 前端 `typecheck` 通过，并在运行栈上实测确认（air 热重载）。
 
-### 🔴 已修复 —— 阻断级 / 高危
+### 已修复 —— 阻断级 / 高危
 
 | # | 端点 | 问题 | 修复 |
 |---|---|---|---|
@@ -33,7 +33,7 @@
 | 6 | `GET /admin/stats` & `GET /admin/stats/sum` | json key 与前端不符：`new_patch_resource`/`patch_resource_count`/`patch_comment_count` ↔ 前端读 `new_resource`/`resource_count`/`comment_count` → 三块统计卡恒显 0 | BE：改 3 个 json tag 对齐前端 |
 | 7 | `GET /message`（@消息页）| `mention.vue` 把响应当裸数组 `Message[]`，但 BE 返回分页 `{items,total}` → @消息页永远空 | FE：`mention.vue` 改用 `{items,total}`（对齐其余 4 个消息页）|
 
-### 🟠 已修复 —— 中危
+### 已修复 —— 中危
 
 | # | 端点 | 问题 | 修复 |
 |---|---|---|---|
@@ -42,7 +42,7 @@
 | 10 | `GET /patch/resource/:resourceId/link` | 限流键始终落 IP（路由前无 auth/optionalAuth，`GetUserID` 恒 0），与"按 userID 30/min"的注释不符 → 同 NAT 后登录用户被合并限流 | BE：路由加 `optionalAuth`（在限流中间件之前）|
 | 11 | `/admin/comment`（comment.vue）| `c.user.name` 无防护，而 BE `user` 为 `omitempty`（OAuth brief 取不到时为空）→ 空指针崩页 | FE：`c.user?.name` + `v-if="c.user"` |
 
-### 🟡 已修复 —— 低危
+### 已修复 —— 低危
 
 | # | 端点 | 问题 | 修复 |
 |---|---|---|---|
@@ -79,7 +79,7 @@
 
 ## moyu 是下游站点（代理透传占比高）
 
-moyu 自身**不对外提供任何 s2s（🔑 OAuth Client Basic Auth）入站端点** —— 它只作为
+moyu 自身**不对外提供任何 s2s（OAuth Client Basic Auth）入站端点** —— 它只作为
 **消费方**调用上游。大量端点是对上游服务的**代理透传**，真正的资源鉴权由上游强制，
 moyu 侧仅挂 `auth`/`optionalAuth` 以便转发用户的 OAuth access_token：
 
@@ -121,22 +121,22 @@ moyu 侧仅挂 `auth`/`optionalAuth` 以便转发用户的 OAuth access_token：
 
 ## 图例 — 审计状态
 
-- ✅ 已审计，对齐无问题
-- 🔧 已审计，发现问题并修复（本轮）
-- ⏭️ 已审计，有意保持当前行为（多为 Wiki/OAuth 代理透传）
-- ⏳ 待审计
-- 🆕 本轮新增端点
+- 对齐：已审计，对齐无问题
+- 已修：已审计，发现问题并修复（本轮）
+- 保持：已审计，有意保持当前行为（多为 Wiki/OAuth 代理透传）
+- 待审计
+- 新增：本轮新增端点
 
 ## 图例 — 鉴权
 
 | 标记 | 中间件 | 含义 |
 |---|---|---|
-| 🌐 | （无） | 完全公开 |
-| 🔐 | `OptionalAuth` | 可选鉴权；带 session 附加内容（如 viewer 的 like/收藏态），匿名只看公共部分 |
-| 🔒 | `Auth` | 必须登录 |
-| 🛡️ | `Auth` + `RequireRole("admin","moderator")` | admin 或 moderator（`/admin` 组级中间件）|
-| ⚙️ | 组级 🛡️ + 路由级 `RequireRole("admin")` | **仅 admin**（在 moderator 门之上再叠加 admin 门）|
-| ⏱️ | `+ RateLimit` | 叠加限流中间件 |
+| 公开 | （无） | 完全公开 |
+| 可选登录 | `OptionalAuth` | 可选鉴权；带 session 附加内容（如 viewer 的 like/收藏态），匿名只看公共部分 |
+| 登录 | `Auth` | 必须登录 |
+| 管理 | `Auth` + `RequireRole("admin","moderator")` | admin 或 moderator（`/admin` 组级中间件）|
+| 仅admin | 组级 管理 + 路由级 `RequireRole("admin")` | **仅 admin**（在 moderator 门之上再叠加 admin 门）|
+| 限流 | `+ RateLimit` | 叠加限流中间件 |
 
 > moyu 的 `Auth`/`OptionalAuth` 基于 `moyu_session`（Redis 会话，httpOnly cookie），
 > 校验会话并按需后台刷新上游 OAuth token；非纯 JWT 验签。详见

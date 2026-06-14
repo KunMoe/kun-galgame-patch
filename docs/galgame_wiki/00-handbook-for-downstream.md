@@ -4,7 +4,7 @@
 
 # Galgame 创建与 Wiki 联动 — 下游接入手册（kungal / moyu）
 
-> ⚠️ **更正（2026-06，以代码为准）**：萌萌点是 **OAuth 单源**——下游经 s2s `POST /users/:id/moemoepoint`（reason=`content_approved` 等）发放、本地仅缓存余额；下文部分流程示例仍写本地 `user.moemoepoint += N`，那是**旧设计，勿照抄**（会造成与统一账本双写）。wiki 状态游标实际用 `cron_state.last_id` + API `since_id`，**无** `wiki_status_snapshot` 字段。
+> **更正（2026-06，以代码为准）**：萌萌点是 **OAuth 单源**——下游经 s2s `POST /users/:id/moemoepoint`（reason=`content_approved` 等）发放、本地仅缓存余额；下文部分流程示例仍写本地 `user.moemoepoint += N`，那是**旧设计，勿照抄**（会造成与统一账本双写）。wiki 状态游标实际用 `cron_state.last_id` + API `since_id`，**无** `wiki_status_snapshot` 字段。
 
 > 此文档面向 **kungal / moyu 团队**，把"用户在站点发布一个 galgame"的端到端流程、wiki 提供的能力、下游需要实现的工作量、所有商议决策一次性梳理清楚。
 >
@@ -578,7 +578,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 - **期一**：场景 A + B（已发布选用 + VNDB 草稿认领）—— 8 人天
 - **期二**：场景 D（新建提交 + 审核）+ 我的提交页 + cron —— 5 人天
 
-> ⚠️ **上表仅覆盖投稿流，不含 §15 的编辑面**（PR / 修订历史 / 关系 / 分类轴增删改）。§15 是后追加的强制范围，需**额外**估算并排期——且 **kungal 与 moyu 各算一份**（两站不共享前端，后端代理也各写一份）。新增 `期三`：galgame 编辑面全量代理 + UI（两站各一套），按端点数量另行评估。
+> **上表仅覆盖投稿流，不含 §15 的编辑面**（PR / 修订历史 / 关系 / 分类轴增删改）。§15 是后追加的强制范围，需**额外**估算并排期——且 **kungal 与 moyu 各算一份**（两站不共享前端，后端代理也各写一份）。新增 `期三`：galgame 编辑面全量代理 + UI（两站各一套），按端点数量另行评估。
 
 ---
 
@@ -651,7 +651,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 
 > `POST /tag` `POST /official` `POST /engine` 为本次新增（详见 [04-taxonomy.md](./04-taxonomy.md)）：任意登录用户可为「VNDB 没有的原创/同人作品」新建尚不存在的 tag/会社/引擎；改/删仍限 admin/moderator（role > 1，普通用户 role=1 一律 403）。下游发布/编辑向导**必须**接入这套「选已有 + 没有就新建」的交互，kungal 与 moyu 各一份。
 
-> 🟢 **ADDITIVE — taxonomy 编辑现已全量审计 + 可 revert（U3）**：
+> **ADDITIVE — taxonomy 编辑现已全量审计 + 可 revert（U3）**：
 > - **每次** tag / official / engine / series 的 create / update / delete 都会写一条 `taxonomy_revision` 行（多态单表：`entity ∈ {tag,official,engine,series}`、`action ∈ {created,updated,deleted,reverted}`、`snapshot jsonb`、`changed_fields []string`、`user_id` + `user_role` 快照）。
 > - **force-delete 时**：除 taxonomy_revision (action='deleted') 外，**还为每个被解除引用的 galgame 写一条 galgame_revision**（`changed_fields=['tag_ids' | 'official_ids' | 'engine_ids' | 'series_id']`），所以 tag/official 等"消失"在 galgame 历史里也有迹可循。
 > - **affected_galgame_ids 持久化**：`taxonomy_revision.deleted` 行的 `affected_galgame_ids jsonb` 列保留被影响的 gid 列表，未来"撤销删除"UI 可以读它列出"这 N 部作品之前用过此 tag，要恢复哪些？"。
@@ -664,16 +664,16 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 >
 > `DELETE /tag|official|engine/:id` 为**安全两段式**（同 `DELETE /admin/image/:hash?force=true` 约定）：默认若仍被任意 galgame 引用则**拒绝**（返回引用数，避免静默把分类从 N 个作品上摘掉）；`?force=true` 才一键「清除全部引用 → 硬删」，返回 `{deleted,forced,purged_relations[,purged_aliases]}` 审计摘要。下游若做分类管理 UI，删除按钮需走「先尝试普通 DELETE → 命中拒绝则二次确认后带 `?force=true`」两步交互。
 >
-> 🔴 **编辑某个 galgame 的多值字段（`tag_ids/official_ids/engine_ids/aliases/links`）= 经 `PUT /galgame/:gid`，presence 全量替换语义（务必看懂，否则编辑不生效或误清空）**：
+> **编辑某个 galgame 的多值字段（`tag_ids/official_ids/engine_ids/aliases/links`）= 经 `PUT /galgame/:gid`，presence 全量替换语义（务必看懂，否则编辑不生效或误清空）**：
 > - 这些字段与标量字段一样进 revision/快照/PR-diff（集合语义，顺序无关），一次编辑 = **一条原子 revision**。
 > - **不传该字段** = 该集合**保持不变**（只改名字时不会动 tag/别名）。
 > - **传数组（含空 `[]`）** = **权威全量集合**，服务端"清空旧的 → 按此重建"；`[]` = 清空全部。
 > - 因此 kungal/moyu 的 galgame 编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增删后整体回传），**绝不能只传"新增/删除的那几个"**——会被当成"替换成只剩这几个"。这是之前"kungal 改 tag/engine/official 不生效"的根因（旧实现整段忽略；现已按 snapshot overlay 根治，详见 [docs/galgame_wiki/01-revision-system-design.md §1.5/§6.1/§6.2](../../galgame_wiki/01-revision-system-design.md)）。
 > - `aliases`/`links` 现已是本端点一等字段（推荐整表单一次性提交，单条原子 revision）；`/galgame/:gid/aliases|links` 增删端点保留为便捷糖。`bid`/Bangumi ID 为保留字段，sync 托管，暂不可编辑。
-> - ⚠️ **`links` / `tag_ids` / `official_ids` 的全量替换只作用于用户子集（`source=""`）**：`source="vndb"` 的链接 / 标签 / 开发商由 cron 托管、对编辑只读（同 `bid`），`PUT` 恒保留、无法增删改。下游可照旧回传全量（vndb 那几条按 host/id 去重保留），**建议把 `source="vndb"` 的链接/标签/开发商渲染为只读**。`engine_ids` 无此例外（引擎 wiki 自管）。响应里每条 `link`/`tag`/`official` 都带 `source` 供区分。详见 [01-galgame.md 链接/标签来源小节](./01-galgame.md)。
+> - **`links` / `tag_ids` / `official_ids` 的全量替换只作用于用户子集（`source=""`）**：`source="vndb"` 的链接 / 标签 / 开发商由 cron 托管、对编辑只读（同 `bid`），`PUT` 恒保留、无法增删改。下游可照旧回传全量（vndb 那几条按 host/id 去重保留），**建议把 `source="vndb"` 的链接/标签/开发商渲染为只读**。`engine_ids` 无此例外（引擎 wiki 自管）。响应里每条 `link`/`tag`/`official` 都带 `source` 供区分。详见 [01-galgame.md 链接/标签来源小节](./01-galgame.md)。
 > - 不变量：create/submit/update/patch/merge/revert **全部走同一个 ApplySnapshot 写入路径**，`Snapshot` 每个可编辑字段都能被编辑 API 改到（`bid` 是唯一保留例外），有单测护栏防回归。
 
-> 🔴 **BREAKING — `banner_image_hash` 字段 + 列彻底移除（PR5 一刀切）**：
+> **BREAKING — `banner_image_hash` 字段 + 列彻底移除（PR5 一刀切）**：
 > - **旧**：响应 / 请求体里的 `banner_image_hash` （image_service hash）；migration period 期间 cover 表与该列并存
 > - **新**：彻底退役，**galgame_cover (sort_order=0) 是唯一的 banner image_service 引用**
 > - **GET 响应**：`banner_image_hash` 从所有响应中消失（`/galgame/:gid` / 列表 / `/galgame/mine` / message brief 等）。改读派生字段 `effective_banner_hash`（PR2 已加，现在它是唯一可读源）
@@ -683,7 +683,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 > - **refping**：wiki 自己的 daily ping job 已剔除 banner_image_hash 数据源，改从 covers/screenshots 收集；下游 zero work。
 > - **kungal / moyu 同期发版**：测试环境一刀切，无 dual-emit 兼容期；SDK 类型、表单 schema、列表卡片要在同一波 PR 里改完。`resolveBannerUrl(g, ...)` 类前端 helper 现在只看 `effective_banner_hash → banner` 两级 fallback。
 
-> 🟢 **ADDITIVE — 新增 `covers[]` / `screenshots[]` 关联字段 + 派生 `effective_banner_hash`**：
+> **ADDITIVE — 新增 `covers[]` / `screenshots[]` 关联字段 + 派生 `effective_banner_hash`**：
 > - **新增 `covers[]`**：作品的封面候选集，按 `image_hash` 引用 image_service（无跨服务 FK；写入前下游须先把图片上传到 image_service 拿 hash）。每条 `{image_hash, sort_order, sexual, violence, source, source_key}`。**`sort_order=0` = "钉住的封面"，DB 强制约束每作品最多一张**（partial unique index）。管理员"换封面"= 在同一编辑请求里把旧 cover 的 `sort_order` 改为 1 + 新 cover 的 `sort_order` 改为 0（**绝不**在两次请求里分别做，否则中间态会被 DB 拒绝）。
 > - **新增 `screenshots[]`**：作品的画廊 / CG / 截图集，与 covers **同构但独立**：同一张图可在 A 作当 cover、在 B 作当 screenshot；同一作里两张表互不干涉。每条 `{image_hash, sort_order, caption, sexual, violence, source, source_key}`。
 > - **派生 `effective_banner_hash`**：响应里只读字段。规则 = covers 中 `sort_order=0` 那张的 `image_hash`，无则 `null`（PR5 起 `banner_image_hash` 已彻底退役，不再作为 fallback；展示链则继续 fallback 到 `banner` 老 URL，详见 PR5 BREAKING 段）。**前端展示封面建议读这个**——它在票选这些扩展演化中都保持稳定。
@@ -693,7 +693,7 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 > - **TTL/refping**：wiki 侧（`internal/jobs.GalgameImageRefping`）每天 ping「当前 banner + 当前 cover + 当前 screenshot + 所有 revision/PR snapshot 中曾出现过的 hash」给 image_service 保活——保证 revert 到任何历史版本都不会出死图。下游**不需要**做任何 ping。
 > - **旧 `banner_image_hash` 字段的状态**：PR5 已完成（U2.c）—— 字段从响应/请求/快照/列定义中彻底移除；详见上方 PR5 BREAKING 段。
 
-> 🔴 **BREAKING — `released` 字符串字段已被替换为 `release_date` + `release_date_tba` 两个字段（无双发兼容期）**：
+> **BREAKING — `released` 字符串字段已被替换为 `release_date` + `release_date_tba` 两个字段（无双发兼容期）**：
 > - **旧**：响应 / 请求体里的 `released string`（"unknown" / "tba" / "YYYY[-MM[-DD]]"哨兵字符串），不可排序不可筛选不可结构化。
 > - **新**：
 >   - `release_date string|null`（"YYYY-MM-DD" 或 `null`；`null` = 未知）
@@ -718,13 +718,13 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 
 显式说明，避免重复确认：
 
-- ❌ **VNDB 同步**：wiki 自己每日跑 `sync-vndb` cron 维护 status=2 草稿库存。下游不参与
-- ❌ **同步用户提交的"评分/评论/资源"**：这些是 kungal/moyu 本地数据，跟 wiki 完全无关
-- ❌ **kungal/moyu 之间任何直接通信**：两站不互相调用，都通过 wiki + OAuth 间接联动
-- ❌ **wiki 审核队列（admin moderation）UI**：投稿审核队列（approve/decline/ban，`apps/wiki/app/pages/review/`）是 admin 专属、wiki 自有页面，下游不做。**注意**：这指的是「审核队列」，不含 §15 列出的 PR/修订/关系/分类**编辑面**——后者下游必须各做一份
-- ❌ **跨站合并重复提交**：admin 在 wiki 后台手动 ban 或 decline，不做自动 dedupe
+- **VNDB 同步**：wiki 自己每日跑 `sync-vndb` cron 维护 status=2 草稿库存。下游不参与
+- **同步用户提交的"评分/评论/资源"**：这些是 kungal/moyu 本地数据，跟 wiki 完全无关
+- **kungal/moyu 之间任何直接通信**：两站不互相调用，都通过 wiki + OAuth 间接联动
+- **wiki 审核队列（admin moderation）UI**：投稿审核队列（approve/decline/ban，`apps/wiki/app/pages/review/`）是 admin 专属、wiki 自有页面，下游不做。**注意**：这指的是「审核队列」，不含 §15 列出的 PR/修订/关系/分类**编辑面**——后者下游必须各做一份
+- **跨站合并重复提交**：admin 在 wiki 后台手动 ban 或 decline，不做自动 dedupe
 
-> ⚠️ 历史版本曾把「PR 流程 / 修订 / 关系 / 分类编辑」列为下游不在范围内——**该结论已作废**，现按 §15 强制要求 kungal 与 moyu 各自完整实现。
+> 注意：历史版本曾把「PR 流程 / 修订 / 关系 / 分类编辑」列为下游不在范围内——**该结论已作废**，现按 §15 强制要求 kungal 与 moyu 各自完整实现。
 
 ---
 
