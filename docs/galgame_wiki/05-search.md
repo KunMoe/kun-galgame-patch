@@ -115,6 +115,8 @@ GET /galgame/search?q=fate&fields=id,name_zh_cn,intro_zh_cn,tag_names,official_n
 - `status / original_language`：多值 **OR**
 - `q` 空 + 无 `sort`：返回 `updated_ts` 倒序的近期条目
 - `q` 非空 + 无 `sort`：按相关度排序，相同分时 `view` 倒序
+- `q` 多词为 **AND 语义**：命中文档需包含全部查询词（CJK 分词后同理；末词支持前缀匹配，便于即输即搜）。因此输入一个所有标题都不含的词会返回空，而非只共享某个常见字的松散结果——这修复了"删掉标题结尾几个字后冒出大量无关结果"的问题
+- 少量 CJK 高频虚词（`的 之 了 而 与 及 或`）作为停用词，匹配时忽略，不会成为必须命中的词
 - `include_intro=true` 会把简介纳入搜索，召回扩大但可能引入噪声（简介里随口提到某个词的 VN 也会被命中）
 - highlight 片段字段包含 `_formatted`，仅在命中的字段上出现
 
