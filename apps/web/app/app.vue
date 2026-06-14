@@ -20,7 +20,12 @@ onMounted(() => {
          compiles: fall back to the raw `--primary-500` triplet. -->
     <NuxtLoadingIndicator color="var(--color-primary, hsl(var(--primary-500)))" />
     <NuxtRouteAnnouncer />
-    <KunAlertMessageContainer />
+    <!-- KunUI overlay hosts, mounted once (they Teleport to body). Required or
+         useKunMessage() toasts and useKunAlert() confirm dialogs render nowhere
+         — the npm @kungal/ui-* packages split the old single container into
+         these two providers (see @kungal/ui-nuxt README). -->
+    <KunMessageProvider />
+    <KunAlertProvider />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

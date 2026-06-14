@@ -241,7 +241,10 @@ watch(
 
         <div class="flex shrink-0 items-center gap-2">
           <KunChip color="success">
-            <KunIconMarkdown class="text-success-700 dark:text-success" />
+            <KunIcon
+              name="fa6-brands:markdown"
+              class="text-success-700 dark:text-success"
+            />
             Markdown 支持
           </KunChip>
           <span>
