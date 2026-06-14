@@ -14,6 +14,8 @@
 | `/oauth/token` | POST | client_id+secret（或 PKCE） | 授权码 / refresh_token 换 access_token |
 | `/oauth/userinfo` | GET | Bearer Token | 读用户公开信息（受 scope 控制） |
 | `/oauth/revoke` | POST | 不需要 | 主动吊销 token（登出） |
+| `/oauth/logout` | GET | 不需要 | RP 登出入口：顶层导航，302 跳 OP 前端登出页（见 [07](./07-logout.md)）|
+| `/oauth/post-logout-redirect` | GET | 不需要 | 登出回跳白名单校验（见 [07](./07-logout.md)）|
 
 ---
 
@@ -88,6 +90,7 @@
 | scope | 否 | 权限范围，空格分隔 |
 | code_challenge | 否 | PKCE code challenge |
 | code_challenge_method | 否 | `S256`（默认）或 `plain` |
+| prompt | 否 | `login` = 强制重新登录（即使 OP 仍有会话也不静默放行）；见 [07-logout.md](./07-logout.md) |
 
 **成功响应**：HTTP 302 重定向到 `redirect_uri?code=xxx&state=xxx`
 
@@ -150,6 +153,18 @@
   "token": "要吊销的 refresh_token"
 }
 ```
+
+---
+
+---
+
+## 登出（RP-Initiated Logout）
+
+登出 / 单点登出是单独的跨服务契约，完整说明见 [07-logout.md](./07-logout.md)。要点：
+
+- RP 登出须**顶层跳转**到 OP 登出入口 `GET {OAUTH_API_BASE}/oauth/logout?client_id=&redirect=`（复用访问 `/oauth/authorize` 的同一 base；后端 302 跳到 OP 前端登出页清会话再回跳）。
+- `GET /oauth/post-logout-redirect?client_id=&redirect=` 做回跳白名单校验（origin 匹配注册的 `redirect_uri`）。
+- `GET /oauth/authorize` 的 `prompt=login` 可强制重新登录（仅登出本站语义的替代方案）。
 
 ---
 

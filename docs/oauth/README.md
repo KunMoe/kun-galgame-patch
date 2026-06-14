@@ -42,6 +42,7 @@
 | 04 | [tokens-and-errors.md](./04-tokens-and-errors.md) | JWT Access Token claims + 完整错误码速查（OAuth 15xxx / 认证 10xxx / 通用） |
 | 05 | [registration.md](./05-registration.md) | 🆕 用户注册流程：跳转 OAuth 注册 + 邮箱验证码 + 自动 SSO 回跳；`POST /auth/register/send-code` + `POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例 |
 | 06 | [moemoepoint.md](./06-moemoepoint.md) | 🚧 **设计规范（精简版）**：萌萌点全站统一货币（单一真源在 OAuth）。可变余额列 + append-only 审计日志 + 幂等发放/扣除 RPC + 迁移与下游接入；含"刻意没做的"清单（将来需要再升级）|
+| 07 | [logout.md](./07-logout.md) | 🆕 **登出与单点登出（RP-Initiated Logout）**：修复「登出后再登录直接静默登回原账号」。RP 登出须顶层跳转 OP 登出入口 `GET /auth/logout`；含 `GET /oauth/post-logout-redirect` 白名单校验 + `prompt=login` 强制重登；下游接入步骤 |
 
 ### 完整接入指南
 
@@ -79,6 +80,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 ---
 
 ## 变更摘要
+
+> 🆕 **2026-06-14 登出修复（RP-Initiated Logout）**：新增 [07-logout.md](./07-logout.md)。修复「在 wiki / 补丁站登出后，再点登录/注册会静默登回刚才的账号」——根因是 RP 登出没清掉 OP（`oauth.kungal.com`）的会话（OP 的 `localStorage` 跨 origin 清不掉 + 跨站 cookie 带不过去）。方案：RP 登出时**顶层跳转**到 OP 登出入口 `GET https://oauth.kungal.com/auth/logout?client_id=&redirect=`，由 OP 清会话再回跳。新增后端 `GET /oauth/post-logout-redirect` 白名单校验 + `GET /oauth/authorize` 的 `prompt=login` 参数。**下游 kungal / moyu 必须改登出实现**（见 07）。
 
 > 🆕 **2026-05-23 注册流程统一（L1，重要）**：新增 [05-registration.md](./05-registration.md) 文档；引入**邮箱验证码两步注册**——`POST /auth/register/send-code` 寄码 + `POST /auth/register` 带 code 创建账号并发 token（**注册即登录**，返回 access_token + 写 refresh cookie）；新增 [GET /oauth/client-info](./05-registration.md#get-oauthclient-info) 公开元数据端点；`oauth_clients` 加 `auto_consent` 列，5 个第一方 client 默认开启——同意页对第一方静默跳过，用户感知是"注册完一闪回到原站点已登录"。下游 kungal / moyu 的 legacy 注册端点全部删除，"注册"按钮改为复用登录的 PKCE 跳转模式（目标 URL 换成 `/auth/register?redirect=<authorize_url>`）。
 

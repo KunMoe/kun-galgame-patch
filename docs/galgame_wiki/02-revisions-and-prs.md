@@ -302,6 +302,29 @@ PR 详情，包含与 base revision 的差异。
 | release_date_tba | bool | 是否官方已宣布日期未定 |
 | note | string | PR 说明 |
 
+**成功响应**：返回**新建的 PR 对象**（`status=0` pending），结构同 [GET /galgame/:gid/prs/:id](#get-galgamegidprsid) 的 `data.pr`（`completed_by` / `completed_time` / `revision_id` 在 pending 阶段为空，被 `omitempty` 省略）。
+
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "id": 42,
+    "galgame_id": 1,
+    "user_id": 2,
+    "status": 0,
+    "title": "修改标题",
+    "message": "把标题改成正式译名",
+    "base_revision": 7,
+    "snapshot": { ... },
+    "created": "2026-06-13T08:00:00Z",
+    "updated": "2026-06-13T08:00:00Z"
+  }
+}
+```
+
+> 🔗 **下游依赖（动态时间线）**：kungal / moyu 在「提出更新请求」提交成功后，用本响应的 `data.id`（PR 主键）+ `data.galgame_id` + `data.user_id` + `data.created` 在各自的动态时间线（论坛 `galgame_activity`）记一条 PR 创建动态。**PR 创建（`status=0`）不进 [GET /galgame/revisions/recent](#get-galgamerevisionsrecent)**——那个全站 feed 只含 `action='merged'`（编辑落地），不含 pending PR；所以「提出更新请求」这条动态必须在此处同步落地，不能等 feed 拉取。
+
 ---
 
 ### PUT /galgame/:gid/prs/:id/merge
