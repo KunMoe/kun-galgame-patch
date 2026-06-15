@@ -100,7 +100,7 @@ avatar
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `file` | file | 是 | 图片二进制，支持 `image/jpeg` `image/png` `image/webp` `image/gif`（首帧） |
-| `preset` | string | 是 | 处理预设名（`avatar` / `galgame_banner` / `topic`），必须在本站 `image_allowed_presets` 中 |
+| `preset` | string | 是 | 处理预设名（`avatar` / `galgame_banner` / `galgame_screenshot` / `topic` / `message`），必须在本站 `image_allowed_presets` 中 |
 
 > **注意**：V1 **不接受** `keep_original` 参数（主图永远是 `webp@82 fit 1920×1080`）。未来如需保留原图，新加 preset 或字段。
 
@@ -138,7 +138,7 @@ V1 **仅接受** `multipart/form-data`，不支持 raw body + `Content-Type: ima
 - `variant_urls` — 按本次 preset 生成的变体清单。**字段里列出的都是实际落盘的静态 URL**，调用方直接使用
   - `preset=avatar` → `{ "256": "...", "100": "..." }`
   - `preset=galgame_banner` → `{ "mini": "..." }`
-  - `preset=topic` → `{}`（空对象）
+  - `preset=galgame_screenshot` / `preset=topic` / `preset=message` → `{}`（空对象，仅主图）
 - `deduplicated` — 是否命中已存在图（调用方可用于统计；本次 preset 所需的变体如缺失，仍会补生成）
 
 #### Go 类型定义（权威）

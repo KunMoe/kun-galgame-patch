@@ -41,7 +41,11 @@
 |--------|--------|------|
 | `avatar` | `[256, 100]` | 256×256 方形头像（用于常规展示）+ 100×100 小头像（评论、历史兼容） |
 | `galgame_banner` | `[mini]` | 460×259 banner 缩略图 |
+| `galgame_screenshot` | `[]` | galgame 画廊截图，仅主图（2026-06 新增；独立 CDN 目录 + 独立配额） |
 | `topic` | `[]` | 无变体，仅主图 |
+| `message` | `[]` | 聊天/私信内联图，仅主图（独立 CDN 目录 + 独立配额） |
+
+> 权威 preset 配置以 [`apps/api/configs/image_presets.yaml`](../../apps/api/configs/image_presets.yaml) 为准（下方 YAML 片段为示意，可能略旧）。
 
 **avatar 保留 256 变体**是为了对齐 moyu / kungal 历史头像的 256×256 cover 语义；100×100 兼容旧版评论列表等小头像使用场景。详见 [04-migration-plan.md](./04-migration-plan.md)。
 
