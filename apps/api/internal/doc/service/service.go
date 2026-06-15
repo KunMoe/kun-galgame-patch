@@ -54,6 +54,23 @@ func (s *DocService) effectiveBanner(d model.Doc) string {
 	return d.Banner
 }
 
+// effectiveAuthorAvatar resolves a user brief to a renderable avatar URL,
+// preferring the image_service hash (the post-OAuth-migration form; "100"
+// variant for the small byline) over the legacy URL. Mirrors effectiveBanner +
+// the frontend resolveAvatarUrl. Returns "" when the brief is unavailable so the
+// caller can fall back to the stored create-time snapshot.
+func (s *DocService) effectiveAuthorAvatar(b *userclient.Brief) string {
+	if b == nil {
+		return ""
+	}
+	if b.AvatarImageHash != "" {
+		if u := s.img.VariantURL(b.AvatarImageHash, "100"); u != "" {
+			return u
+		}
+	}
+	return b.Avatar
+}
+
 // ===== Public =====
 
 // List returns the published flat list + the category tree.
@@ -86,8 +103,24 @@ func (s *DocService) ListPinned() ([]model.CarouselItem, error) {
 	sort.SliceStable(pinned, func(i, j int) bool {
 		return parseDocDate(pinned[i].Date).After(parseDocDate(pinned[j].Date))
 	})
+	// Live-resolve each pinned doc's author avatar from OAuth so it tracks the
+	// current avatar rather than the create-time snapshot (which goes stale after
+	// the OAuth avatar migration). One batched lookup; falls back to the stored
+	// snapshot when a brief is unavailable.
+	uids := make([]int, 0, len(pinned))
+	for _, d := range pinned {
+		if d.AuthorUID > 0 {
+			uids = append(uids, d.AuthorUID)
+		}
+	}
+	briefs := userclient.BriefMapByInt(context.Background(), s.users, uids)
+
 	items := make([]model.CarouselItem, 0, len(pinned))
 	for _, d := range pinned {
+		avatar := s.effectiveAuthorAvatar(briefs[d.AuthorUID])
+		if avatar == "" {
+			avatar = d.AuthorAvatar
+		}
 		items = append(items, model.CarouselItem{
 			Title:        d.Title,
 			Banner:       s.effectiveBanner(d),
@@ -96,7 +129,7 @@ func (s *DocService) ListPinned() ([]model.CarouselItem, error) {
 			Slug:         d.Slug,
 			Category:     d.Category,
 			AuthorName:   d.AuthorName,
-			AuthorAvatar: d.AuthorAvatar,
+			AuthorAvatar: avatar,
 		})
 	}
 	return items, nil
@@ -214,6 +247,15 @@ func (s *DocService) GetPost(slug string) (*model.PostDetail, error) {
 	}
 
 	d := docs[idx]
+	// Live-resolve the author avatar (see ListPinned); fall back to the snapshot.
+	authorAvatar := d.AuthorAvatar
+	if d.AuthorUID > 0 {
+		if b := userclient.BriefMapByInt(context.Background(), s.users, []int{d.AuthorUID})[d.AuthorUID]; b != nil {
+			if av := s.effectiveAuthorAvatar(b); av != "" {
+				authorAvatar = av
+			}
+		}
+	}
 	return &model.PostDetail{
 		Slug: slug,
 		HTML: html,
@@ -225,7 +267,7 @@ func (s *DocService) GetPost(slug string) (*model.PostDetail, error) {
 			Date:           d.Date,
 			AuthorUID:      d.AuthorUID,
 			AuthorName:     d.AuthorName,
-			AuthorAvatar:   d.AuthorAvatar,
+			AuthorAvatar:   authorAvatar,
 			AuthorHomepage: d.AuthorHomepage,
 			Pin:            d.Pin,
 		},
@@ -316,11 +358,13 @@ func (s *DocService) Create(ctx context.Context, userID int, req dto.DocCreateRe
 	if req.Pin != nil {
 		doc.Pin = *req.Pin
 	}
-	// Snapshot the author name/avatar from OAuth so the frontmatter renders it
-	// without a per-request lookup (mirrors how about stored author fields).
+	// Snapshot the author name + a resolved avatar URL from OAuth as a fallback
+	// (the read paths now live-resolve the avatar; this only kicks in when a
+	// brief is unavailable). Store the resolved URL — not the raw b.Avatar —
+	// so the fallback stays valid post-migration when avatars are hash-only.
 	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
 		doc.AuthorName = b.Name
-		doc.AuthorAvatar = b.Avatar
+		doc.AuthorAvatar = s.effectiveAuthorAvatar(b)
 	}
 	if err := s.repo.Create(doc); err != nil {
 		return nil, err
