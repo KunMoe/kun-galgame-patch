@@ -40,7 +40,9 @@ const handleFiles = async (files: File[]) => {
     const additions: GalgameScreenshotRow[] = []
     let i = 0
     for (const f of files) {
-      const res = await ge.uploadImageService(f, 'topic')
+      // Screenshots use the dedicated `galgame_screenshot` preset (own CDN
+      // folder + quota; main image only). `topic` stays the generic default.
+      const res = await ge.uploadImageService(f, 'galgame_screenshot')
       if (res.code !== 0 || !res.data) {
         useKunMessage(
           `上传 ${f.name} 失败：${res.message || '未知错误'}`,
