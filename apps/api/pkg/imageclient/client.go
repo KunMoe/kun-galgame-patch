@@ -103,8 +103,9 @@ type UploadResult struct {
 //   - body / filename / mime describe the file (mime may be "" — the server
 //     sniffs by magic number anyway).
 //   - preset must be one of the presets enabled for our client (e.g. "topic"
-//     for free-form gallery images / screenshots, "galgame_banner" for banners
-//     when allowed, "avatar" for user avatars).
+//     for free-form gallery / editor-inline images, "galgame_screenshot" for
+//     galgame screenshots; "galgame_banner"/"avatar" exist but moyu uploads
+//     those via other paths — see UploadImageService handler doc).
 //
 // On non-2xx the response body's error code is mapped to one of the sentinels
 // where it makes sense, or wrapped with the raw status for unrecognized codes.

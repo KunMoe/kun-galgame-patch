@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // W2 / PR3b — manage the screenshots array of a galgame (image_service hashes).
 //
-// Upload flow: file picker → POST /api/v1/upload/image-service (preset='topic',
-// moyu's default-enabled preset) → returns content hash → append to local
+// Upload flow: file picker → POST /api/v1/upload/image-service
+// (preset='galgame_screenshot', the dedicated screenshot preset added by infra's
+// image_service migration 5b19f51f) → returns content hash → append to local
 // array with the next sort_order. Parent (rewrite.vue / prs.vue) saves the
 // full array via PUT /galgame/:gid (presence-replace semantics; only when the
 // set actually changed).

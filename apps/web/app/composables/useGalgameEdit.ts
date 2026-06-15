@@ -265,10 +265,13 @@ export const useGalgameEdit = () => {
   // For galgame covers, prefer the PUT /galgame/:gid multipart flow which lets
   // Wiki auto-promote the upload to covers[sort_order=0]; this composable
   // method can still be used to add NON-pinned covers via the JSON path.
-  // preset must be enabled for our OAuth client on image_service:
-  //   - 'topic'           → free-form gallery image (screenshots) — moyu default
-  //   - 'galgame_banner'  → only if admin enabled it on our oauth_client
-  //   - 'avatar'          → user avatars
+  // preset must be allowlisted for our OAuth client on image_service — the
+  // GalgameImageUploadPreset union (types/patch.d.ts) is the source of truth:
+  //   - 'galgame_screenshot' → galgame screenshots (the only current caller)
+  //   - 'topic'              → free-form gallery image (the default; also used
+  //                            directly by the editor uploader + admin doc)
+  // (galgame_banner is wiki-side via the multipart PUT /galgame/:gid flow;
+  // avatars go through OAuth's /auth/me/avatar — neither hits this endpoint.)
   interface ImageServiceUploadResult {
     hash: string
     url: string
@@ -278,7 +281,10 @@ export const useGalgameEdit = () => {
     size_bytes: number
     deduplicated: boolean
   }
-  const uploadImageService = async (file: File, preset = 'topic') => {
+  const uploadImageService = async (
+    file: File,
+    preset: GalgameImageUploadPreset = 'topic'
+  ) => {
     const fd = new FormData()
     fd.append('preset', preset)
     fd.append('file', file, file.name)

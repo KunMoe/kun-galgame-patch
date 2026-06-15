@@ -99,10 +99,13 @@ func (h *Handler) CompleteMultipart(c *fiber.Ctx) error {
 // cover; pinned-banner uploads still go through PUT /galgame/:gid multipart
 // where Wiki auto-promotes the hash to covers[sort_order=0].
 //
-// Body: multipart/form-data with required `file` (image binary) and
-// `preset` form field (one of the image_service-enabled presets — typically
-// `topic` for screenshots; `galgame_banner` if the OAuth client has it
-// allowed; `avatar` for avatars).
+// Body: multipart/form-data with required `file` (image binary) and `preset`
+// form field. moyu forwards the preset VERBATIM — image_service owns the
+// allowlist (`image_allowed_presets` per OAuth client) and rejects anything not
+// enabled, so there is intentionally no preset allowlist here. moyu's callers
+// send `galgame_screenshot` (galgame screenshots) and `topic` (editor-inline /
+// admin doc images). (Banners use the multipart PUT /galgame/:gid Wiki flow;
+// avatars use OAuth's /auth/me/avatar — neither hits this endpoint.)
 //
 // 10MB body cap is inherited from the Fiber app config; image_service itself
 // enforces per-preset size + per-client daily quota.
