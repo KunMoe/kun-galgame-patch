@@ -33,7 +33,7 @@
 | **chat / 私信内联图** | **已接** | kungal `POST /image/message` → `message` preset（**2026-05-26 之后新增**） |
 | 图片保活（refping） | 已接 | oauth/wiki 侧 `internal/jobs/galgame_image_refping` 扫 cover/screenshot/revision/PR snapshot |
 | **JSON 写入时的 hash 探活** | **部分** | 格式已校验（`len=64,hexadecimal`）；存在性探活只在 Revert / PR-merge 路径，create/update 的 JSON 写入仍只校验格式 |
-| `galgame_screenshot` 消费端统一 | 待办 | preset 已加，但 kungal 仍用 `galgame_banner`、moyu 仍用 `topic`；迁移需配 per-client allowlist + 部署排序 |
+| `galgame_screenshot` 消费端统一 | **已完成** | kungal/moyu screenshot 都已迁到 `galgame_screenshot`（cover 仍 `galgame_banner`）；preset + 两站 client allowlist + 消费端代码均已上线（见 A4） |
 | 文档 banner / 网站 icon / 广告图 / 友链 / 静态 MDX 文章图 | 不需要接 | 静态资源，按设计不走运行时图片服务 |
 | patch 资源文件（压缩包/补丁包） | 不需要接 | image_service 只管图片 |
 
@@ -56,9 +56,9 @@ multipart 请求里如果带 `file`，wiki 用 `preset=galgame_banner` 上传到
 
 kungal 不只在「创建时」用 image_service，编辑器的 cover/screenshot 拖拽上传也走它：
 
-- 后端代理路由：[`kun-galgame-forum/apps/api/internal/app/router.go:282`](../../../kun-galgame-forum/apps/api/internal/app/router.go#L282) — `POST /image/galgame` 转发到 image_service（仅允许 `galgame_banner`）
+- 后端代理路由：[`kun-galgame-forum/apps/api/internal/app/router.go:282`](../../../kun-galgame-forum/apps/api/internal/app/router.go#L282) — `POST /image/galgame` 转发到 image_service（`allowedGalgamePresets` 允许 `galgame_banner` cover + `galgame_screenshot` screenshot）
 - 前端 cover 编辑器：[`kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Covers.vue:57`](../../../kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Covers.vue#L57) — `uploadGalgameImage(file, 'galgame_banner')`，hash 写入 `covers[]`
-- 前端 screenshot 编辑器：[`kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Screenshots.vue:54`](../../../kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Screenshots.vue#L54) — 仍 `uploadGalgameImage(file, 'galgame_banner')`，hash 写入 `screenshots[]`
+- 前端 screenshot 编辑器：[`kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Screenshots.vue:51`](../../../kun-galgame-forum/apps/web/app/components/edit/galgame/pr/Screenshots.vue#L51) — `uploadGalgameImage(file, 'galgame_screenshot')`，hash 写入 `screenshots[]`
 
 #### A3. moyu 侧的代理 + 编辑器
 
@@ -69,19 +69,21 @@ moyu 走两条不同链路：
 引用：
 - moyu 创建 galgame 的 banner multipart：[`apps/web/app/pages/edit/create.vue:244`](../../../kun-galgame-patch/apps/web/app/pages/edit/create.vue#L244) → `POST /galgame/submit`
 - moyu rewrite 的 banner multipart：[`apps/web/app/pages/edit/rewrite.vue:391`](../../../kun-galgame-patch/apps/web/app/pages/edit/rewrite.vue#L391) → `PUT /galgame/:id`
-- moyu screenshot 编辑器：[`apps/web/app/components/galgame/edit/ScreenshotsEditor.vue:43`](../../../kun-galgame-patch/apps/web/app/components/galgame/edit/ScreenshotsEditor.vue#L43) — `ge.uploadImageService(f, 'topic')`
+- moyu screenshot 编辑器：[`apps/web/app/components/galgame/edit/ScreenshotsEditor.vue:45`](../../../kun-galgame-patch/apps/web/app/components/galgame/edit/ScreenshotsEditor.vue#L45) — `ge.uploadImageService(f, 'galgame_screenshot')`
 - moyu 上传 composable：[`apps/web/app/composables/useGalgameEdit.ts:281`](../../../kun-galgame-patch/apps/web/app/composables/useGalgameEdit.ts#L281) — `uploadImageService(file, preset = 'topic')`
 - moyu 后端代理：[`apps/api/internal/app/router.go:390`](../../../kun-galgame-patch/apps/api/internal/app/router.go#L390) — `POST /upload/image-service`
 - 代理实现：[`apps/api/internal/common/upload/handler.go:109`](../../../kun-galgame-patch/apps/api/internal/common/upload/handler.go#L109) — 透传任意 preset，由 image_service 按本站 `image_allowed_presets` 兜底校验
 
-#### A4. screenshot preset 现状（待统一）
+#### A4. screenshot preset 统一（已完成 2026-06-15）
 
-`galgame_screenshot` preset 已于 2026-06-15 加入 `image_presets.yaml`，但**消费端尚未迁移**：
+`galgame_screenshot` preset 已加入 `image_presets.yaml`，kungal/moyu screenshot **都已迁到它**（cover 仍走 `galgame_banner`）。原先 kungal 复用 `galgame_banner`（多生成无用的 `mini` 变体）、moyu 复用 `topic`，两端语义错位 + 不一致的问题已消除。
 
-- kungal screenshot 仍用 `galgame_banner`（会多生成一个 gallery 不渲染的 `mini` 变体，无害但语义错位）—— 见 `Screenshots.vue:49-53` 的 AUDIT FIX 注释
-- moyu screenshot 仍用 `topic`（不产变体，但和"截图"语义不符，且和 kungal 不一致）
+迁移按顺序完成（这不是单改一行字符串）：
+1. ✅ image_service 部署带新 preset 的 yaml（preset 烤进镜像，需重建 `infra-image`）。
+2. ✅ kungal + moyu 两个 OAuth client 的 `image_allowed_presets` 加上 `galgame_screenshot`（prod DB；幂等 append）。wiki client 不动（只上传 banner）。
+3. ✅ 消费端改 preset 字符串并部署：kungal 后端 `allowedGalgamePresets` + `Screenshots.vue`、moyu `ScreenshotsEditor.vue`。
 
-**迁移这件事不是单改一行字符串**，需要按顺序：① image_service 部署带新 preset 的 yaml → ② 给 wiki/kungal/moyu 三个 OAuth client 的 `image_allowed_presets` 列加上 `galgame_screenshot`（DB 改动）→ ③ 两端把上传调用的 preset 字符串改成 `galgame_screenshot` 并部署。见文末 follow-up。
+> 部署踩坑：Dokploy 的 webhook 重部署**不会重新 `docker pull :latest`**——`infra-image` / kungal-api / kungal-web / moyu-web 都需要在 prod 手动 `docker compose ... up -d --force-recreate <svc>` 才真正换上新镜像。详见 prod 运维笔记。
 
 ### B. 头像上传
 
@@ -161,7 +163,7 @@ ImageHash string `json:"image_hash" validate:"required,len=64,hexadecimal"`
 ## Follow-up 短板清单（按优先级）
 
 1. **【P1】JSON 写入路径 hash 存在性探活**（E 节）— create/update 复用 `ImageProbeFunc` 或加 `POST /image/exists`，避免死图。
-2. **【P2】`galgame_screenshot` 消费端迁移**（A4）— preset 已加；待 ① 部署 image_service ② 给 wiki/kungal/moyu client 的 `image_allowed_presets` 加 `galgame_screenshot` ③ kungal `Screenshots.vue` / moyu `ScreenshotsEditor.vue`+`useGalgameEdit.ts` 改 preset 字符串并部署。
+2. **【已完成】`galgame_screenshot` 消费端迁移**（A4）— 2026-06-15 完成（preset + kungal/moyu allowlist + 消费端代码全部上线）。
 3. **【已完成】头像展示收口**（D）— 2026-06 完成。
 4. **【已完成】kungal topic 图片迁入 image_service**（F 注）— 2026-06 完成。
 
