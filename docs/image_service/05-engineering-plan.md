@@ -259,21 +259,22 @@ apps/api/
 
 ### 工程任务
 
-> **平台侧不写迁移脚本**。迁移的本质是"翻转业务库外键"，只有调用方知道哪个老 URL 属于哪个 entity；image_service 提供的标准 `Upload` API + sha256 内容寻址 + dedup 已经足够覆盖。
+> **平台侧不写迁移脚本**。迁移的本质是"翻转业务库外键 / 改写正文引用"，只有调用方知道哪个老 URL 属于哪个 entity / 哪条内容；image_service 提供的标准 `Upload` API + sha256 内容寻址 + dedup 已经足够覆盖。
 >
-> **大部分字段不需要迁移**。kungal / moyu 的所有图片（avatar + topic）已经是合理压缩 WebP / AVIF，二次压缩没收益，老桶永久保留。只有 galgame wiki 的 `galgame.banner` 因为需要 `_mini` 460×259 变体真要迁移。
+> **全量迁移（2026-06 修订，取代"老图豁免"）**。kungal / moyu / wiki 的图片**全部迁移**进 image_service、旧图床彻底废弃——理由是引用可迁移性（内容里硬编码绝对 URL 换不了域名），不是画质。实体图（头像 / banner）已于 2026-06-15 完成；剩余是**内容内嵌图**（topic / 评论正文）的迁移 + 改写为域名无关的 `/image/<hash>`。详见 [04-migration-plan.md](./04-migration-plan.md)。
 
-- **kungal / moyu**：只做**新上传写新表**的代码切换，不写迁移脚本
-- **galgame wiki**：在自己仓库（即本仓库）写 `cmd/migrate-galgame-banners-to-image-service`，跑一次离线迁移
-- 各站点新上传逻辑改造 + 前端 fallback 链路（每站 3–4 个 PR）
+- **kungal / moyu**：实体图迁移（已完成）+ **内容图迁移脚本**（扫正文 → 抓图 → 上传 → 就地改写为 `/image/<hash>`，先备份原文）
+- **galgame wiki**：`cmd/migrate-galgame-banners-to-image-service` 离线迁移（已完成）
+- 各站点：新上传改为插入 `/image/<hash>` + 前端渲染器解析 + 后端 `GET /image/:hash` 302 兜底
 
 ### 验收标准（每站点独立）
 
 - [ ] 新上传全部走新服务
-- [ ] kungal / moyu：新注册 / 改头像后 `users.avatar_image_hash` 覆盖率 > 99%（老用户保持 NULL 是正常的）
-- [ ] galgame wiki：`galgame.banner_image_hash` 离线迁移后覆盖率 > 99%
-- [ ] 前端读取优先新 hash → fallback `*_url_legacy` → 默认占位
-- [ ] 老桶访问量稳定（**不必下降到 0**，老用户头像和 topic markdown 永远走老 URL）
+- [ ] kungal / moyu：头像离线迁移后 `users.avatar_image_hash` 覆盖率 > 99%（已完成 2026-06-15）
+- [ ] galgame wiki：banner 离线迁移后覆盖率 > 99%（已完成 2026-06-15）
+- [ ] **内容图：业务库正文里 0 条残留 `image.kungal.com` / `image.moyu.moe` 绝对 URL**（全部改写为 `/image/<hash>`）
+- [ ] 前端读取优先新 hash / `/image/<hash>` → 迁移期 fallback `*_url_legacy` → 默认占位
+- [ ] 内容改写完成后旧桶访问量**趋零**（残余仅外链 / 爬虫 / 旧缓存）→ 进入下线议程
 
 ### 灰度顺序建议
 
@@ -410,7 +411,7 @@ KUN_IMAGE_OAUTH_CLIENT_SECRET=<your_client_secret>
 | libvips CGO 构建失败 | V1 | 准备 `kolesa-team/go-webp` 作为纯 CGO 备选；CI 镜像固化依赖 |
 | MinIO / S3 协议兼容性差异 | V1 | 使用 `aws-sdk-go-v2` 泛协议，MinIO 开发 + R2 预发测试 |
 | 配额 Redis 短暂不可用 | V1 | 降级策略：Redis 失败时限速到站点配置 1% 兜底，而非直接 500 |
-| 调用方切换周期过长阻塞老桶下线 | V4 | 明确老 avatar/banner 桶至少保留 6 个月；topic 老桶永久保留 |
+| 调用方切换周期过长阻塞老桶下线 | V4 | 全量迁移 + 内容引用改写完成后，所有旧桶（topic / avatar / banner）只读冻结 → 满足覆盖率 / 流量 / 无 veto 三条件 + 30 天预告后下线；物理对象再留 ≥12 个月 |
 | preset 配置漂移 | V2 | preset 改动走 PR review，附回填脚本 dry-run 输出 |
 
 ---

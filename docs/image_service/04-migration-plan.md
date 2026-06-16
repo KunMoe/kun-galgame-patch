@@ -2,466 +2,232 @@
      Source of truth: https://github.com/KunMoe/kun-galgame-infra/blob/main/docs/image_service/04-migration-plan.md
      Edit the source, then run `pnpm docs:sync` from kungal-docs. -->
 
-# 04 — 旧系统迁移计划
+# 04 — 旧图床全量迁移与下线计划
+
+## 总策略（2026-06 修订，取代"老图豁免"）
+
+> **目标：旧图床（`image.kungal.com` / `image.moyu.moe`）彻底废弃。**
+>
+> - **暂不物理删除**旧桶（先只读冻结，留作回滚 / 审计），但它已进入 **全量迁移 → 只读冻结 → 正式下线** 的议程，不再是"永久保留"。
+> - 旧 CDN 上的**所有**图片——用户头像、galgame banner、以及 **topic / 评论正文里内嵌的内容图**——**全部迁移**进 image_service（内容寻址、跨站去重、统一图床）。
+> - 内容内嵌图改用 **域名无关引用 `/image/<hash>` + 渲染期解析 + 后端 302 兜底**（见下方契约）。这是"换域名只改一处配置"的关键能力——**旧图床做不到、新图床能做到**，也正是必须全量迁移、彻底废弃旧图床的根本理由。
+>
+> 头像 / banner 已于 **2026-06-15 完成迁移**（`cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`）。剩余工作 = **内容内嵌图的全量迁移 + 引用改写**（调用方侧）。
+
+### 为什么推翻"已压缩老图豁免"
+
+旧版本本计划主张：kungal / moyu 的历史 avatar / topic 图已经是压缩 WebP / AVIF，再灌进 libvips 没收益，故"永久保留、不迁移"。**这条结论现已作废**，原因是它只权衡了"画质 / 存储成本"，漏掉了真正的痛点——**引用可迁移性**：
+
+- **内容里硬编码 `https://image.kungal.com/...` 绝对 URL，等于把一个外部域名永久焊死进每一条用户内容**。一旦换 CDN、换域名、或旧域名到期 / 被墙 / 涨价，**历史帖子大面积裂图，且无法批量补救**——除非永远为这一个域名续命，等于永远受制于它。
+- 旧图床**没有**应用层间接层：URL 即存储地址，存什么访问什么。所以它**天生做不到**"内容不变、换个域名仍能解析"。
+- 新图床是 **内容寻址（sha256 hash）** 的：内容里只存 hash，"hash → 当前 CDN 域名"的映射放在**单一配置**里，换域名只改这一处。这才是把图床当**可替换基础设施**来经营，而不是把某个域名当永久依赖。
+
+所以迁移的目的从"换格式 / 重新压缩"变成了 **"换引用方式 + 收敛到单一图床"**——"图已经压过了"不再是豁免理由。
+
+- **不二次压缩的诉求仍然成立**：image_service 按 bytes 内容寻址，迁移时**原样上传**老 bytes（passthrough，不重新 encode），只是换一种域名无关的引用方式。仅当某类资产明确要统一规格时才走标准流水线（webp q77 ≤1920×1080，与头像 / banner / 截图同标准）。
+- 成本上仍是省的：跨站去重（同一张图被多人引用只存一份）+ 旧桶最终下线，长期比"两套图床并存"便宜。
 
 ## 旧路径清单
 
-| 站点 | 旧路径 | 类型 | 迁移策略 |
-|------|--------|------|---------|
-| kungal | `topic/user_${uid}/${userName}-${unixMS}.webp` | 内容型，markdown 硬编码 | **不迁移**，老桶只读永久保留 |
-| kungal | `avatar/user_${uid}/avatar.webp` | 实体型，DB 可查 | **不迁移**（见下方"已压缩老图豁免"原则） |
-| kungal | `avatar/user_${uid}/avatar-100.webp` | 派生图 | 不迁移（同上） |
-| moyu | `topic/user_${uid}/${userName}-${unixMS}.webp` | 同 kungal | 不迁移 |
-| moyu | `avatar/user_${uid}/avatar.webp` / `avatar.avif` | 实体型，DB 可查 | **不迁移**（同样豁免） |
-| moyu | `avatar/user_${uid}/avatar-mini.webp` / `avatar-mini.avif` | 派生图 | 不迁移 |
-| galgame wiki | `galgame/${gid}/banner/banner.webp` | 实体型，DB 可查 | **迁移** —— 需要新 `_mini` 460×259 变体 |
-| galgame wiki | `galgame/${gid}/banner/banner-mini.webp` | 派生图 | 丢弃（新服务以 `_mini` 变体重新生成） |
+| 站点 | 旧路径 | 类型 | 迁移策略（新） | 状态 |
+|------|--------|------|---------------|------|
+| kungal | `avatar/user_${uid}/avatar.webp` (+ `-100`) | 实体型，DB 可查 | **迁移** → `users.avatar_image_hash` | ✅ 已完成 2026-06-15 |
+| moyu | `avatar/user_${uid}/avatar.{webp,avif}` (+ `-mini`) | 实体型，DB 可查 | **迁移**（avif→png→webp） | ✅ 已完成 2026-06-15 |
+| galgame wiki | `galgame/${gid}/banner/banner.webp` (+ `-mini`) | 实体型，DB 可查 | **迁移** → `galgame_cover[sort_order=0]` | ✅ 已完成 2026-06-15 |
+| kungal | `topic/user_${uid}/${userName}-${unixMS}.webp` | **内容型，markdown 硬编码** | **迁移 + 引用改写** → 正文里改为 `/image/<hash>` | ⬜ 待办（调用方侧） |
+| moyu | `topic/user_${uid}/${userName}-${unixMS}.{webp,avif}` | 同 kungal | **迁移 + 引用改写** | ⬜ 待办（调用方侧） |
+| 派生图 | `avatar-100.webp` / `banner-mini.webp` / `avatar-mini.*` | 派生图 | **丢弃**，新服务按 preset 重新生成 | —— |
 
-### 已压缩老图豁免原则
+## 内容内嵌图的域名无关引用契约（核心）
 
-kungal / moyu 的所有历史 avatar / topic 图都是**已经过压缩的 WebP / AVIF**（fit 1920×1080 / quality≈82 同量级），把它们再灌进新服务跑一遍 libvips 没收益：
+> 这是本次修订的核心机制，**forum / moyu / wiki 三仓都必须照做**。它回答了"话题 / 评论里的图，换域名后如何解析到新域名"这个旧图床无解的问题。
 
-- 不能"二次有损压缩"——只会让画质退化
-- 调用方业务库本来就有 `users.avatar` URL 字段直接用
-- 老桶继续公开可读托管，零成本（R2 几十 GB 几块钱/月）
-- 新用户注册 / 用户改头像时**新写**才走 image_service，老用户保持原样
+### 存储形态
 
-**这条原则不适用于 galgame wiki 的 banner**：wiki 的前端列表页要 460×259 的 `_mini` 变体，老桶里没有，必须走一次新服务把 `_mini` 生出来。所以 wiki banner 仍然要迁移。
+内容（topic / reply / chat / 评论 markdown）里**不再存绝对 URL**，改存域名无关的相对引用：
 
-### 变体命名差异（仅迁移 wiki banner 时相关）
+```
+存储（DB 里的 markdown）:  ![](/image/<64-hex-hash>)
+```
 
-新服务统一 `_<variant>` 后缀（`_mini` / `_256` / `_100`），不映射老命名（`banner-mini`），新服务按 preset 重新生成。
+- `<hash>` = image_service 的 sha256 内容哈希（64 位十六进制）。
+- `/image/` 前缀刻意**区别于** CDN 自己的对象路径（`/i/<hash>`），表明它是一个"待解析的引用 token"，不是终态 URL。
+- 实体图（avatar / banner）继续用 `*_image_hash` 列承载——本质是同一个模型（存 hash，不存域名），内容图只是把"hash 列"换成"正文里的 token"。
+
+### 解析（两层，单一配置）
+
+唯一的"hash → 域名"映射来自单一配置 **`KUN_IMAGE_CDN_BASE`**（当前 = `https://image.kungal.iloveren.link`）。**换域名 = 改这一个值，零数据迁移。**
+
+1. **前端渲染期改写（快路径）**：markdown 渲染器把 `/image/<hash>` 改写成 `${KUN_IMAGE_CDN_BASE}/i/<hash>`（需要变体时拼 `-<variant>.webp`）。绝大多数访问走这条，无额外网络跳。
+2. **后端 302 兜底（健壮性）**：每个调用方后端暴露 `GET /image/:hash` → `302 ${KUN_IMAGE_CDN_BASE}/i/<hash>`。覆盖所有没经过 JS 渲染器的场景——RSS、API 原文消费方、邮件、外链、旧浏览器缓存。`/image/<hash>` 是相对路径，落在应用自身 origin 上，所以由各应用后端兜底重定向；它读的也是同一个 `KUN_IMAGE_CDN_BASE`。
+
+```ts
+// 前端渲染器（各前端共用一个 util）
+const resolveContentImage = (src: string) => {
+  const m = /^\/image\/([0-9a-f]{64})$/.exec(src)
+  return m ? `${KUN_IMAGE_CDN_BASE}/i/${m[1]}` : src
+}
+```
+
+```go
+// 各调用方后端：GET /image/:hash → 302（兜底，非主路径）
+r.GET("/image/:hash", func(c *gin.Context) {
+    h := c.Param("hash")
+    if !isHex64(h) { c.Status(404); return }
+    c.Redirect(http.StatusFound, cfg.ImageCDNBase+"/i/"+h)
+})
+```
+
+> **为什么这能彻底废弃旧图床**：内容里不含任何域名，旧绝对 URL 在迁移后归零，旧桶不再被任何内部链接引用 → 满足下线前提。换域名 / 换 CDN / 换图床实现都只动 `KUN_IMAGE_CDN_BASE` 一处。
 
 ## 迁移原则
 
-1. **新旧 URL 共存**：旧 URL 保持可访问，直到各站调用方代码切换完成
-2. **不物理删除旧对象**：至少保留 6 个月，用于回滚和审计；topic markdown / kungal+moyu avatar 老桶永久保留
-3. **不二次压缩**：已经是合理压缩 WebP / AVIF 的老图（kungal+moyu 全部图片）**直接不迁移**，业务库 `*_url_legacy` 字段直接当永久 URL 用
-4. **增量可中断**：迁移的字段（如 wiki banner）脚本用 `WHERE *_image_hash IS NULL` 天然幂等，可中断重跑
-5. **调用方代码切换各自独立**：kungal、moyu、galgame wiki 各自节奏，每站 3–4 个 PR 起步，1–2 个月落地
-6. **派生图全部丢弃**：`avatar-100.webp`、`banner-mini.webp` 不映射老命名，由新服务预生成（仅对要迁移的字段适用）
+1. **新旧并存（迁移期）**：旧 URL 保持可访问，直到迁移 + 改写完成、旧桶访问归零。
+2. **暂不物理删除，但目标是下线**：迁移完成后旧桶只读冻结；满足下线条件 + 30 天预告后正式下线；物理对象再保留 ≥12 个月（IA/Glacier）备审计 / 回滚，之后删除。**"永久保留"不再是任何旧桶的终态。**
+3. **不二次压缩**：内容图迁移优先 **passthrough 原样上传**（image_service 按 bytes 去重，不重 encode）；仅需统一规格的资产才走标准流水线。
+4. **增量可中断 + 幂等**：实体图用 `WHERE *_image_hash IS NULL` 谓词；内容图用"该行 markdown 是否仍含旧绝对 URL"谓词——天然可中断重跑。
+5. **调用方各自迁移**：只有调用方知道哪条老 URL 属于哪条内容；平台提供 image_service + 契约，调用方写改写脚本。
+6. **派生图丢弃**：旧命名（`*-mini` / `*-100`）不映射，由新服务按 preset 预生成。
 
-## kungal / moyu 老图的特殊处理（含 topic + avatar）
+## 三类图片的迁移方式
 
-kungal / moyu 的所有历史图片（topic 图床 + 用户头像）都按同一规则处理：
+| 类别 | 字段 / 载体 | 迁移动作 | 改写后引用 |
+|------|------------|----------|-----------|
+| 实体图：头像 | `users.avatar_image_hash` | 抓旧图 → 上传 → 写 hash 列 | 前端 `resolveAvatarUrl(hash)` 拼 CDN |
+| 实体图：banner | `galgame_cover[sort_order=0]` | 同上 | 前端 `resolveBannerUrl` 用 `effective_banner_hash` |
+| **内容图：topic / 评论** | **markdown 正文里的绝对 URL** | 抓旧图 → 上传 → **把正文里该 URL 改写为 `/image/<hash>`** | 渲染器 + 302 兜底（见上方契约） |
 
-- 已经是合理压缩的 WebP / AVIF
-- 老桶继续公开可读托管
-- 业务库里的老 URL 字段（`users.avatar` / topic markdown 里的 hardcoded URL）保持指向老桶
-- **新上传** 才走 image_service —— 新注册用户改头像 / 新发 topic 帖里的图
-
-**最终方案**：
-
-> **kungal / moyu 老 avatar / topic 老 URL 永久保留只读，不迁移、不 rewrite、不二次压缩。新上传全部走新服务，新老数据自然分野。**
-
-理由：
-- 二次压缩对已是 WebP@82 的图只会让画质退化，没有任何收益
-- R2 / S3 上几十 GB 的历史数据成本月度几块钱，不值得花工程时间折腾
-- 不增加任何永久维护负担
-- markdown 里的硬编码 URL 也不可能批量改写
-- 新老 URL 用户不会同时看到（旧帖子看老 URL，新帖子看新 URL），无体验撕裂
+实体图（前两类）已完成，且本就是"存 hash + 单一 base 解析"，已经域名无关。**剩余只有内容图**——它的难点不在抓图，而在**正文 URL 的就地改写**（用户产生内容，须备份后改写）。
 
 ## 阶段划分
 
-### 阶段 0：新服务上线（V1 完成后）
+### 阶段 0–1：新服务上线 + 双写（已完成）
 
-- 图片服务独立运行于 `:9278`
-- OAuth Client 为 kungal/moyu/galgame wiki 开通 `image:upload` scope + 对应 preset
-- 各站点在**新功能**上先用新服务（新开模块、新注册用户的 avatar），旧数据不动
-- 目标：验证新服务稳定性，收集真实流量数据
+新服务运行于 `:9278`；OAuth client 开通对应 preset；新上传走新服务并把 hash 写回业务库。
 
-### 阶段 1：双写兼容期（1–2 周，按站点节奏）
+### 阶段 2：实体图迁移（已完成 2026-06-15）
 
-- 旧代码保持不变，**旧 bucket 继续接收 topic 图床的上传**（直到该站 topic 切换，见阶段 4）
-- avatar / banner 的新上传路径切到新服务
-- 关键：确保新上传的图的 `hash` 被**同步写入调用方业务库**的新字段
+头像、banner 离线迁移脚本（断点续跑 / 配额自停 / 死链跳过 / 收尾 ref-ping），见 `cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`。脚本骨架与失败处理见本仓 git 历史与 [[avatar-migration-and-image-facts]]。
 
-例如 kungal 用户改头像：
+### 阶段 2b：内容图迁移（待办，调用方侧）
 
-```
-// 旧代码（保留一段时间作为回退）
-uploadToOldBucket(file) → 写 users.avatar_url_legacy
-
-// 新代码
-uploadToImageService(file) → 写 users.avatar_image_hash
-```
-
-前端读取优先 `avatar_image_hash`，缺失时回退到 `avatar_url_legacy`。
-
-### 阶段 2：调用方侧迁移（仅对必须迁移的字段）
-
-> **平台侧不提供迁移脚本**。原因：迁移的本质是"翻转业务库的外键"，而**只有调用方知道哪个老 URL 属于哪个 entity**。平台再多扫桶 / 写 `images` 表也替代不了调用方那条 `UPDATE galgame SET banner_image_hash = ? WHERE id = ?`。让调用方直接走标准 `POST /image/upload` API 一步到位最简单。
->
-> image_service 的 sha256 内容寻址 + 跨站去重已经保证：第二次以同样 bytes 调 `Upload` 是 dedup-hit（不重处理、不重存）。
-
-#### 需要写迁移脚本的字段清单
-
-按上一节"已压缩老图豁免原则"过滤后，三站合计**只剩极少数字段**需要写迁移脚本：
-
-| 站点 | 字段 | 原因 |
-|------|------|------|
-| galgame wiki | `galgame.banner` | 列表页要 `_mini` 460×259 变体，老桶没有 |
-| kungal | （无） | 全部豁免 |
-| moyu | （无） | 全部豁免 |
-
-> 如果未来某个字段决定上 V3 审核 / 跨站 dedup 等新特性，再单独把它加进迁移清单即可。骨架在下方，复用方便。
-
-#### 迁移脚本骨架
-
-#### 业务库 schema 准备
-
-即便不迁移，**也要在业务库上加 `*_image_hash` 列**（用于新上传写入）；只有真要迁移的字段才需要 status / attempts 列。
-
-**只加 hash 列（kungal `users.avatar` / moyu `users.avatar` 这种豁免迁移的字段）**：
-
-```sql
-ALTER TABLE "user"
-    ADD COLUMN avatar_image_hash CHAR(64);
-
-ALTER TABLE "user" RENAME COLUMN avatar TO avatar_url_legacy;
-```
-
-前端 resolve 函数：`avatar_image_hash` → 拼新 URL；NULL 时 fallback `avatar_url_legacy`。豁免字段永远走 fallback 分支，是 OK 的。
-
-**加全套迁移列（galgame wiki `galgame.banner` 这种要迁移的字段）**：
-
-```sql
-ALTER TABLE galgame
-    ADD COLUMN banner_image_hash CHAR(64),
-    ADD COLUMN banner_migration_status   SMALLINT NOT NULL DEFAULT 0,  -- 0=未尝试 1=成功 2=永久失败
-    ADD COLUMN banner_migration_attempts SMALLINT NOT NULL DEFAULT 0;
-
-ALTER TABLE galgame RENAME COLUMN banner TO banner_url_legacy;
-
-CREATE INDEX idx_galgame_pending_migration
-    ON galgame(id)
-    WHERE banner_image_hash IS NULL
-      AND banner_url_legacy IS NOT NULL
-      AND banner_migration_status != 2;
-```
-
-#### 脚本骨架（以 galgame wiki `galgame.banner` 为例）
+每个内容表（forum：`topic` / `reply` / `chat` / `galgame_comment`；moyu：对应表）扫描 markdown，把旧绝对 URL 全量迁移并就地改写为 `/image/<hash>`。
 
 ```go
-// apps/api/cmd/migrate-galgame-banners-to-image-service/main.go
+// 调用方 cmd 骨架：扫内容 → 抓图 → 上传 → 就地改写正文
+var reOldURL = regexp.MustCompile(`https?://(image\.kungal\.com|image\.moyu\.moe)/\S+?\.(webp|avif|png|jpe?g|gif)`)
 
-const maxAttempts = 3
-
-func main() {
-    cfg := mustLoadConfig()
-    db := mustConnectDB(cfg)
-    cli := imageclient.New(imageclient.Config{
-        BaseURL:      cfg.ImageServiceBaseURL,
-        ClientID:     cfg.ImageOAuthClientID,
-        ClientSecret: cfg.ImageOAuthClientSecret,
-    })
-    ctx := context.Background()
-    start := time.Now()
-
-    var (
-        processed, succeeded, failed int64
-        migratedHashes               []string
-    )
-
-    rows := db.Query(`
-        SELECT id, banner_url_legacy, banner_migration_attempts
-        FROM galgame
-        WHERE banner_image_hash IS NULL
-          AND banner_url_legacy IS NOT NULL
-          AND banner_migration_status != 2
-        ORDER BY id ASC
-    `)
-
-    for rows.Next() {
-        var gid int64
-        var legacy string
-        var attempts int16
-        rows.Scan(&gid, &legacy, &attempts)
-        processed++
-
-        body, err := fetchOldObject(legacy)
-        if err != nil {
-            failed++
-            recordFailure(db, gid, attempts, err)
-            slog.Warn("fetch old", "gid", gid, "url", legacy, "err", err)
-            goto progress
-        }
-
-        result, err := cli.Upload(ctx, bytes.NewReader(body), "banner.bin", "galgame_banner")
-        if err != nil {
-            failed++
-            recordFailure(db, gid, attempts, err)
-            // 配额耗尽时退出整个脚本（提示运维 raise 配额或换天再跑）
-            if errors.Is(err, imageclient.ErrQuotaExceeded) {
-                slog.Error("quota exceeded; stopping", "processed", processed)
-                break
-            }
-            slog.Warn("upload", "gid", gid, "err", err)
-            goto progress
-        }
-
-        _, err = db.Exec(`
-            UPDATE galgame
-               SET banner_image_hash = ?,
-                   banner_migration_status = 1
-             WHERE id = ?
-        `, result.Hash, gid)
-        if err != nil {
-            slog.Error("update db", "gid", gid, "err", err)
-            failed++
-            goto progress
-        }
-        succeeded++
-        migratedHashes = append(migratedHashes, result.Hash)
-        slog.Debug("migrated", "gid", gid, "hash", result.Hash, "dedup", result.Deduplicated)
-
-    progress:
-        // 每 1000 行打一次 summary（可观测性）
-        if processed%1000 == 0 {
-            elapsed := time.Since(start)
-            rate := float64(processed) / elapsed.Seconds()
-            slog.Info("progress",
-                "processed", processed,
-                "succeeded", succeeded,
-                "failed", failed,
-                "rate_per_sec", fmt.Sprintf("%.1f", rate),
-                "elapsed", elapsed.Truncate(time.Second),
-            )
-        }
+for _, row := range scanRowsStillContainingOldURL(db) { // 幂等谓词：正文仍含旧域名
+    content := row.Content
+    urls := dedupe(reOldURL.FindAllString(content, -1))
+    for _, old := range urls {
+        body, err := fetchOldObject(old)            // 抓旧图 bytes
+        if err != nil { recordFailure(row, old, err); continue }
+        res, err := cli.Upload(ctx, bytes.NewReader(body), "content.bin", "topic") // 内容寻址去重
+        if err != nil { recordFailure(row, old, err); continue }
+        content = strings.ReplaceAll(content, old, "/image/"+res.Hash) // 就地改写
     }
-
-    slog.Info("migration finished",
-        "processed", processed, "succeeded", succeeded, "failed", failed,
-        "elapsed", time.Since(start).Truncate(time.Second),
-    )
-
-    // 收尾：把刚迁的 hash 主动 ping 一次。否则首次 ref-ping cron
-    // 跑到之前，新写入的 last_referenced_at 就是 NOW()，没问题；
-    // 但显式 ping 一次让"迁移日 = 首次 ping 日"对齐，便于事后追账。
-    if len(migratedHashes) > 0 {
-        for _, batch := range chunk(migratedHashes, 1000) {
-            if _, err := cli.ReferencePing(ctx, batch); err != nil {
-                slog.Warn("final ping", "err", err)
-            }
-        }
+    if content != row.Content {
+        backupOriginal(row)               // 改写前先备份原文（可回滚）
+        persistContent(db, row.ID, content) // UPDATE ... SET content = ? WHERE id = ?
     }
-}
-
-// recordFailure 累加 attempts；超过 maxAttempts 标记为永久失败。
-func recordFailure(db *sql.DB, gid int64, attempts int16, cause error) {
-    newAttempts := attempts + 1
-    status := 0
-    if int(newAttempts) >= maxAttempts {
-        status = 2 // 永久失败 — 后续 SELECT 用 status != 2 跳过
-    }
-    db.Exec(`
-        UPDATE galgame
-           SET banner_migration_attempts = ?,
-               banner_migration_status = CASE WHEN ? = 2 THEN 2 ELSE banner_migration_status END
-         WHERE id = ?
-    `, newAttempts, status, gid)
-
-    // 详细 error 写到独立 log 表，方便事后人工核查。
-    db.Exec(`
-        INSERT INTO image_migration_log(entity_id, entity_type, error_msg, attempted_at)
-        VALUES (?, 'galgame.banner', ?, NOW())
-    `, gid, cause.Error())
 }
 ```
 
-**骨架特性**：
+**要点**：
 
-- **死链跳过**：`banner_migration_status != 2` 把重复失败 ≥ 3 次的行排除；不会无限重试
-- **断点续跑**：`banner_image_hash IS NULL` + 状态过滤是天然幂等谓词
-- **配额超限自动退出**：`errors.Is(err, imageclient.ErrQuotaExceeded)` 命中就 break，避免在 429 上空转 1 万次
-- **进度可观测**：每 1000 行 INFO 一行，含速率和 elapsed
-- **收尾自动 ping**：迁移结束前把所有刚成功的 hash 显式 `ReferencePing` 一次
-- **不删 `banner_url_legacy`**：保留作前端回退兜底（阶段 3）；半年观察期后再决定是否清字段
-- **失败明细表**：`image_migration_log` 留事后排查（必要时人工 fix 后清 status 让脚本重试）
+- **先备份原文**再改写（用户内容，不可逆操作要可回滚）。
+- **幂等**：谓词 = "正文仍含旧域名"，跑完即不再命中；中断可续。
+- **去重靠 image_service**：同一张图被多条内容引用，bytes 相同 → 一次处理一份存储。
+- **死链**：抓不到的旧 URL 记失败表、保留原文不动，人工核查（多为已删对象）。
+- forum 已有 `backfill-content-images` 雏形（commit `fb052342`），需补上"改写为 `/image/<hash>`"这一步。
 
-**预估耗时（galgame wiki banner 示例）**：
+### 阶段 3：前端解析层 + 后端 302（各站）
 
-- 假设 ~5 万 galgame banner，平均每张 60KB → 3GB 总流量
-- 受 image_service 流水线吞吐限制（含 decode / resize / encode WebP + `_mini` 变体）：约 50–200 张/秒
-- 实际跑完：5 分钟 – 30 分钟；可分段、可中断
+落地上方契约：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/i/<hash>`；后端加 `GET /image/:hash` 302 兜底。**这一步要先于 / 同步于内容改写上线**，否则改写后的引用没人解析。
 
-### 阶段 3：avatar URL 兼容层（可选，2–4 周）
+### 阶段 4：业务代码切换（各站独立）
 
-**目的**：阶段 2 之后，业务库里 `users.avatar_image_hash` 已经有值，但可能还有：
-- 浏览器缓存里的老 URL
-- 第三方外链引用老 URL（很少）
-- 部分未更新的前端代码
+| 工作 | 说明 |
+|------|------|
+| 新上传写 `/image/<hash>` | 编辑器 / 上传组件拿到 image_service hash 后，**往正文插入 `/image/<hash>`，不再插绝对 URL** |
+| 实体图写 hash 列 | 头像 / banner 上传成功写 `*_image_hash`（已落地） |
+| 前端 resolve | 渲染器 + `resolveAvatarUrl` / `resolveBannerUrl` 统一从 `KUN_IMAGE_CDN_BASE` 拼 URL |
+| ref-ping cron | 聚合所有引用的 hash（含正文里的 `/image/<hash>`）每日上报，防冷存（见下方 cron 清单） |
 
-**方案（推荐最简单的）**：业务库保留 `avatar_url_legacy` 字段，前端 URL 解析函数：
+### 阶段 5：旧桶下线（全部旧桶，不再有"永久保留"）
 
-```ts
-function resolveAvatarUrl(user) {
-  if (user.avatar_image_hash) return imageMainUrl(user.avatar_image_hash)
-  if (user.avatar_url_legacy) return user.avatar_url_legacy
-  return DEFAULT_AVATAR
-}
-```
+迁移 + 改写完成后，**所有**旧桶（topic / avatar / banner）都进入同一下线议程：
 
-前端代码全部切换完成后，可以删 `avatar_url_legacy` 字段（或永久保留也无妨，字段本身不占钱）。
-
-> **不建议**在 CDN / Nginx 层写 rewrite 规则把 `/avatar/user_123/avatar.webp` 映射到新 URL——因为要永久维护一个"查业务库 → 拼 hash URL"的外部服务，复杂度远超收益。直接靠业务库字段回退就够。
-
-### 阶段 4：业务代码切换（各站独立 1–2 个月）
-
-每站每个图片字段独立一组 PR。以 kungal 为例（按"老图豁免"原则后实际只切 avatar 写入路径）：
-
-| PR | 工作 | 耗时 |
-|----|------|------|
-| PR-1 | 业务库 migration：加 `users.avatar_image_hash`（豁免字段不需要 status / attempts 列）+ GORM model | 半天 |
-| PR-2 | avatar 上传逻辑改调图片服务；上传成功同步写 `avatar_image_hash`（旧 URL 永远停留在 `avatar_url_legacy` 字段，老用户保持原样） | 1–2 天 |
-| PR-3 | topic 图床上传逻辑改调图片服务（`preset=topic`）；老 markdown URL 永久保留指向老桶 | 1–2 天 |
-| PR-4 | 前端 `resolveAvatarUrl(user)` 增加 fallback 链：`avatar_image_hash` → `avatar_url_legacy` → 默认头像 | 1–2 天 |
-
-> 注意：**没有 PR-5 删 `avatar_url_legacy`**——老用户的头像永远只在这个字段里，删了就裂图。`avatar_url_legacy` 是永久字段，不是迁移期 transient 字段。
-
-galgame wiki 类似但因为 banner 真要迁移，多一个 cmd：
-
-| PR | 工作 | 耗时 |
-|----|------|------|
-| PR-1 | 加 `galgame.banner_image_hash` + `_migration_status` + `_migration_attempts` + GORM model | 半天 |
-| PR-2 | banner 上传逻辑改调图片服务（`preset=galgame_banner`） | 1 天 |
-| PR-3 | `cmd/migrate-galgame-banners-to-image-service` 离线迁移脚本（用上面的骨架） | 1 天 |
-| PR-4 | 前端 banner 列表页改用 `_mini` 变体 URL；fallback 老 URL | 1 天 |
-
-moyu 结构与 kungal 同（avatar 豁免，无 banner）。三站合计 7–9 个 PR，跨 1–2 个月。
-
-#### 阶段 4.x 验收（每站独立）
-
-- [ ] 监控显示旧 bucket 的**新上传** QPS 归零
-- [ ] 监控显示 `users.avatar_image_hash` 在新注册 / 改头像后覆盖率 > 99%（老用户保持 NULL 是正常的）
-- [ ] galgame wiki：`banner_image_hash` 覆盖率 > 99%
-- [ ] 监控显示旧 URL 访问量稳定（**不必下降到 0**——老用户头像和 topic 历史图永远走老 URL）
-
-### 阶段 5：旧对象生命周期管理
-
-按"老图豁免"原则后，老桶不再有"下线时间表"——大多数都是永久保留。
-
-#### kungal / moyu 老桶（topic + avatar）
-
-- **永久保留只读，不进入下线议程**
-- 业务库的 `avatar_url_legacy` 字段也是永久字段，不是 transient
-- topic markdown 里硬编码的 URL 永远指向老桶
-- 月度成本几块钱，没有任何收益促成下线
-
-#### galgame wiki 老 banner 桶（这部分有迁移）
-
-只有这个有真正的"老桶下线"议程：
-
-- **最低保留 12 个月**
+- **只读冻结**：先关闭写入（新上传早已不落旧桶），保留只读。
 - **下线触发条件（必须同时满足）**：
-  1. 老 URL 访问日志显示 **连续 30 天 < 1%** 流量比例
-  2. `galgame.banner_image_hash` 覆盖率 > 99.5%
-  3. 平台 + 调用方任一方都没有 veto
-- **下线前 30 天预告**
-
-#### 桶的物理对象不删
-
-即便桶下线（停止公开访问），对象本身建议**继续保留**至少再 12 个月以备审计 / 回滚。最便宜的方式是转 IA / Glacier。
+  1. 该桶对应图片的 image_service 迁移覆盖率 ≈ 100%（内容图：业务库中 **0 条**残留 `image.kungal.com` / `image.moyu.moe` 绝对 URL；实体图：hash 列覆盖率 > 99.5%）。
+  2. 旧 URL / 旧桶访问日志 **连续 30 天低于阈值**（内容改写后内部流量应趋零，残余多为外链 / 爬虫 / 旧缓存）。
+  3. 平台 + 调用方无 veto。
+- **下线前 30 天预告**。
+- **物理对象**：下线（停公开访问）后**再保留 ≥12 个月**（转 IA / Glacier）备审计 / 回滚，之后删除。
+- **`*_url_legacy` 列**：全量迁移后失去作用，从"永久字段"降级为迁移期 transient——覆盖率达标后可置空 / 删列。
 
 ## 特殊情况处理
 
-### galgame banner 的原图问题
+### 内容图 passthrough vs 重压
 
-galgame wiki 之前没有保留高清原图，只存了压缩版（与新服务的 `webp@82 fit 1920×1080` 大同小异）：
-
-- 迁移后 `images.width/height` 用实际旧图尺寸
-- `is_original = false`（实际上 V1 根本没这个字段，这里留作对比说明）
-- 未来需要高清原图时，再增加新的 preset + 重新从 VNDB 采集
+内容图默认 **passthrough 原样上传**（保画质、零二次损耗）。若决定统一规格（如限制超大图），可改走标准流水线（webp q77 ≤1920×1080），与头像 / banner / 截图同标准——这是工程取舍，不是必须。
 
 ### 用户改名导致的 topic 图路径混淆
 
-kungal 旧路径 `topic/user_123/alice-1700000000.webp`：`alice` 是上传当时的用户名。
+旧路径含上传当时的用户名（`alice-1700000000.webp`）。迁移按"正文里出现的绝对 URL"逐个抓取，不依赖路径语义，故此问题不影响迁移。
 
-由于 **topic 整体不迁移**，这个问题自然不存在。
+### 重复内容的 hash 去重
 
-### 重复内容的 hash 碰撞
-
-迁移过程中会发现大量重复（同一张头像被不同用户传过）：
-
-- `images` 以 `UNIQUE(hash)` 单行存在
-- 迁移脚本遇到已有 hash：只 INSERT 一行 `image_site_usage`（或 UPDATE upload_count）+ 更新业务库外键
-- 对象存储天然只有一份
+迁移会遇到大量重复（同图被多处引用）：`images` 表 `UNIQUE(hash)` 单行，对象存储天然一份，多处引用各自指向同一 `/image/<hash>`。
 
 ## 回滚策略
 
-迁移中任何阶段出错，回滚路径：
-
 | 阶段 | 回滚动作 |
 |------|---------|
-| 1（双写期） | 停掉新代码的写入，旧代码自持续工作 |
-| 2（批量迁移） | 调用方脚本失败行不影响已成功行（`avatar_image_hash IS NULL` 仍代表未迁，再跑就续上）；整体出错则停脚本观察 |
-| 3（URL 回退） | 撤下前端读取的 "优先新 URL" 逻辑，切回 `avatar_url_legacy`；旧桶从未删过，直接可用 |
-| 4（代码切换） | 调用方有 fallback 逻辑，撤回切换不丢数据 |
+| 实体图迁移 | 失败行不影响成功行（hash 列 NULL 即未迁，重跑续上） |
+| 内容图改写 | **改写前已备份原文** → 从备份恢复正文；旧桶未删，绝对 URL 仍可用 |
+| 前端解析 / 302 | 撤回渲染器改写，临时回退到"直出旧绝对 URL"（仅对未改写内容有效，故改写与解析需配套灰度） |
+| 旧桶下线 | 物理对象保留 ≥12 个月，必要时恢复只读公开访问 |
 
 ## 调用方 cron 清单（每站必备）
 
-接入后，每个调用方**必须**在自己的后端部署一个每日 cron，否则 60 天后图片会被转冷存储。
+接入后每个调用方**必须**部署每日 ref-ping cron，否则 60 天后图片转冷存。聚合时**务必把正文里的 `/image/<hash>` 也算进引用集**，否则内容图会被误判为无引用。
 
-### 需要实现的内容
+```sql
+-- kungal / moyu：实体图 hash + 正文内嵌 hash 一起聚合
+SELECT DISTINCT avatar_image_hash FROM "user" WHERE avatar_image_hash IS NOT NULL
+UNION
+SELECT DISTINCT (regexp_matches(content, '/image/([0-9a-f]{64})', 'g'))[1]
+  FROM topic        -- 对 reply / chat / galgame_comment 同样 UNION
+WHERE content LIKE '%/image/%'
+
+-- galgame wiki
+SELECT DISTINCT image_hash FROM galgame_cover WHERE image_hash IS NOT NULL
+```
 
 ```go
-// 例：apps/api/internal/infrastructure/cron/image_ping.go
-
-// 每日凌晨 3 点触发
+// 每日凌晨 3 点：聚合所有引用 hash → 分批 ReferencePing → not_found 可清本地挂空引用
 c.AddFunc("0 3 * * *", func() {
-    ctx := context.Background()
-
-    // 1. 从业务库聚合所有 *_image_hash 非空字段
-    hashes, err := collectAllReferencedHashes(db)
-    if err != nil {
-        slog.Error("collect hashes failed", "err", err)
-        return
-    }
-
-    // 2. 按 1000 一批发到 image_service
+    hashes, _ := collectAllReferencedHashes(db) // 含正文 /image/<hash>
     for _, batch := range chunkBy(hashes, 1000) {
         resp, err := imageClient.ReferencePing(ctx, batch)
-        if err != nil {
-            slog.Error("reference ping failed", "err", err)
-            continue
-        }
-
-        // 3. not_found 的可以清自己的外键（可选，防止挂空引用）
-        for _, h := range resp.NotFound {
-            slog.Warn("image not found, clearing local ref", "hash", h)
-            clearLocalRefsForHash(db, h)
-        }
+        if err != nil { slog.Error("ref ping", "err", err); continue }
+        for _, h := range resp.NotFound { clearLocalRefsForHash(db, h) }
     }
 })
 ```
 
-### SQL 聚合模板（各调用方自行填字段）
-
-```sql
--- kungal / moyu
-SELECT DISTINCT avatar_image_hash FROM "user" WHERE avatar_image_hash IS NOT NULL
-UNION
-SELECT DISTINCT hash FROM unnest_topic_images_hashes() WHERE hash IS NOT NULL
-
--- galgame wiki
-SELECT DISTINCT banner_image_hash FROM galgame WHERE banner_image_hash IS NOT NULL
-UNION
-SELECT DISTINCT cover_image_hash FROM galgame WHERE cover_image_hash IS NOT NULL
-```
-
-### 验收标准
-
-- [ ] 每日 cron 上线后跑满 3 天无失败
-- [ ] image_service 侧观察到目标站点的 `POST /image/reference-ping` 每日一次、hash 数合理
-- [ ] `not_found` 返回数长期趋近 0（偶尔有是正常的，持续高说明本地库有挂空引用）
-
 ## 风险检查清单
 
-- [ ] 旧 bucket 中 avatar / banner 总对象数统计完毕（用于进度条）
-- [ ] 调用方业务库的 `*_image_hash` / `*_url_legacy` 字段 migration 已上线
-- [ ] 图片服务能承接真实流量（V1 验收通过）
+- [ ] 旧桶各类对象数统计完毕（进度条 + 覆盖率分母）
+- [ ] **阶段 3（渲染器 + 302）先于内容改写上线**——否则改写后的 `/image/<hash>` 没人解析
+- [ ] 内容改写脚本**先备份原文**，且幂等谓词（"仍含旧域名"）验证过可中断重跑
+- [ ] 编辑器 / 上传组件已改为**插入 `/image/<hash>`**，新内容不再产生绝对 URL
+- [ ] ref-ping 聚合**包含正文 `/image/<hash>`**（否则内容图被误回收）
 - [ ] `image_site_usage` 写入幂等（`ON CONFLICT DO UPDATE`）
-- [ ] topic 图床的老桶公开可读配置不变（别意外改成私有）
-- [ ] 回滚演练至少走过一次（至少在 dev 环境）
+- [ ] 旧桶下线前满足三条触发条件 + 30 天预告 + 物理对象保留 ≥12 个月
+- [ ] 回滚演练（含从原文备份恢复正文）至少在 dev 走过一次
 
 下一篇：[05 — 工程计划](./05-engineering-plan.md)

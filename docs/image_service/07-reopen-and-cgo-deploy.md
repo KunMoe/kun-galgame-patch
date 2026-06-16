@@ -22,9 +22,7 @@
 | 上传开关 | `KUN_IMAGE_UPLOAD_ENABLED` 默认 false → 503 | `.env` 显式 `=true` 开启 |
 | 公开域名 | `image.kungal.nextmoe.dev` | `image.kungal.iloveren.link` |
 
-**老图豁免不变**：kungal/moyu 已压缩的历史 avatar/topic 图**不迁移、不二次压缩**，
-继续走 `*_url_legacy` fallback。只有**新上传**走 image service（→ lossy webp@77）。
-galgame wiki banner 仍按 `04-migration-plan.md` 需要 `_mini` 变体而单独迁移。
+**迁移策略已改为全量迁移（2026-06）**："老图豁免"作废——kungal/moyu/wiki 旧图床全部迁入 image service、旧图床彻底废弃（理由是引用可迁移性，不是画质；迁移走 passthrough 原样上传，不二次压缩）。头像 / banner 已于 2026-06-15 完成；剩余是 topic / 评论**内容内嵌图**的迁移 + 改写为域名无关的 `/image/<hash>`。详见 [04-migration-plan.md](./04-migration-plan.md)。
 
 ---
 

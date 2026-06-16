@@ -83,28 +83,25 @@ WHERE id = '<client_id>';
 
 ### 需要加的字段（按调用方业务实体逐一）
 
-对每个"持有图片"的业务实体，加一个 `*_image_hash CHAR(64)` 字段。保留原 `*_url` 字段作为永久 fallback。
+对每个"持有图片"的业务实体，加一个 `*_image_hash CHAR(64)` 字段。原 `*_url` 字段降级为**迁移期 fallback**（不是永久字段）。
 
-> **kungal / moyu 的老图豁免迁移**：所有历史 avatar / topic 已经是压缩 WebP / AVIF，无需进新流水线再压一次。`avatar_url_legacy` 是**永久字段**（不是 transient），老用户永远走 fallback 分支。详见 [04-migration-plan.md "已压缩老图豁免原则"](./04-migration-plan.md#已压缩老图豁免原则)。
->
-> 因此 kungal / moyu **不需要写迁移脚本**，只在业务库加 `*_image_hash` 列 + 改新上传逻辑即可。
+> **全量迁移（2026-06 修订，取代"老图豁免"）**：kungal / moyu / wiki 的图片**全部迁移**进 image_service、旧图床彻底废弃——理由是引用可迁移性（内容里硬编码绝对 URL 换不了域名），不是画质。实体图（头像 / banner）已于 2026-06-15 完成；剩余是 **topic / 评论内容内嵌图**的迁移 + 改写为域名无关的 `/image/<hash>`（见下方"内容内嵌图"段）。详见 [04-migration-plan.md](./04-migration-plan.md)。
 
-#### kungal / moyu — `user` 表（不迁移）
+#### kungal / moyu — `user` 表（头像已迁移）
 
 ```sql
--- 只加 hash 列，不需要 status / attempts 列（没迁移）
+-- 头像走离线迁移（cmd/migrate-avatars，已完成）：加 hash 列 + 老字段降级为迁移期 fallback
 ALTER TABLE "user"
     ADD COLUMN avatar_image_hash CHAR(64);
 
--- 老 avatar 字段改名提示语义：
 ALTER TABLE "user" RENAME COLUMN avatar TO avatar_url_legacy;
 ```
 
-新注册 / 用户改头像 → `avatar_image_hash` 写入；老用户的 `avatar_image_hash` 永远 NULL，前端 fallback 到 `avatar_url_legacy`。这是**期望行为**，不是 bug。
+迁移完成后，存量头像的 `avatar_image_hash` 已回填；新注册 / 改头像继续写 `avatar_image_hash`。`avatar_url_legacy` 仅作迁移期 fallback，覆盖率达标后可置空 / 删列。
 
-#### kungal / moyu — topic 图床（不迁移）
+#### kungal / moyu — topic / 评论内容内嵌图（要迁移 + 改写引用）
 
-topic 图床不迁移（见 [04-migration-plan.md](./04-migration-plan.md#kungal--moyu-老图的特殊处理含-topic--avatar)）。**新发的 topic 帖**正文 markdown 里直接落 image_service 的新 URL，业务库不需单独建字段。
+内容（topic / reply / chat / 评论 markdown）正文里的旧绝对 URL **全部迁移并就地改写为域名无关的 `/image/<hash>`**——这是旧图床做不到、新图床做得到的"换域名只改一处配置"能力，也是彻底废弃旧图床的前提。机制（存储形态 / 渲染器解析 / 后端 302 兜底）与迁移脚本骨架见 [04-migration-plan.md "内容内嵌图的域名无关引用契约"](./04-migration-plan.md#内容内嵌图的域名无关引用契约核心)。新发内容由编辑器直接插入 `/image/<hash>`，业务库不需单独建字段（引用就在正文里）。
 
 #### galgame wiki — `galgame` 表（要迁移）
 
@@ -457,12 +454,15 @@ V2 如开启前端直传，前端改为直接 `POST` 到 `/image/upload`，带 u
 ## 九、上线 checklist（每站独立）
 
 - [ ] `oauth_client` 表追加 image_* 字段并配好推荐值
-- [ ] 本站业务库加 `*_image_hash` 字段 + 保留 `*_url_legacy` 字段
-- [ ] 本站后端 `.env` 配 `KUN_IMAGE_*` 环境变量
+- [ ] 本站业务库加 `*_image_hash` 字段（`*_url_legacy` 仅迁移期 fallback）
+- [ ] 本站后端 `.env` 配 `KUN_IMAGE_*` 环境变量（含 `KUN_IMAGE_CDN_BASE`，换域名只改这一处）
 - [ ] 本站后端 import `imageclient` 并配 singleton
 - [ ] 本站上传逻辑改调 `imageclient.Upload`，错误 hardfail 返回 503
-- [ ] 本站前端 URL 解析函数实现回退
-- [ ] 本站加每日 cron 跑 `reference-ping`
+- [ ] **内容图：编辑器 / 上传组件往正文插入 `/image/<hash>`，不再插绝对 URL**
+- [ ] **内容图：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/i/<hash>`；后端加 `GET /image/:hash` 302 兜底**
+- [ ] **内容图：跑一次性迁移脚本，把正文里旧绝对 URL 全量迁移 + 改写为 `/image/<hash>`（先备份原文）**
+- [ ] 本站前端实体图 URL 解析函数实现回退（`*_image_hash` → `*_url_legacy` → 占位）
+- [ ] 本站加每日 cron 跑 `reference-ping`（聚合**含正文 `/image/<hash>`**）
 - [ ] 本站 `/healthz/image` 端点接监控（不要 cascade 到主 `/healthz`）
 - [ ] 走一遍 dev 环境联调（用 Docker Compose 跑起本地 image_service）
 - [ ] 先灰度 1% 流量 / 内部员工账号 24h，再放量
