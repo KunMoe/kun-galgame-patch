@@ -66,11 +66,8 @@ var legacyImageRe = regexp.MustCompile(`https?://image\.moyu\.moe/[^\s)"'>\]\\]+
 // captured URL is exactly the file (a ".avif" tail is never affected).
 const trailingPunct = `.,;!?，。、）】>`
 
-// table + its content column to scan/rewrite.
-var targets = []struct{ table, col string }{
-	{"patch_comment", "content"},
-	{"patch_resource", "note"},
-}
+// target is a table + its content column to scan/rewrite.
+type target struct{ table, col string }
 
 func main() {
 	_ = godotenv.Load()
@@ -80,7 +77,30 @@ func main() {
 	limit := flag.Int("limit", 0, "Max rows per table (0 = all); for smoke-testing -dry-run=false on a small batch")
 	preset := flag.String("preset", "topic", "image_service preset to rehost under")
 	backupPath := flag.String("backup", "migrate-content-images-backup.jsonl", "JSONL file to append original rows to before rewriting (recoverability)")
+	// Default = the two user-content surfaces. The notification + audit columns
+	// (user_message:content, admin_log:content) are scrubbed by passing them
+	// explicitly; their image.moyu.moe refs are the SAME images, so re-upload
+	// dedups to identical hashes → identical /image/<hash> tokens.
+	tablesFlag := flag.String("tables", "patch_comment:content,patch_resource:note", "comma-separated table:column list to scan/rewrite")
 	flag.Parse()
+
+	var targets []target
+	for _, t := range strings.Split(*tablesFlag, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		parts := strings.SplitN(t, ":", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			slog.Error("非法 -tables 项 (需 table:column)", "item", t)
+			os.Exit(1)
+		}
+		targets = append(targets, target{parts[0], parts[1]})
+	}
+	if len(targets) == 0 {
+		slog.Error("-tables 为空")
+		os.Exit(1)
+	}
 
 	cfg := config.Load()
 	logger.Init(cfg.Server.Mode)

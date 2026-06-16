@@ -66,12 +66,17 @@ func collectReferencedHashes(db *gorm.DB) ([]string, error) {
 	// patch_comment / patch_resource are the surfaces the editor actually writes
 	// tokens to today; chat_message / doc are included defensively — both are
 	// goldmark-rendered, so a token there would resolve and must be kept alive.
+	// user_message (notification previews) / admin_log (audit snapshots) embed
+	// the SAME tokens after the scrub — kept alive too so those hashes survive
+	// even if they live only in a notification/audit row.
 	// A missed hash → image GC'd after the ~60d TTL, so over-cover, don't under.
 	for _, q := range []struct{ table, col string }{
 		{"patch_comment", "content"},
 		{"patch_resource", "note"},
 		{"chat_message", "content"},
 		{"doc", "content"},
+		{"user_message", "content"},
+		{"admin_log", "content"},
 	} {
 		var hs []string
 		sql := "SELECT DISTINCT (regexp_matches(" + q.col +
