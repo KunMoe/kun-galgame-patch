@@ -18,6 +18,7 @@ export default defineNuxtConfig({
     '@nuxt/image',
     '@nuxt/eslint',
     '@nuxtjs/color-mode',
+    '@nuxtjs/sitemap',
     '@pinia/nuxt',
     'pinia-plugin-persistedstate/nuxt',
     'nuxt-schema-org',
@@ -33,6 +34,56 @@ export default defineNuxtConfig({
     providers: {
       none: { name: 'none', provider: '@nuxt/image/runtime/providers/none' }
     }
+  },
+
+  site: {
+    // Drives both nuxt-schema-org and @nuxtjs/sitemap (shared nuxt-site-config).
+    // Literal fallback because moyu-web is built GENERIC (the Docker build passes
+    // no site build-arg), so an unset env at build → an empty site.url would make
+    // sitemap <loc>s non-absolute. Prod runs on this canonical host; override at
+    // runtime with NUXT_PUBLIC_SITE_URL if it ever moves.
+    url: process.env.NUXT_PUBLIC_SITE_URL || 'https://www.moyu.moe'
+  },
+
+  sitemap: {
+    // Keep private / auth-gated / editor / non-content routes OUT of the
+    // auto-discovered static pages. Routes with params (/patch/[id],
+    // /user/[id], /resource/[id], /doc/[...slug]) are never auto-included —
+    // those come from the dynamic source below — so only param-free pages
+    // need listing here.
+    exclude: [
+      '/admin',
+      '/admin/**',
+      '/auth/**',
+      '/edit/**',
+      '/me',
+      '/me/**',
+      '/message',
+      '/message/**',
+      '/settings',
+      '/settings/**',
+      '/user'
+    ],
+    // Emit a /sitemap_index.xml of ≤1000-URL chunks (Google caps a single file
+    // at 50k/50MB; smaller chunks cache + debug better and give headroom as
+    // content grows). In 7.x, `chunks` is only honoured inside the multi-sitemap
+    // `sitemaps` map — not on the default single sitemap.
+    defaultSitemapsChunkSize: 1000,
+    sitemaps: {
+      moyu: {
+        // Static, param-free pages auto-discovered from the route table.
+        includeAppSources: true,
+        // Dynamic content URLs (patches/resources/docs) from this runtime
+        // endpoint, which enumerates the Go API with the SFW filter (BE default
+        // when no content_limit is sent). Runs at request time (cached) — never
+        // at build, which has no Go-API access.
+        sources: ['/api/__sitemap__/urls'],
+        chunks: true
+      }
+    },
+    // Cache the rendered sitemap; the source endpoint is cached independently too.
+    cacheMaxAgeSeconds: 60 * 60 * 6,
+    defaults: { changefreq: 'daily', priority: 0.7 }
   },
 
 

@@ -20,7 +20,6 @@
     "typecheck": "pnpm -F @apps/web run typecheck",
     "vet": "pnpm -F @apps/api run vet",
     "test:api": "pnpm -F @apps/api run test",
-    "sitemap": "esno apps/web/scripts/generateKunSitemap.ts",
     "prod:deploy": "./scripts/deploy.sh",
     "prod:start": "./scripts/start.sh",
     "prod:stop": "./scripts/stop.sh",
@@ -30,7 +29,6 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "eslint-plugin-vuejs-accessibility": "^2.5.0",
-    "esno": "^4.8.0",
     "husky": "^9.1.7",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",

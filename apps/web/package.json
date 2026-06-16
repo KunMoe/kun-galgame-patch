@@ -69,6 +69,7 @@
     "@iconify-json/lucide": "^1.2.81",
     "@iconify-json/svg-spinners": "^1.2.4",
     "@nuxtjs/color-mode": "^4.0.0",
+    "@nuxtjs/sitemap": "7.6.0",
     "@pinia/nuxt": "^0.11.3",
     "@types/unist": "^3.0.3",
     "eslint": "^10.0.3",

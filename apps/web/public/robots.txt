@@ -1,2 +1,11 @@
-User-Agent: *
-Disallow:
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api
+Disallow: /auth
+Disallow: /edit
+Disallow: /me
+Disallow: /message
+Disallow: /settings
+
+Sitemap: https://www.moyu.moe/sitemap_index.xml
