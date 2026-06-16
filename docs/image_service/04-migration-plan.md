@@ -51,21 +51,25 @@
 ```
 
 - `<hash>` = image_service 的 sha256 内容哈希（64 位十六进制）。
-- `/image/` 前缀刻意**区别于** CDN 自己的对象路径（`/i/<hash>`），表明它是一个"待解析的引用 token"，不是终态 URL。
+- `/image/` 前缀刻意**区别于** CDN 真实对象路径（分片的 `/<aa>/<bb>/<hash>.webp`，见下），表明它是一个"待解析的引用 token"，不是终态 URL。
 - 实体图（avatar / banner）继续用 `*_image_hash` 列承载——本质是同一个模型（存 hash，不存域名），内容图只是把"hash 列"换成"正文里的 token"。
 
 ### 解析（两层，单一配置）
 
 唯一的"hash → 域名"映射来自单一配置 **`KUN_IMAGE_CDN_BASE`**（当前 = `https://image.kungal.iloveren.link`）。**换域名 = 改这一个值，零数据迁移。**
 
-1. **前端渲染期改写（快路径）**：markdown 渲染器把 `/image/<hash>` 改写成 `${KUN_IMAGE_CDN_BASE}/i/<hash>`（需要变体时拼 `-<variant>.webp`）。绝大多数访问走这条，无额外网络跳。
-2. **后端 302 兜底（健壮性）**：每个调用方后端暴露 `GET /image/:hash` → `302 ${KUN_IMAGE_CDN_BASE}/i/<hash>`。覆盖所有没经过 JS 渲染器的场景——RSS、API 原文消费方、邮件、外链、旧浏览器缓存。`/image/<hash>` 是相对路径，落在应用自身 origin 上，所以由各应用后端兜底重定向；它读的也是同一个 `KUN_IMAGE_CDN_BASE`。
+> **对象路径形态（重要，2026-06-16 修正）**：image_service 的 CDN 真实对象路径是**按 hash 分片**的 `${KUN_IMAGE_CDN_BASE}/<aa>/<bb>/<hash>.webp`（`aa` = hash 前 2 位，`bb` = 第 3–4 位；main_pipeline 始终输出 webp，故扩展名恒为 `.webp`；变体后缀是 `_<variant>`，下划线）。这等价于 SDK 的 `imageclient.MainURL(hash)` / `VariantURL(hash, variant)`——解析时**优先调 SDK helper，不要手拼**。image_service **没有** `/i/<hash>` 这种短路由（只有 `GET /image/:hash` 返回 JSON 元信息、不是图片本体）；早期文档里的 `/i/<hash>` 是笔误，已废弃。
+
+1. **前端渲染期改写（快路径）**：markdown 渲染器把 `/image/<hash>` 改写成 `${KUN_IMAGE_CDN_BASE}/<aa>/<bb>/<hash>.webp`（需要变体时 `…/<hash>_<variant>.webp`）。绝大多数访问走这条，无额外网络跳。
+2. **后端 302 兜底（健壮性）**：每个调用方后端暴露 `GET /image/:hash` → `302` 到上面那个对象路径。覆盖所有没经过 JS 渲染器的场景——RSS、API 原文消费方、邮件、外链、旧浏览器缓存。`/image/<hash>` 是相对路径，落在应用自身 origin 上，所以由各应用后端兜底重定向；它读的也是同一个 `KUN_IMAGE_CDN_BASE`。
 
 ```ts
 // 前端渲染器（各前端共用一个 util）
 const resolveContentImage = (src: string) => {
   const m = /^\/image\/([0-9a-f]{64})$/.exec(src)
-  return m ? `${KUN_IMAGE_CDN_BASE}/i/${m[1]}` : src
+  if (!m) return src
+  const h = m[1]
+  return `${KUN_IMAGE_CDN_BASE}/${h.slice(0, 2)}/${h.slice(2, 4)}/${h}.webp`
 }
 ```
 
@@ -74,7 +78,8 @@ const resolveContentImage = (src: string) => {
 r.GET("/image/:hash", func(c *gin.Context) {
     h := c.Param("hash")
     if !isHex64(h) { c.Status(404); return }
-    c.Redirect(http.StatusFound, cfg.ImageCDNBase+"/i/"+h)
+    // 对象路径 = imageclient.MainURL(h)：${CDN}/<aa>/<bb>/<hash>.webp
+    c.Redirect(http.StatusFound, fmt.Sprintf("%s/%s/%s/%s.webp", cfg.ImageCDNBase, h[:2], h[2:4], h))
 })
 ```
 
@@ -144,7 +149,7 @@ for _, row := range scanRowsStillContainingOldURL(db) { // 幂等谓词：正文
 
 ### 阶段 3：前端解析层 + 后端 302（各站）
 
-落地上方契约：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/i/<hash>`；后端加 `GET /image/:hash` 302 兜底。**这一步要先于 / 同步于内容改写上线**，否则改写后的引用没人解析。
+落地上方契约：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/<aa>/<bb>/<hash>.webp`（= `imageclient.MainURL`）；后端加 `GET /image/:hash` 302 兜底。**这一步要先于 / 同步于内容改写上线**，否则改写后的引用没人解析。
 
 ### 阶段 4：业务代码切换（各站独立）
 

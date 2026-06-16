@@ -459,7 +459,7 @@ V2 如开启前端直传，前端改为直接 `POST` 到 `/image/upload`，带 u
 - [ ] 本站后端 import `imageclient` 并配 singleton
 - [ ] 本站上传逻辑改调 `imageclient.Upload`，错误 hardfail 返回 503
 - [ ] **内容图：编辑器 / 上传组件往正文插入 `/image/<hash>`，不再插绝对 URL**
-- [ ] **内容图：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/i/<hash>`；后端加 `GET /image/:hash` 302 兜底**
+- [ ] **内容图：前端渲染器把 `/image/<hash>` → `${KUN_IMAGE_CDN_BASE}/<aa>/<bb>/<hash>.webp`（= `imageclient.MainURL`，分片对象路径，**不是** `/i/`）；后端加 `GET /image/:hash` 302 兜底**
 - [ ] **内容图：跑一次性迁移脚本，把正文里旧绝对 URL 全量迁移 + 改写为 `/image/<hash>`（先备份原文）**
 - [ ] 本站前端实体图 URL 解析函数实现回退（`*_image_hash` → `*_url_legacy` → 占位）
 - [ ] 本站加每日 cron 跑 `reference-ping`（聚合**含正文 `/image/<hash>`**）

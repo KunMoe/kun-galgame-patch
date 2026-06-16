@@ -170,10 +170,10 @@ curl -X PATCH https://oauth.kungal.com/api/v1/auth/me \
   "code": 0,
   "data": {
     "hash": "abc123def456...",
-    "url": "https://image.kungal.com/i/abc123...",
+    "url": "https://image.kungal.iloveren.link/ab/c1/abc123def456....webp",
     "variant_urls": {
-      "256": "https://image.kungal.com/i/abc123...-256.webp",
-      "100": "https://image.kungal.com/i/abc123...-100.webp"
+      "256": "https://image.kungal.iloveren.link/ab/c1/abc123def456..._256.webp",
+      "100": "https://image.kungal.iloveren.link/ab/c1/abc123def456..._100.webp"
     },
     "width": 512,
     "height": 512,
