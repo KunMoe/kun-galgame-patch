@@ -16,8 +16,6 @@
 # MUST match infra: POSTGRES_PASSWORD = infra POSTGRES_PASSWORD;
 # OAUTH_CLIENT_SECRET = 注册补丁 client 的明文.  (moyu 没有 JWT_SECRET — 不透明会话)
 #
-# The api image bakes apps/web/posts (about .mdx) → read via KUN_POSTS_DIR=/posts.
-#
 #   docker compose -f docker-compose.prod.yml up -d
 # The `migrate` service runs automatically before moyu-api on every `up` (api
 # depends_on it completing) — pending DB migrations are applied on each deploy,
@@ -63,7 +61,6 @@ x-moyu-api-env: &moyu-api-env
   KUN_VISUAL_NOVEL_EMAIL_ACCOUNT: auth@moyu.moe
   KUN_VISUAL_NOVEL_EMAIL_PASSWORD: ${KUN_VISUAL_NOVEL_EMAIL_PASSWORD:-}
   CORS_ALLOW_ORIGINS: https://www.moyu.moe,https://moyu.moe
-  KUN_POSTS_DIR: /posts
 
 services:
   # 服务名直接叫 moyu-api(不是 `api` + alias):Dokploy 不应用 compose 的 networks.aliases,

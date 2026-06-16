@@ -33,8 +33,5 @@ COPY --from=build /out/ /usr/local/bin/
 # migrate reads SQL from ./migrations relative to WORKDIR (/app) at runtime;
 # without it the deferred migrations silently apply nothing.
 COPY apps/api/migrations /app/migrations
-# migrate-about-posts seeds the about_post table (migration 014) from the .mdx
-# sources; bake them in so the job can run with KUN_POSTS_DIR=/posts.
-COPY apps/web/posts /posts
 USER appuser
 # No ENTRYPOINT: run a job by name, e.g. `docker run ... moyu-tools migrate`.

@@ -37,13 +37,6 @@ COPY --from=build /out/app /app
 # silently applies ZERO migrations ("没有待执行的迁移"). `WORKDIR /` below fixes
 # the default; compose also passes `-path /migrations` explicitly as a backstop.
 COPY apps/api/migrations /migrations
-# About-page content: the static .mdx posts that cmd/server reads at runtime
-# (internal/about, cfg.About.PostsDir). They live in the WEB app's source tree
-# (apps/web/posts) and are NOT DB data, so no migration step carries them —
-# bake them into the api image so it is self-contained. Point the server at
-# them with KUN_POSTS_DIR=/posts (docker/api.env). The banner images under
-# apps/web/public/posts are served separately by the web container.
-COPY apps/web/posts /posts
 # Override distroless :nonroot's WORKDIR=/home/nonroot so cmd/migrate's default
 # relative -path "migrations" resolves to the baked /migrations (see above).
 WORKDIR /

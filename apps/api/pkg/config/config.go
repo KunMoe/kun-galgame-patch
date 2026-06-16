@@ -11,7 +11,6 @@ type Config struct {
 	GalgameWiki  GalgameWikiConfig
 	ImageService ImageServiceConfig
 	CORS         CORSConfig
-	About        AboutConfig
 }
 
 type ServerConfig struct {
@@ -84,13 +83,6 @@ type CORSConfig struct {
 	AllowOrigins string
 }
 
-// AboutConfig points at the directory holding the static .mdx posts that drive
-// the /about pages. In dev this is typically ../web/posts; in prod the build
-// pipeline copies the same tree next to the binary.
-type AboutConfig struct {
-	PostsDir string
-}
-
 func Load() *Config {
 	mode := getEnv("KUN_SERVER_MODE", "dev")
 	return &Config{
@@ -152,9 +144,6 @@ func Load() *Config {
 				"CORS_ALLOW_ORIGINS",
 				"http://127.0.0.1:5213,http://127.0.0.1:6969",
 			),
-		},
-		About: AboutConfig{
-			PostsDir: getEnv("KUN_POSTS_DIR", "../web/posts"),
 		},
 	}
 }

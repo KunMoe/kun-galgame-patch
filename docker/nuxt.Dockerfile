@@ -63,12 +63,6 @@ ARG APP=web
 ENV NODE_ENV=production HOST=0.0.0.0 NITRO_PORT=3000
 WORKDIR /app
 COPY --from=build /repo/apps/${APP}/.output ./.output
-# Home carousel: server/api/home/carousel.get.ts reads pinned .mdx from
-# process.cwd()/posts (= /app/posts). Those static posts live in the source
-# tree (apps/web/posts) and are NOT bundled into .output, so copy them in or
-# the carousel returns []. (The /about page reads the same .mdx via the Go API,
-# which bakes its own copy — see api go.Dockerfile.)
-COPY --from=build /repo/apps/${APP}/posts ./posts
 USER node
 EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]
