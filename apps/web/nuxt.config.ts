@@ -184,7 +184,14 @@ export default defineNuxtConfig({
       // 注意是 wiki.kungal.com，不是 galgame.kungal.com。运行时可由
       // NUXT_PUBLIC_WIKI_ORIGIN 覆盖（Nitro 自动映射 camelCase→SCREAMING_SNAKE）。
       wikiOrigin:
-        process.env.NUXT_PUBLIC_WIKI_ORIGIN || 'https://wiki.kungal.com'
+        process.env.NUXT_PUBLIC_WIKI_ORIGIN || 'https://wiki.kungal.com',
+      // image_service CDN base (== backend KUN_IMAGE_CDN_BASE / config
+      // moyu-moe.ts domain.imageBed — all three MUST agree). Used by the
+      // /image/:hash 302 route to resolve domain-agnostic content tokens to
+      // `{base}/<aa>/<bb>/<hash>.webp`. Overridable at runtime so a domain
+      // change is "改一处配置" (image_service 契约 04).
+      imageBed:
+        process.env.NUXT_PUBLIC_IMAGE_BED || 'https://image.kungal.iloveren.link'
     }
   }
 })

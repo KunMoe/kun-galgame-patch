@@ -2,11 +2,15 @@ import { Decoration } from '@milkdown/prose/view'
 import type { Uploader } from '@milkdown/plugin-upload'
 import type { Node } from '@milkdown/prose/model'
 
-// Upload one image to moyu's image_service proxy and return its URL (or null
-// on failure). apiBase is passed in rather than read here because this module
-// runs outside Vue setup context (ProseMirror paste/drop handlers), where
-// useRuntimeConfig() is unavailable. Mirrors useGalgameEdit's image-service
-// contract: multipart { preset, file } → { code, data: { url } }.
+// Upload one image to moyu's image_service proxy and return a domain-agnostic
+// content token `/image/<hash>` (or null on failure). We store the TOKEN, not an
+// absolute CDN URL (image_service 契约 04 §"内容内嵌图的域名无关引用"): rendered
+// HTML resolves it server-side (goldmark → CDN), and the web /image/:hash 302
+// route resolves it for the editor preview / raw markdown. "换域名只改一处配置".
+//
+// apiBase is passed in rather than read here because this module runs outside
+// Vue setup context (ProseMirror paste/drop handlers), where useRuntimeConfig()
+// is unavailable. Contract: multipart { preset, file } → { code, data: { hash } }.
 export const uploadEditorImage = async (
   apiBase: string,
   file: File
@@ -18,13 +22,13 @@ export const uploadEditorImage = async (
     const res = await $fetch<{
       code: number
       message: string
-      data: { url: string } | null
+      data: { hash: string } | null
     }>(`${apiBase}/upload/image-service`, {
       method: 'POST',
       body: formData,
       credentials: 'include'
     })
-    return res.code === 0 && res.data ? res.data.url : null
+    return res.code === 0 && res.data ? `/image/${res.data.hash}` : null
   } catch {
     return null
   }

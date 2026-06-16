@@ -22,6 +22,7 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
 	"kun-galgame-patch-api/internal/infrastructure/database"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
 	messageHandler "kun-galgame-patch-api/internal/message/handler"
 	messageRepo "kun-galgame-patch-api/internal/message/repository"
@@ -160,6 +161,13 @@ func New(cfg *config.Config) *App {
 	})
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 
+	// Resolve domain-agnostic content image tokens (/image/<hash>) embedded in
+	// user markdown to image_service CDN URLs at render time — the "fast path"
+	// for server-rendered comments/notes; the web /image/:hash 302 route is the
+	// fallback (image_service 契约 04). No-op when CDN base is unset (MainURL
+	// returns "" → token left for the 302 route to resolve at request time).
+	markdown.SetContentImageResolver(imgCli.MainURL)
+
 	// Chat module (D9: REST only, no WebSocket)
 	chatRepository := chatRepo.New(db)
 	chatSvc := chatService.New(chatRepository)
@@ -195,8 +203,9 @@ func New(cfg *config.Config) *App {
 	app.Use(recover.New())
 	app.Use(middleware.CORS(cfg.CORS))
 
-	// Start cron jobs (wiki-sync registered only when wiki client is available)
-	cronStop := cronJobs.Start(db, s3, wiki, mpClient)
+	// Start cron jobs (wiki-sync registered only when wiki client is available;
+	// image ref-ping only when image_service is configured)
+	cronStop := cronJobs.Start(db, s3, wiki, mpClient, imgCli)
 
 	slog.Info("Application initialized")
 

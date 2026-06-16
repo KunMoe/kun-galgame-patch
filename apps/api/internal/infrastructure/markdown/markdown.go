@@ -86,6 +86,55 @@ func (s *cjkIDs) Put(value []byte) { s.values[string(value)] = true }
 // `data-id` attribute on the rendered <a>.
 var mentionURLRegex = regexp.MustCompile(`^/user/(\d+)(?:/.*)?$`)
 
+// contentImageRefRegex matches a domain-agnostic content image token,
+// `/image/<64-hex-hash>`, that user markdown stores instead of an absolute CDN
+// URL (image_service 契约 04 §"内容内嵌图的域名无关引用"). The hash is resolved
+// to a real CDN URL at render time via resolveContentImage.
+var contentImageRefRegex = regexp.MustCompile(`^/image/([0-9a-f]{64})$`)
+
+// resolveContentImage maps a content image token's hash to a fully-qualified
+// image_service CDN URL. Wired once at startup (app.go) to imageclient.MainURL.
+// When nil (tests, or image_service unconfigured) the token is left untouched —
+// the web `/image/:hash` 302 route then resolves it at request time (the
+// contract's fallback path).
+var resolveContentImage func(hash string) string
+
+// SetContentImageResolver wires the hash→CDN-URL resolver used by the content
+// image AST transformer. Call once at startup, before serving.
+func SetContentImageResolver(fn func(hash string) string) { resolveContentImage = fn }
+
+// contentImageTransformer rewrites `![](...)` image destinations of the form
+// `/image/<hash>` into the resolved CDN URL during parsing, so server-rendered
+// content embeds direct CDN URLs (the contract's "fast path"; the 302 route is
+// the fallback for raw-markdown / editor-preview consumers). Anything that
+// isn't an exact content-image token passes through unchanged, so absolute URLs
+// (incl. not-yet-migrated legacy ones) and other links are unaffected.
+type contentImageTransformer struct{}
+
+func (contentImageTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+	resolve := resolveContentImage
+	if resolve == nil {
+		return
+	}
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		img, ok := n.(*ast.Image)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		m := contentImageRefRegex.FindSubmatch(img.Destination)
+		if m == nil {
+			return ast.WalkContinue, nil
+		}
+		if url := resolve(string(m[1])); url != "" {
+			img.Destination = []byte(url)
+		}
+		return ast.WalkContinue, nil
+	})
+}
+
 // mentionPatternRegex pulls uids straight from markdown source for callers
 // that need to know "who got mentioned" without rendering — e.g. the comment
 // service sending notifications.
@@ -182,6 +231,13 @@ var md = goldmark.New(
 	),
 	goldmark.WithParserOptions(
 		parser.WithAutoHeadingID(),
+		// Resolve domain-agnostic content image tokens (/image/<hash>) to CDN
+		// URLs during parse, so both Render and RenderWithTOC (which share this
+		// parser) emit direct image src. Priority is arbitrary — it only walks
+		// images, independent of other transformers.
+		parser.WithASTTransformers(
+			util.Prioritized(contentImageTransformer{}, 100),
+		),
 	),
 	goldmark.WithRendererOptions(
 		html.WithHardWraps(),

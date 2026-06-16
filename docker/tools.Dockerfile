@@ -24,8 +24,10 @@ RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w
 
 # ---- run (debian-slim; binaries on PATH, invoked by name) ----
 FROM debian:trixie-slim
+# ffmpeg: AVIF decoder for migrate-content-images (image_service has no AVIF
+# decoder; legacy moyu content images are all .avif → transcode to PNG first).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates tzdata \
+        ca-certificates tzdata ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin appuser
 WORKDIR /app

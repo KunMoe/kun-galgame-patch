@@ -194,3 +194,55 @@ func TestRenderWithTOCSkipsHeadingsBeyondLevel3(t *testing.T) {
 		t.Fatalf("expected only h1-h3 (3 items), got %d", len(toc))
 	}
 }
+
+func TestContentImageTokenResolution(t *testing.T) {
+	const hash = "278c8e45bb9622b74b6cccd200477aacb05c509c0b9632674eeb5972ab04acdf"
+
+	// With a resolver wired, an exact /image/<hash> token is rewritten to the
+	// resolved CDN URL; everything else (absolute URLs, malformed tokens) passes
+	// through unchanged.
+	markdown.SetContentImageResolver(func(h string) string {
+		return "https://cdn.example.com/" + h[:2] + "/" + h[2:4] + "/" + h + ".webp"
+	})
+	t.Cleanup(func() { markdown.SetContentImageResolver(nil) })
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "content token is rewritten to CDN url",
+			in:   "![pic](/image/" + hash + ")",
+			want: `src="https://cdn.example.com/27/8c/` + hash + `.webp"`,
+		},
+		{
+			name: "absolute legacy url is left untouched",
+			in:   "![pic](https://image.moyu.moe/user_1/image/1-2.avif)",
+			want: `src="https://image.moyu.moe/user_1/image/1-2.avif"`,
+		},
+		{
+			name: "short/invalid hash is not treated as a token",
+			in:   "![pic](/image/deadbeef)",
+			want: `src="/image/deadbeef"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := markdown.MustRender(tc.in)
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("expected output to contain %q\n  got: %s", tc.want, out)
+			}
+		})
+	}
+}
+
+func TestContentImageTokenWithoutResolverIsLeftAsIs(t *testing.T) {
+	// No resolver wired (the default) → the token stays as-is, so the web
+	// /image/:hash 302 route resolves it at request time.
+	const hash = "278c8e45bb9622b74b6cccd200477aacb05c509c0b9632674eeb5972ab04acdf"
+	out := markdown.MustRender("![pic](/image/" + hash + ")")
+	if !strings.Contains(out, `src="/image/`+hash+`"`) {
+		t.Errorf("expected token left untouched, got: %s", out)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"kun-galgame-patch-api/internal/constants"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
+	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"github.com/robfig/cron/v3"
@@ -22,7 +23,9 @@ import (
 //  2. Every 6 hours: clean up S3 multipart uploads still unfinished after 24h (D10 plan B)
 //  3. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
 //     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
-func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *moemoepoint.Client) func() {
+//  4. Daily 04:00: ref-ping image_service for every hash moyu still references
+//     (doc banners + content /image/<hash> tokens) so its GC doesn't reclaim them
+func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *moemoepoint.Client, img *imageclient.Client) func() {
 	// Pin the schedule to Asia/Shanghai so the daily 00:00 reset fires at the
 	// intended civil midnight regardless of host TZ (audit F085). The check-in
 	// idempotency key's date (user/service) is pinned to the same zone so the
@@ -76,6 +79,25 @@ func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *mo
 			}
 		}); err != nil {
 			slog.Error("注册 Wiki 消息同步任务失败", "error", err)
+		}
+	}
+
+	// ── Daily 04:00: ref-ping image_service ──────────────
+	// Refreshes last_referenced_at for every hash moyu still references so the
+	// image_service GC (cold-storage TTL ~60d) doesn't reclaim them. Only when
+	// image_service is configured (skipped in dev with no client).
+	if img != nil && img.Configured() {
+		if _, err := c.AddFunc("0 4 * * *", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			updated, notFound, err := RunReferencePing(ctx, db, img)
+			if err != nil {
+				slog.Error("image ref-ping 失败", "error", err)
+				return
+			}
+			slog.Info("image ref-ping 完成", "updated", updated, "not_found", notFound)
+		}); err != nil {
+			slog.Error("注册 image ref-ping 任务失败", "error", err)
 		}
 	}
 

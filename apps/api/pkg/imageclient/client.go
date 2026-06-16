@@ -205,6 +205,80 @@ func (c *Client) Upload(
 		resp.StatusCode, env.Code, env.Message)
 }
 
+// Configured reports whether the client has both a base URL and credentials —
+// i.e. Upload / ReferencePing can actually reach image_service. Lets callers
+// skip work (e.g. the ref-ping cron) when image_service is intentionally
+// disabled in dev.
+func (c *Client) Configured() bool { return c.baseURL != "" && c.basicAuth != "" }
+
+// ReferencePingResult mirrors POST /image/reference-ping's success response.
+type ReferencePingResult struct {
+	Updated  int64    `json:"updated"`
+	NotFound []string `json:"not_found"`
+}
+
+// ReferencePing refreshes last_referenced_at for a batch of hashes so the
+// image_service GC doesn't reclaim images this site still references (cold-
+// storage TTL ~60 days). Call it from a daily cron with EVERY hash the site
+// still points at — entity columns AND content-embedded `/image/<hash>` tokens
+// (see internal/infrastructure/cron). The server caps a batch at 1000; the
+// caller is responsible for chunking larger sets.
+func (c *Client) ReferencePing(ctx context.Context, hashes []string) (*ReferencePingResult, error) {
+	if len(hashes) == 0 {
+		return &ReferencePingResult{}, nil
+	}
+	if c.baseURL == "" {
+		return nil, errors.New("image_service: client not configured (KUN_IMAGE_SERVICE_BASE_URL unset)")
+	}
+	if c.basicAuth == "" {
+		return nil, ErrUnauthorized
+	}
+	if len(hashes) > 1000 {
+		return nil, fmt.Errorf("imageclient: batch size %d exceeds limit 1000", len(hashes))
+	}
+
+	body, _ := json.Marshal(struct {
+		Hashes []string `json:"hashes"`
+	}{Hashes: hashes})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/image/reference-ping", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", c.basicAuth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("image_service POST /image/reference-ping: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var env struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(raw, &env)
+		switch env.Code {
+		case 80001, 80002, 80003, 80004, 80005:
+			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
+		}
+		return nil, fmt.Errorf("image_service reference-ping failed: status=%d code=%d msg=%q",
+			resp.StatusCode, env.Code, env.Message)
+	}
+
+	var env struct {
+		Data ReferencePingResult `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("decode reference-ping response: %w (body=%s)", err, truncate(string(raw), 200))
+	}
+	return &env.Data, nil
+}
+
 // MainURL builds the canonical CDN URL for the full image (`.webp`).
 // Returns "" for empty / malformed hashes — caller can fall back to a
 // placeholder.
