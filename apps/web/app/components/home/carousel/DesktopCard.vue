@@ -2,13 +2,15 @@
 import { aboutDirectoryLabelMap } from '~/constants/about'
 
 interface Props {
-  posts: HomeCarouselMetadata[]
-  currentSlide: number
+  post: HomeCarouselMetadata
+  // First slide only: keep its banner eager / high-priority for the LCP; the
+  // rest of the (now all-rendered) carousel slides lazy-load.
+  eager?: boolean
 }
 
 const props = defineProps<Props>()
 
-const post = computed(() => props.posts[props.currentSlide])
+const post = computed(() => props.post)
 </script>
 
 <template>
@@ -24,8 +26,8 @@ const post = computed(() => props.posts[props.currentSlide])
       :src="post.banner"
       :alt="post.title"
       provider="none"
-      loading="eager"
-      fetchpriority="high"
+      :loading="props.eager ? 'eager' : 'lazy'"
+      :fetchpriority="props.eager ? 'high' : 'auto'"
       class-name="block h-full w-full rounded-2xl"
       image-class-name="brightness-75"
     />
