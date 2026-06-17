@@ -1,9 +1,11 @@
 package upload
 
 import (
+	"encoding/json"
 	stderrors "errors"
 	"io"
 
+	galgameclient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/imageclient"
@@ -16,13 +18,16 @@ import (
 // Handler exposes 5 HTTP endpoints + the image_service upload proxy.
 type Handler struct {
 	svc *Service
+	// img uploads moyu's OWN content images (preset=topic) under site=moyu.
 	img *imageclient.Client // image_service SDK (W2 / PR3b)
+	// wiki proxies galgame cover/screenshot uploads to the wiki's
+	// POST /galgame/image so they're owned by site=galgame_wiki, not site=moyu.
+	wiki *galgameclient.Client
 }
 
-// NewHandler constructs a Handler. img may be nil in tests; UploadImageService
-// then returns 503.
-func NewHandler(svc *Service, img *imageclient.Client) *Handler {
-	return &Handler{svc: svc, img: img}
+// NewHandler constructs a Handler. img/wiki may be nil in tests.
+func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Client) *Handler {
+	return &Handler{svc: svc, img: img, wiki: wiki}
 }
 
 // InitSmall POST /api/upload/small/init
@@ -112,10 +117,6 @@ func (h *Handler) CompleteMultipart(c *fiber.Ctx) error {
 func (h *Handler) UploadImageService(c *fiber.Ctx) error {
 	_ = middleware.MustGetUser(c)
 
-	if h.img == nil {
-		return response.Error(c, errors.ErrInternal("image_service 客户端未配置"))
-	}
-
 	preset := c.FormValue("preset")
 	if preset == "" {
 		return response.Error(c, errors.ErrBadRequest("缺少 preset 字段"))
@@ -133,8 +134,54 @@ func (h *Handler) UploadImageService(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("无法读取上传文件"))
 	}
 	defer f.Close()
-
 	mime := fh.Header.Get("Content-Type")
+
+	// Galgame images (covers/screenshots) are WIKI-owned: proxy them to the
+	// wiki's canonical POST /galgame/image (uploaded under site=galgame_wiki),
+	// forwarding the user's Bearer — moyu no longer uploads galgame images
+	// under its own site=moyu. Other presets (topic = moyu's own content
+	// images) keep using moyu's local image_service client.
+	if preset == "galgame_banner" || preset == "galgame_screenshot" {
+		if h.wiki == nil {
+			return response.Error(c, errors.ErrInternal("Wiki 客户端未配置"))
+		}
+		fileBytes, rerr := io.ReadAll(f)
+		if rerr != nil {
+			return response.Error(c, errors.ErrBadRequest("读取上传文件失败"))
+		}
+		data, werr := h.wiki.UploadGalgameImage(
+			c.Context(), middleware.GetAccessToken(c), preset, fh.Filename, fileBytes, mime,
+		)
+		if werr != nil {
+			// Forward the wiki/image_service business code + message; map the
+			// common ones to sensible HTTP statuses (matches the local path).
+			var we *galgameclient.WikiError
+			if stderrors.As(werr, &we) {
+				switch we.Code {
+				case 80008:
+					return response.Error(c, errors.New(80008, we.Message, fiber.StatusTooManyRequests))
+				case 60002:
+					return response.Error(c, errors.New(60002, we.Message, fiber.StatusUnprocessableEntity))
+				default:
+					return response.Error(c, errors.New(we.Code, we.Message, fiber.StatusBadRequest))
+				}
+			}
+			return response.Error(c, errors.ErrInternal("Wiki 图片上传失败: "+werr.Error()))
+		}
+		// Wiki returns image_service's UploadResult, identical shape to moyu's
+		// imageclient.UploadResult — re-marshal into it so the FE sees the same
+		// response as the local path.
+		var result imageclient.UploadResult
+		if jerr := json.Unmarshal(data, &result); jerr != nil {
+			return response.Error(c, errors.ErrInternal("解析 Wiki 上传响应失败"))
+		}
+		return response.OK(c, result)
+	}
+
+	// Non-galgame presets (topic, ...) → moyu's own image_service client.
+	if h.img == nil {
+		return response.Error(c, errors.ErrInternal("image_service 客户端未配置"))
+	}
 	result, err := h.img.Upload(c.Context(), io.Reader(f), fh.Filename, mime, preset)
 	if err != nil {
 		switch {

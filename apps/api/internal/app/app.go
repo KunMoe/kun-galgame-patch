@@ -159,7 +159,7 @@ func New(cfg *config.Config) *App {
 		ClientID:     imgCfg.ClientID,
 		ClientSecret: imgCfg.ClientSecret,
 	})
-	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
+	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli, wiki)
 
 	// Resolve domain-agnostic content image tokens (/image/<hash>) embedded in
 	// user markdown to image_service CDN URLs at render time — the "fast path"

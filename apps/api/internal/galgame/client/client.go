@@ -76,16 +76,16 @@ type Paginated[T any] struct {
 // remain unchanged on Wiki side (year-based filter/sort over the derived
 // `released_year` index field).
 type GalgameHit struct {
-	ID               int     `json:"id"`
-	VndbID           string  `json:"vndb_id"`
-	NameEnUs         string  `json:"name_en_us"`
-	NameZhCn         string  `json:"name_zh_cn"`
-	NameJaJp         string  `json:"name_ja_jp"`
-	NameZhTw         string  `json:"name_zh_tw"`
-	Banner           string  `json:"banner"`
-	ContentLimit     string  `json:"content_limit"`
-	AgeLimit         string  `json:"age_limit"`
-	OriginalLanguage string  `json:"original_language"`
+	ID                  int               `json:"id"`
+	VndbID              string            `json:"vndb_id"`
+	NameEnUs            string            `json:"name_en_us"`
+	NameZhCn            string            `json:"name_zh_cn"`
+	NameJaJp            string            `json:"name_ja_jp"`
+	NameZhTw            string            `json:"name_zh_tw"`
+	Banner              string            `json:"banner"`
+	ContentLimit        string            `json:"content_limit"`
+	AgeLimit            string            `json:"age_limit"`
+	OriginalLanguage    string            `json:"original_language"`
 	ReleaseDate         *string           `json:"release_date"`
 	ReleaseDateTBA      bool              `json:"release_date_tba"`
 	EffectiveBannerHash string            `json:"effective_banner_hash"`
@@ -101,16 +101,16 @@ type GalgameHit struct {
 // GalgameBrief is the lightweight shape returned by /galgame/batch.
 // U1: includes release_date / release_date_tba (see GalgameHit comment).
 type GalgameBrief struct {
-	ID                 int     `json:"id"`
-	VndbID             string  `json:"vndb_id"`
-	NameEnUs           string  `json:"name_en_us"`
-	NameZhCn           string  `json:"name_zh_cn"`
-	NameJaJp           string  `json:"name_ja_jp"`
-	NameZhTw           string  `json:"name_zh_tw"`
-	Banner             string  `json:"banner"`
-	ContentLimit       string  `json:"content_limit"`
-	AgeLimit           string  `json:"age_limit"`
-	OriginalLanguage   string  `json:"original_language"`
+	ID                  int               `json:"id"`
+	VndbID              string            `json:"vndb_id"`
+	NameEnUs            string            `json:"name_en_us"`
+	NameZhCn            string            `json:"name_zh_cn"`
+	NameJaJp            string            `json:"name_ja_jp"`
+	NameZhTw            string            `json:"name_zh_tw"`
+	Banner              string            `json:"banner"`
+	ContentLimit        string            `json:"content_limit"`
+	AgeLimit            string            `json:"age_limit"`
+	OriginalLanguage    string            `json:"original_language"`
 	ReleaseDate         *string           `json:"release_date"`
 	ReleaseDateTBA      bool              `json:"release_date_tba"`
 	EffectiveBannerHash string            `json:"effective_banner_hash"`
@@ -122,11 +122,11 @@ type GalgameBrief struct {
 
 // Tag is Wiki's galgame_tag.
 type Tag struct {
-	ID            int      `json:"id"`
-	Name          string   `json:"name"`
-	Aliases       []string `json:"aliases"`
-	Category      string   `json:"category"`
-	GalgameCount  int      `json:"galgame_count"`
+	ID           int      `json:"id"`
+	Name         string   `json:"name"`
+	Aliases      []string `json:"aliases"`
+	Category     string   `json:"category"`
+	GalgameCount int      `json:"galgame_count"`
 }
 
 // Official is Wiki's galgame_official (developer/publisher).
@@ -215,21 +215,21 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 
 // SearchGalgameParams are query parameters for /galgame/search.
 type SearchGalgameParams struct {
-	Q               string
-	Status          string // csv of statuses, e.g. "0" = published only; "" = no filter
-	ContentLimit    string // sfw / nsfw
-	AgeLimit        string // all / r18
-	OriginalLang    string // csv, e.g. "ja-jp,en-us"
-	TagIDs          []int
-	OfficialIDs     []int
-	EngineIDs       []int
-	SeriesID        int
-	ReleasedFrom    int
-	ReleasedTo      int
-	IncludeIntro    bool
-	Sort            string // relevance / released_desc / released_asc / view / updated
-	Page            int
-	Limit           int
+	Q            string
+	Status       string // csv of statuses, e.g. "0" = published only; "" = no filter
+	ContentLimit string // sfw / nsfw
+	AgeLimit     string // all / r18
+	OriginalLang string // csv, e.g. "ja-jp,en-us"
+	TagIDs       []int
+	OfficialIDs  []int
+	EngineIDs    []int
+	SeriesID     int
+	ReleasedFrom int
+	ReleasedTo   int
+	IncludeIntro bool
+	Sort         string // relevance / released_desc / released_asc / view / updated
+	Page         int
+	Limit        int
 }
 
 // SearchGalgame calls /galgame/search.
@@ -294,17 +294,17 @@ func (c *Client) SearchGalgame(ctx context.Context, p SearchGalgameParams) (*Pag
 // GalgameFull is the full galgame returned from /galgame/:gid (including intro / tag_ids / official_ids).
 // Used to enrich detail pages.
 type GalgameFull struct {
-	ID               int    `json:"id"`
-	VndbID           string `json:"vndb_id"`
-	NameEnUs         string `json:"name_en_us"`
-	NameZhCn         string `json:"name_zh_cn"`
-	NameJaJp         string `json:"name_ja_jp"`
-	NameZhTw         string `json:"name_zh_tw"`
-	Banner           string `json:"banner"`
-	IntroEnUs        string `json:"intro_en_us"`
-	IntroZhCn        string `json:"intro_zh_cn"`
-	IntroJaJp        string `json:"intro_ja_jp"`
-	IntroZhTw        string `json:"intro_zh_tw"`
+	ID               int     `json:"id"`
+	VndbID           string  `json:"vndb_id"`
+	NameEnUs         string  `json:"name_en_us"`
+	NameZhCn         string  `json:"name_zh_cn"`
+	NameJaJp         string  `json:"name_ja_jp"`
+	NameZhTw         string  `json:"name_zh_tw"`
+	Banner           string  `json:"banner"`
+	IntroEnUs        string  `json:"intro_en_us"`
+	IntroZhCn        string  `json:"intro_zh_cn"`
+	IntroJaJp        string  `json:"intro_ja_jp"`
+	IntroZhTw        string  `json:"intro_zh_tw"`
 	ContentLimit     string  `json:"content_limit"`
 	AgeLimit         string  `json:"age_limit"`
 	OriginalLanguage string  `json:"original_language"`
@@ -328,8 +328,8 @@ type GalgameFull struct {
 		Official   Official `json:"official"`
 	} `json:"official"`
 	Engine []struct {
-		GalgameID int    `json:"galgame_id"`
-		EngineID  int    `json:"engine_id"`
+		GalgameID int            `json:"galgame_id"`
+		EngineID  int            `json:"engine_id"`
 		Engine    map[string]any `json:"engine"`
 	} `json:"engine"`
 	Link []struct {
@@ -346,8 +346,8 @@ type GalgameFull struct {
 
 // GalgameDetailEnvelope is the data envelope for /galgame/:gid. Wiki nests another layer of galgame + users under data.
 type GalgameDetailEnvelope struct {
-	Galgame GalgameFull            `json:"galgame"`
-	Users   map[string]any         `json:"users"`
+	Galgame GalgameFull    `json:"galgame"`
+	Users   map[string]any `json:"users"`
 }
 
 // GetGalgame calls /galgame/:gid; used to enrich detail pages.
@@ -553,8 +553,8 @@ func (c *Client) UpdateGalgame(ctx context.Context, accessToken string, gid int,
 // UpdateGalgameMultipart proxies PUT /galgame/:gid in multipart/form-data
 // mode (per docs/galgame_wiki/01-galgame.md §Banner 上传). The wire shape:
 //
-//   data=<JSON string mirroring UpdateGalgameRequest>
-//   file=<image binary>           (optional, only when changing banner)
+//	data=<JSON string mirroring UpdateGalgameRequest>
+//	file=<image binary>           (optional, only when changing banner)
 //
 // Used by the patch site's edit form when the user picks a new banner.
 // Returns Wiki's raw `data` payload on success and *WikiError on a non-zero
@@ -613,6 +613,74 @@ func (c *Client) UpdateGalgameMultipart(
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("wiki PUT galgame (multipart): %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read wiki response: %w", err)
+	}
+	var env wikiResponse[json.RawMessage]
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+	}
+	if env.Code != 0 {
+		return nil, &WikiError{Code: env.Code, Message: env.Message}
+	}
+	return env.Data, nil
+}
+
+// UploadGalgameImage proxies a galgame cover/screenshot upload to the wiki's
+// canonical POST /galgame/image (multipart {preset, file}), forwarding the
+// user's OAuth access_token as Bearer. The wiki uploads under its OWN image
+// client (site=galgame_wiki), so all galgame image bytes are owned by the wiki
+// — moyu no longer uploads galgame images under its own site=moyu (which the
+// site-scoped galgame reference-ping can't keep alive). Returns Wiki's raw
+// `data` (image_service UploadResult) on success, *WikiError on a non-zero
+// envelope code.
+func (c *Client) UploadGalgameImage(
+	ctx context.Context,
+	accessToken string,
+	preset, fileName string,
+	fileContent []byte,
+	fileMime string,
+) (json.RawMessage, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if err := w.WriteField("preset", preset); err != nil {
+		return nil, fmt.Errorf("write preset field: %w", err)
+	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="file"; filename=%q`, fileName))
+	if fileMime != "" {
+		h.Set("Content-Type", fileMime)
+	}
+	fw, err := w.CreatePart(h)
+	if err != nil {
+		return nil, fmt.Errorf("create file part: %w", err)
+	}
+	if _, err := fw.Write(fileContent); err != nil {
+		return nil, fmt.Errorf("write file part: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	u := c.baseURL + "/galgame/image"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("build wiki upload request: %w", err)
+	}
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wiki POST galgame image: %w", err)
 	}
 	defer resp.Body.Close()
 
