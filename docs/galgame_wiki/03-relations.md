@@ -144,7 +144,7 @@ screenshots 额外有 `caption` 字段（短描述，可空）。
 
 **presence 语义**：与 `tag_ids` 一致 —— 不传 = 保持不变；传 `[]` = 清空；传非空数组 = 权威全量替换。
 
-**multipart 上传**：见 [01-galgame.md Banner 上传段](./01-galgame.md#banner-上传通过-create--update--pr-端点的-multipart-模式)；后端把上传得到的 hash 通过 `PromoteCoverHash` 合并进 covers（提升或新增 `sort_order=0`）。screenshots 暂无 multipart 直传，需要前端先经 image_service 拿 hash 再随 `screenshots` 字段提交。
+**图片上传**：banner 走 [01-galgame.md Banner 上传段](./01-galgame.md#banner-上传通过-create--update--pr-端点的-multipart-模式)（后端把上传的 hash 经 `PromoteCoverHash` 合并进 covers）。封面 / 截图走 [`POST /galgame/image`](./01-galgame.md#galgame-图片上传post-galgameimage) 拿 hash，再随 `covers` / `screenshots` 提交——**下游不得用自己的 image_service client 直传 galgame 图片**，统一经 wiki（`site=galgame_wiki`）上传，否则站点级 refping 保不活、最终被 GC。
 
 ---
 

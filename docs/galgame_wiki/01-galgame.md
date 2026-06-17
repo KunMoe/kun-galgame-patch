@@ -515,7 +515,7 @@ return r2.data.galgame
 > [00-handbook §15 PR5 BREAKING 段](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
 
 `covers` / `screenshots` 字段说明：
-- 都按 `image_hash` 引用 image_service（先在 image_service 上传得 hash，再在本端点提交）。
+- 都按 `image_hash` 引用 image_service。**galgame 图片（封面 + 截图）的字节统一经 wiki 上传**：banner 可走下方 multipart 模式，封面 / 截图走 [`POST /galgame/image`](#galgame-图片上传post-galgameimage) 拿 hash，再随 `covers` / `screenshots` 提交。**下游（kungal / moyu）不得再用自己的 image_service client 直传 galgame 图片**——由 wiki 以 `site=galgame_wiki` 身份代传，保证所有 galgame 图片字节归 wiki 所有（站点级 refping 才能保活，详见下方端点说明）。
 - `covers` 中 `sort_order=0` 的那张是**钉住的封面**（DB 强制每作品至多一张），管理员"换封面" = 同一请求里把旧的 `sort_order` 改成非 0、新的设为 0。
 - `screenshots` 没有"钉住"约束，`sort_order` 只是画廊展示顺序。
 - presence 语义同 `tag_ids`：不传 = 保持原集合不变；传 `[]` = 清空全部；传非空数组 = 权威全量替换（**必须回传该作当前全量**，不要只回传新增/删除的那几条）。
@@ -587,6 +587,49 @@ Content-Type: image/png
 **该 multipart 模式同样适用于：**
 - `POST /galgame`（创建时直接带 banner 文件，避免"先创建再编辑改 banner"两步）
 - `POST /galgame/:gid/prs`（PR 提案里直接附 banner 文件，reviewer 看 diff 时能看到新图缩略图）
+
+---
+
+### Galgame 图片上传：`POST /galgame/image`
+
+galgame **封面 / 截图字节的唯一规范上传入口**。下游（kungal / moyu）把用户选的图片**经各自后端代理**到本端点（转发用户 Bearer），由 wiki 以 `site=galgame_wiki` 身份传给 image_service，返回 hash；下游再把 hash 放进 `covers` / `screenshots` 随 Create / Update / PR 提交。
+
+> **为什么必须经 wiki（单一可信源）**：galgame 图片是 wiki 的数据，字节也应归 wiki 所有（`site=galgame_wiki`）。image_service 的 reference-ping 是**站点级**的——只有 galgame_wiki 名下的 hash 才会被 wiki 的 `GalgameImageRefping` 保活。若下游用自己的 client 直传（字节落到 `site=kungal` / `site=moyu`），这些图片不会被任何 refping 保活，最终会被 GC。因此**下游的 image_service client 已移除 `galgame_banner` / `galgame_screenshot` preset 权限**（只保留 `topic` / `message` 等自有内容图的 preset）。
+
+**请求**（需登录用户 Bearer；下游用其 wiki client 转发用户 token）：
+
+```http
+POST /api/v1/galgame/image
+Authorization: Bearer <用户 access_token>
+Content-Type: multipart/form-data; boundary=...
+
+--boundary
+Content-Disposition: form-data; name="preset"
+
+galgame_screenshot
+--boundary
+Content-Disposition: form-data; name="file"; filename="shot.jpg"
+Content-Type: image/jpeg
+
+<binary>
+--boundary--
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| preset | 是 | `galgame_banner`（封面）或 `galgame_screenshot`（截图）；其它 preset 拒绝 |
+| file | 是 | 图片文件（image/jpeg / png / webp / gif） |
+
+**响应** `data`（即 image_service 的 UploadResult）：
+
+```json
+{ "hash": "<sha256>", "url": "<cdn-url>", "variant_urls": { "mini": "..." },
+  "width": 1280, "height": 720, "size_bytes": 123456, "deduplicated": false }
+```
+
+**错误码**：透传 image_service 的状态码与错误码（`80008` 配额超限、`80015` 上传暂未开放、`60002` 审核拒绝等）。
+
+> banner 仍可走上方 Create / Update / PR 的 multipart `file` 模式（自动提升为 `covers[sort_order=0]`）；`POST /galgame/image` 则是「先拿 hash 再随数组提交」的通用入口，封面与截图都适用。
 
 ---
 
