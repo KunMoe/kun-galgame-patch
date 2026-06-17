@@ -38,6 +38,7 @@
         "note": "更新简介",
         "is_minor": false,
         "reverted_to": null,
+        "changed_fields": ["intro_zh_cn"],
         "created": "2026-01-03T00:00:00Z"
       },
       {
@@ -60,6 +61,13 @@
 ```
 
 `action` 取值：`created`, `updated`, `merged`, `reverted`, `declined`
+
+> **2026-06-17 — `changed_fields`（本次修订实际改动的字段集）**：每条 revision 在**写入时**记录该次操作真正改动的 snapshot 字段名数组（来自 `ChangedKeys(改动前的实时状态, 改动后)`），对齐 taxonomy_revision 的同名字段。三态语义：
+> - 数组（如 `["intro_zh_cn"]`）：记录到的改动集；
+> - `[]`：已记录但没有可编辑字段变化（如 `claimed` / 状态变更——状态不是 snapshot 字段）；
+> - `null` / 字段缺失：本特性上线前的**历史 revision**，`/diff` 回退到整快照比对。
+>
+> 这是 `/diff` 的 `changed_keys` 的权威来源（见下），下游优先信任它，不要再自己拿相邻两个 snapshot 整体比对。
 
 > **PR3/PR5 注意 — revision.note 可能由系统追写**：当 `reverted` 或 `merged` 应用的旧快照里有引用已不存在的 image_hash（image_service 端 TTL 清理掉了），后端会自动把这些 hash 从 covers/screenshots 里剔除并在 `note` 后追加 `\n[系统] reverted 时检测到 N 张图片在 image_service 已不可用，已自动从快照中剔除` 之类的说明。下游展示 revision/PR 详情时直接渲染 `note` 即可，不需要额外解析。
 
@@ -97,6 +105,7 @@
         {"image_hash": "fedcba98...12", "sort_order": 0, "caption": "CG 01", "sexual": 0, "violence": 0, "source": "", "source_key": ""}
       ]
     },
+    "changed_fields": ["name_zh_cn", "tag_ids"],
     "created": "..."
   }
 }
@@ -106,7 +115,7 @@
 
 ### GET /galgame/:gid/revisions/:rev/diff
 
-计算该版本与前一版本的差异（实时计算，不存储）。
+计算该版本与前一版本的差异。`changed_keys` **以该版本写入时记录的 `changed_fields` 为准**（编辑者真正改了哪些字段）；仅当该版本是历史 revision（`changed_fields` 为 `null`）时才回退到「相邻两个 snapshot 整体比对」。`old` / `new` 仍实时取自相邻两版快照，用于渲染字段值。
 
 **成功响应**：
 
@@ -137,6 +146,8 @@
 ```
 
 `old` 和 `new` 是完整的 snapshot 对象，前端可以只展示 `changed_keys` 中标记的字段。对于大文本字段（intro_*），前端可以用 diff 库展示行级差异。
+
+> **2026-06-17 — `changed_keys` 改用记录值，修复「改一个字段却显示全字段新增」**：历史上 VNDB 富化/批量回填直接写实时表、不落 revision，导致相邻 revision 的快照陈旧；旧的「整快照比对」会把 covers/screenshots/bid/release_date/aliases 全部误判为「新增」。现在 `changed_keys` 来自每条 revision 写入时记录的 `changed_fields`（基于改动前实时状态算出的真实改动集），因此与相邻快照是否陈旧**无关**——改一张截图就只显示 `screenshots`。历史 revision（`changed_fields=null`）仍回退整快照比对。下游照旧渲染 `changed_keys` 即可，**响应结构不变**。
 
 > **2026-05-22 (K-PR)**：响应新增 `names` 字段。包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园, 治愈"而不是"tag added: 1, 2"，避免 N+1 后续请求。
 >
