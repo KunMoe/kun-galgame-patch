@@ -26,8 +26,11 @@ const { data, pending, refresh } = await useAsyncData<RankingUser[]>(
 
 const sortOptions = [
   { value: 'moemoepoint', label: '萌萌点' },
-  { value: 'patch_count', label: '补丁发布数' },
-  { value: 'resource_count', label: '资源发布数' },
+  // patch_count counts `patch` rows = Galgame entries published; resource_count
+  // counts `patch_resource` rows = 补丁资源. Keep these labels aligned with the
+  // profile page (user/[id].vue) so "补丁" never names the Galgame count.
+  { value: 'patch_count', label: '发布 Galgame' },
+  { value: 'resource_count', label: '补丁资源数' },
   { value: 'comment_count', label: '评论数' }
 ]
 
@@ -92,8 +95,8 @@ const onChangeSort = async (v: string | string[] | null) => {
           <div class="font-semibold">{{ user.name }}</div>
           <div class="text-default-500 flex flex-wrap gap-3 text-xs">
             <span>萌萌点 {{ user.moemoepoint }}</span>
-            <span>补丁 {{ user.patch_count }}</span>
-            <span>资源 {{ user.resource_count }}</span>
+            <span>Galgame {{ user.patch_count }}</span>
+            <span>补丁资源 {{ user.resource_count }}</span>
             <span>评论 {{ user.comment_count }}</span>
           </div>
         </div>
