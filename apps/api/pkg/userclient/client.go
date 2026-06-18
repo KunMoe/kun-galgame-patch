@@ -9,6 +9,7 @@
 package userclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -314,7 +315,7 @@ func (e *CreatorAPIError) Error() string { return e.Message }
 // (Authorization: Bearer <token>), not via client credentials.
 func (c *Client) CreateCreatorApplication(ctx context.Context, token, source string, evidence json.RawMessage, message string) (*CreatorApplication, error) {
 	payload, _ := json.Marshal(map[string]any{"source": source, "evidence": evidence, "message": message})
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/creator/applications", strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/creator/applications", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}

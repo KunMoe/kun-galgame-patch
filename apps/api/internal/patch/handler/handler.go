@@ -24,7 +24,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// Non-creators need a vndb_id; in all cases we require a well-formed vndb_id.
+// CreatePatch (register-by-VNDB) and UpdatePatch always need a well-formed
+// vndb_id — they look the galgame up on Wiki by VNDB. VNDB-less publishing is a
+// separate path (SubmitGalgame → Wiki, which gates it on the creator role).
 var vndbIDRegex = regexp.MustCompile(`^v\d+$`)
 
 type PatchHandler struct {
@@ -73,14 +75,15 @@ func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
 
 // ===== Patch CRUD =====
 
-// ensureCanPublishGalgame enforces the admin "仅创作者(role>2)可发布 Galgame"
-// toggle: when on, only moderators / admins may publish. Returns a 403
-// AppError to block, or nil to allow. Applied to every publish entry point
-// (CreatePatch / ClaimGalgame / SubmitGalgame) so the gate can't be bypassed
-// by hitting a different publish route.
+// ensureCanPublishGalgame enforces the "creator_only" publish toggle: when on,
+// only the trusted-publisher set — creators / moderators / admins — may publish
+// Galgame (the toggle exists to fall back to that set during an abuse wave).
+// Returns a 403 AppError to block, or nil to allow. Applied to every publish
+// entry point (CreatePatch / ClaimGalgame / SubmitGalgame) so the gate can't be
+// bypassed by hitting a different publish route.
 func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
-	if h.service.IsCreatorOnlyEnabled() && !middleware.HasAnyRole(c, "admin", "moderator") {
-		return errors.New(40300, "本站当前仅允许版主 / 管理员发布 Galgame", fiber.StatusForbidden)
+	if h.service.IsCreatorOnlyEnabled() && !middleware.HasAnyRole(c, "admin", "moderator", "creator") {
+		return errors.New(40300, "本站当前仅允许创作者 / 版主 / 管理员发布 Galgame", fiber.StatusForbidden)
 	}
 	return nil
 }
@@ -90,10 +93,10 @@ func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
 // D12 (2026-04-21): the request body is simplified to JSON { "vndb_id": "vXXX" }.
 // The server calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
 //
-// Publish gate: by default any logged-in user may create a patch (the legacy
-// hard-coded "creator" role gate was retired with that role in the OAuth
-// migration). The admin "仅创作者(role>2)可发布" toggle can re-enable a gate —
-// see ensureCanPublishGalgame, applied to every publish entry point.
+// Publish gate: by default any logged-in user may create a patch. The admin
+// "creator_only" toggle narrows publishing to the trusted-publisher set
+// (creator / moderator / admin) — see ensureCanPublishGalgame, applied to
+// every publish entry point.
 func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
 	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
 		return response.Error(c, appErr)
@@ -187,7 +190,8 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 
 // UpdatePatch PUT /api/patch/:id
 //
-// After D12 this only permits "rebinding vndb_id" (creator or role >= 3 only).
+// After D12 this only permits "rebinding vndb_id": the owner may rebind their
+// own patch; rebinding someone else's requires moderator/admin (isPrivileged).
 // Game name/introduction/banner etc. all live in Wiki; this endpoint no longer accepts them.
 func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
 	id, err := getIDParam(c, "id")

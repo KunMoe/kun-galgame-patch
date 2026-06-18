@@ -14,10 +14,12 @@ import (
 // the user's current creator application (from the central OAuth queue).
 func (h *UserHandler) CreatorStatus(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-	if userID == 0 {
+	token := middleware.GetAccessToken(c)
+	// token is forwarded to OAuth as the user's Bearer; a live session with no
+	// stored access token (evicted / expired) must surface as auth, not a 500.
+	if userID == 0 || token == "" {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
-	token := middleware.GetAccessToken(c)
 	elig, app, appErr := h.service.CreatorStatus(c.Context(), userID, token)
 	if appErr != nil {
 		return response.Error(c, appErr)
@@ -29,10 +31,10 @@ func (h *UserHandler) CreatorStatus(c *fiber.Ctx) error {
 // eligibility gate then files the application on the OAuth queue.
 func (h *UserHandler) CreatorApply(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-	if userID == 0 {
+	token := middleware.GetAccessToken(c)
+	if userID == 0 || token == "" {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
-	token := middleware.GetAccessToken(c)
 	var body struct {
 		Message string `json:"message"`
 	}
