@@ -59,6 +59,66 @@ const refreshMe = async () => {
 }
 onMounted(refreshMe)
 
+// ─── 创作者申请 ────────────────────────────────────────────────────────
+// Eligibility is computed by the moyu backend (published patch resources +
+// wiki PR stats); the application + review + role grant live in OAuth.
+interface CreatorEligibility {
+  eligible: boolean
+  merged_prs: number
+  resources: number
+  need_merged_prs: number
+  need_resources: number
+}
+interface CreatorApplicationInfo {
+  id: number
+  status: string
+  decline_reason: string
+  created_at: string
+}
+interface CreatorStatus {
+  eligibility: CreatorEligibility
+  application: CreatorApplicationInfo | null
+}
+const CREATOR_STATUS_LABEL: Record<string, string> = {
+  pending: '审核中',
+  approved: '已通过',
+  declined: '已拒绝'
+}
+const CREATOR_STATUS_COLOR: Record<string, 'primary' | 'success' | 'warning'> = {
+  pending: 'primary',
+  approved: 'success',
+  declined: 'warning'
+}
+const creator = ref<CreatorStatus | null>(null)
+const creatorMessage = ref('')
+const creatorSubmitting = ref(false)
+const loadCreator = async () => {
+  const res = await api.get<CreatorStatus>('/user/creator/status')
+  if (res.code === 0 && res.data) {
+    creator.value = res.data
+  }
+}
+const applyCreator = async () => {
+  creatorSubmitting.value = true
+  const res = await api.post<CreatorApplicationInfo>('/user/creator/apply', {
+    message: creatorMessage.value
+  })
+  creatorSubmitting.value = false
+  if (res.code === 0) {
+    useKunMessage('申请已提交，等待管理员审核', 'success')
+    creatorMessage.value = ''
+    await loadCreator()
+  } else {
+    useKunMessage(res.message || '提交失败', 'error')
+  }
+}
+const creatorCanApply = computed(
+  () =>
+    !!creator.value?.eligibility.eligible &&
+    creator.value?.application?.status !== 'pending'
+)
+onMounted(loadCreator)
+
 // ─── 基本资料 (name / bio) ─────────────────────────────────────────────
 const profileForm = reactive({ name: '', bio: '' })
 const profileSaving = ref(false)
@@ -323,6 +383,96 @@ const currentAvatarUrl = computed(() => {
               </KunButton>
             </a>
           </div>
+        </div>
+      </KunCard>
+
+      <!-- 创作者申请 -->
+      <KunCard :bordered="true">
+        <template #header>
+          <h2 class="px-1 pt-1 text-xl font-medium">创作者申请</h2>
+        </template>
+        <div class="space-y-4">
+          <p class="text-default-500 text-sm">
+            创作者可直接发布 Galgame 词条 (含无 VNDB ID 的同人 / 独立作品)。满足以下任一条件即可申请，提交后由管理员审核。
+          </p>
+
+          <template v-if="creator">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-sm">
+                <span>合并的 PR</span>
+                <span
+                  :class="
+                    creator.eligibility.merged_prs >= creator.eligibility.need_merged_prs
+                      ? 'text-success'
+                      : 'text-default-500'
+                  "
+                >
+                  {{ creator.eligibility.merged_prs }} / {{ creator.eligibility.need_merged_prs }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span>已发布补丁资源</span>
+                <span
+                  :class="
+                    creator.eligibility.resources >= creator.eligibility.need_resources
+                      ? 'text-success'
+                      : 'text-default-500'
+                  "
+                >
+                  {{ creator.eligibility.resources }} / {{ creator.eligibility.need_resources }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-if="creator.application"
+              class="flex flex-wrap items-center gap-2 text-sm"
+            >
+              <span>当前申请：</span>
+              <KunChip
+                :color="CREATOR_STATUS_COLOR[creator.application.status] || 'primary'"
+                variant="flat"
+                size="sm"
+              >
+                {{ CREATOR_STATUS_LABEL[creator.application.status] || creator.application.status }}
+              </KunChip>
+              <span
+                v-if="creator.application.status === 'declined' && creator.application.decline_reason"
+                class="text-default-500"
+              >
+                原因：{{ creator.application.decline_reason }}
+              </span>
+            </div>
+
+            <template v-if="creator.application?.status !== 'pending'">
+              <KunChip
+                :color="creator.eligibility.eligible ? 'success' : 'warning'"
+                variant="flat"
+                size="sm"
+              >
+                {{ creator.eligibility.eligible ? '符合申请条件' : '尚不符合申请条件' }}
+              </KunChip>
+
+              <KunTextarea
+                v-if="creator.eligibility.eligible"
+                v-model="creatorMessage"
+                placeholder="(可选) 附言：向管理员说明你的情况"
+                :rows="3"
+                :maxlength="500"
+              />
+
+              <div class="flex justify-end">
+                <KunButton
+                  color="primary"
+                  :loading="creatorSubmitting"
+                  :disabled="!creatorCanApply"
+                  @click="applyCreator"
+                >
+                  {{ creator.application?.status === 'declined' ? '重新申请' : '提交申请' }}
+                </KunButton>
+              </div>
+            </template>
+          </template>
         </div>
       </KunCard>
 

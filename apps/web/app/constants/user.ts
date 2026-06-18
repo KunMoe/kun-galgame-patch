@@ -15,12 +15,19 @@
 export const USER_ROLE_MAP: Record<string, string> = {
   admin: '超级管理员',
   moderator: '管理员',
+  creator: '创作者',
   user: '用户'
 }
 
 // Highest-priority first; the first role in this list that the user holds
-// wins, so an "admin + user" carrier shows up as 超级管理员.
-const ROLE_PRIORITY: readonly string[] = ['admin', 'moderator', 'user']
+// wins, so an "admin + user" carrier shows up as 超级管理员. `creator` sits
+// between moderator and user — a trusted-publisher tier, not a moderation one.
+const ROLE_PRIORITY: readonly string[] = [
+  'admin',
+  'moderator',
+  'creator',
+  'user'
+]
 
 export const pickRoleLabel = (roles: string[] | null | undefined): string => {
   if (!roles || roles.length === 0) return USER_ROLE_MAP.user ?? '用户'
