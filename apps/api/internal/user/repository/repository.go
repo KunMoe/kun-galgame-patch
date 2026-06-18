@@ -250,3 +250,9 @@ func (r *UserRepository) CheckIn(userID int) (int64, error) {
 		Update("daily_check_in", 1)
 	return res.RowsAffected, res.Error
 }
+
+// CountPublishedPatchResources counts a user's PUBLISHED (status=0) patch
+// resources — the moyu-side creator eligibility signal.
+func (r *UserRepository) CountPublishedPatchResources(userID int) int64 {
+	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status = 0", userID), "published_resources", userID)
+}

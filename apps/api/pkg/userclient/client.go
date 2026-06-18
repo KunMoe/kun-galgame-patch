@@ -285,3 +285,70 @@ func singleflightKey(ids []uint) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// CreatorApplication mirrors OAuth's creator_applications row (the fields moyu
+// surfaces to the user). Acted on behalf of the END USER, not via client
+// credentials. See docs/auth/01-creator-role-design.md.
+type CreatorApplication struct {
+	ID            int             `json:"id"`
+	UserID        int             `json:"user_id"`
+	Source        string          `json:"source"`
+	Status        string          `json:"status"`
+	Evidence      json.RawMessage `json:"evidence,omitempty"`
+	Message       string          `json:"message"`
+	DeclineReason string          `json:"decline_reason"`
+	ReviewedAt    *string         `json:"reviewed_at,omitempty"`
+	CreatedAt     string          `json:"created_at"`
+}
+
+// CreatorAPIError carries OAuth's business code/message from a creator call
+// (e.g. pending exists, cooldown) so callers can surface the message.
+type CreatorAPIError struct {
+	Code    int
+	Message string
+}
+
+func (e *CreatorAPIError) Error() string { return e.Message }
+
+// CreateCreatorApplication files a creator-role application AS THE END USER
+// (Authorization: Bearer <token>), not via client credentials.
+func (c *Client) CreateCreatorApplication(ctx context.Context, token, source string, evidence json.RawMessage, message string) (*CreatorApplication, error) {
+	payload, _ := json.Marshal(map[string]any{"source": source, "evidence": evidence, "message": message})
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/creator/applications", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	return c.creatorApplicationReq(req)
+}
+
+// GetMyCreatorApplication returns the user's latest creator application (nil if none).
+func (c *Client) GetMyCreatorApplication(ctx context.Context, token string) (*CreatorApplication, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/creator/applications/me", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return c.creatorApplicationReq(req)
+}
+
+func (c *Client) creatorApplicationReq(req *http.Request) (*CreatorApplication, error) {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("userclient: creator application: %w", err)
+	}
+	defer resp.Body.Close()
+	var env struct {
+		Code    int                 `json:"code"`
+		Message string              `json:"message"`
+		Data    *CreatorApplication `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		return nil, fmt.Errorf("userclient: creator application decode: %w", err)
+	}
+	if env.Code != 0 {
+		return nil, &CreatorAPIError{Code: env.Code, Message: env.Message}
+	}
+	return env.Data, nil
+}

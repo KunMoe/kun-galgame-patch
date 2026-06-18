@@ -199,6 +199,12 @@ func (a *App) RegisterRoutes() {
 	// Registered BEFORE /:id so Fiber doesn't match "moemoepoint" as a :id.
 	userRoutes.Get("/moemoepoint/log", auth, a.UserHandler.GetMoemoepointLog)
 
+	// Creator-role application: moyu checks its eligibility (wiki PR stats +
+	// own published patch resources), then files on the central OAuth queue.
+	// Fixed paths, registered BEFORE /:id. See docs/auth/01-creator-role-design.md.
+	userRoutes.Get("/creator/status", auth, a.UserHandler.CreatorStatus)
+	userRoutes.Post("/creator/apply", auth, a.UserHandler.CreatorApply)
+
 	// Public user profiles
 	userRoutes.Get("/:id", optionalAuth, a.UserHandler.GetUserInfo)
 	userRoutes.Get("/:id/floating", a.UserHandler.GetUserFloating)
