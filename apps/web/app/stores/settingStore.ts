@@ -52,6 +52,15 @@ export interface KunSettingData {
   // useApi forwards it as the global `include_empty` query param, so the rows +
   // pagination total stay correct. Wiki-backed lists (tag / search) are exempt.
   showGalgamesWithoutResource: boolean
+
+  // ── Galgame 画廊 (screenshot) per-rating filter — see components/galgame/
+  // Gallery.vue. Two independent axes, each a persisted set of opted-in levels:
+  //   色情 (sexual): the global NSFW mode reveals every level; in SFW mode only
+  //     unrated (0) + the levels listed here show.
+  //   暴力 (violence): ALWAYS an explicit per-level opt-in (the NSFW mode does
+  //     NOT unlock it), gated behind a confirm. Default empty = hidden.
+  gallerySexualLevels: number[]
+  galleryViolenceLevels: number[]
 }
 
 const initialState: KunSettingData = {
@@ -61,7 +70,9 @@ const initialState: KunSettingData = {
   showJapaneseSubtitle: false,
   showReleaseDate: false,
   showNsfwBadge: true,
-  showGalgamesWithoutResource: false
+  showGalgamesWithoutResource: false,
+  gallerySexualLevels: [],
+  galleryViolenceLevels: []
 }
 
 export const useSettingStore = defineStore('setting', {
@@ -88,6 +99,17 @@ export const useSettingStore = defineStore('setting', {
     },
     isNsfwAcked(id: number): boolean {
       return id > 0 && (this.data.nsfwAckedIds ?? []).includes(id)
+    },
+    // Toggle a gallery rating level on/off (cookie-persisted). Replace-array
+    // (not push) so pinia tracks the mutation and the persist plugin writes it
+    // through; `?? []` guards a legacy cookie missing the key.
+    toggleGalleryLevel(axis: 'sexual' | 'violence', level: number) {
+      const key =
+        axis === 'sexual' ? 'gallerySexualLevels' : 'galleryViolenceLevels'
+      const cur = this.data[key] ?? []
+      this.data[key] = cur.includes(level)
+        ? cur.filter((l) => l !== level)
+        : [...cur, level]
     },
     resetData() {
       this.data = { ...initialState }

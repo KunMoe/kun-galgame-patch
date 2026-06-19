@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
-
 const route = useRoute()
 const api = useApi()
 const settingStore = useSettingStore()
@@ -303,43 +301,11 @@ const wikiOrigin =
     </section>
 
     <!-- W2 / PR3b — screenshots gallery (inline from Wiki PUT-managed list).
-         Wrapped in <KunLightboxGallery>: clicking any thumbnail opens the
-         shared lightbox at that index, with ←/→ nav + zoom/pan/rotate +
-         download. Item is rendered as <figure> via `as="figure"` so we
-         keep the original semantic without nesting an extra element. -->
+         Per-rating SFW gate (色情 + 暴力 axes) + the shared lightbox live in
+         GalgameGallery (ported from kungal); it renders its own 截图/画廊
+         header and the 分级筛选 control. -->
     <section v-if="detail.galgame?.screenshots?.length">
-      <div class="mb-4 flex items-center gap-3">
-        <div class="bg-primary h-6 w-1 rounded" />
-        <h2 class="text-2xl font-bold">截图 / 画廊</h2>
-      </div>
-      <KunLightboxGallery>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <KunLightboxGalleryItem
-            v-for="s in [...detail.galgame.screenshots].sort(
-              (a, b) => a.sort_order - b.sort_order
-            )"
-            :key="s.image_hash"
-            :src="imageServiceUrl(s.image_hash)"
-            :alt="s.caption || s.image_hash.slice(0, 8)"
-            as="figure"
-            class="border-default/20 block overflow-hidden rounded-lg border"
-          >
-            <KunImage
-              :src="imageServiceUrl(s.image_hash)"
-              :alt="s.caption || s.image_hash.slice(0, 8)"
-              loading="lazy"
-              aspect-ratio="16 / 9"
-              class-name="bg-default-100"
-            />
-            <figcaption
-              v-if="s.caption"
-              class="text-default-500 px-2 py-1 text-xs"
-            >
-              {{ s.caption }}
-            </figcaption>
-          </KunLightboxGalleryItem>
-        </div>
-      </KunLightboxGallery>
+      <GalgameGallery :screenshots="detail.galgame.screenshots" />
     </section>
 
     <!-- Wiki link footer for richer info (characters, staff, releases). -->
