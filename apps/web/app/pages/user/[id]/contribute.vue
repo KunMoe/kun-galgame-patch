@@ -41,7 +41,7 @@ const onChangePage = (v: number) => {
         v-for="c in data.items"
         :key="c.id"
         :to="`/patch/${c.id}/introduction`"
-        class="border-default/20 bg-background hover:bg-default-100 flex items-center justify-between rounded-lg border p-3 transition-colors"
+        class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex items-center justify-between rounded-lg border p-3 transition-colors"
       >
         <span class="font-medium line-clamp-1">
           {{ getPreferredLanguageText(c.name) }}

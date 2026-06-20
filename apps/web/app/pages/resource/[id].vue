@@ -180,7 +180,7 @@ if (
     <template v-else-if="detail && resource">
       <!-- ── Game header (basic game info only) ──────────── -->
       <div
-        class="border-default/20 bg-content1/50 mb-6 overflow-hidden rounded-3xl border"
+        class="bg-content1 shadow-kun-sm mb-6 overflow-hidden rounded-3xl"
       >
         <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
           <NuxtLink
@@ -438,7 +438,7 @@ if (
               <div
                 v-for="(lnk, i) in downloadLinks"
                 :key="i"
-                class="border-success/40 bg-background hover:border-success focus-within:border-success flex items-center gap-3 rounded-xl border p-3 transition-colors"
+                class="border-success/40 bg-content1 shadow-kun-sm hover:border-success focus-within:border-success flex items-center gap-3 rounded-xl border p-3 transition-colors"
               >
                 <a
                   :href="lnk"
@@ -544,7 +544,7 @@ if (
             v-for="r in detail.recommendations"
             :key="r.id"
             :to="`/resource/${r.id}`"
-            class="border-default/20 bg-background hover:border-primary hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
+            class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
           >
             <p class="font-semibold line-clamp-2">{{ recName(r) }}</p>
             <p v-if="r.note" class="text-default-500 line-clamp-2 text-sm">

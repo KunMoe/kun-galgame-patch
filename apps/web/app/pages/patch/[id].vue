@@ -129,7 +129,7 @@ const tabs = computed(() => [
   <div v-if="patch" class="mx-auto w-full max-w-7xl space-y-6 px-3 py-4">
     <!-- ── Hero ───────────────────────────────────────── -->
     <div
-      class="border-default/20 bg-content1/50 overflow-hidden rounded-3xl border"
+      class="bg-content1 shadow-kun-sm overflow-hidden rounded-3xl"
     >
       <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
         <!-- Single-item Gallery: lets the user click the hero cover to
@@ -231,7 +231,7 @@ const tabs = computed(() => [
     <KunTab
       v-model="currentTab"
       :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"
-      variant="light"
+      variant="underlined"
       color="primary"
       size="md"
       scrollable

@@ -20,7 +20,7 @@ const props = defineProps<Props>()
 <template>
   <NuxtLink
     :to="`/doc/${props.post.slug}`"
-    class="bg-background border-default/20 hover:bg-default-100 group block w-full overflow-hidden rounded-lg border transition-all duration-200 hover:scale-[1.02]"
+    class="bg-content1 shadow-kun-sm border-default/20 hover:bg-default-100 group block w-full overflow-hidden rounded-lg border transition-all duration-200 hover:scale-[1.02]"
   >
     <div class="space-y-3 p-4">
       <h2 class="mb-2 text-xl font-bold">{{ props.post.title }}</h2>

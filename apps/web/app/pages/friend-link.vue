@@ -45,7 +45,7 @@ const friends = kunFriends.map((friend) => ({
         :href="friend.link"
         target="_blank"
         rel="noopener noreferrer"
-        class="border-default-200 bg-background hover:bg-default-100 block h-full w-full rounded-lg border p-4 transition-colors"
+        class="border-default-200 bg-content1 shadow-kun-sm hover:bg-default-100 block h-full w-full rounded-lg border p-4 transition-colors"
       >
         <div class="flex w-full justify-center pt-2">
           <KunImage

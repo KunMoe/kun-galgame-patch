@@ -21,7 +21,7 @@ const iconName = computed(
 <template>
   <NuxtLink
     :to="cardHref"
-    class="border-default/20 bg-background hover:bg-default-100 block rounded-lg border p-4 transition-colors"
+    class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block rounded-lg border p-4 transition-colors"
   >
     <div class="flex items-start gap-3">
       <KunAvatar

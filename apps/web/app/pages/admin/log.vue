@@ -58,7 +58,7 @@ const formatLogContent = (l: AdminLog): string => {
       <div
         v-for="l in data?.items"
         :key="l.id"
-        class="border-default/20 bg-background flex items-start gap-3 rounded-lg border p-3"
+        class="border-default/20 bg-content1 shadow-kun-sm flex items-start gap-3 rounded-lg border p-3"
       >
         <KunAvatar v-if="l.user" :user="l.user" size="sm" />
         <div class="flex-1 space-y-1">

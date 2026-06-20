@@ -429,7 +429,7 @@ watch(histPage, loadHistory)
     <!-- sorter -->
     <div
       v-if="!pending && resources && resources.length"
-      class="border-default/20 bg-background flex flex-wrap items-center gap-2 rounded-2xl border p-3"
+      class="border-default/20 bg-content1 shadow-kun-sm flex flex-wrap items-center gap-2 rounded-2xl border p-3"
     >
       <KunIcon
         name="lucide:arrow-up-down"
@@ -469,7 +469,7 @@ watch(histPage, loadHistory)
       <div
         v-for="r in sortedResources"
         :key="r.id"
-        class="border-default/20 bg-background hover:border-primary/40 space-y-4 rounded-2xl border p-5 transition-colors"
+        class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary/40 space-y-4 rounded-2xl border p-5 transition-colors"
       >
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
@@ -668,7 +668,7 @@ watch(histPage, loadHistory)
             <div
               v-for="(lnk, i) in linksOf(fetched[r.id]!)"
               :key="i"
-              class="border-success/40 bg-background hover:border-success flex items-center gap-3 rounded-lg border p-2.5"
+              class="border-success/40 bg-content1 shadow-kun-sm hover:border-success flex items-center gap-3 rounded-lg border p-2.5"
             >
               <a
                 :href="lnk"

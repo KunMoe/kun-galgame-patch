@@ -48,7 +48,7 @@ const patchBanner = (r: UserResourceItem) =>
         v-for="r in data.items"
         :key="r.id"
         :to="`/patch/${r.galgame_id}/resource`"
-        class="border-default/20 bg-background hover:bg-default-100 flex gap-4 rounded-lg border p-4 transition-colors"
+        class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex gap-4 rounded-lg border p-4 transition-colors"
       >
         <KunImage
           :src="patchBanner(r)"

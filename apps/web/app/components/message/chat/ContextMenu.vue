@@ -74,7 +74,7 @@ const pick = (emoji: string) => {
       <div
         v-if="open"
         ref="panel"
-        class="kun-ctx-panel border-default/20 bg-background fixed z-[200] w-70 origin-top-left rounded-xl border p-2 shadow-lg"
+        class="kun-ctx-panel bg-content1 shadow-kun-lg fixed z-[200] w-70 origin-top-left rounded-xl p-2"
         :style="style"
       >
       <!-- quick reactions -->

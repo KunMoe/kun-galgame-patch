@@ -122,15 +122,24 @@ const toggleFollow = async () => {
     <div class="grid gap-4 lg:grid-cols-3">
       <div class="lg:col-span-1">
         <KunCard :bordered="true">
-          <div class="flex flex-col items-center gap-3 pt-4">
-            <KunAvatar :user="user" size="original-sm" :is-navigation="false" />
-            <div class="flex flex-col items-center gap-1">
-              <h4 class="text-2xl font-bold">{{ user.name }}</h4>
-              <KunChip color="primary" variant="flat" size="sm">
-                {{ pickRoleLabel(user.roles) }}
-              </KunChip>
+          <div class="flex items-center gap-4 pt-4">
+            <KunAvatar
+              :user="user"
+              size="original-sm"
+              :is-navigation="false"
+              class-name="shrink-0"
+            />
+            <div class="flex min-w-0 flex-col gap-2">
+              <!-- name + role share one line -->
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="text-2xl font-bold break-words">{{ user.name }}</h4>
+                <KunChip color="primary" variant="flat" size="sm">
+                  {{ pickRoleLabel(user.roles) }}
+                </KunChip>
+              </div>
 
-              <div class="text-default-500 mt-2 flex gap-3 text-sm">
+              <!-- 粉丝 / 关注 sit below the name+role line -->
+              <div class="text-default-500 flex gap-3 text-sm">
                 <button
                   type="button"
                   class="hover:text-primary inline-flex items-center gap-1 rounded transition-colors"
@@ -154,9 +163,10 @@ const toggleFollow = async () => {
               </div>
             </div>
           </div>
+          <!-- whitespace-pre-line so a multi-line bio keeps its line breaks -->
           <p
             v-if="user.bio"
-            class="text-default-600 mt-4 text-center"
+            class="text-default-600 mt-4 break-words whitespace-pre-line"
           >
             {{ user.bio }}
           </p>

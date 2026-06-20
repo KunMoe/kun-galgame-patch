@@ -36,7 +36,7 @@ const hasMore = computed(
 
 <template>
   <div
-    class="border-default/20 bg-background hover:border-primary/30 rounded-2xl border p-5 transition-colors"
+    class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary/30 rounded-2xl border p-5 transition-colors"
   >
     <CommentItem
       :comment="root"

@@ -63,7 +63,7 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
 
       <div
         v-if="showNsfwBadge"
-        class="bg-background absolute top-2 left-2 z-10 rounded-full"
+        class="bg-content1 shadow-kun-sm absolute top-2 left-2 z-10 rounded-full"
       >
         <KunChip
           :color="props.patch.content_limit === 'sfw' ? 'success' : 'danger'"

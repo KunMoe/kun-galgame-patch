@@ -47,7 +47,7 @@ const joinTestGroup = async () => {
         v-for="room in rooms"
         :key="room.link"
         :to="`/message/chat/${room.link}`"
-        class="border-default/20 bg-background hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"
+        class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"
       >
         <KunImage
           v-if="room.avatar"

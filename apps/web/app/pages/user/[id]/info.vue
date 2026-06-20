@@ -107,7 +107,7 @@ const isEmpty = computed(
             v-for="r in data.resources.items"
             :key="r.id"
             :to="`/patch/${r.galgame_id}/resource`"
-            class="border-default/20 bg-background hover:bg-default-100 block rounded-lg border p-3 transition-colors"
+            class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block rounded-lg border p-3 transition-colors"
           >
             <div class="flex items-center justify-between gap-3">
               <span class="text-primary min-w-0 truncate text-sm">
@@ -147,7 +147,7 @@ const isEmpty = computed(
             v-for="c in data.comments.items"
             :key="c.id"
             :to="`/patch/${c.galgame_id}/comment`"
-            class="border-default/20 bg-background hover:bg-default-100 block rounded-lg border p-3 transition-colors"
+            class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block rounded-lg border p-3 transition-colors"
           >
             <div class="text-default-500 mb-1 text-xs">
               评论在 <span class="text-primary">{{ commentPatchName(c) }}</span>
