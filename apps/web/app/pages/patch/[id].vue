@@ -11,6 +11,9 @@ const settingStore = useSettingStore()
 
 const galgameId = computed(() => Number(route.params.id))
 
+// "查看所有封面" modal (lazy-fetches the covers on open — see GalgameCovers).
+const coversOpen = ref(false)
+
 const { data: patch } = await useAsyncData<PatchHeader | null>(
   () => `patch-${galgameId.value}`,
   async () => {
@@ -141,23 +144,36 @@ const tabs = computed(() => [
              We deliberately do NOT wrap the resource cover in
              resource/[id].vue with this — that thumbnail is a
              <NuxtLink> to the patch detail page (different intent). -->
-        <KunLightboxGallery>
-          <KunLightboxGalleryItem
-            :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
-            :alt="displayName"
-            as="div"
-            class="border-default/20 bg-default-100 aspect-video w-full shrink-0 overflow-hidden rounded-2xl border shadow-lg sm:w-72 lg:w-80"
-          >
-            <KunImage
+        <div class="relative w-full shrink-0 sm:w-72 lg:w-80">
+          <KunLightboxGallery>
+            <KunLightboxGalleryItem
               :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
               :alt="displayName"
-              loading="eager"
-              fetchpriority="high"
-              class-name="block size-full"
-              image-class-name="transition-transform duration-300 hover:scale-[1.03]"
-            />
-          </KunLightboxGalleryItem>
-        </KunLightboxGallery>
+              as="div"
+              class="border-default/20 bg-default-100 aspect-video w-full overflow-hidden rounded-2xl border shadow-lg"
+            >
+              <KunImage
+                :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
+                :alt="displayName"
+                loading="eager"
+                fetchpriority="high"
+                class-name="block size-full"
+                image-class-name="transition-transform duration-300 hover:scale-[1.03]"
+              />
+            </KunLightboxGalleryItem>
+          </KunLightboxGallery>
+          <!-- 查看所有封面 — sibling of the lightbox item (not nested) so it
+               doesn't trigger the banner lightbox; opens the covers modal. -->
+          <button
+            type="button"
+            class="bg-background/80 hover:bg-background shadow-kun-sm absolute right-2 bottom-2 z-10 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium backdrop-blur transition-colors"
+            @click="coversOpen = true"
+          >
+            <KunIcon name="lucide:images" class="size-4" />
+            查看所有封面
+          </button>
+          <GalgameCovers v-model="coversOpen" :galgame-id="galgameId" />
+        </div>
 
         <div class="flex min-w-0 flex-1 flex-col justify-between gap-4">
           <div class="space-y-2">
