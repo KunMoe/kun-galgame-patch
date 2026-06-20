@@ -450,7 +450,7 @@ return r2.data.galgame
   "official_ids": [1],
   "engine_ids": [1],
   "covers": [
-    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": "", "kind": ""}
   ],
   "screenshots": []
 }
@@ -460,7 +460,7 @@ return r2.data.galgame
 |------|------|------|
 | vndb_id | 是 | 格式 `v\d+`，必须唯一 |
 | banner | 否 | 老的 URL 字符串字段；image_service 接入前的旧路径，迁移期保留作 fallback |
-| covers | 否 | image_service 哈希数组，PR2 起的新字段；`sort_order=0` 的那张是钉住封面（DB 强制每作品至多一张）。详见下面 PUT 端点说明 |
+| covers | 否 | image_service 哈希数组，PR2 起的新字段；`sort_order=0` 的那张是钉住封面（DB 强制每作品至多一张）。每条带 `kind`（封面类型：`""`/`main`/`pkgfront`/`dig`/`pkgback`/`pkgcontent`/`pkgside`/`pkgmed`）+ `source`/`source_key`；`source="vndb"` 的封面是同步自管子集、编辑时恒保留（同 vndb tags/links）。详见下面 PUT 端点说明 + [03-relations.md 封面 shape](./03-relations.md#封面--截图pr2-新增) |
 | screenshots | 否 | image_service 哈希数组，与 covers 同 shape，无"钉住"约束 |
 | aliases | 否 | 逗号分隔的别名字符串 |
 | tag_ids | 否 | 标签 ID 数组（替换用户子集；`source="vndb"` 标签 sync 托管、恒保留，见上文标签来源小节） |
@@ -500,7 +500,7 @@ return r2.data.galgame
   "official_ids": [1],
   "engine_ids": [],
   "covers": [
-    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
+    {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": "", "kind": ""}
   ],
   "screenshots": [
     {"image_hash": "fedcba98...12", "sort_order": 0, "caption": "CG 01", "sexual": 0, "violence": 0, "source": "", "source_key": ""}
@@ -517,8 +517,9 @@ return r2.data.galgame
 `covers` / `screenshots` 字段说明：
 - 都按 `image_hash` 引用 image_service。**galgame 图片（封面 + 截图）的字节统一经 wiki 上传**：banner 可走下方 multipart 模式，封面 / 截图走 [`POST /galgame/image`](#galgame-图片上传post-galgameimage) 拿 hash，再随 `covers` / `screenshots` 提交。**下游（kungal / moyu）不得再用自己的 image_service client 直传 galgame 图片**——由 wiki 以 `site=galgame_wiki` 身份代传，保证所有 galgame 图片字节归 wiki 所有（站点级 refping 才能保活，详见下方端点说明）。
 - `covers` 中 `sort_order=0` 的那张是**钉住的封面**（DB 强制每作品至多一张），管理员"换封面" = 同一请求里把旧的 `sort_order` 改成非 0、新的设为 0。
-- `screenshots` 没有"钉住"约束，`sort_order` 只是画廊展示顺序。
-- presence 语义同 `tag_ids`：不传 = 保持原集合不变；传 `[]` = 清空全部；传非空数组 = 权威全量替换（**必须回传该作当前全量**，不要只回传新增/删除的那几条）。
+- 每条 cover 带 `kind`（封面类型，covers 专属）：`""`/`main`/`pkgfront`/`dig`/`pkgback`/`pkgcontent`/`pkgside`/`pkgmed`。wiki 的封面同步把一部作品 VNDB `/cv` 的全部封面（主 + 各 release 封面）灌进 `covers`，供"查看所有封面"按 `kind` 分组。详见 [03-relations.md](./03-relations.md#封面--截图pr2-新增)。
+- `screenshots` 没有"钉住"约束，`sort_order` 只是画廊展示顺序；screenshots **无** `kind`。
+- presence 语义同 `tag_ids`：不传 = 保持原集合不变；传 `[]` = 清空全部；传非空数组 = 权威全量替换（**必须回传该作当前全量**，不要只回传新增/删除的那几条）。**例外**：`covers` 里 `source="vndb"` 的封面是同步自管子集（同 vndb tags/links），`PUT` 只替换用户子集，vndb 封面恒被 wiki 并回保留（按 `image_hash` 去重、保持至多一张 `sort_order=0`）——下游照常回传含 `kind` 的当前全量即可，漏传也不会丢。
 - 响应里有派生字段 `effective_banner_hash`（= covers 里 `sort_order=0` 的那张的 `image_hash`；无则 null）。**前端封面展示通过 `resolveBannerUrl` helper，只看 `effective_banner_hash → banner` 两级。**
 
 > **多值字段（`tag_ids` / `official_ids` / `engine_ids` / `aliases` / `links`）= presence 语义全量替换，必须看懂**：

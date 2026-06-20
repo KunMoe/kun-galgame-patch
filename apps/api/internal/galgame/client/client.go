@@ -158,6 +158,9 @@ type CoverInput struct {
 	Violence  int    `json:"violence"`
 	Source    string `json:"source"`
 	SourceKey string `json:"source_key"`
+	// Kind is the VNDB cover type for covers (main/pkgfront/dig/pkgback/…); empty
+	// for user uploads and for screenshots (which reuse this struct).
+	Kind string `json:"kind,omitempty"`
 }
 
 type ScreenshotInput struct {

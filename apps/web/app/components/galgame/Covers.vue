@@ -7,8 +7,10 @@
 // single /galgame/:gid, which returns the full covers) the first time the modal
 // opens — no cost unless the user actually wants to see the covers.
 //
-// Covers are galgame_banner-preset image_service images, so they have a `mini`
-// variant for the grid thumbnail; the lightbox opens the full image.
+// The wiki syncs a VN's whole VNDB /cv gallery (main + every release cover), each
+// tagged with `kind`; we group by kind so 主封面 / 盒装正面 / 数字版 / 封底 … are
+// separated. Covers are galgame_banner-preset image_service images, so they have a
+// `mini` variant for the grid thumbnail; the lightbox opens the full image.
 import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const props = defineProps<{ galgameId: number }>()
@@ -19,6 +21,35 @@ const api = useApi()
 const covers = ref<GalgameCoverRow[] | null>(null)
 const loading = ref(false)
 const failed = ref(false)
+
+// Kind → display label, in the order sections should appear. Anything unknown /
+// empty falls into 其它 at the end.
+const KIND_LABEL: Record<string, string> = {
+  main: '主封面',
+  pkgfront: '盒装正面',
+  dig: '数字版',
+  pkgback: '封底',
+  pkgcontent: '内页',
+  pkgside: '书脊',
+  pkgmed: '碟面',
+  '': '其它'
+}
+const KIND_ORDER = Object.keys(KIND_LABEL)
+
+// Covers grouped into ordered, labeled sections (only non-empty kinds shown).
+const groups = computed(() => {
+  const byKind = new Map<string, GalgameCoverRow[]>()
+  for (const c of covers.value ?? []) {
+    const k = KIND_LABEL[c.kind ?? ''] !== undefined ? (c.kind ?? '') : ''
+    if (!byKind.has(k)) byKind.set(k, [])
+    byKind.get(k)!.push(c)
+  }
+  return KIND_ORDER.filter((k) => byKind.has(k)).map((k) => ({
+    kind: k,
+    label: KIND_LABEL[k],
+    covers: byKind.get(k)!
+  }))
+})
 
 // Fetch once and cache: covers don't change while the page is open.
 const load = async () => {
@@ -54,23 +85,31 @@ watch(open, (v) => {
       <KunNull v-else-if="covers && !covers.length" description="该游戏暂无封面" />
 
       <KunLightboxGallery v-else-if="covers">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <KunLightboxGalleryItem
-            v-for="c in covers"
-            :key="c.image_hash"
-            :src="imageServiceUrl(c.image_hash)"
-            :alt="`封面 ${c.sort_order + 1}`"
-            as="figure"
-            class="border-default/20 bg-default-100 block overflow-hidden rounded-lg border"
-          >
-            <KunImage
-              :src="imageServiceUrl(c.image_hash, 'mini')"
-              :alt="`封面 ${c.sort_order + 1}`"
-              loading="lazy"
-              aspect-ratio="16 / 9"
-              class-name="bg-default-100"
-            />
-          </KunLightboxGalleryItem>
+        <div class="space-y-5">
+          <section v-for="g in groups" :key="g.kind" class="space-y-2">
+            <h3 class="text-default-600 text-sm font-medium">
+              {{ g.label }}
+              <span class="text-default-400">({{ g.covers.length }})</span>
+            </h3>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <KunLightboxGalleryItem
+                v-for="c in g.covers"
+                :key="c.image_hash"
+                :src="imageServiceUrl(c.image_hash)"
+                :alt="g.label"
+                as="figure"
+                class="border-default/20 bg-default-100 block overflow-hidden rounded-lg border"
+              >
+                <KunImage
+                  :src="imageServiceUrl(c.image_hash, 'mini')"
+                  :alt="g.label"
+                  loading="lazy"
+                  aspect-ratio="16 / 9"
+                  class-name="bg-default-100"
+                />
+              </KunLightboxGalleryItem>
+            </div>
+          </section>
         </div>
       </KunLightboxGallery>
     </div>

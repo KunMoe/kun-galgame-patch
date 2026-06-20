@@ -135,14 +135,18 @@
   "sort_order": 0,
   "sexual": 0,
   "violence": 0,
-  "source": "user",
-  "source_key": ""
+  "source": "vndb",
+  "source_key": "cv80746",
+  "kind": "main"
 }
 ```
 
-screenshots 额外有 `caption` 字段（短描述，可空）。
+screenshots 额外有 `caption` 字段（短描述，可空）；screenshots **没有** `kind`。
 
-**presence 语义**：与 `tag_ids` 一致 —— 不传 = 保持不变；传 `[]` = 清空；传非空数组 = 权威全量替换。
+- `source` / `source_key`：`""` = 用户上传；`"vndb"` = 同步自 VNDB（`source_key` = VNDB 图片 id，即 cv-id）。
+- `kind`（**covers 专属**）：VNDB 封面类型，供"查看所有封面"分组/筛选。取值 `""`（用户上传 / 未知）、`"main"`（VN 主封面 vn.image）、`"pkgfront"`（盒装正面）、`"dig"`（数字版）、`"pkgback"`（封底）、`"pkgcontent"`（内页）、`"pkgside"`（书脊）、`"pkgmed"`（碟面）。wiki 的封面同步会把一部作品 VNDB `/cv` 页的**全部封面**（主 + 各 release 封面）灌进 `covers`，其中一张 `sort_order=0` 钉住为 banner，其余为备选。
+
+**presence 语义**：与 `tag_ids` 一致 —— 不传 = 保持不变；传 `[]` = 清空；传非空数组 = 权威全量替换。**但** `source="vndb"` 的封面是同步自管的（像 vndb links / tags）：`PUT` 的 `covers` 只替换**用户**子集，vndb 封面恒被 wiki 并回保留（按 `image_hash` 去重，至多一张 `sort_order=0`）。下游编辑器照常把当前完整 `covers`（含 `kind`）回传即可；即便漏传，wiki 也会重新补上 vndb 封面。
 
 **图片上传**：banner 走 [01-galgame.md Banner 上传段](./01-galgame.md#banner-上传通过-create--update--pr-端点的-multipart-模式)（后端把上传的 hash 经 `PromoteCoverHash` 合并进 covers）。封面 / 截图走 [`POST /galgame/image`](./01-galgame.md#galgame-图片上传post-galgameimage) 拿 hash，再随 `covers` / `screenshots` 提交——**下游不得用自己的 image_service client 直传 galgame 图片**，统一经 wiki（`site=galgame_wiki`）上传，否则站点级 refping 保不活、最终被 GC。
 

@@ -76,6 +76,9 @@ interface GalgameCoverRow {
   violence: number
   source: string
   source_key: string
+  // VNDB cover type (covers only): '' | main | pkgfront | dig | pkgback |
+  // pkgcontent | pkgside | pkgmed. Optional because screenshots reuse this shape.
+  kind?: string
 }
 
 interface GalgameScreenshotRow extends GalgameCoverRow {
