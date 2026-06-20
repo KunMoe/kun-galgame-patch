@@ -280,8 +280,9 @@ const chipClass = (active: boolean) => [
 
       <!-- Action row: sort direction (explicit asc/desc pair so the
            alternative is always visible) sits alongside the panel toggle +
-           reset. -->
-      <div class="flex items-center gap-1.5">
+           reset. flex-wrap so on narrow widths the controls wrap to a new
+           line instead of squishing the asc/desc buttons. -->
+      <div class="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
           aria-label="降序"

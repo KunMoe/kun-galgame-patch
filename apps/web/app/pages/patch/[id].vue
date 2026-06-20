@@ -19,6 +19,25 @@ const { data: patch } = await useAsyncData<PatchHeader | null>(
   }
 )
 
+// Creator-chip subtitle: how many 补丁资源 the displayed user has uploaded on
+// moyu (resource_count). The chip shows the wiki entry creator (fallback: the
+// patch publisher), so fetch that user's moyu profile once for the count.
+const chipUserId = computed(
+  () => patch.value?.creator?.id ?? patch.value?.user?.id ?? 0
+)
+const { data: chipUserInfo } = await useAsyncData<UserInfo | null>(
+  () => `patch-chip-user-${chipUserId.value}`,
+  async () => {
+    if (!chipUserId.value) return null
+    const res = await api.get<UserInfo>(`/user/${chipUserId.value}`)
+    return res.code === 0 ? res.data : null
+  },
+  { watch: [chipUserId] }
+)
+const creatorDescription = computed(
+  () => `已发布 ${chipUserInfo.value?.resource_count ?? 0} 个游戏补丁`
+)
+
 // Distinguish "real 404" from "NSFW gate" when patch is null.
 //
 // The backend returns 404 for both cases (intentional: a distinguishing
@@ -185,26 +204,13 @@ const tabs = computed(() => [
               class="border-default/20 flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center"
             >
               <!-- 词条创建者 = wiki galgame.user_id（单一可信源，与 kungal 对齐）。
-                   缺数据时回退展示补丁发布者，避免空白。补丁发布者(patch.user)
-                   是 moyu 本地数据，仅当与创建者不是同一人时单独标注。 -->
+                   只展示词条创建者；缺数据时回退展示补丁发布者(patch.user，moyu
+                   本地数据)，避免空白。 -->
               <div class="flex flex-col gap-1.5">
                 <KunUserChip
                   :user="patch.creator ?? patch.user"
-                  :description="patch.creator ? '词条创建者' : '补丁发布者'"
+                  :description="creatorDescription"
                 />
-                <KunUserChip
-                  v-if="
-                    patch.creator &&
-                    patch.user &&
-                    patch.user.id !== patch.creator.id
-                  "
-                  :user="patch.user"
-                  description="补丁发布者"
-                  size="sm"
-                />
-                <p class="text-default-500 text-xs">
-                  资源更新于 {{ formatDistanceToNow(patch.resource_update_time) }}
-                </p>
               </div>
               <KunCardStats
                 :patch="{ ...patch, created: patch.created }"

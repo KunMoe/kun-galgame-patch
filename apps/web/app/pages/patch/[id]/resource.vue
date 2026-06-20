@@ -477,11 +477,18 @@ watch(histPage, loadHistory)
               {{ r.name || '补丁资源' }}
             </h3>
             <div class="text-default-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-              <KunAvatar :user="r.user" size="xs" />
+              <KunAvatar :user="r.user" size="sm" />
               <span>
-                由 <span class="text-foreground font-medium">{{
-                  r.user?.name ?? '未知用户'
-                }}</span> 发布于
+                由
+                <NuxtLink
+                  v-if="r.user?.id"
+                  :to="`/user/${r.user.id}/resource`"
+                  class="text-foreground hover:text-primary font-medium hover:underline"
+                >
+                  {{ r.user.name }}
+                </NuxtLink>
+                <span v-else class="text-foreground font-medium">未知用户</span>
+                发布于
                 {{
                   formatDate(r.created, { isShowYear: true, isPrecise: true })
                 }}

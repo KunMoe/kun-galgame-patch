@@ -121,10 +121,29 @@ const confirmDelete = async () => {
   <div
     class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
   >
-    <!-- Left column: the icon action bar + a one-line hint that makes the
-         heart's purpose (subscribe to new-patch notifications) discoverable
-         without having to hover the icon-only button. -->
-    <div class="flex flex-col items-start gap-2">
+    <!-- Left: 资源更新时间 + the Wiki-maintained metadata note. Both moved here
+         (资源更新于 was under the creator chip) and put to the LEFT of the action
+         bar per the header layout request. -->
+    <div class="text-default-500 flex flex-col gap-1 text-xs">
+      <p>资源更新于 {{ formatDistanceToNow(props.patch.resource_update_time) }}</p>
+      <p>
+        游戏元数据由
+        <a
+          :href="wikiOrigin"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary hover:underline"
+        >
+          鲲 Galgame Wiki
+        </a>
+        统一维护
+      </p>
+    </div>
+
+    <!-- Right: the icon action bar + a one-line hint that makes the heart's
+         purpose (subscribe to new-patch notifications) discoverable without
+         having to hover the icon-only button. -->
+    <div class="flex flex-col items-start gap-2 sm:items-end">
       <!-- Action bar: favorite / share, divider, then owner edit / delete.
            All icon-only + tooltip — uniform shape. -->
       <div
@@ -213,19 +232,6 @@ const confirmDelete = async () => {
         }}</span>
       </p>
     </div>
-
-    <p class="text-default-500 text-xs">
-      游戏元数据由
-      <a
-        :href="wikiOrigin"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-primary hover:underline"
-      >
-        Galgame Wiki
-      </a>
-      统一维护
-    </p>
   </div>
 
   <!-- isDismissable=false: destructive irreversible action — backdrop click

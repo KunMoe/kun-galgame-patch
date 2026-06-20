@@ -72,9 +72,9 @@ const handleCheckIn = async () => {
       <button
         type="button"
         aria-label="账号菜单"
-        class="block cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="flex cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <KunAvatar :user="userStore.user" :is-navigation="false" size="sm" />
+        <KunAvatar :user="userStore.user" :is-navigation="false" size="md" />
       </button>
     </template>
 
