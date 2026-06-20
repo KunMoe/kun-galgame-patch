@@ -17,8 +17,9 @@ onMounted(() => {
     <!-- Tailwind v4 inlines @theme colors into utilities but doesn't emit the
          bare `--color-primary` var to :root, so `var(--color-primary)` here is
          undefined → an invisible (transparent) bar. Mirror how `bg-primary`
-         compiles: fall back to the raw `--primary-500` triplet. -->
-    <NuxtLoadingIndicator color="var(--color-primary, hsl(var(--primary-500)))" />
+         compiles: fall back to the raw `--primary-500` triplet — OKLCH since
+         @kungal/ui-tokens 1.7.0 (was HSL), so wrap in oklch() not hsl(). -->
+    <NuxtLoadingIndicator color="var(--color-primary, oklch(var(--primary-500)))" />
     <NuxtRouteAnnouncer />
     <!-- KunUI overlay hosts, mounted once (they Teleport to body). Required or
          useKunMessage() toasts and useKunAlert() confirm dialogs render nowhere

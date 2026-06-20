@@ -85,10 +85,12 @@
   body {
     /* Root container needs a solid background; otherwise .kun-dark-mode only
        changes CSS variables and nothing in the DOM paints, so the browser
-       default white bleeds through. Solid hsl() (not hsla) since there's
-       nothing behind the root to composite. */
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+       default white bleeds through. The raw --background/--foreground channel
+       vars are OKLCH triplets since @kungal/ui-tokens 1.7.0 (was HSL) — wrap in
+       oklch(), not hsl(), or they'd parse as black. Solid (no alpha) since
+       there's nothing behind the root to composite. */
+    background-color: oklch(var(--background));
+    color: oklch(var(--foreground));
     min-height: 100vh;
   }
 }
