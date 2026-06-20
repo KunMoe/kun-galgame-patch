@@ -326,9 +326,6 @@ const currentAvatarUrl = computed(() => {
         </div>
       </KunCard>
 
-      <!-- 创作者申请 -->
-      <SettingsCreatorApply />
-
       <!-- 5. 消息通知设置 (frontend-only) -->
       <KunCard :bordered="true">
         <template #header>

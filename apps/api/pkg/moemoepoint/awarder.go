@@ -63,3 +63,14 @@ func (a *Awarder) Log(ctx context.Context, userID, limit int, beforeID int64, re
 	}
 	return a.client.Log(ctx, userID, limit, beforeID, reason)
 }
+
+// Balance reads the user's current authoritative balance from OAuth (C3 single
+// source — NOT the local user.moemoepoint cache). Read-only passthrough; a nil
+// Awarder/client yields 0 so a caller using it as one of several OR criteria
+// (e.g. creator eligibility) degrades gracefully instead of erroring.
+func (a *Awarder) Balance(ctx context.Context, userID int) (int, error) {
+	if a == nil || a.client == nil {
+		return 0, nil
+	}
+	return a.client.Balance(ctx, userID)
+}

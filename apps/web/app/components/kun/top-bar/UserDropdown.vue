@@ -5,6 +5,15 @@ const { openLogoutModal } = useLogoutModal()
 
 const checking = ref(false)
 const logOpen = ref(false)
+const creatorOpen = ref(false)
+
+// "创作者申请" entry — only for regular users without the creator role:
+// moderators / admins already publish Galgame directly, and existing creators
+// don't need to apply, so both are excluded.
+const isCreator = computed(() => userStore.user.roles?.includes('creator') ?? false)
+const showCreatorApply = computed(
+  () => !userStore.isModerator && !isCreator.value
+)
 
 // KunPopover only closes on outside-click / Escape — a click on an inner item
 // is @click.stop'd, so navigating via a menu link leaves it open. Drive it shut
@@ -17,9 +26,10 @@ watch(
   () => popover.value?.close()
 )
 
-const openModal = (target: 'log' | 'logout') => {
+const openModal = (target: 'log' | 'logout' | 'creator') => {
   popover.value?.close()
   if (target === 'log') logOpen.value = true
+  else if (target === 'creator') creatorOpen.value = true
   else openLogoutModal()
 }
 
@@ -109,6 +119,22 @@ const handleCheckIn = async () => {
         <KunIcon name="lucide:circle-help" class="size-4" />
         帮助与反馈
       </NuxtLink>
+      <!-- 创作者申请 — accent-styled so it stands out as an aspirational action.
+           Opens the root-sibling modal below; the popover closes first so it
+           doesn't linger behind. -->
+      <button
+        v-if="showCreatorApply"
+        type="button"
+        class="text-primary hover:bg-primary-50 flex w-full items-center gap-2 rounded px-2 py-2 text-sm font-medium transition-colors"
+        @click="openModal('creator')"
+      >
+        <KunIcon name="lucide:sparkles" class="size-4" />
+        创作者申请
+        <KunIcon
+          name="lucide:chevron-right"
+          class="text-primary/50 ml-auto size-4"
+        />
+      </button>
       <!-- Admin panel entry — only moderators / admins (OAuth role
            "moderator" or "admin", i.e. legacy role > 2) can reach /admin;
            isModerator covers both. The /admin route group is moderator-gated
@@ -161,4 +187,5 @@ const handleCheckIn = async () => {
   </KunPopover>
 
   <KunTopBarMoemoepointLog v-model="logOpen" />
+  <KunTopBarCreatorApply v-model="creatorOpen" />
 </template>
