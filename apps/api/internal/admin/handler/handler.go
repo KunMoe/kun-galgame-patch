@@ -4,8 +4,8 @@ import (
 	"context"
 	"strconv"
 
-	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/dto"
+	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/service"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
@@ -399,9 +399,12 @@ func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
 
 // GetOrphanPatches GET /api/admin/patch/orphans
 //
-// Lists "orphan" patches — those whose vndb_id is not a well-formed VNDB id
-// (`vN`), so no matching Wiki galgame can exist (see repository.orphanCond;
-// the old galgame_id=0 sentinel was dropped in D13). For each row, the admin can:
+// Lists TRUE "orphan" patches. The `vndb_id` not being a well-formed VNDB id
+// (`vN`) is only a cheap candidate filter (see repository.orphanCond); each
+// candidate is then verified against Wiki BY ID (patch.id == galgame_id) and
+// only the ones Wiki actually lacks are reported. A vndb-less game whose galgame
+// exists by id renders fine and is NOT an orphan. For each true orphan, the
+// admin can:
 //   - Rebind the correct vndb_id via PUT /api/patch/:id (will re-verify with Wiki /galgame/check)
 //   - Or DELETE /api/patch/:id to remove
 //   - If vndb_id is real but not yet created in Wiki, create the galgame in Wiki first, then rebind
@@ -413,20 +416,43 @@ func (h *AdminHandler) GetOrphanPatches(c *fiber.Ctx) error {
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	items, total, err := h.service.GetOrphanPatches(req.Page, req.Limit)
+
+	// Cheap local candidates (placeholder / malformed vndb_id), then verify each
+	// against Wiki BY ID — whatever Wiki returns exists and is NOT a real orphan
+	// (it renders via id-based enrichment). content_limit="" makes the batch
+	// permissive (returns every id incl. NSFW): we want EXISTENCE, not visibility.
+	// Chunk so the ids= query string stays bounded.
+	candidateIDs, err := h.service.GetOrphanCandidateIDs()
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	pending, badVndb, cErr := h.service.CountOrphanPatches()
+	existing := make([]int, 0, len(candidateIDs))
+	for start := 0; start < len(candidateIDs); start += 500 {
+		end := min(start+500, len(candidateIDs))
+		briefs, bErr := h.wiki.GalgameBatch(c.Context(), candidateIDs[start:end], "")
+		if bErr != nil {
+			// Never fabricate an orphan list on a Wiki hiccup (audit F075 spirit).
+			return response.Error(c, errors.ErrInternal("Wiki 校验失败"))
+		}
+		for _, b := range briefs {
+			existing = append(existing, b.ID)
+		}
+	}
+
+	items, total, err := h.service.GetOrphanPatches(req.Page, req.Limit, existing)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	pending, badVndb, cErr := h.service.CountOrphanPatches(existing)
 	if cErr != nil {
 		// Don't report a false 0 for pending/bad_vndb on a DB hiccup (audit
 		// F075); fail the request so the admin sees an error, not fake counts.
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.OK(c, map[string]any{
-		"items":           items,
-		"total":           total,
-		"pending_count":   pending,
-		"bad_vndb_count":  badVndb,
+		"items":          items,
+		"total":          total,
+		"pending_count":  pending,
+		"bad_vndb_count": badVndb,
 	})
 }

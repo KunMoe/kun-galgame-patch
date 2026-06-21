@@ -255,26 +255,39 @@ func (r *AdminRepository) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, err
 
 // ===== Orphan Patches (D12 cleanup) =====
 
-// orphanCond is the SQL predicate for an "orphan" patch — one whose vndb_id is
-// not a well-formed VNDB visual-novel id (`vN`), so it can have no matching
-// Wiki galgame (Wiki is keyed by vndb_id). Captures both `pending-N`
-// placeholders and malformed ids (e.g. VNDB *release* ids `rN`, stray slashes).
+// orphanCond is the cheap LOCAL pre-filter for "candidate" orphans: a patch
+// whose vndb_id is not a well-formed VNDB id (`vN`) — `pending-N` placeholders
+// and malformed ids (release `rN`, stray slashes). It is ONLY a candidate
+// filter: moyu enriches by id (patch.id == galgame_id, via wiki.GalgameBatch),
+// so a vndb-less game whose galgame exists by id renders fine and is NOT a real
+// orphan. The handler verifies each candidate against Wiki BY ID and passes the
+// confirmed-existing ones back here as excludeIDs.
 //
-// D13 NOTE: the old per-row `galgame_id` sentinel column (== 0 meant "no Wiki
-// match") was DROPPED when patch.id became the Wiki galgame id. Orphan-ness is
-// no longer materialized in a column, so we derive it from vndb_id shape. The
-// "well-formed vndb_id that Wiki nonetheless lacks" case can't be detected
-// locally post-D13 (it would need a Wiki scan of all 6k+ patches per request)
-// and is intentionally out of scope here.
+// D13 NOTE: the old per-row `galgame_id==0` sentinel was dropped when patch.id
+// became the galgame id. Tradeoff: pre-filtering by vndb shape means a
+// well-formed vndb whose galgame Wiki nonetheless lacks isn't a candidate (rare;
+// out of scope) — being exact would need an all-rows Wiki scan per request.
 const orphanCond = "vndb_id !~ '^v[0-9]+$'"
+
+// GetOrphanCandidateIDs returns the ids of all candidate orphans (cheap local
+// filter only — the handler then verifies them against Wiki by id).
+func (r *AdminRepository) GetOrphanCandidateIDs() ([]int, error) {
+	var ids []int
+	err := r.db.Model(&patchModel.Patch{}).Where(orphanCond).Pluck("id", &ids).Error
+	return ids, err
+}
 
 // GetOrphanPatches returns a paginated list of orphan patches (see orphanCond),
 // ordered by resource count descending so admins can prioritize "important"
-// orphans that already have resources.
-func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patch, int64, error) {
+// orphans that already have resources. excludeIDs = candidates Wiki confirmed
+// exist by id → not real orphans.
+func (r *AdminRepository) GetOrphanPatches(offset, limit int, excludeIDs []int) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
 	base := r.db.Model(&patchModel.Patch{}).Where(orphanCond)
+	if len(excludeIDs) > 0 {
+		base = base.Where("id NOT IN ?", excludeIDs)
+	}
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -287,16 +300,18 @@ func (r *AdminRepository) GetOrphanPatches(offset, limit int) ([]patchModel.Patc
 
 // CountOrphanPatches splits the orphan total into the two locally-knowable
 // categories: pending placeholders (`pending-N`) vs. otherwise-malformed
-// vndb_ids (not `vN`, not `pending-`).
-func (r *AdminRepository) CountOrphanPatches() (pendingCount, badVndbCount int64, err error) {
-	if err := r.db.Model(&patchModel.Patch{}).
-		Where("vndb_id LIKE 'pending-%'").
-		Count(&pendingCount).Error; err != nil {
-		return 0, 0, err
+// vndb_ids (not `vN`, not `pending-`). excludeIDs are excluded (Wiki-confirmed).
+func (r *AdminRepository) CountOrphanPatches(excludeIDs []int) (pendingCount, badVndbCount int64, err error) {
+	pend := r.db.Model(&patchModel.Patch{}).Where("vndb_id LIKE 'pending-%'")
+	bad := r.db.Model(&patchModel.Patch{}).Where(orphanCond + " AND vndb_id NOT LIKE 'pending-%'")
+	if len(excludeIDs) > 0 {
+		pend = pend.Where("id NOT IN ?", excludeIDs)
+		bad = bad.Where("id NOT IN ?", excludeIDs)
 	}
-	err = r.db.Model(&patchModel.Patch{}).
-		Where(orphanCond+" AND vndb_id NOT LIKE 'pending-%'").
-		Count(&badVndbCount).Error
+	if err = pend.Count(&pendingCount).Error; err != nil {
+		return
+	}
+	err = bad.Count(&badVndbCount).Error
 	return
 }
 

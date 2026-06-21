@@ -253,12 +253,19 @@ func (s *AdminService) GetResourceFileHistory(
 
 // ===== Orphan Patches (D12) =====
 
-// GetOrphanPatches returns the list of orphan patches with galgame_id=0.
-func (s *AdminService) GetOrphanPatches(page, limit int) ([]patchModel.Patch, int64, error) {
-	return s.repo.GetOrphanPatches((page-1)*limit, limit)
+// GetOrphanCandidateIDs returns ids of candidate orphans (cheap local filter);
+// the handler verifies them against Wiki by id.
+func (s *AdminService) GetOrphanCandidateIDs() ([]int, error) {
+	return s.repo.GetOrphanCandidateIDs()
 }
 
-// CountOrphanPatches returns orphan patch counts by category.
-func (s *AdminService) CountOrphanPatches() (pending, badVndb int64, err error) {
-	return s.repo.CountOrphanPatches()
+// GetOrphanPatches returns the list of true orphan patches. excludeIDs are
+// candidates Wiki confirmed exist by id (not real orphans).
+func (s *AdminService) GetOrphanPatches(page, limit int, excludeIDs []int) ([]patchModel.Patch, int64, error) {
+	return s.repo.GetOrphanPatches((page-1)*limit, limit, excludeIDs)
+}
+
+// CountOrphanPatches returns true-orphan counts by category (excludeIDs excluded).
+func (s *AdminService) CountOrphanPatches(excludeIDs []int) (pending, badVndb int64, err error) {
+	return s.repo.CountOrphanPatches(excludeIDs)
 }
