@@ -49,6 +49,7 @@ const handleKeydown = async (event: KeyboardEvent) => {
   <KunCard
     is-hoverable
     class-name="w-full cursor-pointer"
+    padding="sm"
     role="link"
     :tabindex="0"
     :aria-label="`查看 ${displayName} 的评论`"

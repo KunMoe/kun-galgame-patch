@@ -34,6 +34,7 @@ const userDescription = computed(() => {
   <KunCard
     :href="`/resource/${props.resource.id}`"
     class-name="w-full"
+    padding="sm"
   >
     <div class="flex flex-col justify-between space-y-2">
       <div class="flex">

@@ -14,6 +14,7 @@ const bannerSrc = computed(() => resolveBannerUrl(props.patch, 'mini'))
   <KunCard
     :href="`/patch/${props.patch.id}/introduction`"
     class-name="w-full"
+    padding="sm"
   >
     <div class="flex flex-col gap-4 p-4 sm:flex-row">
       <div class="relative w-full sm:w-40">
