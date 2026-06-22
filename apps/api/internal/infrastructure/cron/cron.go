@@ -6,9 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"kun-galgame-patch-api/internal/constants"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
-	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 
@@ -20,12 +18,11 @@ import (
 //
 // Job list:
 //  1. Daily 00:00: reset daily_image_count / daily_check_in / daily_upload_size on the user table
-//  2. Every 6 hours: clean up S3 multipart uploads still unfinished after 24h (D10 plan B)
-//  3. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
+//  2. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
 //     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
-//  4. Daily 04:00: ref-ping image_service for every hash moyu still references
+//  3. Daily 04:00: ref-ping image_service for every hash moyu still references
 //     (doc banners + content /image/<hash> tokens) so its GC doesn't reclaim them
-func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *moemoepoint.Client, img *imageclient.Client) func() {
+func Start(db *gorm.DB, wiki *galgameClient.Client, mp *moemoepoint.Client, img *imageclient.Client) func() {
 	// Pin the schedule to Asia/Shanghai so the daily 00:00 reset fires at the
 	// intended civil midnight regardless of host TZ (audit F085). The check-in
 	// idempotency key's date (user/service) is pinned to the same zone so the
@@ -53,13 +50,6 @@ func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *mo
 		slog.Info("每日重置完成", "affected", result.RowsAffected)
 	}); err != nil {
 		slog.Error("注册每日重置任务失败", "error", err)
-	}
-
-	// ── Every 6 hours: clean up unfinished S3 multipart uploads ──
-	if _, err := c.AddFunc("0 */6 * * *", func() {
-		cleanupAbortedMultiparts(s3)
-	}); err != nil {
-		slog.Error("注册 multipart 清理任务失败", "error", err)
 	}
 
 	// ── Every 10 minutes: sync Wiki message feed ─────────
@@ -108,37 +98,5 @@ func Start(db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, mp *mo
 		ctx := c.Stop()
 		<-ctx.Done()
 		slog.Info("定时任务已停止")
-	}
-}
-
-// cleanupAbortedMultiparts scans all multipart uploads in the bucket and aborts any that have been pending for more than 24h.
-func cleanupAbortedMultiparts(s3 *storage.S3Client) {
-	if s3 == nil || !s3.Ready() {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	uploads, err := s3.ListIncompleteUploads(ctx, "")
-	if err != nil {
-		slog.Error("列出未完成 multipart 失败", "error", err)
-		return
-	}
-
-	cutoff := time.Now().Add(-constants.MultipartUploadOrphanTTL)
-	aborted := 0
-	for _, u := range uploads {
-		if !u.Initiated.Before(cutoff) {
-			continue
-		}
-		if err := s3.RemoveIncompleteUpload(ctx, u.Key); err != nil {
-			slog.Warn("abort multipart 失败", "key", u.Key, "error", err)
-			continue
-		}
-		aborted++
-	}
-	if aborted > 0 {
-		slog.Info("清理孤儿 multipart 完成", "aborted", aborted, "scanned", len(uploads))
 	}
 }

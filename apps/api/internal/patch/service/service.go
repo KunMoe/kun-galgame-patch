@@ -1115,11 +1115,10 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 		return err
 	}
 
-	// Best-effort S3 cleanup. We deliberately do NOT fail the whole op if this
-	// errors — the DB row is already gone, the user-facing operation is "done",
-	// and a left-over object is recoverable later (manual sweep / a future
-	// orphan-scrub cron — cron currently only catches in-flight multiparts via
-	// cleanupAbortedMultiparts, not completed-but-unreferenced small uploads).
+	// Best-effort S3 cleanup of LEGACY (pre-artifact) blobs. We deliberately do
+	// NOT fail the whole op if this errors — the DB row is already gone, the
+	// user-facing operation is "done", and a left-over object is recoverable
+	// later (manual sweep / B2 lifecycle rule).
 	//
 	// Drain both the current s3_key and the history's old_s3_keys (the two
 	// sets are disjoint by construction — history rows record only keys

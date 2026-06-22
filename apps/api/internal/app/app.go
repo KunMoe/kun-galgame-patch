@@ -8,9 +8,6 @@ import (
 	adminService "kun-galgame-patch-api/internal/admin/service"
 	authHandler "kun-galgame-patch-api/internal/auth/handler"
 	authRepo "kun-galgame-patch-api/internal/auth/repository"
-	docHandler "kun-galgame-patch-api/internal/doc/handler"
-	docRepository "kun-galgame-patch-api/internal/doc/repository"
-	docService "kun-galgame-patch-api/internal/doc/service"
 	authService "kun-galgame-patch-api/internal/auth/service"
 	chatHandler "kun-galgame-patch-api/internal/chat/handler"
 	chatRepo "kun-galgame-patch-api/internal/chat/repository"
@@ -18,6 +15,9 @@ import (
 	"kun-galgame-patch-api/internal/common"
 	searchPkg "kun-galgame-patch-api/internal/common/search"
 	uploadPkg "kun-galgame-patch-api/internal/common/upload"
+	docHandler "kun-galgame-patch-api/internal/doc/handler"
+	docRepository "kun-galgame-patch-api/internal/doc/repository"
+	docService "kun-galgame-patch-api/internal/doc/service"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
@@ -35,9 +35,9 @@ import (
 	userHandler "kun-galgame-patch-api/internal/user/handler"
 	userRepo "kun-galgame-patch-api/internal/user/repository"
 	userService "kun-galgame-patch-api/internal/user/service"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
-	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/response"
@@ -53,7 +53,6 @@ type App struct {
 	Fiber      *fiber.App
 	DB         *gorm.DB
 	RDB        *redis.Client
-	S3         *storage.S3Client
 	UserClient *userclient.Client
 	Config     *config.Config
 
@@ -223,7 +222,7 @@ func New(cfg *config.Config) *App {
 
 	// Start cron jobs (wiki-sync registered only when wiki client is available;
 	// image ref-ping only when image_service is configured)
-	cronStop := cronJobs.Start(db, s3, wiki, mpClient, imgCli)
+	cronStop := cronJobs.Start(db, wiki, mpClient, imgCli)
 
 	slog.Info("Application initialized")
 
@@ -231,7 +230,6 @@ func New(cfg *config.Config) *App {
 		Fiber:          app,
 		DB:             db,
 		RDB:            rdb,
-		S3:             s3,
 		UserClient:     usrCli,
 		Config:         cfg,
 		AuthHandler:    authHdl,
