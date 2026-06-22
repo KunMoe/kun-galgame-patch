@@ -13,6 +13,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
@@ -47,14 +48,15 @@ type PatchService struct {
 	setting *settingService.Service
 	db      *gorm.DB
 	s3      *storage.S3Client
+	art     *artifactclient.Client
 	wiki    *galgameClient.Client
 	users   *userclient.Client
 	mp      *moemoepoint.Awarder
 	audit   AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, wiki: wiki, users: users, mp: mp, audit: audit}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, art *artifactclient.Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, art: art, wiki: wiki, users: users, mp: mp, audit: audit}
 }
 
 // ===== Patch =====
@@ -825,16 +827,17 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 	// AND s3_key<>'' so (b) is also enforced at the DB layer (caller sees a
 	// "duplicate key" error if two CreateResource races to the same key).
 	if resource.Storage == "s3" {
-		prefix := fmt.Sprintf("patch/%d/", resource.GalgameID)
-		if !strings.HasPrefix(resource.S3Key, prefix) {
-			return fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
+		// New s3 resources are artifact-backed: the blob lives in the artifact
+		// service, addressed by an opaque uuid. There is no local s3_key/content
+		// — the public download URL is resolved at GET /resource/:id/link time
+		// via artifact.Download, so a CDN/domain switch needs no DB backfill.
+		// (The per-blob single-use guarantee is enforced by the partial unique
+		// index on artifact_uuid; see migration 021.)
+		if resource.ArtifactUUID == "" {
+			return fmt.Errorf("缺少上传文件标识")
 		}
-		// For s3 storage the canonical Content payload is just the s3_key — the
-		// public download URL is rebuilt at GET /resource/:id/link time via
-		// S3Client.PublicURL so a CDN/domain switch needs no DB backfill.
-		// The frontend can leave Content empty (DTO has no `required` for it
-		// any more) and we fill it here.
-		resource.Content = resource.S3Key
+		resource.S3Key = ""
+		resource.Content = ""
 	} else {
 		// "user" mode: the frontend supplied the user's own download link(s).
 		// Require at least one — DTO-level validation is intentionally relaxed
@@ -850,6 +853,7 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 		// (s3_key) enforces single-use of an upload.
 		msg := err.Error()
 		if strings.Contains(msg, "idx_patch_resource_s3_key_unique") ||
+			strings.Contains(msg, "idx_patch_resource_artifact_uuid_unique") ||
 			strings.Contains(msg, "duplicate key value") {
 			return fmt.Errorf("该上传已被其它资源占用，请重新上传一次")
 		}
@@ -916,38 +920,28 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		return nil, fmt.Errorf("can only edit your own resources")
 	}
 
-	// Mirror CreateResource's storage-aware Content normalization so updates
-	// follow the same invariant: storage="s3" → Content = S3Key (download URL
-	// is derived at fetch time); storage="user" → Content is the user's link.
+	// Storage-aware normalization, mirroring CreateResource. storage="s3" is
+	// artifact-backed for new/replaced files (identified by artifact_uuid;
+	// download URL derived at /link time); legacy direct-B2 rows still carry an
+	// s3_key (Content=S3Key). storage="user" → Content is the user's link.
+	// Single-use + cross-row anti-tamper are enforced by the owner check above
+	// and the partial unique indexes on artifact_uuid / s3_key (migration 021 /
+	// 008).
 	if update.Storage == "s3" {
-		// Prefix check only runs when the s3_key actually changes (i.e. the
-		// user replaced the file). Two reasons:
-		//
-		//   (1) Cross-row anti-tamper is already enforced by the UserID
-		//       == caller check above (or moderator bypass) and the partial
-		//       UNIQUE INDEX `idx_patch_resource_s3_key_unique` (MOYU-PR7 /
-		//       M5) — a user can't redirect their row to someone else's
-		//       upload because they don't own the target row, and they
-		//       can't claim a key already attached to another row.
-		//
-		//   (2) Legacy data has s3_keys shaped as "patch/{legacy_patch_id}/..."
-		//       where legacy_patch_id != current galgame_id (because
-		//       remap-patch-ids rewrote galgame_id but did not touch the
-		//       string-immutable s3_key). Pure-metadata edits on those rows
-		//       must not be rejected — the s3_key isn't changing, there's
-		//       nothing to validate.
-		//
-		// When the user DOES replace the file, the new s3_key comes from
-		// buildPatchResourceKey(galgame_id, filename) on the upload path,
-		// which always produces "patch/{current_galgame_id}/...", so the
-		// strict prefix check still passes — and catches forged keys.
-		if update.S3Key != existing.S3Key {
-			prefix := fmt.Sprintf("patch/%d/", existing.GalgameID)
-			if !strings.HasPrefix(update.S3Key, prefix) {
-				return nil, fmt.Errorf("s3_key 不在该 galgame 的上传路径下（应以 %q 开头）", prefix)
-			}
+		switch {
+		case update.ArtifactUUID != "":
+			// Artifact-backed (new upload or a replaced file). Download URL is
+			// resolved at /link time; no local s3_key/content.
+			update.S3Key = ""
+			update.Content = ""
+		case update.S3Key != "":
+			// Legacy direct-B2 row, metadata-only edit: the FE re-sends the
+			// existing s3_key unchanged (replacing a file always goes through the
+			// artifact path above). Keep the s3_key→Content invariant.
+			update.Content = update.S3Key
+		default:
+			return nil, fmt.Errorf("缺少上传文件标识")
 		}
-		update.Content = update.S3Key
 	} else {
 		if strings.TrimSpace(update.Content) == "" {
 			return nil, fmt.Errorf("请填写资源链接")
@@ -961,19 +955,25 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	// metadata-only and doesn't merit a history row.
 	fileChanged := update.Storage != existing.Storage ||
 		update.S3Key != existing.S3Key ||
-		update.Content != existing.Content
+		update.Content != existing.Content ||
+		update.ArtifactUUID != existing.ArtifactUUID
 
-	// Snapshot the s3_key we'll need to delete AFTER the transaction commits.
-	// Taken pre-transaction because the txn body overwrites `existing` in
-	// place. Only set when the old row had an S3 object whose key is NOT
-	// reused by the new state — covers both "replaced file (s3→s3 new key)"
-	// and "switched away from s3 (s3→user)".
+	// Snapshot the old object(s) to reclaim AFTER the transaction commits (the
+	// txn body overwrites `existing` in place). Two disjoint cases:
+	//   - legacy s3_key: delete the B2 object directly.
+	//   - artifact_uuid: soft-delete via the artifact service (its GC reclaims).
+	// Set only when the old pointer is NOT reused by the new state (covers
+	// "replaced file" and "switched away from s3").
 	var orphanS3Key string
 	if existing.Storage == "s3" && existing.S3Key != "" {
 		stillSameObject := update.Storage == "s3" && update.S3Key == existing.S3Key
 		if !stillSameObject {
 			orphanS3Key = existing.S3Key
 		}
+	}
+	var orphanArtifactUUID string
+	if existing.ArtifactUUID != "" && update.ArtifactUUID != existing.ArtifactUUID {
+		orphanArtifactUUID = existing.ArtifactUUID
 	}
 
 	galgameID := existing.GalgameID
@@ -985,15 +985,16 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if fileChanged {
 			hist := &model.PatchResourceFileHistory{
-				ResourceID: existing.ID,
-				OldStorage: existing.Storage,
-				OldS3Key:   existing.S3Key,
-				OldBlake3:  existing.Blake3,
-				OldSize:    existing.Size,
-				OldContent: existing.Content,
-				Reason:     reason,
-				ActorID:    userID,
-				ActorRole:  actorRole,
+				ResourceID:      existing.ID,
+				OldStorage:      existing.Storage,
+				OldS3Key:        existing.S3Key,
+				OldArtifactUUID: existing.ArtifactUUID,
+				OldBlake3:       existing.Blake3,
+				OldSize:         existing.Size,
+				OldContent:      existing.Content,
+				Reason:          reason,
+				ActorID:         userID,
+				ActorRole:       actorRole,
 			}
 			if err := tx.Create(hist).Error; err != nil {
 				return fmt.Errorf("write file history: %w", err)
@@ -1022,6 +1023,7 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		existing.Password = update.Password
 		existing.Note = update.Note
 		existing.S3Key = update.S3Key
+		existing.ArtifactUUID = update.ArtifactUUID
 		existing.Content = update.Content
 		existing.Type = update.Type
 		existing.Language = update.Language
@@ -1044,6 +1046,13 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		defer cancel()
 		if err := s.s3.DeleteObject(cleanupCtx, orphanS3Key); err != nil {
 			slog.Warn("UpdateResource: 删除旧 S3 对象失败", "s3_key", orphanS3Key, "resource_id", resourceID, "error", err)
+		}
+	}
+	if orphanArtifactUUID != "" {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.art.Delete(cleanupCtx, orphanArtifactUUID); err != nil {
+			slog.Warn("UpdateResource: 软删旧 artifact 失败", "artifact_uuid", orphanArtifactUUID, "resource_id", resourceID, "error", err)
 		}
 	}
 
@@ -1127,6 +1136,17 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 			if err := s.s3.DeleteObject(ctx, key); err != nil {
 				slog.Warn("DeleteResource: 删除 S3 历史对象失败", "s3_key", key, "resource_id", resourceID, "error", err)
 			}
+		}
+	}
+
+	// Soft-delete the artifact blob for artifact-backed rows (its GC reclaims it
+	// after the soft-delete TTL). History old_artifact_uuids were already
+	// soft-deleted at their replace time, so only the current one is handled here.
+	if resource.ArtifactUUID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.art.Delete(ctx, resource.ArtifactUUID); err != nil {
+			slog.Warn("DeleteResource: 软删 artifact 失败", "artifact_uuid", resource.ArtifactUUID, "resource_id", resourceID, "error", err)
 		}
 	}
 
@@ -1237,13 +1257,25 @@ func (s *PatchService) GetResourceDownloadInfo(resourceID int) (*model.PatchReso
 	if err != nil {
 		return nil, fmt.Errorf("resource not found")
 	}
-	// Content is returned as stored: storage="s3" → the bare s3_key (object
-	// path, CreateResource invariant), storage="user" → the raw link list. The
-	// public download URL is assembled on the frontend (resolveDownloadLinks
-	// prepends domain.storage for s3 — same pattern as resolveAvatarUrl with
-	// domain.imageBed), so swapping the download CDN/domain is a single
-	// frontend-config change with no DB backfill.
 	return r, nil
+}
+
+// ResolveDownloadURL fills r.DownloadURL for artifact-backed rows by asking the
+// artifact service to issue a download URL (presigned, or a CDN/Worker URL for
+// public). Call it ONLY after the caller's access gates (NSFW / disabled) pass —
+// it issues a usable URL. Legacy rows are left untouched (Content holds the bare
+// s3_key/link and the FE assembles the URL, so swapping the old CDN/domain stays
+// a single frontend-config change).
+func (s *PatchService) ResolveDownloadURL(ctx context.Context, r *model.PatchResource) error {
+	if r == nil || r.ArtifactUUID == "" {
+		return nil
+	}
+	dl, err := s.art.Download(ctx, r.ArtifactUUID)
+	if err != nil {
+		return fmt.Errorf("获取下载地址失败: %w", err)
+	}
+	r.DownloadURL = dl.Url
+	return nil
 }
 
 func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) {

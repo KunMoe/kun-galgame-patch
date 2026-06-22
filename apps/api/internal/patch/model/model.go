@@ -230,6 +230,11 @@ type PatchResource struct {
 	// Filled by the service layer before serialization; not a DB column.
 	NoteHTML string `gorm:"-" json:"note_html"`
 
+	// DownloadURL is the resolved download URL for artifact-backed resources,
+	// filled by GetResourceDownloadInfo via the artifact service. Not a DB
+	// column; empty for legacy rows (the FE builds those from Content).
+	DownloadURL string `gorm:"-" json:"download_url,omitempty"`
+
 	// Patch is a compact summary of the owning patch. Populated only on the
 	// global resource list (/api/resource) and a few admin views; left nil
 	// when the surrounding context already identifies the patch.
@@ -369,6 +374,9 @@ type PatchResourceFileHistory struct {
 	ResourceID int       `gorm:"not null;index:idx_prfh_resource,priority:1" json:"resource_id"`
 	OldStorage string    `gorm:"type:varchar(16);not null" json:"old_storage"`
 	OldS3Key   string    `gorm:"type:varchar(2048);not null;default:''" json:"old_s3_key"`
+	// OldArtifactUUID is the previous artifact-service blob id (artifact-backed
+	// rows; parallels OldS3Key for the legacy direct-B2 rows).
+	OldArtifactUUID string `gorm:"column:old_artifact_uuid;type:varchar(36);not null;default:''" json:"old_artifact_uuid"`
 	OldBlake3  string    `gorm:"type:varchar(128);not null;default:''" json:"old_blake3"`
 	OldSize    string    `gorm:"type:varchar(107);not null;default:''" json:"old_size"`
 	OldContent string    `gorm:"type:text;not null;default:''" json:"old_content"`

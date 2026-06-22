@@ -508,12 +508,13 @@ func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	resource := &model.PatchResource{
-		GalgameID: patchID,
-		Storage:   req.Storage,
-		Name:      req.Name,
-		ModelName: req.ModelName,
-		S3Key:     req.S3Key,
-		Content:   req.Content,
+		GalgameID:    patchID,
+		Storage:      req.Storage,
+		Name:         req.Name,
+		ModelName:    req.ModelName,
+		ArtifactUUID: req.ArtifactUUID,
+		S3Key:        req.S3Key,
+		Content:      req.Content,
 		Size:      req.Size,
 		Code:      req.Code,
 		Password:  req.Password,
@@ -544,11 +545,12 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	update := &model.PatchResource{
-		Storage:   req.Storage,
-		Name:      req.Name,
-		ModelName: req.ModelName,
-		S3Key:     req.S3Key,
-		Content:   req.Content,
+		Storage:      req.Storage,
+		Name:         req.Name,
+		ModelName:    req.ModelName,
+		ArtifactUUID: req.ArtifactUUID,
+		S3Key:        req.S3Key,
+		Content:      req.Content,
 		Size:      req.Size,
 		Code:      req.Code,
 		Password:  req.Password,
@@ -645,11 +647,20 @@ func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
 	if r.Status != 0 {
 		return response.Error(c, errors.New(40310, "该资源已被禁用，暂时无法下载", fiber.StatusForbidden))
 	}
+	// Resolve the artifact download URL only AFTER the gates pass (it issues a
+	// usable URL). Legacy rows are untouched (FE builds from content).
+	if err := h.service.ResolveDownloadURL(c.Context(), r); err != nil {
+		return response.Error(c, errors.ErrInternal("获取下载地址失败"))
+	}
 	return response.OK(c, fiber.Map{
-		"storage":  r.Storage,
-		"content":  r.Content,
-		"code":     r.Code,
-		"password": r.Password,
+		"storage": r.Storage,
+		// content = legacy s3_key/link (FE builds the URL); download_url = the
+		// resolved artifact-service URL for artifact-backed rows (FE uses it
+		// directly). Exactly one is meaningful per row (dual-read).
+		"content":      r.Content,
+		"download_url": r.DownloadURL,
+		"code":         r.Code,
+		"password":     r.Password,
 	})
 }
 

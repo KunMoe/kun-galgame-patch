@@ -62,7 +62,10 @@ type PatchResourceCreateRequest struct {
 	Storage   string   `json:"storage" validate:"required"`
 	Name      string   `json:"name" validate:"max=300"`
 	ModelName string   `json:"model_name" validate:"max=1007"`
-	S3Key     string   `json:"s3_key" validate:"max=2048"`
+	// ArtifactUUID identifies the uploaded blob in the artifact service (the
+	// current path for storage="s3"). S3Key is legacy (pre-artifact direct B2).
+	ArtifactUUID string `json:"artifact_uuid" validate:"max=64"`
+	S3Key        string `json:"s3_key" validate:"max=2048"`
 	Content   string   `json:"content" validate:"max=1007"`
 	Size      string   `json:"size" validate:"required"`
 	Code      string   `json:"code" validate:"max=1007"`

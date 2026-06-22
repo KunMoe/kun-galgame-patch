@@ -116,9 +116,27 @@ func New(cfg *config.Config) *App {
 	// point lands one audit_log row.
 	adminRepository := adminRepo.New(db)
 
+	// artifact-service client (large-file upload/download). Defaults credentials
+	// to the project's OAuth client when KUN_ARTIFACT_OAUTH_* are unset — the
+	// artifact service reuses the OAuth oauth_client table as its "site" registry
+	// (gated by artifact_enabled + artifact_site_key on the infra side). Shared by
+	// the patch service (resource delete/download) and the upload module.
+	artCfg := cfg.Artifact
+	if artCfg.ClientID == "" {
+		artCfg.ClientID = cfg.OAuth.ClientID
+	}
+	if artCfg.ClientSecret == "" {
+		artCfg.ClientSecret = cfg.OAuth.ClientSecret
+	}
+	artCli := artifactclient.New(artifactclient.Config{
+		BaseURL:      artCfg.BaseURL,
+		ClientID:     artCfg.ClientID,
+		ClientSecret: artCfg.ClientSecret,
+	})
+
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, wiki, usrCli, mpAwarder, adminRepository)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, artCli, wiki, usrCli, mpAwarder, adminRepository)
 	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
@@ -138,25 +156,8 @@ func New(cfg *config.Config) *App {
 	// Common handler (direct DB access for simple aggregation endpoints)
 	commonHdl := common.NewHandler(db, wiki, usrCli)
 
-	// artifact-service client (large-file upload/download). Defaults credentials
-	// to the project's OAuth client when KUN_ARTIFACT_OAUTH_* are unset — the
-	// artifact service reuses the OAuth oauth_client table as its "site" registry
-	// (gated by artifact_enabled + artifact_site_key on the infra side).
-	artCfg := cfg.Artifact
-	if artCfg.ClientID == "" {
-		artCfg.ClientID = cfg.OAuth.ClientID
-	}
-	if artCfg.ClientSecret == "" {
-		artCfg.ClientSecret = cfg.OAuth.ClientSecret
-	}
-	artCli := artifactclient.New(artifactclient.Config{
-		BaseURL:      artCfg.BaseURL,
-		ClientID:     artCfg.ClientID,
-		ClientSecret: artCfg.ClientSecret,
-	})
-
-	// Upload module: bytes live in the artifact service; rdb SETNX-dedupes
-	// Complete to prevent double-charging daily_upload_size (MOYU-PR7 / M5).
+	// Upload module: bytes live in the artifact service (artCli built above);
+	// rdb SETNX-dedupes Complete to prevent double-charging daily_upload_size.
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
 	// image_service client (W2 / PR3b). Defaults credentials to the project's
 	// OAuth client when the dedicated KUN_IMAGE_OAUTH_* env vars are unset —
