@@ -430,7 +430,7 @@ onBeforeUnmount(() => pause())
                 size="sm"
               />
               <div
-                class="flex max-w-[72%] flex-col"
+                class="flex max-w-[72%] min-w-0 flex-col"
                 :class="m.sender_id === myUserId ? 'items-end' : 'items-start'"
               >
                 <div

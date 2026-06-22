@@ -2,7 +2,11 @@
 @reference './_reference.css';
 
 .kun-prose {
-  @apply text-default-800 leading-7 text-inherit;
+  /* min-w-0: when .kun-prose is itself a flex item (e.g. chat bubbles), allow it
+     to shrink below its content's intrinsic width so a `<pre>` code block scrolls
+     (overflow-x-auto) instead of forcing the flex item — and the card — wider.
+     For flex items that WRAP .kun-prose (comment cards), add min-w-0 there too. */
+  @apply text-default-800 leading-7 text-inherit min-w-0;
 
   /* Paragraphs */
   & p {

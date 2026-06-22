@@ -58,7 +58,9 @@ const handleKeydown = async (event: KeyboardEvent) => {
   >
     <div class="flex gap-4">
       <KunAvatar :user="safeUser" />
-      <div class="space-y-2">
+      <!-- min-w-0 lets this column shrink below its content's intrinsic width so a
+           code block in the rendered comment scrolls instead of overflowing the card. -->
+      <div class="min-w-0 flex-1 space-y-2">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="font-semibold">{{ displayName }}</h2>
           <span class="text-small text-default-500">
