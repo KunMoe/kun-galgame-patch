@@ -1,0 +1,11 @@
+# Generates the typed artifact-service client. Regenerate after the contract changes:
+#   go generate ./pkg/artifactclient/gen/
+# openapi-3.0.yaml is a vendored copy of kun-galgame-infra/docs/artifact/openapi-3.0.yaml
+# (the 3.0 downgrade — oapi-codegen does not support 3.1). Do not hand-edit either file.
+package: gen
+output: artifact_client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  response-type-suffix: Resp

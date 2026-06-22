@@ -10,6 +10,7 @@ type Config struct {
 	S3           S3Config
 	GalgameWiki  GalgameWikiConfig
 	ImageService ImageServiceConfig
+	Artifact     ArtifactConfig
 	CORS         CORSConfig
 }
 
@@ -79,6 +80,18 @@ type ImageServiceConfig struct {
 	ClientSecret string // defaults to OAuth.ClientSecret
 }
 
+// ArtifactConfig points at the centralized artifact service (large-file
+// upload/download, port 9279). Auth is HTTP Basic with an OAuth
+// client_id/secret — the artifact service reuses the OAuth `oauth_client` table
+// as its "site" registry (gated by artifact_enabled + artifact_site_key on the
+// infra side), so the project's OAuth credentials work. ClientID/Secret default
+// to the OAuth credentials when unset (filled in app.go).
+type ArtifactConfig struct {
+	BaseURL      string // e.g. http://127.0.0.1:9279 (no trailing slash)
+	ClientID     string // defaults to OAuth.ClientID
+	ClientSecret string // defaults to OAuth.ClientSecret
+}
+
 type CORSConfig struct {
 	AllowOrigins string
 }
@@ -132,6 +145,14 @@ func Load() *Config {
 			// Empty fallback → app.go fills from OAuth credentials.
 			ClientID:     getEnv("KUN_IMAGE_OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("KUN_IMAGE_OAUTH_CLIENT_SECRET", ""),
+		},
+		Artifact: ArtifactConfig{
+			// Fail-fast in prod (same rationale as ImageService): a localhost
+			// default in prod would silently misroute artifact calls.
+			BaseURL: getEnvProd("KUN_ARTIFACT_SERVICE_BASE_URL", "http://127.0.0.1:9279", mode),
+			// Empty fallback → app.go fills from OAuth credentials.
+			ClientID:     getEnv("KUN_ARTIFACT_OAUTH_CLIENT_ID", ""),
+			ClientSecret: getEnv("KUN_ARTIFACT_OAUTH_CLIENT_SECRET", ""),
 		},
 		CORS: CORSConfig{
 			// Default covers both dev frontends: 5213 = legacy next-web
