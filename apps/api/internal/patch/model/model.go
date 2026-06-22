@@ -209,6 +209,7 @@ type PatchResource struct {
 	Note                  string    `gorm:"type:varchar(10007);default:''" json:"note"`
 	Blake3                string    `gorm:"default:''" json:"blake3"`
 	S3Key                 string    `gorm:"type:varchar(2048);default:''" json:"s3_key"`
+	ArtifactUUID          string    `gorm:"column:artifact_uuid;type:varchar(36);default:''" json:"artifact_uuid"`
 	Content               string    `gorm:"default:''" json:"content"`
 	Type                  JSONArray `gorm:"type:jsonb;default:'[]'" json:"type"`
 	Language              JSONArray `gorm:"type:jsonb;default:'[]'" json:"language"`
