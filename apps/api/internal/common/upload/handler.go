@@ -30,64 +30,34 @@ func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Clien
 	return &Handler{svc: svc, img: img, wiki: wiki}
 }
 
-// InitSmall POST /api/upload/small/init
-func (h *Handler) InitSmall(c *fiber.Ctx) error {
-	var req SmallInitRequest
+// Init POST /api/upload/init — start an upload; the artifact service decides
+// single-PUT vs multipart and returns the presigned URL(s).
+func (h *Handler) Init(c *fiber.Ctx) error {
+	var req InitRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.InitSmall(c.Context(), user.ID, privileged, req)
+	resp, err := h.svc.Init(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OK(c, resp)
 }
 
-// CompleteSmall POST /api/upload/small/complete
-func (h *Handler) CompleteSmall(c *fiber.Ctx) error {
-	var req SmallCompleteRequest
+// Complete POST /api/upload/complete — finalize (size verified by artifact) and
+// deduct the per-user daily quota.
+func (h *Handler) Complete(c *fiber.Ctx) error {
+	var req CompleteRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	user := middleware.MustGetUser(c)
 	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.CompleteSmall(c.Context(), user.ID, privileged, req)
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OK(c, resp)
-}
-
-// InitMultipart POST /api/upload/multipart/init
-func (h *Handler) InitMultipart(c *fiber.Ctx) error {
-	var req MultipartInitRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	user := middleware.MustGetUser(c)
-	privileged := middleware.HasAnyRole(c, "admin", "moderator")
-
-	resp, err := h.svc.InitMultipart(c.Context(), user.ID, privileged, req)
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OK(c, resp)
-}
-
-// CompleteMultipart POST /api/upload/multipart/complete
-func (h *Handler) CompleteMultipart(c *fiber.Ctx) error {
-	var req MultipartCompleteRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	user := middleware.MustGetUser(c)
-	privileged := middleware.HasAnyRole(c, "admin", "moderator")
-
-	resp, err := h.svc.CompleteMultipart(c.Context(), user.ID, privileged, req)
+	resp, err := h.svc.Complete(c.Context(), user.ID, privileged, req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -198,15 +168,15 @@ func (h *Handler) UploadImageService(c *fiber.Ctx) error {
 	return response.OK(c, result)
 }
 
-// AbortMultipart POST /api/upload/multipart/abort
-func (h *Handler) AbortMultipart(c *fiber.Ctx) error {
-	var req MultipartAbortRequest
+// Abort POST /api/upload/abort — voluntarily cancel an in-progress upload.
+func (h *Handler) Abort(c *fiber.Ctx) error {
+	var req AbortRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	_ = middleware.MustGetUser(c)
 
-	if err := h.svc.AbortMultipart(c.Context(), req); err != nil {
+	if err := h.svc.Abort(c.Context(), req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "已放弃上传")

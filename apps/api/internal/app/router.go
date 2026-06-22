@@ -384,13 +384,12 @@ func (a *App) RegisterRoutes() {
 	chatRoutes.Delete("/message/:id", a.ChatHandler.DeleteMessage)
 	chatRoutes.Post("/message/:id/reaction", a.ChatHandler.ToggleReaction)
 
-	// ===== Upload Routes (D10: minio-go presigned URL direct upload) =====
+	// ===== Upload Routes (server-driven presigned upload via the artifact service) =====
+	// One flow: init → (single PUT | multipart parts) → complete; abort cancels.
 	uploadRoutes := api.Group("/upload", auth)
-	uploadRoutes.Post("/small/init", a.UploadHandler.InitSmall)
-	uploadRoutes.Post("/small/complete", a.UploadHandler.CompleteSmall)
-	uploadRoutes.Post("/multipart/init", a.UploadHandler.InitMultipart)
-	uploadRoutes.Post("/multipart/complete", a.UploadHandler.CompleteMultipart)
-	uploadRoutes.Post("/multipart/abort", a.UploadHandler.AbortMultipart)
+	uploadRoutes.Post("/init", a.UploadHandler.Init)
+	uploadRoutes.Post("/complete", a.UploadHandler.Complete)
+	uploadRoutes.Post("/abort", a.UploadHandler.Abort)
 	// W2 / PR3b: multipart file → image_service → hash + variant URLs.
 	// Used by the screenshot editor (Wiki accepts no multipart for those).
 	uploadRoutes.Post("/image-service", a.UploadHandler.UploadImageService)

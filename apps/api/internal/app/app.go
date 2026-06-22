@@ -37,6 +37,7 @@ import (
 	userService "kun-galgame-patch-api/internal/user/service"
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/response"
@@ -137,10 +138,26 @@ func New(cfg *config.Config) *App {
 	// Common handler (direct DB access for simple aggregation endpoints)
 	commonHdl := common.NewHandler(db, wiki, usrCli)
 
-	// Upload module (D10: minio-go presigned URL direct upload).
-	// rdb is passed so verifyAndFinalize can SETNX-dedupe Complete calls and
-	// prevent double-charging daily_upload_size (MOYU-PR7 / M5).
-	uploadSvc := uploadPkg.New(s3, db, rdb)
+	// artifact-service client (large-file upload/download). Defaults credentials
+	// to the project's OAuth client when KUN_ARTIFACT_OAUTH_* are unset — the
+	// artifact service reuses the OAuth oauth_client table as its "site" registry
+	// (gated by artifact_enabled + artifact_site_key on the infra side).
+	artCfg := cfg.Artifact
+	if artCfg.ClientID == "" {
+		artCfg.ClientID = cfg.OAuth.ClientID
+	}
+	if artCfg.ClientSecret == "" {
+		artCfg.ClientSecret = cfg.OAuth.ClientSecret
+	}
+	artCli := artifactclient.New(artifactclient.Config{
+		BaseURL:      artCfg.BaseURL,
+		ClientID:     artCfg.ClientID,
+		ClientSecret: artCfg.ClientSecret,
+	})
+
+	// Upload module: bytes live in the artifact service; rdb SETNX-dedupes
+	// Complete to prevent double-charging daily_upload_size (MOYU-PR7 / M5).
+	uploadSvc := uploadPkg.New(artCli, db, rdb)
 	// image_service client (W2 / PR3b). Defaults credentials to the project's
 	// OAuth client when the dedicated KUN_IMAGE_OAUTH_* env vars are unset —
 	// image_service reuses the OAuth oauth_client table as its "site" registry,
