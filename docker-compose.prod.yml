@@ -45,6 +45,10 @@ x-moyu-api-env: &moyu-api-env
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
+  # artifact service (prod 必填,getEnvProd) — internal, on dokploy-network.
+  # Read by config.Load() in EVERY moyu binary (api/migrate/tools), so it must
+  # be here in the shared anchor, not just the Dokploy panel.
+  KUN_ARTIFACT_SERVICE_BASE_URL: http://artifact:9279
   KUN_IMAGE_OAUTH_CLIENT_ID: ${KUN_IMAGE_OAUTH_CLIENT_ID:-}
   KUN_IMAGE_OAUTH_CLIENT_SECRET: ${KUN_IMAGE_OAUTH_CLIENT_SECRET:-}
   # B2 — patch resource files (NOT image_service). 补丁下载/上传是补丁站核心功能,
