@@ -154,7 +154,7 @@ func New(cfg *config.Config) *App {
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
 	// Common handler (direct DB access for simple aggregation endpoints)
-	commonHdl := common.NewHandler(db, wiki, usrCli)
+	commonHdl := common.NewHandler(db, wiki, usrCli, artCli)
 
 	// Upload module: bytes live in the artifact service (artCli built above);
 	// rdb SETNX-dedupes Complete to prevent double-charging daily_upload_size.

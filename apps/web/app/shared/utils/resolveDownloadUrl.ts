@@ -24,8 +24,12 @@ const STORAGE_BASE = kunMoyuMoe.domain.storage.replace(/\/$/, '')
 
 export const resolveDownloadLinks = (
   storage: string | undefined | null,
-  content: string | undefined | null
+  content: string | undefined | null,
+  // Artifact-backed rows carry a ready, absolute URL resolved by the backend
+  // (storage="s3" but content is empty) — use it directly, no domain prefixing.
+  downloadUrl?: string | undefined | null
 ): string[] => {
+  if (downloadUrl) return [downloadUrl]
   const parts = (content ?? '')
     .split(',')
     .map((s) => s.trim())

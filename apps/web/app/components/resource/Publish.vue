@@ -62,9 +62,12 @@ const form = reactive({
   storage: (props.resource?.storage as 's3' | 'user') ?? 's3',
   name: props.resource?.name ?? '',
   model_name: props.resource?.model_name ?? '',
-  // edit-mode pre-fills with the existing s3_key (kept as-is unless user
-  // replaces the file via the "替换文件" affordance below).
+  // edit-mode pre-fills with the existing s3_key (legacy rows) — kept as-is
+  // unless the user replaces the file via the "替换文件" affordance below.
   s3_key: props.resource?.s3_key ?? '',
+  // artifact-backed blob id (current upload path). Set on a fresh upload;
+  // pre-filled in edit mode so a metadata-only save preserves the file pointer.
+  artifact_uuid: props.resource?.artifact_uuid ?? '',
   // For storage='user' content is the link list; for storage='s3' the server
   // overwrites Content = S3Key on submit, so this field is informational only.
   // Pre-fill with the raw stored value (it's the s3_key, not the public URL).
@@ -100,6 +103,7 @@ watch(
     // Switching storage type invalidates any in-progress upload state and
     // the previous file pointer — fresh start in both create and edit.
     form.s3_key = ''
+    form.artifact_uuid = ''
     form.content = ''
     form.size = ''
     uploader.reset()
@@ -187,7 +191,9 @@ const confirmUpload = async () => {
   uploadError.value = ''
   try {
     const result = await uploader.upload(pickedFile.value, props.patchId)
-    form.s3_key = result.s3Key
+    // New uploads are artifact-backed; clear any stale legacy s3_key.
+    form.artifact_uuid = result.artifactUuid
+    form.s3_key = ''
     form.size = `${(result.size / (1024 * 1024)).toFixed(3)} MB`
   } catch (e) {
     uploadError.value = e instanceof Error ? e.message : '上传失败'
@@ -204,10 +210,12 @@ const removeFile = () => {
     // Restore the existing-file summary so the user can submit without
     // changing the file (treat "移除" in edit mode as "cancel my replacement").
     form.s3_key = props.resource.s3_key ?? ''
+    form.artifact_uuid = props.resource.artifact_uuid ?? ''
     form.size = props.resource.size ?? ''
     replaceMode.value = false
   } else {
     form.s3_key = ''
+    form.artifact_uuid = ''
     form.size = ''
   }
 }
@@ -271,7 +279,8 @@ const validate = (): string | null => {
     // user knows the next step is "点击确认上传" rather than "重选文件".
     if (stagedNotUploaded.value) return '请点击 "确认上传" 完成文件上传'
     if (uploadingNow.value) return '文件正在上传中，请稍候'
-    if (!form.s3_key) return '请上传补丁文件'
+    // artifact-backed (new/replaced) OR legacy s3_key (metadata-only edit).
+    if (!form.artifact_uuid && !form.s3_key) return '请上传补丁文件'
   } else {
     if (userLinks.value.filter((l) => l.trim()).length === 0)
       return '请至少添加一条资源链接'
@@ -292,6 +301,7 @@ const handleSubmit = async () => {
       storage: form.storage,
       name: form.name,
       model_name: form.model_name,
+      artifact_uuid: form.artifact_uuid,
       s3_key: form.s3_key,
       content: form.content,
       size: form.size,

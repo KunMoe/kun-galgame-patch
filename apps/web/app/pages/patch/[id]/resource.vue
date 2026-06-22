@@ -196,6 +196,8 @@ const sortedResources = computed(() => {
 interface ResourceLinkInfo {
   storage: string
   content: string
+  // Resolved absolute URL for artifact-backed rows (empty for legacy rows).
+  download_url?: string
   code: string
   password: string
 }
@@ -224,7 +226,7 @@ const getResourceLink = async (r: PatchResource) => {
 }
 
 const linksOf = (d: ResourceLinkInfo) =>
-  resolveDownloadLinks(d.storage, d.content)
+  resolveDownloadLinks(d.storage, d.content, d.download_url)
 
 const storageLabelOf = (d: ResourceLinkInfo) =>
   SUPPORTED_RESOURCE_LINK_MAP[d.storage] ?? d.storage

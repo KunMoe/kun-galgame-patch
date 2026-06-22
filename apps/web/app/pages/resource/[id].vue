@@ -98,7 +98,11 @@ const storageIcon = computed(() =>
 )
 
 const downloadLinks = computed(() =>
-  resolveDownloadLinks(resource.value?.storage, resource.value?.content)
+  resolveDownloadLinks(
+    resource.value?.storage,
+    resource.value?.content,
+    resource.value?.download_url
+  )
 )
 
 // status != 0 → download disabled (e.g. pulled for virus). The backend withholds

@@ -12,6 +12,7 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -25,10 +26,11 @@ type CommonHandler struct {
 	db    *gorm.DB
 	wiki  *galgameClient.Client
 	users *userclient.Client
+	art   *artifactclient.Client
 }
 
-func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client) *CommonHandler {
-	return &CommonHandler{db: db, wiki: wiki, users: users}
+func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client, art *artifactclient.Client) *CommonHandler {
+	return &CommonHandler{db: db, wiki: wiki, users: users, art: art}
 }
 
 // attachResourceUsers / attachCommentUsers do the same id-collect → batch →
@@ -472,6 +474,13 @@ func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
 		resource.S3Key = ""
 		resource.Code = ""
 		resource.Password = ""
+	} else if resource.ArtifactUUID != "" && h.art != nil {
+		// Artifact-backed (status=0): resolve the download URL (NSFW is already
+		// gated by the patchCard check above). Best-effort — a transient artifact
+		// error must not 500 the whole detail page; the FE then shows no link.
+		if dl, derr := h.art.Download(c.Context(), resource.ArtifactUUID); derr == nil {
+			resource.DownloadURL = dl.Url
+		}
 	}
 
 	// Attach publisher briefs to the main resource and the recommendations.

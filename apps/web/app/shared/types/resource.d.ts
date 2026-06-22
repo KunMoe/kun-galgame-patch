@@ -12,7 +12,13 @@ interface PatchResource {
   note_html: string
   blake3?: string
   s3_key?: string
+  // artifact-service blob id (current path); s3_key is legacy direct-B2.
+  artifact_uuid?: string
   content?: string
+  // Resolved absolute download URL for artifact-backed rows, filled by the
+  // /link (and detail) endpoints after the access gates pass. Empty for legacy
+  // rows (the FE builds those from content via resolveDownloadLinks).
+  download_url?: string
   code?: string
   password?: string
   like_count: number
