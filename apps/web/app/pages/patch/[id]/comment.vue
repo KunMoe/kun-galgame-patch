@@ -33,7 +33,15 @@ const { data, pending } = await useAsyncData<CommentListResponse>(
     )
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
-  { default: () => ({ items: [], total: 0 }), watch: [page, galgameId] }
+  {
+    default: () => ({ items: [], total: 0 }),
+    watch: [page, galgameId],
+    // Nuxt 4 makes `data` a shallowRef by default, so the optimistic handlers
+    // below (unshift/splice/push + nested like_count/content edits on
+    // data.value.items) wouldn't trigger a re-render. deep:true restores the
+    // deep reactivity those in-place mutations rely on.
+    deep: true
+  }
 )
 
 const comments = computed(() => data.value?.items ?? [])

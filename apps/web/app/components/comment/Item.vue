@@ -187,11 +187,7 @@ const confirmDelete = async () => {
       </div>
 
       <!-- View vs edit -->
-      <KunContent
-        v-if="!editing"
-        :content="comment.content_html"
-        class-name="text-sm"
-      />
+      <KunContent v-if="!editing" compact :content="comment.content_html" />
       <div v-else class="space-y-2">
         <KunMilkdownDualEditorProvider
           :key="`edit-${editKey}`"
@@ -218,9 +214,10 @@ const confirmDelete = async () => {
       <div v-if="!editing" class="flex flex-wrap items-center gap-1">
         <KunButton
           :variant="comment.is_liked ? 'flat' : 'light'"
-          color="danger"
+          :color="comment.is_liked ? 'primary' : 'default'"
           size="xs"
           rounded="full"
+          class-name="gap-1"
           :aria-label="comment.is_liked ? '取消点赞' : '点赞'"
           @click="toggleLike"
         >
@@ -228,7 +225,7 @@ const confirmDelete = async () => {
             name="lucide:thumbs-up"
             :class="cn('size-3.5', comment.is_liked && 'fill-current')"
           />
-          {{ comment.like_count }}
+          <span v-if="comment.like_count">{{ comment.like_count }}</span>
         </KunButton>
 
         <KunButton

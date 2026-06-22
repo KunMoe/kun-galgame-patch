@@ -128,21 +128,33 @@
     @apply bg-warning-100 text-warning-800 rounded-sm px-1;
   }
 
-  /* Inline code */
+  /* Inline code. The pill is stripped off fenced-block code by the more
+     specific `& pre code` rule below. */
   & code {
     @apply bg-primary/15 rounded-lg px-2 py-0.5 font-mono text-sm;
   }
 
-  /* Code Blocks */
+  /* Fenced code blocks. The backend (goldmark) emits a bare
+     `<pre><code class="language-…">` with NO .kun-code-container wrapper, so
+     `pre` must be styled directly: a scrollable block whose inner `code` drops
+     the inline pill. Without this the whole block inherits the inline-`code`
+     pill above and renders as one long, overflowing inline code run. */
+  & pre {
+    @apply bg-default-100 text-default-800 my-4 overflow-x-auto rounded-xl p-4 font-mono text-sm leading-relaxed;
+
+    & code {
+      @apply block w-fit rounded-none bg-transparent p-0 text-inherit;
+    }
+  }
+
+  /* Server-rendered block WITH header/copy chrome (.kun-code-container), should
+     a future renderer emit it: the container owns the border/radius, so strip
+     the bare-`pre` chrome above to avoid double borders/fills. */
   & .kun-code-container {
     @apply border-default-200 relative my-6 overflow-x-auto rounded-xl border;
 
     & pre {
-      @apply overflow-x-auto p-4;
-
-      & code {
-        @apply block w-fit rounded-none bg-transparent p-0;
-      }
+      @apply m-0 rounded-none border-0 bg-transparent p-4;
     }
   }
 
@@ -205,6 +217,62 @@
   @apply leading-7 whitespace-normal;
 
   & p {
+    @apply my-4;
+  }
+}
+
+/* Compact density — KunContent's `compact` prop adds `.kun-prose-compact`
+ * ALONGSIDE `.kun-prose` (it does not replace it), so the base typography +
+ * code-block styling above still apply; this only tightens the article-sized
+ * vertical rhythm so short threaded comments / replies don't sprawl. Declared
+ * AFTER `.kun-prose` so its equal-specificity rules win the cascade. */
+.kun-prose-compact {
+  @apply text-sm leading-6;
+
+  /* Sit flush with the comment header / card — no leading/trailing block gap. */
+  & > :first-child {
+    @apply mt-0 pt-0;
+  }
+  & > :last-child {
+    @apply mb-0 pb-0;
+  }
+
+  & p {
+    @apply py-0.5;
+  }
+
+  & h1,
+  & h2,
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
+    @apply mt-3 mb-1 pt-0 text-sm;
+  }
+  & h1,
+  & h2 {
+    @apply text-base;
+  }
+
+  & ul,
+  & ol {
+    @apply my-2 space-y-1 pl-6;
+  }
+  & li {
+    @apply mt-0.5;
+  }
+
+  & blockquote {
+    @apply my-2 py-0.5;
+  }
+  & pre {
+    @apply my-2;
+  }
+  & img,
+  & figure {
+    @apply my-3;
+  }
+  & hr {
     @apply my-4;
   }
 }

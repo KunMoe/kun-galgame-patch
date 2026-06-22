@@ -69,7 +69,11 @@ const handleKeydown = async (event: KeyboardEvent) => {
         <!-- KunContent: sanitize + spoiler + inline-image lightbox built in.
              Its lightbox click stops propagation, so tapping an image opens
              the viewer without triggering this card's handleCardClick. -->
-        <KunContent :content="props.comment.content_html || ''" class-name="mt-1" />
+        <KunContent
+          compact
+          :content="props.comment.content_html || ''"
+          class-name="mt-1"
+        />
         <div class="mt-2 flex items-center gap-4">
           <div class="text-small text-default-500 flex items-center gap-1">
             <KunIcon name="lucide:thumbs-up" class="size-3.5" />
