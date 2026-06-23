@@ -10,10 +10,9 @@ const settingStore = useSettingStore()
 
 const open = ref(false)
 
-const titleLanguage = computed({
-  get: () => settingStore.data.titleLanguage ?? 'zh-cn',
-  set: (v: 'zh-cn' | 'ja-jp') => settingStore.setData({ titleLanguage: v })
-})
+// NB: "游戏标题优先语言" moved to /settings/system — it now drives game-name
+// language on every page (via getPreferredLanguageText), so it no longer
+// belongs in this card-only display panel.
 const showJapaneseSubtitle = computed({
   get: () => settingStore.data.showJapaneseSubtitle ?? false,
   set: (v: boolean) => settingStore.setData({ showJapaneseSubtitle: v })
@@ -35,10 +34,6 @@ const showGalgamesWithoutResource = computed({
   set: (v: boolean) => settingStore.setData({ showGalgamesWithoutResource: v })
 })
 
-const titleLanguageOptions = [
-  { value: 'zh-cn' as const, label: '中文' },
-  { value: 'ja-jp' as const, label: '日语' }
-]
 </script>
 
 <template>
@@ -54,15 +49,6 @@ const titleLanguageOptions = [
   <KunModal v-model="open" inner-class-name="max-w-md">
     <div class="space-y-5 py-2">
       <h2 class="text-lg font-bold">显示设置</h2>
-
-      <div class="space-y-2">
-        <p class="text-sm font-medium">游戏标题优先语言</p>
-        <KunRadioGroup
-          v-model="titleLanguage"
-          orientation="horizontal"
-          :options="titleLanguageOptions"
-        />
-      </div>
 
       <div class="flex items-center justify-between gap-4">
         <div>
