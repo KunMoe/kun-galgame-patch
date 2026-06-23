@@ -36,6 +36,11 @@ const onChangePage = (v: number) => {
 const patchName = (r: UserResourceItem) =>
   r.patch?.name ? getPreferredLanguageText(r.patch.name) : `补丁 #${r.galgame_id}`
 
+// Title with the resource's OWN name — a user often publishes several resources
+// for the same game, so titling each by the galgame name made the rows
+// indistinguishable. Fall back to the galgame name when the resource is unnamed.
+const resourceTitle = (r: UserResourceItem) => r.name || patchName(r)
+
 const patchBanner = (r: UserResourceItem) =>
   resolveBannerUrl(r.patch, 'mini') || '/kungalgame-trans.webp'
 </script>
@@ -47,7 +52,7 @@ const patchBanner = (r: UserResourceItem) =>
       <NuxtLink
         v-for="r in data.items"
         :key="r.id"
-        :to="`/patch/${r.galgame_id}/resource`"
+        :to="`/resource/${r.id}`"
         class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex gap-4 rounded-lg border p-4 transition-colors"
       >
         <KunImage
@@ -56,11 +61,24 @@ const patchBanner = (r: UserResourceItem) =>
           class-name="bg-default-100 h-24 w-40 shrink-0 rounded"
         />
         <div class="flex-1 space-y-2">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="hover:text-primary-500 text-lg font-semibold line-clamp-2">
-              {{ patchName(r) }}
-            </h3>
-            <KunChip variant="flat">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h3
+                class="hover:text-primary-500 text-lg font-semibold line-clamp-2"
+              >
+                {{ resourceTitle(r) }}
+              </h3>
+              <!-- galgame name as subtitle so the game context isn't lost (the
+                   banner is the game's), shown only when the title is the
+                   resource's own name to avoid duplicating it. -->
+              <p
+                v-if="r.name && r.patch?.name"
+                class="text-default-500 line-clamp-1 text-xs"
+              >
+                {{ patchName(r) }}
+              </p>
+            </div>
+            <KunChip variant="flat" class="shrink-0">
               {{ formatDistanceToNow(r.created) }}
             </KunChip>
           </div>
