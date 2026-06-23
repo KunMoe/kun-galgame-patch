@@ -195,10 +195,8 @@ const currentAvatarUrl = computed(() => {
 </script>
 
 <template>
-  <div class="my-4 w-full">
-    <KunHeader name="账户设置" description="您可以在此处管理您的账户与本地偏好" />
-
-    <div class="mx-auto my-4 max-w-3xl space-y-6">
+  <div class="w-full">
+    <div class="max-w-3xl space-y-6">
       <!-- 1. 基本资料 (name / bio) -->
       <!-- Wrapped in <form> so the browser treats this as a discrete
            credential form (silences Chrome's "[DOM] Password field is not

@@ -1,43 +1,52 @@
 <script setup lang="ts">
-// Settings shell: a left tab nav (underline indicator) over the account /
-// system sub-pages, which render through <NuxtPage/>. Nested route parent of
+// Settings shell: one page title, with the section Tab on its lower-left and the
+// routed sub-page (账户 / 系统) on its lower-right; on mobile the Tab collapses
+// to a horizontal bar above the content. Nested-route parent of
 // pages/settings/{user,system,index}.vue.
+//
+// The Tab is a KunTab driven by the current route (not KunTabPanels) — the panel
+// content is route-rendered via <NuxtPage/>. Two CSS-toggled instances
+// (vertical desktop / horizontal mobile) instead of a JS media query, so SSR
+// has no orientation flash.
 const route = useRoute()
 
 const tabs = [
-  { to: '/settings/user', label: '账户设置', icon: 'lucide:user-cog' },
-  { to: '/settings/system', label: '系统设置', icon: 'lucide:settings-2' }
+  { value: 'user', textValue: '账户设置', icon: 'lucide:user-cog' },
+  { value: 'system', textValue: '系统设置', icon: 'lucide:settings-2' }
 ]
 
-const isActive = (to: string) => route.path === to
+const active = computed({
+  get: () => (route.path === '/settings/system' ? 'system' : 'user'),
+  set: (v: string) => {
+    if (v && route.path !== `/settings/${v}`) navigateTo(`/settings/${v}`)
+  }
+})
 </script>
 
 <template>
   <div class="container mx-auto my-4 px-4">
+    <KunHeader name="设置" description="管理您的账户与本地偏好" />
+
+    <!-- Mobile: horizontal tabs above the content. -->
+    <KunTab
+      v-model="active"
+      :items="tabs"
+      variant="underlined"
+      orientation="horizontal"
+      name="settings-nav-mobile"
+      class-name="mt-2 mb-4 md:hidden"
+    />
+
     <div class="flex flex-col gap-6 md:flex-row md:gap-8">
-      <!-- Left tab nav. Underline indicator (border-b-2): on desktop the items
-           stack vertically and only the active one shows the underline; on
-           mobile it collapses to a horizontal scrollable tab bar. -->
-      <nav
-        class="border-default/15 flex shrink-0 gap-1 overflow-x-auto border-b md:w-48 md:flex-col md:gap-0 md:overflow-visible md:border-b-0"
-      >
-        <NuxtLink
-          v-for="t in tabs"
-          :key="t.to"
-          :to="t.to"
-          :class="
-            cn(
-              'flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
-              isActive(t.to)
-                ? 'border-primary text-primary'
-                : 'text-default-500 hover:text-default-800 border-transparent'
-            )
-          "
-        >
-          <KunIcon :name="t.icon" class="size-4" />
-          {{ t.label }}
-        </NuxtLink>
-      </nav>
+      <!-- Desktop: vertical tabs on the lower-left. -->
+      <KunTab
+        v-model="active"
+        :items="tabs"
+        variant="underlined"
+        orientation="vertical"
+        name="settings-nav-desktop"
+        class-name="hidden shrink-0 md:block md:w-48"
+      />
 
       <div class="min-w-0 flex-1">
         <NuxtPage />

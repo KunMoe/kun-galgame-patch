@@ -19,10 +19,8 @@ const titleLanguageOptions = [
 </script>
 
 <template>
-  <div class="my-4 w-full">
-    <KunHeader name="系统设置" description="本地显示偏好，保存在浏览器中，更换设备需重新设置" />
-
-    <div class="mx-auto my-4 max-w-3xl space-y-6">
+  <div class="w-full">
+    <div class="max-w-3xl space-y-6">
       <KunCard :bordered="true">
         <template #header>
           <h2 class="px-1 pt-1 text-xl font-medium">显示设置</h2>
