@@ -110,7 +110,7 @@ const handleCheckIn = async () => {
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >
         <KunIcon name="lucide:settings" class="size-4" />
-        信息设置
+        系统和用户设置
       </NuxtLink>
       <NuxtLink
         to="/doc/notice/feedback"

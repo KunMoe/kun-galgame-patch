@@ -37,7 +37,9 @@ const active = computed({
       class-name="mt-2 mb-4 md:hidden"
     />
 
-    <div class="flex flex-col gap-6 md:flex-row md:gap-8">
+    <!-- md:mt-6 gives the title breathing room above the content on desktop,
+         where the mobile tab bar (which carries that spacing on phones) is hidden. -->
+    <div class="flex flex-col gap-6 md:mt-6 md:flex-row md:gap-8">
       <!-- Desktop: vertical tabs on the lower-left. -->
       <KunTab
         v-model="active"

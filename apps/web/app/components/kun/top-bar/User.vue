@@ -75,10 +75,6 @@ onMounted(async () => {
       <KunTopBarRandomGalgameButton is-icon-only variant="light" size="sm" />
     </div>
 
-    <div class="hidden sm:flex">
-      <KunTopBarThemeSwitcher />
-    </div>
-
     <template v-if="userStore.isLoggedIn">
       <KunTopBarUserMessageBell />
       <KunTopBarUserDropdown />

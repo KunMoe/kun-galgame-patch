@@ -18,9 +18,9 @@ const closeMenu = () => emit('update:isOpen', false)
 
 const userStore = useUserStore()
 
-// Theme switcher (mirrored from the desktop KunTopBarThemeSwitcher popover —
-// reproduced as a horizontal 3-segmented control here so phone users get the
-// same control surface that's hidden on mobile in the top bar).
+// Theme switcher — an inline 3-segmented control. The canonical theme control
+// now lives in /settings/system (the top-bar theme button was removed); this is
+// kept as a convenient quick toggle for phone users.
 const colorMode = useColorMode()
 const themes = [
   { key: 'light', label: '浅色', icon: 'lucide:sun' },
@@ -223,6 +223,23 @@ onUnmounted(() => {
               登录
             </KunButton>
           </section>
+
+          <!-- ── Settings entry (mirrors the desktop dropdown's 系统和用户设置). ── -->
+          <NuxtLink
+            to="/settings/user"
+            class="hover:bg-default-100 active:bg-default-200 border-default/20 bg-default-50/40 flex items-center gap-3 rounded-2xl border px-3 py-3.5 transition-colors"
+            @click="closeMenu"
+          >
+            <KunIcon
+              name="lucide:settings"
+              class="text-default-500 size-5 shrink-0"
+            />
+            <span class="text-sm font-medium">系统和用户设置</span>
+            <KunIcon
+              name="lucide:chevron-right"
+              class="text-default-300 ml-auto size-4"
+            />
+          </NuxtLink>
 
           <!-- ── Primary nav ── -->
           <section class="space-y-1">
