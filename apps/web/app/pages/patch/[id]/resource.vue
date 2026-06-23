@@ -589,19 +589,15 @@ watch(histPage, loadHistory)
           <div class="flex min-w-0 flex-col gap-1.5">
             <div class="text-default-500 flex items-center gap-4 text-sm">
               <!-- 收藏资源 = subscribe to THIS resource (star, like 收藏游戏). -->
-              <span class="flex items-center gap-1.5">
-                <KunReaction
-                  v-model="r.is_favorite"
-                  icon="lucide:star"
-                  color="warning"
-                  size="sm"
-                  label="收藏资源"
-                  @change="(active) => onResourceFavoriteChange(r, active)"
-                />
-                <span :class="r.is_favorite ? 'text-warning' : 'text-default-500'">
-                  {{ r.is_favorite ? '已收藏' : '收藏资源' }}
-                </span>
-              </span>
+              <KunReaction
+                v-model="r.is_favorite"
+                icon="lucide:star"
+                color="warning"
+                size="sm"
+                @change="(active) => onResourceFavoriteChange(r, active)"
+              >
+                {{ r.is_favorite ? '已收藏' : '收藏资源' }}
+              </KunReaction>
               <span class="flex items-center gap-1.5">
                 <KunIcon name="lucide:download" class="size-4" />
                 {{ r.download }}

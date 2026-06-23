@@ -368,24 +368,15 @@ if (
                    收藏资源 (subscribe to this resource's updates). Game-level
                    点赞 / 收藏游戏 live on the game page (/patch/:id). -->
               <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                  <KunReaction
-                    v-model="isResourceFavorite"
-                    icon="lucide:star"
-                    color="warning"
-                    size="md"
-                    label="收藏资源"
-                    @change="onResourceFavoriteChange"
-                  />
-                  <span
-                    class="text-sm font-medium"
-                    :class="
-                      resource.is_favorite ? 'text-warning' : 'text-default-600'
-                    "
-                  >
-                    {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
-                  </span>
-                </div>
+                <KunReaction
+                  v-model="isResourceFavorite"
+                  icon="lucide:star"
+                  color="warning"
+                  size="md"
+                  @change="onResourceFavoriteChange"
+                >
+                  {{ isResourceFavorite ? '已收藏资源' : '收藏资源' }}
+                </KunReaction>
 
                 <!-- A star alone can't say "notify" — spell out 收藏资源. -->
                 <p

@@ -178,22 +178,15 @@ const onMenuSelect = (item: { key: string }) => {
          with. -->
     <div class="flex flex-col items-start gap-2 sm:items-end">
       <div class="flex items-center gap-2">
-        <span class="flex items-center gap-1.5">
-          <KunReaction
-            v-model="favorite"
-            icon="lucide:star"
-            color="warning"
-            size="md"
-            label="收藏游戏"
-            @change="onFavoriteChange"
-          />
-          <span
-            class="text-sm font-medium"
-            :class="favorite ? 'text-warning' : 'text-default-600'"
-          >
-            {{ favorite ? '已收藏' : '收藏游戏' }}
-          </span>
-        </span>
+        <KunReaction
+          v-model="favorite"
+          icon="lucide:star"
+          color="warning"
+          size="md"
+          @change="onFavoriteChange"
+        >
+          {{ favorite ? '已收藏' : '收藏游戏' }}
+        </KunReaction>
 
         <KunDropdown
           :items="menuItems"
