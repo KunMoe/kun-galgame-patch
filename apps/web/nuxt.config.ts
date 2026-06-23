@@ -130,7 +130,14 @@ export default defineNuxtConfig({
     componentName: 'ColorScheme',
     classPrefix: 'kun-',
     classSuffix: '-mode',
-    storageKey: 'kungalgame-color-mode'
+    storageKey: 'kungalgame-color-mode',
+    // Cookie (not the default localStorage) so the SSR plugin can read the saved
+    // preference from the request and render colorMode.preference correctly —
+    // without this, any markup that reads the preference during SSR (the
+    // /settings/system theme picker) hydration-mismatches because the server
+    // falls back to 'system' while the client reads the real value. Matches
+    // moyu's other cookie-backed prefs (settingStore) for the same SSR reason.
+    storage: 'cookie'
   },
 
   vite: {

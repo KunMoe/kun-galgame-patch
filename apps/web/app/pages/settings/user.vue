@@ -144,8 +144,16 @@ const uploadAvatar = async () => {
 const config = useRuntimeConfig()
 const oauthWebUrl =
   (config.public.oauthWebUrl as string) || 'https://oauth.kungal.com'
+// `?return=<current url>` uses window.location (client-only). Gate it behind
+// mount, NOT import.meta.client: import.meta.client is already true during
+// hydration, so the client's first render would emit a different href than the
+// server (no return param) → hydration attribute mismatch. With a mounted flag,
+// SSR and the first client render both emit the bare /profile href; the return
+// param is appended after mount (it only matters on click anyway).
+const settingsMounted = ref(false)
+onMounted(() => (settingsMounted.value = true))
 const oauthProfileUrl = computed(() => {
-  if (!import.meta.client) return `${oauthWebUrl}/profile`
+  if (!settingsMounted.value) return `${oauthWebUrl}/profile`
   return `${oauthWebUrl}/profile?return=${encodeURIComponent(window.location.href)}`
 })
 
