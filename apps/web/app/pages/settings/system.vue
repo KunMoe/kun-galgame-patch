@@ -40,7 +40,7 @@ const setNsfw = (key: KunNsfwPreference) => {
 
 // ── Galgame 卡片显示设置 (moved from the /galgame modal) ──
 const titleLanguage = computed({
-  get: () => settingStore.data.titleLanguage ?? 'zh-cn',
+  get: () => settingStore.data.titleLanguage ?? 'ja-jp',
   set: (v: 'zh-cn' | 'ja-jp') => settingStore.setData({ titleLanguage: v })
 })
 const titleLanguageOptions = [

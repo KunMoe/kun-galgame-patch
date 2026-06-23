@@ -37,7 +37,7 @@ export interface KunSettingData {
   // chosen language on first paint (no hydration flash). Read with a `?? default`
   // guard at the use site — an older cookie won't carry these keys.
   //
-  // Preferred language for the game TITLE on cards: 'zh-cn' (default) or 'ja-jp'.
+  // Preferred language for game titles site-wide: 'ja-jp' (default) or 'zh-cn'.
   titleLanguage: 'zh-cn' | 'ja-jp'
   // Show the Japanese title as a subtitle under the title. Default off.
   showJapaneseSubtitle: boolean
@@ -66,7 +66,7 @@ export interface KunSettingData {
 const initialState: KunSettingData = {
   kunNsfwEnable: 'sfw',
   nsfwAckedIds: [],
-  titleLanguage: 'zh-cn',
+  titleLanguage: 'ja-jp',
   showJapaneseSubtitle: false,
   showReleaseDate: false,
   showNsfwBadge: true,

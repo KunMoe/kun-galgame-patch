@@ -10,7 +10,7 @@ const props = defineProps<Props>()
 // Card display preferences (the /galgame "显示设置" panel; cookie-persisted).
 // `?? default` guards an older cookie written before these keys existed.
 const settingStore = useSettingStore()
-const titleLanguage = computed(() => settingStore.data.titleLanguage ?? 'zh-cn')
+const titleLanguage = computed(() => settingStore.data.titleLanguage ?? 'ja-jp')
 const showJapaneseSubtitle = computed(
   () => settingStore.data.showJapaneseSubtitle ?? false
 )
