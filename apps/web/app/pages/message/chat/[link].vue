@@ -288,6 +288,19 @@ const onBubbleClick = (e: MouseEvent, m: ChatMessageItem) => {
   if (isMobile.value) openMenu(e, m)
 }
 
+// Group the flat reaction list into one pill per emoji: { emoji, count, mine }.
+// (The backend stores one row per user+emoji; the UI shows a grouped count.)
+const groupReactions = (m: ChatMessageItem) => {
+  const map = new Map<string, { emoji: string; count: number; mine: boolean }>()
+  for (const r of m.reaction ?? []) {
+    const g = map.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false }
+    g.count++
+    if (r.user?.id === myUserId.value) g.mine = true
+    map.set(r.emoji, g)
+  }
+  return [...map.values()]
+}
+
 const toggleReaction = async (m: ChatMessageItem, emoji: string) => {
   const res = await api.post<{ added: boolean }>(
     `/chat/message/${m.id}/reaction`,
@@ -477,29 +490,26 @@ onBeforeUnmount(() => pause())
                   </div>
                 </div>
 
-                <!-- reaction chips -->
+                <!-- reaction pills — one per emoji (grouped), with a count and
+                     "did I react" active state. -->
                 <div
                   v-if="m.reaction && m.reaction.length"
                   class="mt-1 flex flex-wrap gap-1"
                 >
-                  <KunButton
-                    v-for="r in m.reaction"
-                    :key="r.id"
-                    variant="flat"
-                    color="default"
-                    size="xs"
-                    rounded="full"
-                    @click="toggleReaction(m, r.emoji)"
+                  <KunReaction
+                    v-for="g in groupReactions(m)"
+                    :key="g.emoji"
+                    :model-value="g.mine"
+                    :count="g.count"
+                    color="primary"
+                    size="sm"
+                    :label="`${g.emoji} 表情`"
+                    @change="() => toggleReaction(m, g.emoji)"
                   >
-                    <span>{{ r.emoji }}</span>
-                    <KunImage
-                      v-if="r.user?.avatar"
-                      :src="r.user.avatar"
-                      :alt="r.user?.name"
-                      :skeleton="false"
-                      class-name="size-4 rounded-full"
-                    />
-                  </KunButton>
+                    <template #icon>
+                      <span>{{ g.emoji }}</span>
+                    </template>
+                  </KunReaction>
                 </div>
               </div>
               <KunAvatar

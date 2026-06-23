@@ -241,27 +241,27 @@ const onLinkDownload = (r: PatchResource) => {
 // 收藏资源 (per-resource subscription) toggle. Optimistic: backend returns
 // { favorited }, folded onto the local row. Notifies on this resource's
 // download-link / file update (see UpdateResource → notifyResourceFavoritedUsers).
-const favoritingId = ref<number | null>(null)
-const toggleResourceFavorite = async (r: PatchResource) => {
-  if (!requireLogin()) return
-  favoritingId.value = r.id
-  try {
-    const res = await api.put<{ favorited: boolean }>(
-      `/patch/resource/${r.id}/favorite`
+// KunReaction flips r.is_favorite optimistically (v-model on the reactive row),
+// then fires this — confirm with the server, revert on failure / logged-out.
+const onResourceFavoriteChange = async (r: PatchResource, active: boolean) => {
+  if (!requireLogin()) {
+    r.is_favorite = !active
+    return
+  }
+  const res = await api.put<{ favorited: boolean }>(
+    `/patch/resource/${r.id}/favorite`
+  )
+  if (res.code === 0) {
+    r.is_favorite = res.data.favorited
+    useKunMessage(
+      res.data.favorited
+        ? '已收藏此资源，下载链接或文件更新时会通知你'
+        : '已取消收藏',
+      'success'
     )
-    if (res.code === 0) {
-      r.is_favorite = res.data.favorited
-      useKunMessage(
-        res.data.favorited
-          ? '已收藏此资源，下载链接或文件更新时会通知你'
-          : '已取消收藏',
-        'success'
-      )
-    } else {
-      useKunMessage(res.message || '操作失败', 'error')
-    }
-  } finally {
-    favoritingId.value = null
+  } else {
+    r.is_favorite = !active
+    useKunMessage(res.message || '操作失败', 'error')
   }
 }
 
@@ -585,22 +585,19 @@ watch(histPage, loadHistory)
           <div class="flex min-w-0 flex-col gap-1.5">
             <div class="text-default-500 flex items-center gap-4 text-sm">
               <!-- 收藏资源 = subscribe to THIS resource (star, like 收藏游戏). -->
-              <KunButton
-                :variant="r.is_favorite ? 'flat' : 'light'"
-                :color="r.is_favorite ? 'warning' : 'default'"
-                size="xs"
-                rounded="full"
-                :loading="favoritingId === r.id"
-                :disabled="favoritingId === r.id"
-                :aria-label="r.is_favorite ? '取消收藏资源' : '收藏资源'"
-                @click="toggleResourceFavorite(r)"
-              >
-                <KunIcon
-                  name="lucide:star"
-                  :class="cn('size-4', r.is_favorite && 'fill-current')"
+              <span class="flex items-center gap-1.5">
+                <KunReaction
+                  v-model="r.is_favorite"
+                  icon="lucide:star"
+                  color="warning"
+                  size="sm"
+                  label="收藏资源"
+                  @change="(active) => onResourceFavoriteChange(r, active)"
                 />
-                {{ r.is_favorite ? '已收藏' : '收藏资源' }}
-              </KunButton>
+                <span :class="r.is_favorite ? 'text-warning' : 'text-default-500'">
+                  {{ r.is_favorite ? '已收藏' : '收藏资源' }}
+                </span>
+              </span>
               <span class="flex items-center gap-1.5">
                 <KunIcon name="lucide:download" class="size-4" />
                 {{ r.download }}

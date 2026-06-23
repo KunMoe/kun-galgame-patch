@@ -121,28 +121,33 @@ const onDownload = () => {
 // Notifies you when this resource's download link / file changes. Game-level
 // 点赞 / 收藏游戏 live on the game page (/patch/:id) — this page is scoped to the
 // single resource, so it only exposes 收藏资源 (removes the like/favorite mix-up).
-const resourceFavoriting = ref(false)
-const toggleResourceFavorite = async () => {
+// Writable v-model for KunReaction; the setter mutates the (reactive) resource.
+const isResourceFavorite = computed({
+  get: () => resource.value?.is_favorite ?? false,
+  set: (v) => {
+    if (resource.value) resource.value.is_favorite = v
+  }
+})
+const onResourceFavoriteChange = async (active: boolean) => {
   if (!resource.value) return
-  if (!requireLogin()) return
-  resourceFavoriting.value = true
-  try {
-    const res = await api.put<{ favorited: boolean }>(
-      `/patch/resource/${resource.value.id}/favorite`
+  if (!requireLogin()) {
+    isResourceFavorite.value = !active
+    return
+  }
+  const res = await api.put<{ favorited: boolean }>(
+    `/patch/resource/${resource.value.id}/favorite`
+  )
+  if (res.code === 0) {
+    isResourceFavorite.value = res.data.favorited
+    useKunMessage(
+      res.data.favorited
+        ? '已收藏此资源，下载链接或文件更新时会通知你'
+        : '已取消收藏',
+      'success'
     )
-    if (res.code === 0) {
-      resource.value.is_favorite = res.data.favorited
-      useKunMessage(
-        res.data.favorited
-          ? '已收藏此资源，下载链接或文件更新时会通知你'
-          : '已取消收藏',
-        'success'
-      )
-    } else {
-      useKunMessage(res.message || '操作失败', 'error')
-    }
-  } finally {
-    resourceFavoriting.value = false
+  } else {
+    isResourceFavorite.value = !active
+    useKunMessage(res.message || '操作失败', 'error')
   }
 }
 
@@ -360,21 +365,24 @@ if (
                    收藏资源 (subscribe to this resource's updates). Game-level
                    点赞 / 收藏游戏 live on the game page (/patch/:id). -->
               <div class="space-y-2">
-                <KunButton
-                  :variant="resource.is_favorite ? 'flat' : 'bordered'"
-                  :color="resource.is_favorite ? 'warning' : 'default'"
-                  size="md"
-                  rounded="full"
-                  :loading="resourceFavoriting"
-                  :disabled="resourceFavoriting"
-                  @click="toggleResourceFavorite"
-                >
-                  <KunIcon
-                    name="lucide:star"
-                    :class="cn('size-4', resource.is_favorite && 'fill-current')"
+                <div class="flex items-center gap-2">
+                  <KunReaction
+                    v-model="isResourceFavorite"
+                    icon="lucide:star"
+                    color="warning"
+                    size="md"
+                    label="收藏资源"
+                    @change="onResourceFavoriteChange"
                   />
-                  {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
-                </KunButton>
+                  <span
+                    class="text-sm font-medium"
+                    :class="
+                      resource.is_favorite ? 'text-warning' : 'text-default-600'
+                    "
+                  >
+                    {{ resource.is_favorite ? '已收藏资源' : '收藏资源' }}
+                  </span>
+                </div>
 
                 <!-- A star alone can't say "notify" — spell out 收藏资源. -->
                 <p

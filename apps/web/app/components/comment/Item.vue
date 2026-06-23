@@ -39,13 +39,35 @@ const canDelete = computed(() => isAuthor.value || props.canModerate)
 const isEdited = computed(() => !!props.comment.edit)
 
 // ─── Like ──────────────────────────────────────────────
-const toggleLike = async () => {
-  if (!requireLogin()) return
+// KunReaction is an optimistic v-model toggle, so mirror the (parent-owned)
+// comment into local refs it can drive, kept in sync if the parent patches the
+// comment (e.g. the same comment toggled in the thread drawer).
+const liked = ref(props.comment.is_liked)
+const likeCount = ref(props.comment.like_count)
+watch(() => props.comment.is_liked, (v) => (liked.value = v))
+watch(() => props.comment.like_count, (v) => (likeCount.value = v))
+
+const revertLike = (active: boolean) => {
+  liked.value = !active
+  likeCount.value = Math.max(0, likeCount.value + (active ? -1 : 1))
+}
+
+const onLikeChange = async (active: boolean) => {
+  if (!requireLogin()) {
+    revertLike(active)
+    return
+  }
   const res = await api.put<{ liked: boolean }>(
     `/patch/comment/${props.comment.id}/like`
   )
-  if (res.code === 0) emit('liked', props.comment.id, res.data.liked)
-  else useKunMessage(res.message || '操作失败', 'error')
+  if (res.code === 0) {
+    // Propagate to the container so the array (and the drawer's view of the same
+    // comment) stays in sync; our local refs already reflect the optimistic state.
+    emit('liked', props.comment.id, res.data.liked)
+  } else {
+    revertLike(active)
+    useKunMessage(res.message || '操作失败', 'error')
+  }
 }
 
 // ─── Reply ─────────────────────────────────────────────
@@ -212,21 +234,15 @@ const confirmDelete = async () => {
 
       <!-- Action row -->
       <div v-if="!editing" class="flex flex-wrap items-center gap-1">
-        <KunButton
-          :variant="comment.is_liked ? 'flat' : 'light'"
-          :color="comment.is_liked ? 'primary' : 'default'"
-          size="xs"
-          rounded="full"
-          class-name="gap-1"
-          :aria-label="comment.is_liked ? '取消点赞' : '点赞'"
-          @click="toggleLike"
-        >
-          <KunIcon
-            name="lucide:thumbs-up"
-            :class="cn('size-3.5', comment.is_liked && 'fill-current')"
-          />
-          <span v-if="comment.like_count">{{ comment.like_count }}</span>
-        </KunButton>
+        <KunReaction
+          v-model="liked"
+          v-model:count="likeCount"
+          icon="lucide:thumbs-up"
+          color="primary"
+          size="sm"
+          label="点赞"
+          @change="onLikeChange"
+        />
 
         <KunButton
           variant="light"

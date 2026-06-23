@@ -50,7 +50,6 @@ const api = useApi()
 const { requireLogin } = useAuthModal()
 
 const favorite = ref(props.patch.is_favorite)
-const favoriteLoading = ref(false)
 
 // Keep local state in sync if the parent re-fetches (e.g. after a PR merge).
 watch(
@@ -60,23 +59,24 @@ watch(
   }
 )
 
-const toggleFavorite = async () => {
+// KunReaction flips `favorite` optimistically on click, then fires this; confirm
+// with the server and revert on failure / logged-out.
+const onFavoriteChange = async (active: boolean) => {
   // Logged-out → pop the global login modal (same as the 登录 button) rather
   // than a toast the user can't act on.
-  if (!requireLogin()) return
-  favoriteLoading.value = true
-  try {
-    const res = await api.put<{ favorited: boolean }>(
-      `/patch/${props.patch.id}/favorite`
-    )
-    if (res.code === 0) {
-      favorite.value = res.data.favorited
-      useKunMessage(favorite.value ? '已收藏' : '已取消收藏', 'success')
-    } else {
-      useKunMessage(res.message || '操作失败', 'error')
-    }
-  } finally {
-    favoriteLoading.value = false
+  if (!requireLogin()) {
+    favorite.value = !active
+    return
+  }
+  const res = await api.put<{ favorited: boolean }>(
+    `/patch/${props.patch.id}/favorite`
+  )
+  if (res.code === 0) {
+    favorite.value = res.data.favorited
+    useKunMessage(favorite.value ? '已收藏' : '已取消收藏', 'success')
+  } else {
+    favorite.value = !active
+    useKunMessage(res.message || '操作失败', 'error')
   }
 }
 
@@ -150,21 +150,14 @@ const confirmDelete = async () => {
         class="border-default/20 bg-default-50/50 flex items-center gap-1 rounded-xl border p-1"
       >
       <KunTooltip :text="favorite ? '取消收藏游戏' : '收藏游戏'">
-        <KunButton
-          :variant="favorite ? 'flat' : 'light'"
-          :color="favorite ? 'warning' : 'default'"
+        <KunReaction
+          v-model="favorite"
+          icon="lucide:star"
+          color="warning"
           size="sm"
-          is-icon-only
-          :loading="favoriteLoading"
-          :disabled="favoriteLoading"
-          :aria-label="favorite ? '取消收藏游戏' : '收藏游戏'"
-          @click="toggleFavorite"
-        >
-          <KunIcon
-            name="lucide:star"
-            :class="cn('size-4', favorite && 'fill-current')"
-          />
-        </KunButton>
+          label="收藏游戏"
+          @change="onFavoriteChange"
+        />
       </KunTooltip>
 
       <KunTooltip text="复制分享链接">
