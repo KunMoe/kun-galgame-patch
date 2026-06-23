@@ -115,6 +115,37 @@ const confirmDelete = async () => {
     deleting.value = false
   }
 }
+
+// 编辑 / 分享 / 删除 collapse into a kebab (⋮) — 收藏 is the only always-visible
+// action; management lives behind the menu. Mirrors the resource card's
+// three-dots menu (KunDropdown). 删除 only for the owner / admin.
+type ActionMenuItem = {
+  key: 'edit' | 'share' | 'delete'
+  label: string
+  icon: string
+  color?: 'default' | 'danger'
+}
+const menuItems = computed<ActionMenuItem[]>(() => {
+  const items: ActionMenuItem[] = [
+    { key: 'edit', label: '编辑游戏信息', icon: 'lucide:pencil' },
+    { key: 'share', label: '复制分享链接', icon: 'lucide:share-2' }
+  ]
+  if (canDelete.value) {
+    items.push({
+      key: 'delete',
+      label: '删除游戏',
+      icon: 'lucide:trash-2',
+      color: 'danger'
+    })
+  }
+  return items
+})
+
+const onMenuSelect = (item: { key: string }) => {
+  if (item.key === 'edit') navigateTo(editHref.value)
+  else if (item.key === 'share') handleShare()
+  else if (item.key === 'delete') askDelete()
+}
 </script>
 
 <template>
@@ -140,67 +171,48 @@ const confirmDelete = async () => {
       </p>
     </div>
 
-    <!-- Right: the icon action bar + a one-line hint that makes the heart's
-         purpose (subscribe to new-patch notifications) discoverable without
-         having to hover the icon-only button. -->
+    <!-- Right: 收藏 stands alone (prominent), with a kebab (⋮) for the
+         management actions (编辑 / 分享 / 删除); below, a one-line hint that 收藏
+         subscribes to new-patch notifications. No surrounding container — the
+         favorite no longer shares a bar with the icon-only buttons it clashed
+         with. -->
     <div class="flex flex-col items-start gap-2 sm:items-end">
-      <!-- Action bar: favorite / share, divider, then owner edit / delete.
-           All icon-only + tooltip — uniform shape. -->
-      <div
-        class="border-default/20 bg-default-50/50 flex items-center gap-1 rounded-xl border p-1"
-      >
-      <KunTooltip :text="favorite ? '取消收藏游戏' : '收藏游戏'">
-        <KunReaction
-          v-model="favorite"
-          icon="lucide:star"
-          color="warning"
-          size="sm"
-          label="收藏游戏"
-          @change="onFavoriteChange"
-        />
-      </KunTooltip>
-
-      <KunTooltip text="复制分享链接">
-        <KunButton
-          variant="light"
-          color="default"
-          size="sm"
-          is-icon-only
-          aria-label="复制分享链接"
-          @click="handleShare"
-        >
-          <KunIcon name="lucide:share-2" class="size-4" />
-        </KunButton>
-      </KunTooltip>
-
-      <div class="bg-default/30 mx-1 h-5 w-px" aria-hidden="true" />
-
-      <KunTooltip text="编辑游戏信息">
-        <NuxtLink :to="editHref" aria-label="编辑游戏信息">
-          <KunButton
-            variant="light"
-            color="default"
-            size="sm"
-            is-icon-only
+      <div class="flex items-center gap-2">
+        <span class="flex items-center gap-1.5">
+          <KunReaction
+            v-model="favorite"
+            icon="lucide:star"
+            color="warning"
+            size="md"
+            label="收藏游戏"
+            @change="onFavoriteChange"
+          />
+          <span
+            class="text-sm font-medium"
+            :class="favorite ? 'text-warning' : 'text-default-600'"
           >
-            <KunIcon name="lucide:pencil" class="size-4" />
-          </KunButton>
-        </NuxtLink>
-      </KunTooltip>
+            {{ favorite ? '已收藏' : '收藏游戏' }}
+          </span>
+        </span>
 
-      <KunTooltip v-if="canDelete" text="删除游戏 (不可恢复)">
-        <KunButton
-          variant="light"
-          color="danger"
-          size="sm"
-          is-icon-only
-          aria-label="删除游戏"
-          :disabled="deleting"
-          @click="askDelete"
+        <KunDropdown
+          :items="menuItems"
+          position="bottom-end"
+          @select="onMenuSelect"
         >
-          <KunIcon name="lucide:trash-2" class="size-4" />
-        </KunButton>
-      </KunTooltip>
+          <template #trigger>
+            <KunButton
+              is-icon-only
+              variant="light"
+              color="default"
+              size="sm"
+              rounded="full"
+              aria-label="更多操作"
+            >
+              <KunIcon name="lucide:ellipsis-vertical" class="size-4" />
+            </KunButton>
+          </template>
+        </KunDropdown>
       </div>
 
       <!-- New-patch notification hint — the icon-only heart can't say this on

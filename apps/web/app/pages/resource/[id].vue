@@ -23,7 +23,10 @@ const { data: detail, pending } = await useAsyncData<PatchResourceDetail | null>
       `/resource/${resourceId.value}`
     )
     return res.code === 0 ? res.data : null
-  }
+  },
+  // deep:true — Nuxt 4 data is a shallowRef by default, so toggling the favorite
+  // (resource.value.is_favorite = …, a nested mutation) wouldn't re-render.
+  { deep: true }
 )
 
 const resource = computed(() => detail.value?.resource ?? null)

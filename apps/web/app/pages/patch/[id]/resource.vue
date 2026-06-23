@@ -16,7 +16,11 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
     )
     return res.code === 0 ? res.data : []
   },
-  { default: () => [] }
+  // deep:true — Nuxt 4 data is a shallowRef by default, so the in-place
+  // favorite toggle (r.is_favorite = …) wouldn't re-render the row. The
+  // create/edit/delete paths reassign resources.value so they work either way;
+  // the per-row favorite needs deep reactivity.
+  { default: () => [], deep: true }
 )
 
 // ─── 发布资源 (modal) ─────────────────────────────
