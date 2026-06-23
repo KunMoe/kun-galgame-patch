@@ -5,9 +5,11 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Global resource rows now carry a `patch` summary (id/name/banner) — fall
-// back to the resource's own name when the row is rendered in a context where
-// the patch wasn't enriched (e.g. user profile page).
+// Title = the patch RESOURCE's own name (what the uploader named it) — this is a
+// resource card, not a galgame card. Fall back to the owning galgame's name when
+// the resource has no name, then its note, then a generic label. galgameName
+// needs the `patch` summary (id/name/banner) the global/home/search rows carry;
+// it's absent in some contexts (e.g. user profile page).
 const galgameName = computed(() =>
   props.resource.patch?.name
     ? getPreferredLanguageText(props.resource.patch.name)
@@ -15,8 +17,8 @@ const galgameName = computed(() =>
 )
 const title = computed(
   () =>
-    galgameName.value ||
     props.resource.name ||
+    galgameName.value ||
     props.resource.note ||
     '补丁资源'
 )
