@@ -93,7 +93,7 @@ func TestGetHikariIntegration(t *testing.T) {
 	// Build the real route. wiki/users are nil on purpose: GetHikari must NOT
 	// consult them — a nil wiki that never panics is itself the proof that the
 	// NSFW gate is gone (the patch returns regardless of any NSFW rating).
-	h := NewHandler(db, nil, nil, nil)
+	h := NewHandler(db, nil, nil, nil, nil)
 	app := fiber.New()
 	api := app.Group("/api/v1")
 	api.Use("/hikari", middleware.HikariCORS())

@@ -14,6 +14,7 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
@@ -27,10 +28,14 @@ type CommonHandler struct {
 	wiki  *galgameClient.Client
 	users *userclient.Client
 	art   *artifactclient.Client
+	// img resolves image_service hashes to absolute CDN URLs. Used by the Hikari
+	// partner API to hand third parties complete avatar links (the rest of the
+	// site resolves hashes client-side via resolveAvatarUrl).
+	img *imageclient.Client
 }
 
-func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client, art *artifactclient.Client) *CommonHandler {
-	return &CommonHandler{db: db, wiki: wiki, users: users, art: art}
+func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client) *CommonHandler {
+	return &CommonHandler{db: db, wiki: wiki, users: users, art: art, img: img}
 }
 
 // attachResourceUsers / attachCommentUsers do the same id-collect → batch →
@@ -619,6 +624,23 @@ func hikariFail(c *fiber.Ctx, status int, message string) error {
 	return c.Status(status).JSON(hikariEnvelope{Success: false, Message: message, Data: nil})
 }
 
+// hikariAvatarURL resolves a brief's avatar to an ABSOLUTE URL for third-party
+// (Hikari) consumers, mirroring the frontend resolveAvatarUrl: prefer the
+// image_service hash (→ canonical CDN URL), else fall back to the legacy
+// absolute avatar URL. Empty when the user has no avatar. Full-size (no variant)
+// since partners pick their own rendering size.
+func (h *CommonHandler) hikariAvatarURL(b *userclient.Brief) string {
+	if b == nil {
+		return ""
+	}
+	if b.AvatarImageHash != "" && h.img != nil {
+		if u := h.img.MainURL(b.AvatarImageHash); u != "" {
+			return u
+		}
+	}
+	return b.Avatar
+}
+
 // GetHikari GET /api/hikari?vndb_id=...
 //
 // Public partner API — CORS allowlist + rate limit are applied at the route
@@ -657,7 +679,7 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	briefs := userclient.BriefMapByInt(c.Context(), h.users, uids)
 	toUser := func(uid int) hikariUser {
 		if b := briefs[uid]; b != nil {
-			return hikariUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar}
+			return hikariUser{ID: int(b.ID), Name: b.Name, Avatar: h.hikariAvatarURL(b)}
 		}
 		return hikariUser{ID: uid}
 	}
@@ -666,12 +688,14 @@ func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
 	for i := range resources {
 		r := &resources[i]
 		out = append(out, hikariResource{
-			ID:         r.ID,
-			Storage:    r.Storage,
-			Name:       r.Name,
-			ModelName:  r.ModelName,
-			Size:       r.Size,
-			Note:       r.Note,
+			ID:        r.ID,
+			Storage:   r.Storage,
+			Name:      r.Name,
+			ModelName: r.ModelName,
+			Size:      r.Size,
+			// Resolve /image/<hash> content tokens in the note to absolute CDN
+			// URLs so third parties rendering the raw markdown get usable images.
+			Note:       markdown.ResolveContentImageTokens(r.Note),
 			Hash:       r.Blake3,
 			Type:       r.Type,
 			Language:   r.Language,

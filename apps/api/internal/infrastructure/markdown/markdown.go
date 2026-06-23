@@ -103,6 +103,31 @@ var resolveContentImage func(hash string) string
 // image AST transformer. Call once at startup, before serving.
 func SetContentImageResolver(fn func(hash string) string) { resolveContentImage = fn }
 
+// contentImageTokenRegex matches a content image token ANYWHERE in raw markdown
+// (the non-anchored sibling of contentImageRefRegex, which matches a whole AST
+// image destination). Used by ResolveContentImageTokens.
+var contentImageTokenRegex = regexp.MustCompile(`/image/([0-9a-f]{64})`)
+
+// ResolveContentImageTokens rewrites every `/image/<hash>` content-image token
+// in RAW markdown to its fully-qualified CDN URL, using the same resolver the
+// AST transformer uses. Unlike Render it leaves the text as markdown — for
+// consumers that receive the raw source and can't resolve the domain-agnostic
+// token themselves (e.g. the Hikari partner API). No-op (returns src unchanged)
+// when the resolver is unwired or a hash doesn't resolve.
+func ResolveContentImageTokens(src string) string {
+	resolve := resolveContentImage
+	if resolve == nil || src == "" {
+		return src
+	}
+	return contentImageTokenRegex.ReplaceAllStringFunc(src, func(tok string) string {
+		hash := tok[len("/image/"):]
+		if url := resolve(hash); url != "" {
+			return url
+		}
+		return tok
+	})
+}
+
 // contentImageTransformer rewrites `![](...)` image destinations of the form
 // `/image/<hash>` into the resolved CDN URL during parsing, so server-rendered
 // content embeds direct CDN URLs (the contract's "fast path"; the 302 route is

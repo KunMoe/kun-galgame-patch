@@ -152,9 +152,6 @@ func New(cfg *config.Config) *App {
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, s3, patchSvc)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
-	// Common handler (direct DB access for simple aggregation endpoints)
-	commonHdl := common.NewHandler(db, wiki, usrCli, artCli)
-
 	// Upload module: bytes live in the artifact service (artCli built above);
 	// rdb SETNX-dedupes Complete to prevent double-charging daily_upload_size.
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
@@ -176,6 +173,11 @@ func New(cfg *config.Config) *App {
 		ClientID:     imgCfg.ClientID,
 		ClientSecret: imgCfg.ClientSecret,
 	})
+
+	// Common handler (direct DB access for simple aggregation endpoints). Built
+	// after imgCli so the Hikari partner API can resolve avatar hashes to
+	// absolute CDN URLs for third-party consumers.
+	commonHdl := common.NewHandler(db, wiki, usrCli, artCli, imgCli)
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli, wiki)
 
 	// Resolve domain-agnostic content image tokens (/image/<hash>) embedded in
