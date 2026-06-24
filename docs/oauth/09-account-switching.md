@@ -4,10 +4,15 @@
 
 # 09 — 账号切换（多账号 / Account Switching）
 
-> 🚧 **状态：设计契约，尚未实现**（target rollout 见下方「实施阶段」）。本文是下游
-> （kungal / moyu / wiki）接入「多账号 + 切换」的**跨服务契约**；IdP 内部实现（会话袋
-> 数据模型、DB 迁移、决策依据）见 infra 仓内部设计 `docs/auth/02-account-switching-design.md`。
-> 下游在端点上线（去掉本 🚧 标记）前**不要**调用本文端点。
+> ✅ **状态：后端 + OP 账号选择器已实现，契约稳定，下游可接入**。已上线：会话袋数据层、
+> `/oauth/authorize` 的 `prompt=select_account|none` + `login_hint`、`/auth/sessions`
+> （+ `/switch`、`/logout`、`/logout-all`）、管理员 step-up；OP 账号中心（apps/web）与
+> wiki 的切换器已接入。**待接入**：forum / moyu 的切换器 UI（照 §3.6 实现即可）+
+> `prompt=none` 焦点对齐（§3.2，后续阶段）。本文是下游（kungal / moyu / wiki）接入
+> 「多账号 + 切换」的**跨服务契约**；IdP 内部实现（数据模型、决策依据）见 infra 仓
+> `docs/auth/02-account-switching-design.md`。
+> ⚠️ 生产首次部署需对 `kun_galgame_infra` 跑 `go run ./cmd/migrate`（加 `sessions.browser_id`
+> 等列；部署不自动跑迁移）。
 
 让用户像 Gmail/微软那样**同时登录多个账号并一键切换**。本文档读者 = 下游前端/后端开发；
 讲「你要怎么调、能依赖什么保证」，不讲 IdP 内部表结构。
@@ -68,8 +73,16 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 ### 3.3 会话袋 API（**仅同站 app**，如账号中心 `oauth.kungal.com/profile`）
 
-> 这些 JSON 端点读 OP 域上的锚点 cookie，因此**只对与 OP 同站的前端可用**。
-> 跨 TLD 的 moyu **用不了**（`SameSite` cookie 不会跨站 `fetch` 发送）→ 跨 TLD 一律走 §3.1 重定向。
+> 这些 JSON 端点读 OP 域上的 Lax 锚点 cookie，因此**只对与 OP 同站（`kungal.com` 家族：
+> `oauth.kungal.com` 自身、`wiki.kungal.com`、`www.kungal.com`）的前端可用**——同站下游若要
+> 跨子域调用，还需 OP 为该 origin 放行 **CORS（`credentials`）**。跨 TLD 的 `moyu.moe`
+> **用不了**（`SameSite` cookie 不跨站 `fetch` 发送）→ 一律走 §3.1 重定向 + §3.6 本地缓存。
+>
+> ⚠️ **坑（同站接入必看）**：`switch` / `logout` 会返回**业务性 401**（`10016` step-up、
+> `10005` 不在袋中、`10001` 非成员）。别让前端「遇 401 就刷新令牌 / 跳登录」的**全局拦截器**
+> 吞掉它们——这几个调用要**绕过全局 401 处理**、自己读响应 `code` 分支（否则 step-up 会被
+> 误判成会话失效而把用户登出）。参考实现：apps/web `useAccountSwitch.ts` 用裸 `$fetch`
+> 而非全局封装。
 
 | 方法 | 路径 | 作用 | 响应（`data`） |
 |------|------|------|------|
@@ -82,23 +95,26 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 ### 3.4 登出语义（本系统决策：基于撤销 / revocation-based）
 
-- **登出此账号**：OP 撤销该会话（`revoked_at`），从袋子移除。持有该账号令牌的 app 在**下次刷新**时失败 → 自动登出；**其他账号不受影响**。
+- **登出此账号**：OP 撤销该会话（**硬删除会话行**——删了就刷不动，等价于撤销），从袋子移除。持有该账号令牌的 app 在**下次刷新**时失败 → 自动登出；**其他账号不受影响**。
 - **登出全部**：撤销袋内全部会话。
 - **传播机制 = 撤销 + 短 access token TTL**（不用 back-channel / iframe）：access token 寿命设为 **~10–15 分钟**；任意 app 刷新时若会话已撤销则刷新失败 → 一个 TTL 内登出。想更快就调短 TTL，这是唯一旋钮。
   - 这样选是因为：我们的下游是 SPA，**没有服务端 RP 会话**可供 back-channel logout 关联 `sid`；front-channel iframe 又依赖跨站 cookie（脆弱）。撤销式最简单、坑最少、可日后再叠加即时传播而无需重构。
 
 ### 3.5 管理员 step-up（本系统决策：切入管理员账号需重新认证）
 
-- 当选中的账号持 `admin` / `ren` 角色，切换流程会被 OP 注入 `prompt=login`（强制重新认证）后才激活并下发授权码。
-- OP 记录 `auth_time`；管理端点会校验「最近一次认证时间」，过旧则要求重新认证。
-- 下游无需特殊处理——照常走 §3.1 重定向即可，OP 自动插入重登。
+- 当选中的账号持 `admin` / `ren` 角色，切换会被拒（`/auth/sessions/switch` 返回 `10016`；
+  重定向流则由 OP 强制 `prompt=login`）→ 必须重新认证后才激活并下发令牌。
+- OP 记录 `auth_time`（已落库，为 `max_age` / 管理端点的「最近认证时间」校验**预留**；当前
+  仅切入 admin/ren 强制重登已生效，过旧 auth_time 的细粒度校验留待后续）。
+- 下游无需特殊处理——照常走 §3.1 重定向即可，OP 自动插入重登；走 JSON `switch` 的同站前端
+  收到 `10016` 时跳 `/oauth/authorize?prompt=login&login_hint=<sub>` 重认证（见 §3.6）。
 
 ### 3.6 账号选择器 UX（推荐下游**统一**实现）
 
 理想交互：点头像 → 弹出菜单 → 「切换账号」项（桌面 hover / 手机点击）→ 二级菜单列出可切换账号 + 「添加新账号」。本设计**支持**它，机制如下，各站 UI 应统一这么做：
 
 **二级菜单的账号列表 = 本 app 的「已知账号」本地缓存（localStorage）**，不依赖跨站读 OP 袋子：
-- 缓存项 = `{ sub, name, avatar }`，**不含任何令牌**。每次本 app 成功登录/切换到某账号后，从 `GET /auth/me` 取身份写入缓存。
+- 缓存项 = `{ sub, name, avatar, avatar_image_hash?, email, roles? }`（够渲染头像 / 邮箱 / 角色徽标），**不含任何令牌**。每次本 app 成功登录/切换到某账号后，从 `GET /auth/me` 取身份写入缓存。
 - 二级菜单直接渲染这个本地列表——**跨 TLD 也能显示**（因为不需要 OP 的 cookie）。
 - 点某账号 → **顶层跳转** `…/oauth/authorize?prompt=select_account&login_hint=<sub|email>&state=…&code_challenge=…`。顶层导航会带上 OP 的 Lax 锚点 cookie，OP 凭袋子静默切到该账号 → 回调换令牌。若 OP 袋子里已无该账号（在别处登出了）→ 优雅回退到登录。
 - 「添加新账号」→ 顶层跳转 `…/oauth/authorize?prompt=login&…`（或选择器里的「使用其他账号」）。
@@ -107,7 +123,7 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 **诚实的限制（跨 TLD，如 moyu）**：本地缓存可能滞后真实袋子——在 forum 新加的账号 C，moyu 的二级菜单要等你在 moyu 上经 OP 切过一次才出现；在别处登出的账号点切换会回退到登录。OP 袋子始终是真源，切换永远以它为准，「添加新账号」永远可用 → 体验**可用且一致**，只是跨 TLD 的列表是「尽力而准」。
 
-> 用 `components/kun/` 的菜单/下拉组件实现嵌套（桌面 hover、移动端点击展开）。纯前端，不影响以上数据契约。**后端要求**：`/oauth/authorize` 接受 `login_hint`（定向静默切换）；`GET /auth/me` 返回 `sub`/`name`/`avatar` 供缓存（已有）。
+> 用各站自己的菜单/下拉组件实现嵌套（桌面 hover、移动端点击展开）。纯前端，不影响以上数据契约。**参考实现（可直接照搬到 forum/moyu）**：apps/wiki 的 `components/auth/AccountMenu.vue`（嵌套菜单 + 角色徽标 + 「切换需重新登录」提示）+ `composables/useKnownAccounts.ts`（localStorage 缓存，SSR 安全）+ `composables/useOAuthLogin.ts`（带 `prompt`/`login_hint` 的授权重定向）。**后端要求**：`/oauth/authorize` 接受 `login_hint`、`GET /auth/me` 返回身份（均已有）。
 
 ## 4. 安全要求（下游 **必须**，依据 RFC 9700 / RFC 6819）
 
@@ -139,13 +155,15 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 ## 7. 实施阶段（与 `docs/auth/02` 对齐）
 
-1. OP：会话袋 + `prompt` 处理 + 选择器页 + `/auth/sessions` API + 管理员 step-up（DB 迁移 `kun_galgame_infra`：`sessions` 加 `browser_id` 等）。单账号行为不变。
-2. 账号中心（apps/web，同 OP 家族）先吃狗粮：站内切换器 + 重定向/对齐。
-3. 逐站接入 forum / moyu / wiki：切换器 UI + `prompt=none` 焦点对齐。
-4. 调短 access TTL + 开审计日志。
+1. ✅ OP：会话袋 + `prompt` 处理 + 选择器页 + `/auth/sessions` API + 管理员 step-up（DB 迁移 `kun_galgame_infra`：`sessions` 加 `browser_id` 等）。单账号行为不变。
+2. ✅ 账号中心（apps/web，同 OP 家族）站内切换器（in-place switch + 角色徽标）。
+3. 🚧 逐站接入 forum / moyu / wiki 切换器 UI（**wiki ✅ 已接入**；forum / moyu 待做）+ `prompt=none` 焦点对齐（待做）。
+4. ⏳ 调短 access TTL + 开审计日志。
 
 ---
 
 ## 变更摘要
 
-> **2026-06-24（设计）**：新增本文。多账号切换契约：会话袋在 OP；切换走 `prompt=select_account` 重定向；全局活跃 = 焦点对齐（同 `.kungal.com` 可瞬时、moyu 跨 TLD 焦点对齐）；登出 = 撤销 + 短 TTL；管理员切入需 `prompt=login` 重登。安全沿用 07 的白名单 + 全程 `state`+PKCE。**尚未实现**，端点上线后再去 🚧 标记。
+> **2026-06-24（实现）**：后端 + OP 账号选择器落地——会话袋（`sessions.browser_id/auth_time/last_used_at`）、`prompt=select_account|none` + `login_hint`、`/auth/sessions`（+ switch/logout/logout-all，Bearer + confused-deputy 防护）、管理员 step-up（`10016`）；apps/web 站内切换器 + wiki 切换器（本地缓存 + 重定向）；`SessionBrief` 带 `roles`（角色徽标 + 「切换需重新登录」提示）。错误码复用 `10xxx`（非 `18xxx`）。forum / moyu 切换器待接入。
+
+> **2026-06-24（设计）**：新增本文。多账号切换契约：会话袋在 OP；切换走 `prompt=select_account` 重定向；全局活跃 = 焦点对齐（同 `.kungal.com` 可瞬时、moyu 跨 TLD 焦点对齐）；登出 = 撤销 + 短 TTL；管理员切入需 `prompt=login` 重登。安全沿用 07 的白名单 + 全程 `state`+PKCE。
