@@ -13,6 +13,9 @@ export interface UserState {
   // label was hard-cut to `id` everywhere (JWT claim, URL routes, Fiber
   // session JSON). See apps/api/internal/auth/dto/dto.go.
   id: number
+  // OAuth subject UUID (MeResponse.sub). Stable per identity and used as the
+  // `login_hint` when switching back to this account. See useKnownAccounts.
+  sub: string
   name: string
   avatar: string
   // OAuth image_service hash for the avatar; preferred by resolveAvatarUrl
@@ -31,6 +34,7 @@ export interface UserState {
 
 const initialUserState: UserState = {
   id: 0,
+  sub: '',
   name: '',
   avatar: '',
   avatar_image_hash: '',

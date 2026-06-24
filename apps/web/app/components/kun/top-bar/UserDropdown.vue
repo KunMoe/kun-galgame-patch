@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import type { KnownAccount } from '~/composables/useKnownAccounts'
+
 const userStore = useUserStore()
 const api = useApi()
 const { openLogoutModal } = useLogoutModal()
+const { accounts } = useKnownAccounts()
 
 const checking = ref(false)
 const logOpen = ref(false)
@@ -32,6 +35,26 @@ const openModal = (target: 'log' | 'logout' | 'creator') => {
   else if (target === 'creator') creatorOpen.value = true
   else openLogoutModal()
 }
+
+// Account switching (docs/oauth/09-account-switching.md). Both actions are
+// top-level authorize redirects — moyu is cross-TLD from the OP and can't read
+// its session bag over fetch, so switching always bounces through /oauth/authorize.
+// returnTo = the current path so the user lands back where they were.
+const onSwitchAccount = (account: KnownAccount) => {
+  if (account.id === userStore.user.id) return // already the active account
+  popover.value?.close()
+  startOAuthSwitchAccount(account.sub, route.fullPath)
+}
+
+const onAddAccount = () => {
+  popover.value?.close()
+  startOAuthAddAccount(route.fullPath)
+}
+
+// Switching INTO an admin account forces an OP re-login (step-up, §3.5) — flag
+// it so the choice isn't surprising. The OP enforces it regardless; this is a hint.
+const needsReauth = (account: KnownAccount) =>
+  (account.roles ?? []).includes('admin')
 
 const handleCheckIn = async () => {
   if (checking.value || userStore.user.daily_check_in) return
@@ -105,6 +128,86 @@ const handleCheckIn = async () => {
         <KunIcon name="lucide:user-round" class="size-4" />
         用户主页
       </NuxtLink>
+      <!-- 账号切换 — nested submenu. trigger="hover" opens it on desktop hover
+           and (kun-ui converts hover→tap on touch) on mobile, matching the
+           other top-bar hover menus and the requested "手机端 hover 变点击".
+           The list is the local known-accounts cache; clicking an account or
+           "添加新账号" is a top-level authorize redirect (moyu is cross-TLD from
+           the OP, so it can't read the OP session bag directly).
+           See docs/oauth/09-account-switching.md §3.6. -->
+      <KunPopover
+        trigger="hover"
+        position="bottom-start"
+        inner-class="min-w-60 p-1"
+      >
+        <template #trigger>
+          <button
+            type="button"
+            class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-2 text-sm"
+          >
+            <KunIcon name="lucide:users-round" class="size-4" />
+            账号切换
+            <KunIcon
+              name="lucide:chevron-right"
+              class="text-foreground/40 ml-auto size-4"
+            />
+          </button>
+        </template>
+
+        <div class="space-y-1">
+          <p
+            v-if="accounts.length"
+            class="text-default-500 px-2 py-1 text-xs"
+          >
+            切换账号
+          </p>
+          <template v-for="acc in accounts" :key="acc.sub">
+            <!-- The currently-active account: marked, not clickable. -->
+            <div
+              v-if="acc.id === userStore.user.id"
+              class="bg-default-100 flex items-center gap-2 rounded px-2 py-1.5 text-sm"
+            >
+              <KunAvatar :user="acc" :is-navigation="false" size="sm" />
+              <span class="min-w-0 flex-1 truncate">{{ acc.name }}</span>
+              <KunIcon
+                name="lucide:check"
+                class="text-primary size-4 shrink-0"
+              />
+            </div>
+            <button
+              v-else
+              type="button"
+              class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+              @click="onSwitchAccount(acc)"
+            >
+              <KunAvatar :user="acc" :is-navigation="false" size="sm" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate">{{ acc.name }}</span>
+                <span
+                  v-if="needsReauth(acc)"
+                  class="text-default-400 block text-xs"
+                >
+                  需重新登录
+                </span>
+              </span>
+            </button>
+          </template>
+
+          <div
+            v-if="accounts.length"
+            class="bg-default-200/60 my-1 h-px"
+          />
+
+          <button
+            type="button"
+            class="text-primary hover:bg-primary-50 flex w-full items-center gap-2 rounded px-2 py-2 text-sm font-medium"
+            @click="onAddAccount"
+          >
+            <KunIcon name="lucide:user-plus" class="size-4" />
+            添加新账号
+          </button>
+        </div>
+      </KunPopover>
       <NuxtLink
         to="/settings/user"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"

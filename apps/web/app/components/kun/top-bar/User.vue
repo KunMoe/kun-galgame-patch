@@ -11,6 +11,7 @@ import type { UserState } from '~/stores/userStore'
 const userStore = useUserStore()
 const messageStore = useMessageStore()
 const api = useApi()
+const { rememberUser } = useKnownAccounts()
 
 // Top-bar surfaces a single solid "登录" button. Clicking opens the app-wide
 // login modal (AuthEntry: 登录 / 注册, both bounce to OAuth web) — the same modal
@@ -24,6 +25,8 @@ const fetchUserStatus = async () => {
   if (res.code === 0) {
     // setUser merges into existing state and preserves muted_message_types.
     userStore.setUser(res.data)
+    // Keep this account fresh in the local switch list (account switching §3.6).
+    rememberUser(userStore.user)
     return
   }
   // Only wipe the pinia store on signals the server-side session is truly

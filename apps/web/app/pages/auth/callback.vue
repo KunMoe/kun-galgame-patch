@@ -13,6 +13,7 @@ definePageMeta({
 
 const api = useApi()
 const userStore = useUserStore()
+const { rememberUser } = useKnownAccounts()
 
 const error = ref<string | null>(null)
 const processed = ref(false)
@@ -51,8 +52,12 @@ onMounted(async () => {
   }
 
   userStore.setUser(res.data)
+  // Snapshot this account into the local switch list (account switching §3.6).
+  rememberUser(userStore.user)
   useKunMessage('登录成功!', 'success')
-  await navigateTo(`/user/${res.data.id}/resource`)
+  // A switch/add flow stashes where to return; plain logins fall back to the
+  // user's own resource page.
+  await navigateTo(consumeOAuthReturnTo() ?? `/user/${res.data.id}/resource`)
 })
 </script>
 

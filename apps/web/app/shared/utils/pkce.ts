@@ -54,10 +54,29 @@ const deleteOAuthCookie = (name: string): void => {
   document.cookie = `${name}=; max-age=0; path=/; samesite=lax`
 }
 
+// Options that tune the authorize redirect for the account-switching flows
+// (see docs/oauth/09-account-switching.md):
+//   - prompt=select_account → OP renders its account picker (the bag it holds
+//     for this browser); paired with login_hint it can switch silently.
+//   - prompt=login          → OP forces a fresh credential screen ("add a new
+//     account"), and is also what an admin step-up needs.
+//   - loginHint=<sub|email> → jump straight to a known account, skipping the
+//     picker when the OP bag still has it.
+//   - returnTo              → app path to land on after the callback completes
+//     (so switching keeps you where you were instead of bouncing to the
+//     profile). Stashed in a cookie and consumed by /auth/callback.
+interface AuthorizeOptions {
+  prompt?: 'login' | 'select_account' | 'none'
+  loginHint?: string
+  returnTo?: string
+}
+
 // Build the standard OAuth authorize URL + cookie-stash PKCE/state.
 // Shared between login and register flows — only the OAuth web entry
 // point differs (see startOAuthLogin / startOAuthRegister below).
-const prepareAuthorizeUrl = async (): Promise<string> => {
+const prepareAuthorizeUrl = async (
+  opts: AuthorizeOptions = {}
+): Promise<string> => {
   const config = useRuntimeConfig()
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
@@ -65,6 +84,7 @@ const prepareAuthorizeUrl = async (): Promise<string> => {
 
   setOAuthCookie('oauth_code_verifier', codeVerifier)
   setOAuthCookie('oauth_state', state)
+  if (opts.returnTo) setOAuthCookie('oauth_return_to', opts.returnTo)
 
   // `/oauth/authorize` is an API endpoint (lives under oauthServerUrl =
   // dev :9277/api/v1, prod oauth.kungal.com/api/v1). The user-facing
@@ -87,12 +107,36 @@ const prepareAuthorizeUrl = async (): Promise<string> => {
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'
   })
+  if (opts.prompt) params.set('prompt', opts.prompt)
+  if (opts.loginHint) params.set('login_hint', opts.loginHint)
 
   return `${oauthServerUrl}/oauth/authorize?${params}`
 }
 
-export const startOAuthLogin = async (): Promise<void> => {
-  window.location.href = await prepareAuthorizeUrl()
+export const startOAuthLogin = async (
+  opts: AuthorizeOptions = {}
+): Promise<void> => {
+  window.location.href = await prepareAuthorizeUrl(opts)
+}
+
+// Switch to an account the OP already holds for this browser. login_hint =
+// the target's `sub`; OP switches without re-prompting unless the target is an
+// admin (step-up → it forces prompt=login itself). If the OP bag no longer has
+// the account (logged out elsewhere), it gracefully falls back to login.
+// See docs/oauth/09-account-switching.md §3.1 / §3.6.
+export const startOAuthSwitchAccount = async (
+  loginHint: string,
+  returnTo?: string
+): Promise<void> => {
+  await startOAuthLogin({ prompt: 'select_account', loginHint, returnTo })
+}
+
+// Add a brand-new account: force the OP login screen (don't silently re-consent
+// the current session). The new account joins the OP bag and our local list.
+export const startOAuthAddAccount = async (
+  returnTo?: string
+): Promise<void> => {
+  await startOAuthLogin({ prompt: 'login', returnTo })
 }
 
 // Unified-registration entry: bounce the user to OAuth web's /auth/register
@@ -151,4 +195,15 @@ export const verifyOAuthCallback = (): {
   deleteOAuthCookie('oauth_code_verifier')
 
   return { code, codeVerifier }
+}
+
+// Read (and clear) the post-callback return path stashed by a switch/add flow.
+// Returns null when absent or unsafe. Open-redirect guard: only same-origin app
+// paths (a single leading slash) are honoured; anything else falls back to the
+// caller's default destination.
+export const consumeOAuthReturnTo = (): string | null => {
+  const value = getOAuthCookie('oauth_return_to')
+  if (value) deleteOAuthCookie('oauth_return_to')
+  if (value && value.startsWith('/') && !value.startsWith('//')) return value
+  return null
 }
