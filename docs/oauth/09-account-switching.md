@@ -93,6 +93,22 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 - OP 记录 `auth_time`；管理端点会校验「最近一次认证时间」，过旧则要求重新认证。
 - 下游无需特殊处理——照常走 §3.1 重定向即可，OP 自动插入重登。
 
+### 3.6 账号选择器 UX（推荐下游**统一**实现）
+
+理想交互：点头像 → 弹出菜单 → 「切换账号」项（桌面 hover / 手机点击）→ 二级菜单列出可切换账号 + 「添加新账号」。本设计**支持**它，机制如下，各站 UI 应统一这么做：
+
+**二级菜单的账号列表 = 本 app 的「已知账号」本地缓存（localStorage）**，不依赖跨站读 OP 袋子：
+- 缓存项 = `{ sub, name, avatar }`，**不含任何令牌**。每次本 app 成功登录/切换到某账号后，从 `GET /auth/me` 取身份写入缓存。
+- 二级菜单直接渲染这个本地列表——**跨 TLD 也能显示**（因为不需要 OP 的 cookie）。
+- 点某账号 → **顶层跳转** `…/oauth/authorize?prompt=select_account&login_hint=<sub|email>&state=…&code_challenge=…`。顶层导航会带上 OP 的 Lax 锚点 cookie，OP 凭袋子静默切到该账号 → 回调换令牌。若 OP 袋子里已无该账号（在别处登出了）→ 优雅回退到登录。
+- 「添加新账号」→ 顶层跳转 `…/oauth/authorize?prompt=login&…`（或选择器里的「使用其他账号」）。
+
+**同站 app（kungal.com 家族）可选增强**：直接 `GET /auth/sessions`（同站 cookie 会发送）实时拉取**准确**的袋子列表来覆盖本地缓存——列表永远最新。
+
+**诚实的限制（跨 TLD，如 moyu）**：本地缓存可能滞后真实袋子——在 forum 新加的账号 C，moyu 的二级菜单要等你在 moyu 上经 OP 切过一次才出现；在别处登出的账号点切换会回退到登录。OP 袋子始终是真源，切换永远以它为准，「添加新账号」永远可用 → 体验**可用且一致**，只是跨 TLD 的列表是「尽力而准」。
+
+> 用 `components/kun/` 的菜单/下拉组件实现嵌套（桌面 hover、移动端点击展开）。纯前端，不影响以上数据契约。**后端要求**：`/oauth/authorize` 接受 `login_hint`（定向静默切换）；`GET /auth/me` 返回 `sub`/`name`/`avatar` 供缓存（已有）。
+
 ## 4. 安全要求（下游 **必须**，依据 RFC 9700 / RFC 6819）
 
 - [ ] 每次切换/添加/对齐重定向都带**一次性、绑定 user-agent 的 `state`** + **PKCE**（SPA 是 public client）。防止伪造回调把受害者**静默切到攻击者账号**。
