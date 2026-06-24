@@ -130,7 +130,7 @@ await createSession(user, tokenResp)
 
 **OAuth flow overview** (see `docs/integration/oauth/oauth-integration-guide.md` for full details):
 
-1. User clicks "Login with KUN Account" on MoYu
+1. User clicks "Login with 鲲 Galgame Account" on MoYu
 2. Browser redirects to `oauth.kungal.com/api/v1/oauth/authorize`
 3. User authenticates on OAuth server
 4. Redirect back to MoYu with authorization code
