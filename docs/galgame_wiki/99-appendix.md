@@ -65,6 +65,7 @@
 | **Messages** | GET | `/galgame/messages/mine` | Bearer | 1 |
 | | GET | `/galgame/messages/feed` | Basic Auth | 1 |
 | **Revision feed** | GET | `/galgame/revisions/recent` | Basic Auth | 1 |
+| **Taxonomy feed** | GET | `/galgame/taxonomy/recent` | Basic Auth | 1 |
 | | | | **总计** | **66** |
 
 > **标注 (MS) = Meilisearch 驱动**；其余 search 端点（如 `/series/search`）仍基于 Postgres。

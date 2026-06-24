@@ -77,7 +77,7 @@ OAuth: creator_applications 中央队列 → 管理员审核 → approve 授予 
 
 | 端点 | 作用 | 响应 |
 |------|------|------|
-| `GET /api/v1/admin/creator/applications?status=&page=&limit=` | 审核队列（`status` 缺省 `pending`） | `{ items: [申请对象], total }` |
+| `GET /api/v1/admin/creator/applications?status=&page=&limit=` | 审核队列（`status` 缺省 `pending`） | `{ items: [申请对象 + user], total }`（每条多带申请人简介 `user`，见下「管理员列表额外字段」） |
 | `POST /api/v1/admin/creator/applications/:id/approve` | 通过 → 授予 `creator` 角色 + 标记 approved | `{ id, status: "approved" }` |
 | `POST /api/v1/admin/creator/applications/:id/decline` | 拒绝（body `{ reason?: max 500 }`） | `{ id, status: "declined" }` |
 
@@ -102,6 +102,8 @@ OAuth: creator_applications 中央队列 → 管理员审核 → approve 授予 
 ```
 
 **状态枚举 `status`**：`pending`（待审核）| `approved`（已通过）| `declined`（已拒绝）。
+
+**管理员列表额外字段（仅 `GET /admin/creator/applications`）**：每个 item 在上述申请对象字段之外再带一个 `user` —— 申请人的 `UserBrief`（`id` / `name` / `avatar` / `avatar_image_hash` / `status` / `roles` / …），由 OAuth **服务端注入**，管理端 UI 直接展示，**无需**再调 S2S 专用的 `GET /users/batch`（那是 client Basic 鉴权的服务间端点，浏览器调会 401）。用户行已不存在时 `user` 为 `null`。`GET /creator/applications/me`（用户查自己）**不带** `user`。
 
 ## 下游耦合点（重命名 / 重构时务必同步本节）
 

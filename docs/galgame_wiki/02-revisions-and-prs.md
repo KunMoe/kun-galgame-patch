@@ -197,6 +197,7 @@
       {
         "id": 8231,
         "galgame_id": 1207,
+        "revision": 2,
         "user_id": 42,
         "action": "merged",
         "created": "2026-01-02T03:04:05Z"
@@ -209,13 +210,70 @@
 
 | 字段 | 说明 |
 |------|------|
-| id | `galgame_revision.id`,作游标 |
+| id | `galgame_revision.id`（全局行号），作游标 |
 | galgame_id | 被编辑的 galgame |
+| revision | 该 galgame 内的**第几版**（per-galgame 递增号）。与 `galgame_id` 一起即可直接拼 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff)（`:rev` = 这个 `revision`，**不是 `id`**），也是「第 N 版」展示标签。**注意**：diff 端点按 `revision` 而非 `id` 寻址——别拿 `id` 去拼 diff URL（会 404）。 |
 | user_id | **编辑者**(= 合并时的 `pr.user_id`),即正确的动态 actor |
 | action | 目前恒为 `merged` |
 | created | 编辑落地时间 |
 
 只返回 `action='merged'`(PR 合并 = 一次编辑落地);**不做 status / NSFW 过滤**(和 `/messages/feed` 同契约)——消费方拿不到对应 galgame brief 时自行丢弃(banned / NSFW)。注意:**新建动态请用现有的 galgame 创建源,别拿这个 feed 重复计创建**。
+
+---
+
+### GET /galgame/taxonomy/recent
+
+全站「分类(tag / official / engine / **series**)变更」事件流,`since_id` 游标 + `has_more`,**Basic Auth**(OAuth client),供下游 cron 拉取后镜像进各自动态时间线(如论坛首页「新建 Galgame 系列」卡片)。和 `/revisions/recent`、`/messages/feed` **同一套消费模式**。
+
+> **为什么需要它**:`taxonomy_revision`(分类变更审计)只有按实体维度的 `/{tag,official,engine,series}/:id/revisions`(单实体历史),没有全站 feed;而 `/revisions/recent` 只含 galgame 编辑(`action='merged'`),不含分类的新建/改名/删除。下游要做「谁新建了哪个系列」这类动态,必须有这个全站分类 feed。
+
+**查询参数**:
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| since_id | int64 | 0 | 排他下界(返回 id > since_id),即游标 |
+| limit | int | 1000 | 单页条数,最大 5000 |
+| entity | string | (全部) | 可选过滤:`tag` / `official` / `engine` / `series` |
+| action | string | (全部) | 可选过滤:`created` / `updated` / `deleted` / `reverted` |
+
+**请求示例**(论坛「新建系列」卡片只要 series 的创建):`GET /galgame/taxonomy/recent?entity=series&action=created`
+
+**成功响应**:
+
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "items": [
+      {
+        "id": 512,
+        "entity": "series",
+        "target_id": 45,
+        "revision": 1,
+        "action": "created",
+        "user_id": 42,
+        "name": "Fate 系列",
+        "created": "2026-01-02T03:04:05Z"
+      }
+    ],
+    "has_more": false
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| id | `taxonomy_revision.id`(全局行号),作游标 |
+| entity | 实体类型 `tag`/`official`/`engine`/`series` |
+| target_id | 实体行 id(如 series id),用于跳转实体页 |
+| revision | 该实体内的第几版(`created` 恒为 1) |
+| action | `created` / `updated` / `deleted` / `reverted` |
+| user_id | **操作者**(= 该修订的 `user_id`),即正确的动态 actor |
+| name | 实体显示名(从该修订 snapshot 提取,四种实体均有);故 feed item **自描述**——下游无需再查实体即可渲染卡片 |
+| created | 变更时间 |
+
+**不做 status / NSFW 过滤**(和 `/revisions/recent`、`/messages/feed` 同契约)。`series` 创建频率远低于 galgame 编辑,卡片会比较稀疏——是否上首页 feed 由下游产品决定。
 
 ---
 

@@ -274,6 +274,7 @@ admin 在 wiki 后台审核队列看到这条
 | `SearchWithPending(ctx, token, q)` | GET `/galgame/search?include_pending=true` | 发布向导搜索（含自己的 pending） |
 | `SearchPublic(ctx, q)` | GET `/galgame/search` | 公开搜索（不带 Bearer） |
 | `Batch(ctx, token?, ids)` | GET `/galgame/batch` | 列表渲染拉 brief；带 Bearer 时含自己 pending |
+| `BatchDetail(ctx, ids)` | GET `/galgame/batch?view=detail` | 富列表卡片拉 brief + intro / officials / release_date（GalgameDetailBrief，见 [01-galgame.md](./01-galgame.md#viewdetailgalgamedetailbrief)） |
 | `GetDetail(ctx, gid)` | GET `/galgame/:gid` | 详情页元数据 |
 | `MyNotifications(ctx, token, sinceID)` | GET `/galgame/messages/mine` | 消息中心 wiki 消息流 |
 
@@ -307,6 +308,7 @@ admin 在 wiki 后台审核队列看到这条
 |---|---|---|
 | `MessageFeed(ctx, sinceID, limit)` | GET `/galgame/messages/feed` | cron 拉新消息（approved/declined/banned/unbanned） |
 | `RecentRevisions(ctx, sinceID, limit)` | GET `/galgame/revisions/recent` | cron 拉最近编辑（merged 修订），镜像进本地动态时间线 |
+| `RecentTaxonomy(ctx, entity, action, sinceID, limit)` | GET `/galgame/taxonomy/recent` | cron 拉分类变更（如 series 新建），镜像进本地动态时间线（见 [02 GET /galgame/taxonomy/recent](./02-revisions-and-prs.md#get-galgametaxonomyrecent)） |
 
 ### 5.3 调用样板
 

@@ -63,11 +63,11 @@
 
 批量获取 galgame 轻量信息（跨服务展示用，不加载关联数据）。
 
-> **batch 是轻量 DTO，字段是白名单的**。返回**只有**下方响应示例里那些字段（id / vndb_id / name_* / banner / effective_banner_hash / content_limit / status / user_id / resource_update_time / original_language / age_limit）。
+> **默认 batch 是轻量 DTO，字段是白名单的**。`view` 省略 / `view=brief` 时返回**只有**下方响应示例里那些字段（id / vndb_id / name_* / banner / effective_banner_hash / content_limit / status / user_id / resource_update_time / original_language / age_limit）。
 >
-> **不包含**：`release_date` / `release_date_tba` / `intro_*` / `tag` / `official` / `engine` / `series` / `cover` / `screenshot` / `alias` 等。要这些字段请用 **`GET /galgame/:gid`**（单条详情）、**`GET /galgame`**（列表）或 **`GET /galgame/search`**（搜索）—— 这三个端点都带 `release_date`。
+> **默认（brief）不包含**：`release_date` / `release_date_tba` / `intro_*` / `official` / `tag` / `engine` / `series` / `cover` / `screenshot` / `alias` 等。要 `intro_*` / `officials` / `release_date`，传 **`view=detail`**（见下方「view=detail」）；要 `tag` / `cover` 等完整关联，用 **`GET /galgame/:gid`**（单条详情）、**`GET /galgame`**（列表）或 **`GET /galgame/search`**（搜索）。
 >
-> 典型踩坑：想按发售日期做本地镜像/筛选的下游，**不能**从 batch 拿 `release_date`（它压根不在 batch 里），必须走 `/galgame/:gid` 或列表/搜索端点。
+> 典型踩坑：想按发售日期做本地镜像/筛选的下游，**默认 brief 里没有 `release_date`** —— 要么传 `view=detail`，要么走 `/galgame/:gid` / 列表 / 搜索端点。
 
 **查询参数**：
 
@@ -75,6 +75,7 @@
 |------|------|------|--------|------|
 | ids | int[] | 是 | — | galgame ID 数组，最多 100 个 |
 | content_limit | string | 否 | **（不过滤）** | NSFW 过滤。`sfw` / `nsfw` / `all`。**与 list/search 不同：batch 默认不过滤** — 调用方已经明确知道想要哪些 ID（如 patch.galgame_id、收藏列表），过滤会"静默丢失"调用方显式列出的条目。需要过滤时显式传 `content_limit=sfw`。详见 [00-handbook §NSFW](./00-handbook-for-downstream.md#nsfw-content_limit-协议) |
+| view | string | 否 | `brief` | 返回粒度。`brief`（默认，等价于省略）= 轻量 DTO；`detail` = 在 brief 之上额外带 `release_date`(+`_tba`) / `intro_*` / `officials`（见下方「view=detail」） |
 
 **请求示例**：`GET /galgame/batch?ids=1,2,3`
 
@@ -113,6 +114,32 @@
 不存在或对调用者不可见的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
 
 **带 Bearer 的语义**：与 OAuth 终端用户 access_token 一起调用，wiki 解 JWT 得 `id`，返回结果中额外包含调用者的 status=3/4 条目（参见 [07-submission.md GET /galgame/batch 增量行为](./07-submission.md#get-galgamebatch-增量行为)）。无 Bearer 时只返 status=0。
+
+#### view=detail（GalgameDetailBrief）
+
+`view=detail` 在 brief 全部字段之上，额外返回 introduction / officials / release_date —— 给需要这些字段的富列表卡片（例如下游「新发布 Galgame」feed 卡片）用，免去逐条 `GET /galgame/:gid`。`view` 省略 / `brief` 时行为不变（消息 / 个人主页列表 / 默认 batch 仍是轻量 brief）。`content_limit` 与 Bearer 语义和 brief 完全一致。
+
+**请求示例**：`GET /galgame/batch?ids=1,2,3&view=detail`
+
+**额外字段**（在 brief 字段之外，其余同上）：
+
+```json
+{
+  "release_date": "2024-09-27",
+  "release_date_tba": false,
+  "intro_en_us": "...",
+  "intro_ja_jp": "...",
+  "intro_zh_cn": "...",
+  "intro_zh_tw": "...",
+  "officials": ["Brand A", "Brand B"]
+}
+```
+
+| 字段 | 备注 |
+|---|---|
+| `release_date` | `""` 表示未知；`release_date_tba=true` 区分「已定档但无确切日期」与「完全未知」 |
+| `intro_*` | 四语言简介（markdown，单条可能 1–10 KB）；调用方按偏好语言取一个并自行截断 |
+| `officials` | 制作会社 / 品牌的**纯名称**数组（可能为空或多个）；调用方自行拼接（如用 `、`）展示「由 X 制作」 |
 
 ---
 
