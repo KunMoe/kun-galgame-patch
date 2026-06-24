@@ -73,7 +73,7 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 | 方法 | 路径 | 作用 | 响应（`data`） |
 |------|------|------|------|
-| GET | `/api/v1/auth/sessions` | 列出本浏览器袋子里的账号 | `{ items: [{ sub, name, email, avatar, avatar_image_hash?, active, last_used_at }] }` |
+| GET | `/api/v1/auth/sessions` | 列出本浏览器袋子里的账号 | `{ items: [{ sub, name, email, avatar, avatar_image_hash?, roles, active, last_used_at }] }`（`roles` 供选择器显示角色徽标 + 管理员「需重新登录」提示） |
 | POST | `/api/v1/auth/sessions/switch` | 把某账号设为活跃（同站内即时全局） | `{ user, access_token }`（即登录响应体；并轮换 `refresh_token` cookie。前端可直接更新缓存 + 用新 access_token） |
 | POST | `/api/v1/auth/sessions/logout` | **登出此账号**（撤销该会话） | `null`（成功；目标不在袋中 → 404 / 10005） |
 | POST | `/api/v1/auth/sessions/logout-all` | **登出全部**（撤销袋内所有会话 + 清锚点 cookie） | `null` |
