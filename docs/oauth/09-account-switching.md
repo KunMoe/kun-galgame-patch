@@ -71,14 +71,14 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 > 这些 JSON 端点读 OP 域上的锚点 cookie，因此**只对与 OP 同站的前端可用**。
 > 跨 TLD 的 moyu **用不了**（`SameSite` cookie 不会跨站 `fetch` 发送）→ 跨 TLD 一律走 §3.1 重定向。
 
-| 方法 | 路径 | 作用 | 响应 |
+| 方法 | 路径 | 作用 | 响应（`data`） |
 |------|------|------|------|
-| GET | `/api/v1/auth/sessions` | 列出本浏览器袋子里的账号 | `{ items: [{ sub, name, avatar, email, active, last_used }] }` |
-| POST | `/api/v1/auth/sessions/switch` | 把某账号设为活跃（同站内即时全局） | `{ active: <sub> }` |
-| POST | `/api/v1/auth/sessions/logout` | **登出此账号**（撤销该会话） | `{ ok: true }` |
-| POST | `/api/v1/auth/logout?scope=all` | **登出全部**（撤销袋内所有会话 + 清锚点 cookie） | `{ ok: true }` |
+| GET | `/api/v1/auth/sessions` | 列出本浏览器袋子里的账号 | `{ items: [{ sub, name, email, avatar, avatar_image_hash?, active, last_used_at }] }` |
+| POST | `/api/v1/auth/sessions/switch` | 把某账号设为活跃（同站内即时全局） | `{ user, access_token }`（即登录响应体；并轮换 `refresh_token` cookie。前端可直接更新缓存 + 用新 access_token） |
+| POST | `/api/v1/auth/sessions/logout` | **登出此账号**（撤销该会话） | `null`（成功；目标不在袋中 → 404 / 10005） |
+| POST | `/api/v1/auth/sessions/logout-all` | **登出全部**（撤销袋内所有会话 + 清锚点 cookie） | `null` |
 
-请求体：`switch` / `logout` 带 `{ session_id }`（或 `{ sub }`）。全部需用户 JWT + CSRF（同站表单/双提交令牌）。
+请求体：`switch` / `logout` 带 `{ sub }`（账号的 user uuid）。鉴权 = 用户 JWT（**Bearer**，`Authorization` header）——非 cookie 鉴权，天然免 CSRF，无需额外 CSRF 令牌。**调用者（Bearer 身份）必须是该浏览器袋子的成员**，否则 401（防 confused-deputy：仅凭锚点 cookie 不足以操作袋子）。
 
 ### 3.4 登出语义（本系统决策：基于撤销 / revocation-based）
 
@@ -117,14 +117,17 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 - [ ] access token 应 `aud` 限定到本 app 的资源服务器（moyu 的令牌不能拿去打 kungal 的 API）。
 - [ ] UI 上**醒目展示当前账号**（头像+昵称在 header），防止后台标签页 stale 导致「以为是 A 实际是 B」。
 
-## 5. 错误码（占位，实现时补全到 [04-tokens-and-errors.md](./04-tokens-and-errors.md)）
+## 5. 错误码（实现已落地；详见 [04-tokens-and-errors.md](./04-tokens-and-errors.md) 认证段）
 
-| 场景 | HTTP | code（待定，规划在 18xxx 段） |
+> 后端错误统一走 `{ code, message }`（HTTP status + 业务 code 同时返回，下游**两者都要看**）。
+> 切换/登出的业务错误复用认证段（`10xxx`），不另开 `18xxx` 段。
+
+| 场景 | HTTP | code |
 |------|------|------|
-| 需要选择账号（`prompt=none` 多账号未选） | 400 | `account_selection_required` |
-| 切换目标会话不存在/已撤销 | 404 | 18001 |
-| 切换目标需 step-up（未满足） | 401 | 18002 |
-| 会话袋为空（无任何登录） | 401 | `login_required` |
+| 需要选择账号（`prompt=none` 多账号未选，前端 OP 页判定） | 重定向回下游 `error=account_selection_required` | — |
+| 切换/登出目标不在袋中（不存在/已撤销） | 404 | `10005`（ErrAuthUserNotFound） |
+| 切换目标需 step-up（管理员/ren，未重认证） | 401 | `10016`（ErrAuthStepUpRequired）→ 前端跳 `prompt=login` |
+| 调用者非该袋成员（confused-deputy 防护） | 401 | `10001`（ErrAuthUnauthorized） |
 
 ## 6. 下游耦合点（重命名/重构时务必同步本节）
 
