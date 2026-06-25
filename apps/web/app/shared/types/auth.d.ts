@@ -7,4 +7,7 @@ interface EcosystemApp {
   site_domain: string
   logo_url?: string
   tagline?: string
+  // First-party ("官方") site: shown with an "官方" chip and sorted ahead of
+  // third-party sites. The provider already sorts these first.
+  auto_consent?: boolean
 }

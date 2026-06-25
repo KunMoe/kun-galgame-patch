@@ -73,6 +73,9 @@ type EcosystemApp struct {
 	SiteDomain string `json:"site_domain"`
 	LogoURL    string `json:"logo_url,omitempty"`
 	Tagline    string `json:"tagline,omitempty"`
+	// AutoConsent marks a first-party ("官方") site. The provider sorts these
+	// ahead of third-party sites and the strip shows an "官方" chip for them.
+	AutoConsent bool `json:"auto_consent"`
 }
 
 // ListEcosystem returns the OAuth app-directory strip, served same-origin from
