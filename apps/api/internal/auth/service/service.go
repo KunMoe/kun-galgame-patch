@@ -19,6 +19,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
@@ -29,11 +30,25 @@ import (
 	"gorm.io/gorm"
 )
 
+// ecosystemTTL bounds how long the OAuth app-directory list is cached before a
+// fresh server-to-server refetch. The list is public marketing metadata that
+// changes very rarely, so a 10-minute TTL keeps the login modal instant without
+// hammering the OAuth server.
+const ecosystemTTL = 10 * time.Minute
+
 type AuthService struct {
 	repo     *repository.AuthRepository
 	rdb      *redis.Client
 	oauthCfg config.OAuthConfig
 	http     *http.Client
+
+	// ecosystem is an in-memory TTL cache for the OAuth app-directory strip
+	// (GET /oauth/ecosystem). It is shielded behind a RWMutex; on expiry we
+	// refetch server-to-server (no CORS — this runs on the moyu backend), and
+	// on upstream failure we keep serving the last good snapshot.
+	ecoMu      sync.RWMutex
+	ecoApps    []EcosystemApp
+	ecoFetched time.Time // zero until the first successful fetch
 }
 
 func New(repo *repository.AuthRepository, rdb *redis.Client, oauthCfg config.OAuthConfig) *AuthService {
@@ -47,6 +62,83 @@ func New(repo *repository.AuthRepository, rdb *redis.Client, oauthCfg config.OAu
 		// previously used here without a timeout).
 		http: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// EcosystemApp is one entry in the public OAuth app directory ("可以用这个账号
+// 登录以下网站"). Mirrors the OAuth provider's GET /oauth/ecosystem shape — only
+// public display fields (no secret / redirect / scope). See
+// docs/oauth/10-app-directory.md.
+type EcosystemApp struct {
+	Name       string `json:"name"`
+	SiteDomain string `json:"site_domain"`
+	LogoURL    string `json:"logo_url,omitempty"`
+	Tagline    string `json:"tagline,omitempty"`
+}
+
+// ListEcosystem returns the OAuth app-directory strip, served same-origin from
+// moyu so the browser never has to cross-origin fetch the OAuth provider (whose
+// CORS allow-list does not include moyu's www subdomain).
+//
+// Caching: fresh in-memory snapshots live for ecosystemTTL. On a miss/expiry we
+// refetch the provider's public GET /oauth/ecosystem server-to-server. If that
+// refetch fails we serve the last good snapshot (stale-on-error); if we have no
+// snapshot at all we return an empty slice — a marketing strip must never break
+// the login modal, so this method never surfaces an error to the caller.
+func (s *AuthService) ListEcosystem() []EcosystemApp {
+	s.ecoMu.RLock()
+	apps, fetched := s.ecoApps, s.ecoFetched
+	s.ecoMu.RUnlock()
+	if !fetched.IsZero() && time.Since(fetched) < ecosystemTTL {
+		return apps
+	}
+
+	fresh, err := s.fetchEcosystem()
+	if err != nil {
+		// Serve the last good snapshot on upstream failure; apps is nil (→ [])
+		// on a cold start, which the handler renders as an empty strip.
+		slog.Warn("OAuth ecosystem refetch failed; serving stale cache", "error", err, "stale_count", len(apps))
+		return apps
+	}
+
+	s.ecoMu.Lock()
+	s.ecoApps, s.ecoFetched = fresh, time.Now()
+	s.ecoMu.Unlock()
+	return fresh
+}
+
+// fetchEcosystem performs the server-to-server GET against the OAuth provider's
+// public app-directory endpoint and unwraps the {code, message, data:{apps}}
+// envelope.
+func (s *AuthService) fetchEcosystem() ([]EcosystemApp, error) {
+	req, err := http.NewRequest(http.MethodGet, s.oauthCfg.ServerURL+"/oauth/ecosystem", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build oauth ecosystem request: %w", err)
+	}
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("oauth ecosystem request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oauth ecosystem failed (%d): %s", resp.StatusCode, truncate(string(respBody), 200))
+	}
+
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Apps []EcosystemApp `json:"apps"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &env); err != nil {
+		return nil, fmt.Errorf("decode oauth ecosystem envelope: %w (body=%s)", err, truncate(string(respBody), 200))
+	}
+	if env.Code != 0 {
+		return nil, fmt.Errorf("oauth ecosystem error code=%d: %s", env.Code, env.Message)
+	}
+	return env.Data.Apps, nil
 }
 
 // OAuthTokenResponse is the OAuth /oauth/token response payload.

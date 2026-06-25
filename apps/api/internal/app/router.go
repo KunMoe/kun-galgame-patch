@@ -38,6 +38,10 @@ func (a *App) RegisterRoutes() {
 	// ===== Auth Routes =====
 	authRoutes := api.Group("/auth")
 	authRoutes.Post("/oauth/callback", a.AuthHandler.OAuthCallback)
+	// Public OAuth app-directory strip ("可以用这个账号登录以下网站") on the login
+	// modal. Backend-proxied + TTL-cached so the browser reads it same-origin
+	// (moyu's TLD is not in the OAuth provider's CORS allow-list). No auth.
+	authRoutes.Get("/oauth/ecosystem", a.AuthHandler.Ecosystem)
 	authRoutes.Post("/logout", a.AuthHandler.Logout)
 	authRoutes.Get("/me", auth, a.AuthHandler.Me)
 	// OAuth display-layer proxy (docs/oauth/02-user-profile.md §身份操作 vs

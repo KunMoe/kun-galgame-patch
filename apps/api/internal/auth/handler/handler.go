@@ -121,6 +121,19 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	return response.OKMessage(c, "Logged out")
 }
 
+// Ecosystem GET /api/v1/auth/oauth/ecosystem
+//
+// Public, unauthenticated. Serves the OAuth app-directory strip ("可以用这个账号
+// 登录以下网站") on the login modal. The list is fetched server-to-server from the
+// OAuth provider's public GET /oauth/ecosystem and cached in-memory with a TTL
+// (see service.ListEcosystem) so the browser reads it same-origin — moyu is on a
+// different TLD and is not in the provider's CORS allow-list, so a direct browser
+// fetch would be blocked. Always 200 with {apps:[...]} (empty on a cold-start
+// upstream failure) — a marketing strip must never break the login page.
+func (h *AuthHandler) Ecosystem(c *fiber.Ctx) error {
+	return response.OK(c, fiber.Map{"apps": h.service.ListEcosystem()})
+}
+
 // Me GET /api/v1/auth/me
 //
 // Composes identity (userID/sub/roles from session+JWT), display fields
