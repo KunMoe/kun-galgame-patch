@@ -134,8 +134,17 @@ const handleCheckIn = async () => {
            The list is the local known-accounts cache; clicking an account or
            "添加新账号" is a top-level authorize redirect (moyu is cross-TLD from
            the OP, so it can't read the OP session bag directly).
-           See docs/oauth/09-account-switching.md §3.6. -->
+           See docs/oauth/09-account-switching.md §3.6.
+           KunPopover wraps the trigger in two inline-block <div>s (its root +
+           the inner triggerRef wrapper), so the row shrank to content width.
+           `w-full` falls through to the root and `[&>div:first-child]:w-full`
+           hits the inner wrapper — inline-block honours an explicit width, so
+           both fill the menu with no display override or scoped CSS (which would
+           stamp this component's scope id onto the teleport-root KunModals it
+           renders → Vue "extraneous attrs" warnings). No full-width-trigger
+           prop exists on KunPopover. -->
       <KunPopover
+        class="w-full [&>div:first-child]:w-full"
         trigger="hover"
         position="bottom-start"
         inner-class="min-w-60 p-1"
@@ -187,7 +196,7 @@ const handleCheckIn = async () => {
                   v-if="needsReauth(acc)"
                   class="text-default-400 block text-xs"
                 >
-                  需重新登录
+                  管理员账号切换需重新登录
                 </span>
               </span>
             </button>
