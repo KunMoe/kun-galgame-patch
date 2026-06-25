@@ -95,10 +95,16 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 
 ### 3.4 登出语义（本系统决策：基于撤销 / revocation-based）
 
-- **登出此账号**：OP 撤销该会话（**硬删除会话行**——删了就刷不动，等价于撤销），从袋子移除。持有该账号令牌的 app 在**下次刷新**时失败 → 自动登出；**其他账号不受影响**。
-- **登出全部**：撤销袋内全部会话。
-- **传播机制 = 撤销 + 短 access token TTL**（不用 back-channel / iframe）：access token 寿命设为 **~10–15 分钟**；任意 app 刷新时若会话已撤销则刷新失败 → 一个 TTL 内登出。想更快就调短 TTL，这是唯一旋钮。
-  - 这样选是因为：我们的下游是 SPA，**没有服务端 RP 会话**可供 back-channel logout 关联 `sid`；front-channel iframe 又依赖跨站 cookie（脆弱）。撤销式最简单、坑最少、可日后再叠加即时传播而无需重构。
+> **关键：单次「退出登录」只应登出当前账号，不要清空整个袋子。** OIDC 规范本身倾向「按
+> 会话登出」（用 `sid` 指明登出**哪一个**会话），**没有**规定「登出 = 登出所有账号」；Google
+> 网页版的「登出即登出全部」是其产品取舍（且广受诟病，移动端就是逐个登出）。多账号最佳实践
+> = 同时提供**「退出当前账号」+「退出全部账号」**两个动作。
+
+- **退出当前账号**（`POST /auth/sessions/logout {sub}`）：OP 硬删除该账号的会话（删了就刷不动 = 撤销），从袋子移除；**其他账号不受影响**。若删的是当前活跃账号，OP 顺带清 `refresh_token` cookie。推荐下游 UX：删除后**落到袋内剩余的某个账号**（仍保持登录其它账号，类 Gmail 移动端），袋空了才回登录页——**不要**一登出就把人踢回登录页/清掉所有账号。参考实现（apps/web 账号中心切换器）：先 `switch` 到剩余的某个非管理员账号（这样调用者仍是袋成员 → 过 §3.3 的 confused-deputy 校验）再 `logout` 旧账号。
+- **退出全部账号**（`POST /auth/sessions/logout-all`）：撤销袋内全部会话 + 清锚点 cookie。**仅在用户显式选择**「退出全部」时调用。
+- **传播机制 = 撤销 + 短 access token TTL**（不用 back-channel / iframe）：access token 寿命 **~10–15 分钟**；任意 app 刷新时若会话已撤销则刷新失败 → 一个 TTL 内登出。想更快就调短 TTL，这是唯一旋钮。
+  - 这样选是因为：下游是 SPA，**没有服务端 RP 会话**可供 back-channel logout 关联 `sid`；front-channel iframe 又依赖跨站 cookie（脆弱）。撤销式最简单、坑最少、可日后再叠加即时传播而无需重构。
+- **与 RP 发起登出（[07-logout.md](./07-logout.md)）的区别（别混用）**：上面的 `logout` / `logout-all` 是**同站、OP 侧的会话袋管理**（账号中心用）。**跨 TLD 下游**要登出自己这个 app 的会话，走 RP 发起登出（顶层跳 OP 登出入口，见 07）；要切到别的账号走 §3.1 重定向 / §3.6 切换器。
 
 ### 3.5 管理员 step-up（本系统决策：切入管理员账号需重新认证）
 
@@ -163,6 +169,8 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 ---
 
 ## 变更摘要
+
+> **2026-06-25（登出语义）**：澄清 §3.4——单次「退出登录」只登出**当前账号**（非清空整个袋子；这非 RFC 强制、Google 网页版「登出全部」是其取舍），多账号应提供「退出当前账号」+「退出全部账号」两个动作；补充与 RP 发起登出（07）的区别。apps/web 账号中心切换器据此实现（退出当前 = 先切到剩余账号再 `logout`，退出全部 = `logout-all`）。
 
 > **2026-06-24（实现）**：后端 + OP 账号选择器落地——会话袋（`sessions.browser_id/auth_time/last_used_at`）、`prompt=select_account|none` + `login_hint`、`/auth/sessions`（+ switch/logout/logout-all，Bearer + confused-deputy 防护）、管理员 step-up（`10016`）；apps/web 站内切换器 + wiki 切换器（本地缓存 + 重定向）；`SessionBrief` 带 `roles`（角色徽标 + 「切换需重新登录」提示）。错误码复用 `10xxx`（非 `18xxx`）。forum / moyu 切换器待接入。
 
