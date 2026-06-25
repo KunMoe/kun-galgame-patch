@@ -57,6 +57,17 @@
 :root {
   --kun-radius-scale: 1;
 
+  /* ─── Surface opacity knob ──────────────────────────────────────────────
+   * Force every raised / glassy surface fully OPAQUE (no see-through popups).
+   * kun-ui ships two alpha tokens: --kun-surface-opacity (content1 — cards,
+   * modals, popovers, dropdowns, drawers, inputs; already 1) and
+   * --kun-global-opacity (bg-background + bg-default-100 "glass" surfaces,
+   * default 0.7 → translucent). moyu wants solid popup / menu backgrounds, so
+   * pin BOTH to 1. The modal scrim keeps its own dimming (it uses
+   * bg-default-800/70, not these tokens), so overlays still dim the page. */
+  --kun-surface-opacity: 1;
+  --kun-global-opacity: 1;
+
   /* Tailwind scale → moyu's own rounded-xs … rounded-3xl, aligned to KunUI */
   --radius-xs: calc(0.25rem * var(--kun-radius-scale)); /* 4px */
   --radius-sm: calc(0.375rem * var(--kun-radius-scale)); /* 6px  = KunUI sm */
@@ -78,6 +89,23 @@
  * written as `@apply rounded-sm` directly in prose.css / editor.css. */
 .rounded {
   border-radius: var(--radius-sm);
+}
+
+/* ─── Opaque modal backdrop ─────────────────────────────────────────────────
+ * The opacity tokens above make raised surfaces (content1 panels) + glassy
+ * surfaces (background / default-100) opaque, but the MODAL SCRIM is separate:
+ * KunModal hard-codes its overlay's backdrop at `bg-default-800/70`
+ * (`dark:bg-background/70`) — an independent 70% alpha the tokens don't touch,
+ * which is why the page still showed through behind an open modal. Pin that
+ * backdrop to full opacity, mirroring the original light/dark colours. The scrim
+ * is the first child of the modal container (`.z-kun-modal`); scoping to that
+ * class leaves drawers / lightboxes (other `[data-kun-overlay]`s) untouched.
+ * Un-layered so it beats the Tailwind `bg-*/70` utilities. */
+.z-kun-modal > div:first-child {
+  background-color: oklch(var(--default-800));
+}
+.kun-dark-mode .z-kun-modal > div:first-child {
+  background-color: oklch(var(--background));
 }
 
 @layer base {
