@@ -86,11 +86,19 @@ export const useKnownAccounts = () => {
     persist()
   }
 
-  // Forget an account on THIS device only (does not revoke its OP session).
-  const remove = (sub: string) => {
-    ensureLoaded(accounts)
-    accounts.value = accounts.value.filter((a) => a.sub !== sub)
-    persist()
+  // Forget every account on THIS device. Called on full ("everywhere") logout so
+  // a shared / public terminal doesn't leave the account roster (names, avatars,
+  // roles, subs) sitting in localStorage. Local-only logout keeps it — the OP
+  // bag is intact there, so the list stays useful for a quick re-login.
+  const clearAll = () => {
+    accounts.value = []
+    loaded = true // the empty in-memory list is now authoritative
+    if (!import.meta.client) return
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      // Storage unavailable — the in-memory clear still holds for this session.
+    }
   }
 
   // Snapshot the freshly-authenticated user into the cache. Called after every
@@ -102,6 +110,13 @@ export const useKnownAccounts = () => {
     >
   ) => {
     if (!user.sub || !user.id) return
+    // A degraded /auth/me (OAuth /users/batch down) still returns code:0 with
+    // sub+id but BLANK name/avatar (see composeMe in auth/handler.go). Skip
+    // those so a transient blip can't overwrite a good cached entry — which
+    // upsert would, by moving a nameless row to the front and persisting it —
+    // and leave an unidentifiable row in the switch menu. The next good
+    // /auth/me re-caches it.
+    if (!user.name) return
     upsert({
       sub: user.sub,
       id: user.id,
@@ -113,5 +128,5 @@ export const useKnownAccounts = () => {
     })
   }
 
-  return { accounts, upsert, remove, rememberUser }
+  return { accounts, upsert, clearAll, rememberUser }
 }

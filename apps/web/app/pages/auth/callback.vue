@@ -56,8 +56,16 @@ onMounted(async () => {
   rememberUser(userStore.user)
   useKunMessage('登录成功!', 'success')
   // A switch/add flow stashes where to return; plain logins fall back to the
-  // user's own resource page.
-  await navigateTo(consumeOAuthReturnTo() ?? `/user/${res.data.id}/resource`)
+  // user's own resource page. consumeOAuthReturnTo only ever returns a vetted
+  // same-origin path, but guard the navigation anyway: this is the last awaited
+  // statement, so a throw here would otherwise strand the (already logged-in)
+  // user on /auth/callback.
+  const fallback = `/user/${res.data.id}/resource`
+  try {
+    await navigateTo(consumeOAuthReturnTo() ?? fallback)
+  } catch {
+    await navigateTo(fallback)
+  }
 })
 </script>
 

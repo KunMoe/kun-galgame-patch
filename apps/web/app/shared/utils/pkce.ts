@@ -120,9 +120,12 @@ export const startOAuthLogin = async (
 }
 
 // Switch to an account the OP already holds for this browser. login_hint =
-// the target's `sub`; OP switches without re-prompting unless the target is an
-// admin (step-up → it forces prompt=login itself). If the OP bag no longer has
-// the account (logged out elsewhere), it gracefully falls back to login.
+// the target's `sub`. The OP owns the outcome: it switches without re-prompting
+// while the account is still in its session bag, but forces a re-login for an
+// admin (step-up) or when the bag no longer holds it (logged out elsewhere).
+// Either way the browser lands back on /auth/callback as whichever account the
+// OP returns — the callback can't tell a switch from a re-login, so the top-bar
+// avatar (refreshed from /auth/me) is the source of truth for who you now are.
 // See docs/oauth/09-account-switching.md §3.1 / §3.6.
 export const startOAuthSwitchAccount = async (
   loginHint: string,
@@ -198,12 +201,29 @@ export const verifyOAuthCallback = (): {
 }
 
 // Read (and clear) the post-callback return path stashed by a switch/add flow.
-// Returns null when absent or unsafe. Open-redirect guard: only same-origin app
-// paths (a single leading slash) are honoured; anything else falls back to the
-// caller's default destination.
+// Returns null when absent or unsafe — the caller falls back to a safe default.
+//
+// Open-redirect guard: resolve the value against our own origin and require the
+// result to stay same-origin, then return ONLY the path portion so the host can
+// never be attacker-controlled. Using the URL parser (the same one the browser
+// uses) closes every bypass a hand-rolled check misses — protocol-relative
+// ("//x"), backslash ("/\x"), whitespace-after-slash ("/\t//x"), scheme
+// ("javascript:"), and percent-encoded forms all either fail the origin check or
+// collapse to an inert same-origin path. The value is ours (set from
+// route.fullPath) but rides in a JS-writable cookie, so it's treated as
+// untrusted per docs/oauth/09-account-switching.md §4. Runs client-side only
+// (callback.vue is ssr:false), so window.location.origin is always available.
 export const consumeOAuthReturnTo = (): string | null => {
   const value = getOAuthCookie('oauth_return_to')
   if (value) deleteOAuthCookie('oauth_return_to')
-  if (value && value.startsWith('/') && !value.startsWith('//')) return value
+  if (!value) return null
+  try {
+    const url = new URL(value, window.location.origin)
+    if (url.origin === window.location.origin) {
+      return url.pathname + url.search + url.hash
+    }
+  } catch {
+    // Malformed → fall through to the caller's default.
+  }
   return null
 }

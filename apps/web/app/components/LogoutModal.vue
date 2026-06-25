@@ -5,6 +5,7 @@
 const { open } = useLogoutModal()
 const userStore = useUserStore()
 const api = useApi()
+const { clearAll: clearKnownAccounts } = useKnownAccounts()
 const pending = ref<'local' | 'everywhere' | null>(null)
 
 // Clear moyu's own session: the server session cookie + the client store.
@@ -29,6 +30,9 @@ const chooseEverywhere = async () => {
   if (pending.value) return
   pending.value = 'everywhere'
   await clearLocal()
+  // Leaving the whole SSO on a shared device → also forget the local account
+  // roster (the "适合公共 / 共享设备" option). Local-only logout keeps it.
+  clearKnownAccounts()
   startOAuthLogout() // top-level redirect to the OP; clears the SSO session
 }
 </script>
