@@ -36,19 +36,38 @@ const openModal = (target: 'log' | 'logout' | 'creator') => {
   else openLogoutModal()
 }
 
-// Account switching (docs/oauth/09-account-switching.md). Both actions are
-// top-level authorize redirects — moyu is cross-TLD from the OP and can't read
-// its session bag over fetch, so switching always bounces through /oauth/authorize.
-// returnTo = the current path so the user lands back where they were.
+// Account switching (docs/oauth/09-account-switching.md §3.6). Click-to-expand
+// inline list (not a hover submenu): the active account is already shown at the
+// top of the menu, so this lists the OTHER known accounts + 添加新账号. Both
+// actions are top-level authorize redirects — moyu is cross-TLD from the OP and
+// can't read its session bag over fetch, so switching always bounces through
+// /oauth/authorize. The expand state lives in the popover panel, which KunPopover
+// unmounts on close, so it resets to collapsed every time the menu reopens.
+const showAccountSwitch = ref(false)
+const switchableAccounts = computed(() =>
+  accounts.value.filter((a) => a.sub !== userStore.user.sub)
+)
+
+// returnTo = where you are now, so auth bounces you back. EXCEPT your own profile
+// (/user/<your id>/...): that path is bound to the account you're LEAVING, so
+// returning there as a different account shows the wrong person's page (the switch
+// would land you on the previous account's homepage). Drop it then and let the
+// callback fall back to the NEW account's own home (/user/<new id>/resource).
+const returnAfterAuth = (): string | undefined => {
+  const ownProfile = `/user/${userStore.user.id}`
+  return route.path === ownProfile || route.path.startsWith(`${ownProfile}/`)
+    ? undefined
+    : route.fullPath
+}
+
 const onSwitchAccount = (account: KnownAccount) => {
-  if (account.id === userStore.user.id) return // already the active account
   popover.value?.close()
-  startOAuthSwitchAccount(account.sub, route.fullPath)
+  startOAuthSwitchAccount(account.sub, returnAfterAuth())
 }
 
 const onAddAccount = () => {
   popover.value?.close()
-  startOAuthAddAccount(route.fullPath)
+  startOAuthAddAccount(returnAfterAuth())
 }
 
 // Switching INTO an admin account forces an OP re-login (step-up, §3.5) — flag
@@ -128,95 +147,55 @@ const handleCheckIn = async () => {
         <KunIcon name="lucide:user-round" class="size-4" />
         用户主页
       </NuxtLink>
-      <!-- 账号切换 — nested submenu. trigger="hover" opens it on desktop hover
-           and (kun-ui converts hover→tap on touch) on mobile, matching the
-           other top-bar hover menus and the requested "手机端 hover 变点击".
-           The list is the local known-accounts cache; clicking an account or
-           "添加新账号" is a top-level authorize redirect (moyu is cross-TLD from
-           the OP, so it can't read the OP session bag directly).
-           See docs/oauth/09-account-switching.md §3.6.
-           KunPopover wraps the trigger in two inline-block <div>s (its root +
-           the inner triggerRef wrapper), so the row shrank to content width.
-           `w-full` falls through to the root and `[&>div:first-child]:w-full`
-           hits the inner wrapper — inline-block honours an explicit width, so
-           both fill the menu with no display override or scoped CSS (which would
-           stamp this component's scope id onto the teleport-root KunModals it
-           renders → Vue "extraneous attrs" warnings). No full-width-trigger
-           prop exists on KunPopover. -->
-      <KunPopover
-        class="w-full [&>div:first-child]:w-full"
-        trigger="hover"
-        position="bottom-start"
-        inner-class="min-w-60 p-1"
+      <!-- 账号切换 — click to expand this device's other accounts + 添加新账号
+           inline (forum-style accordion, not a hover submenu). The active account
+           is already shown at the top of the menu, so switchableAccounts lists the
+           OTHERS; each switch / add is a top-level authorize redirect (moyu is
+           cross-TLD from the OP; its session bag is the source of truth).
+           See docs/oauth/09-account-switching.md §3.6. -->
+      <button
+        type="button"
+        class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-2 text-sm"
+        @click="showAccountSwitch = !showAccountSwitch"
       >
-        <template #trigger>
-          <button
-            type="button"
-            class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-2 text-sm"
-          >
-            <KunIcon name="lucide:users-round" class="size-4" />
-            账号切换
-            <KunIcon
-              name="lucide:chevron-right"
-              class="text-foreground/40 ml-auto size-4"
-            />
-          </button>
-        </template>
+        <KunIcon name="lucide:users-round" class="size-4" />
+        账号切换
+        <KunIcon
+          name="lucide:chevron-right"
+          class="text-foreground/40 ml-auto size-4 transition-transform"
+          :class="showAccountSwitch ? 'rotate-90' : ''"
+        />
+      </button>
 
-        <div class="space-y-1">
-          <p
-            v-if="accounts.length"
-            class="text-default-500 px-2 py-1 text-xs"
-          >
-            切换账号
-          </p>
-          <template v-for="acc in accounts" :key="acc.sub">
-            <!-- The currently-active account: marked, not clickable. -->
-            <div
-              v-if="acc.id === userStore.user.id"
-              class="bg-default-100 flex items-center gap-2 rounded px-2 py-1.5 text-sm"
+      <div v-if="showAccountSwitch" class="space-y-1 pl-2">
+        <button
+          v-for="acc in switchableAccounts"
+          :key="acc.sub"
+          type="button"
+          class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+          @click="onSwitchAccount(acc)"
+        >
+          <KunAvatar :user="acc" :is-navigation="false" size="sm" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate">{{ acc.name }}</span>
+            <span
+              v-if="needsReauth(acc)"
+              class="text-default-400 block text-xs"
             >
-              <KunAvatar :user="acc" :is-navigation="false" size="sm" />
-              <span class="min-w-0 flex-1 truncate">{{ acc.name }}</span>
-              <KunIcon
-                name="lucide:check"
-                class="text-primary size-4 shrink-0"
-              />
-            </div>
-            <button
-              v-else
-              type="button"
-              class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
-              @click="onSwitchAccount(acc)"
-            >
-              <KunAvatar :user="acc" :is-navigation="false" size="sm" />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate">{{ acc.name }}</span>
-                <span
-                  v-if="needsReauth(acc)"
-                  class="text-default-400 block text-xs"
-                >
-                  管理员账号切换需重新登录
-                </span>
-              </span>
-            </button>
-          </template>
+              管理员账号切换需重新登录
+            </span>
+          </span>
+        </button>
 
-          <div
-            v-if="accounts.length"
-            class="bg-default-200/60 my-1 h-px"
-          />
-
-          <button
-            type="button"
-            class="text-primary hover:bg-primary-50 flex w-full items-center gap-2 rounded px-2 py-2 text-sm font-medium"
-            @click="onAddAccount"
-          >
-            <KunIcon name="lucide:user-plus" class="size-4" />
-            添加新账号
-          </button>
-        </div>
-      </KunPopover>
+        <button
+          type="button"
+          class="text-primary hover:bg-primary-50 flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm font-medium"
+          @click="onAddAccount"
+        >
+          <KunIcon name="lucide:user-plus" class="size-4" />
+          添加新账号
+        </button>
+      </div>
       <NuxtLink
         to="/settings/user"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"

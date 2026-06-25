@@ -84,7 +84,11 @@ const prepareAuthorizeUrl = async (
 
   setOAuthCookie('oauth_code_verifier', codeVerifier)
   setOAuthCookie('oauth_state', state)
+  // Always (re)set the return-to slot: stash it when provided, else clear any
+  // leftover from a prior aborted flow so this callback can't consume a stale
+  // path (which would land the user somewhere they never asked to return to).
   if (opts.returnTo) setOAuthCookie('oauth_return_to', opts.returnTo)
+  else deleteOAuthCookie('oauth_return_to')
 
   // `/oauth/authorize` is an API endpoint (lives under oauthServerUrl =
   // dev :9277/api/v1, prod oauth.kungal.com/api/v1). The user-facing
