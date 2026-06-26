@@ -94,6 +94,11 @@ type UploadResult struct {
 	VariantURLs   map[string]string `json:"variant_urls"`
 	Width         int               `json:"width"`
 	Height        int               `json:"height"`
+	// Thumbhash is the base64 ThumbHash placeholder the image service now returns
+	// on upload (omitempty for rows predating the column). Parsed so callers that
+	// persist upload results can ship a blur-up placeholder + reserve the aspect
+	// ratio without a second roundtrip; matches the infra SDK's UploadResult.
+	Thumbhash     string            `json:"thumbhash,omitempty"`
 	SizeBytes     int64             `json:"size_bytes"`
 	Deduplicated  bool              `json:"deduplicated"`
 }

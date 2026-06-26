@@ -200,10 +200,13 @@ if (
             :to="`/patch/${detail.patch.id}/introduction`"
             class="group shrink-0"
           >
+            <!-- Real aspect ratio (fallback 16/9 pre-backfill) + ThumbHash
+                 blur-up so a portrait cover isn't cropped to 16:9. -->
             <KunImage
               :src="resolveBannerUrl(detail.patch) || '/kungalgame-trans.webp'"
               :alt="patchName"
-              aspect-ratio="16 / 9"
+              :aspect-ratio="resolveBannerAspectRatio(detail.patch)"
+              :thumbhash="resolveBannerThumbhash(detail.patch)"
               class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg sm:w-72"
               image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
             />

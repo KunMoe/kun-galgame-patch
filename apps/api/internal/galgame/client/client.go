@@ -89,10 +89,17 @@ type GalgameHit struct {
 	ReleaseDate         *string           `json:"release_date"`
 	ReleaseDateTBA      bool              `json:"release_date_tba"`
 	EffectiveBannerHash string            `json:"effective_banner_hash"`
-	Covers              []CoverInput      `json:"covers"`
-	Screenshots         []ScreenshotInput `json:"screenshots"`
-	View                int               `json:"view"`
-	Status              int               `json:"status"`
+	// EffectiveBanner{Width,Height,Thumbhash} are the pinned cover's intrinsic
+	// metadata, filled at read time by the wiki/galgame service (omitempty until
+	// its backfill runs). Let a card reserve the right aspect ratio + show a
+	// ThumbHash blur-up without a second roundtrip.
+	EffectiveBannerWidth     int               `json:"effective_banner_width,omitempty"`
+	EffectiveBannerHeight    int               `json:"effective_banner_height,omitempty"`
+	EffectiveBannerThumbhash string            `json:"effective_banner_thumbhash,omitempty"`
+	Covers                   []CoverInput      `json:"covers"`
+	Screenshots              []ScreenshotInput `json:"screenshots"`
+	View                     int               `json:"view"`
+	Status                   int               `json:"status"`
 	TagIDs              []int             `json:"tag_ids"`
 	OfficialIDs         []int             `json:"official_ids"`
 	EngineIDs           []int             `json:"engine_ids"`
@@ -114,10 +121,15 @@ type GalgameBrief struct {
 	ReleaseDate         *string           `json:"release_date"`
 	ReleaseDateTBA      bool              `json:"release_date_tba"`
 	EffectiveBannerHash string            `json:"effective_banner_hash"`
-	Covers              []CoverInput      `json:"covers"`
-	Screenshots         []ScreenshotInput `json:"screenshots"`
-	UserID              int               `json:"user_id"`
-	ResourceUpdateTime  string            `json:"resource_update_time"`
+	// EffectiveBanner{Width,Height,Thumbhash}: pinned cover's intrinsic metadata
+	// (see GalgameHit). Drives card aspect-ratio + blur-up on list/feed pages.
+	EffectiveBannerWidth     int               `json:"effective_banner_width,omitempty"`
+	EffectiveBannerHeight    int               `json:"effective_banner_height,omitempty"`
+	EffectiveBannerThumbhash string            `json:"effective_banner_thumbhash,omitempty"`
+	Covers                   []CoverInput      `json:"covers"`
+	Screenshots              []ScreenshotInput `json:"screenshots"`
+	UserID                   int               `json:"user_id"`
+	ResourceUpdateTime       string            `json:"resource_update_time"`
 }
 
 // Tag is Wiki's galgame_tag.
@@ -161,6 +173,14 @@ type CoverInput struct {
 	// Kind is the VNDB cover type for covers (main/pkgfront/dig/pkgback/…); empty
 	// for user uploads and for screenshots (which reuse this struct).
 	Kind string `json:"kind,omitempty"`
+	// Width/Height/Thumbhash are the image's intrinsic display metadata, filled
+	// at read time by the wiki/galgame service from image_service (omitempty =
+	// absent until the upstream backfill runs). moyu just parses + forwards them
+	// so the frontend can reserve the correct aspect ratio and render a ThumbHash
+	// blur-up placeholder. They are NOT request fields (ignored on PUT /galgame).
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+	Thumbhash string `json:"thumbhash,omitempty"`
 }
 
 type ScreenshotInput struct {
@@ -171,6 +191,10 @@ type ScreenshotInput struct {
 	Violence  int    `json:"violence"`
 	Source    string `json:"source"`
 	SourceKey string `json:"source_key"`
+	// Width/Height/Thumbhash: transient image_service metadata (see CoverInput).
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+	Thumbhash string `json:"thumbhash,omitempty"`
 }
 
 // ─── Generic GET ─────────────────────────────────────
@@ -341,10 +365,15 @@ type GalgameFull struct {
 		Link string `json:"link"`
 	} `json:"link"`
 	EffectiveBannerHash string            `json:"effective_banner_hash"`
-	Covers              []CoverInput      `json:"covers"`
-	Screenshots         []ScreenshotInput `json:"screenshots"`
-	Created             string            `json:"created"`
-	Updated             string            `json:"updated"`
+	// EffectiveBanner{Width,Height,Thumbhash}: pinned cover's intrinsic metadata
+	// (see GalgameHit). Drives the detail-page banner's aspect-ratio + blur-up.
+	EffectiveBannerWidth     int               `json:"effective_banner_width,omitempty"`
+	EffectiveBannerHeight    int               `json:"effective_banner_height,omitempty"`
+	EffectiveBannerThumbhash string            `json:"effective_banner_thumbhash,omitempty"`
+	Covers                   []CoverInput      `json:"covers"`
+	Screenshots              []ScreenshotInput `json:"screenshots"`
+	Created                  string            `json:"created"`
+	Updated                  string            `json:"updated"`
 }
 
 // GalgameDetailEnvelope is the data envelope for /galgame/:gid. Wiki nests another layer of galgame + users under data.

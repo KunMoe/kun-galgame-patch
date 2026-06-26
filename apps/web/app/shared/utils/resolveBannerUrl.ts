@@ -22,13 +22,16 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 // galgame, then top-level; legacy URL preferred from top-level patch.banner,
 // then nested galgame.banner (they're the same after enricher copy, this is
 // just resilience).
-type BannerSource = {
+type BannerMeta = {
   effective_banner_hash?: string | null
   banner?: string | null
-  galgame?: {
-    effective_banner_hash?: string | null
-    banner?: string | null
-  } | null
+  effective_banner_width?: number | null
+  effective_banner_height?: number | null
+  effective_banner_thumbhash?: string | null
+}
+
+type BannerSource = BannerMeta & {
+  galgame?: BannerMeta | null
 }
 
 const IMAGE_BED = kunMoyuMoe.domain.imageBed.replace(/\/$/, '')
@@ -80,3 +83,36 @@ export const resolveBannerUrl = (
   if (!legacy) return ''
   return toLegacyVariant(legacy, variant)
 }
+
+// imageAspectRatio turns intrinsic dims into a CSS aspect-ratio string for
+// KunImage's `aspect-ratio` prop. Falls back to the historical 16/9 box when
+// dims are unknown (metadata absent / pre-backfill) so layout stays stable and
+// portrait covers stop being cropped only once we actually know their shape.
+export const imageAspectRatio = (
+  width?: number | null,
+  height?: number | null,
+  fallback = '16 / 9'
+): string => (width && height ? `${width} / ${height}` : fallback)
+
+// resolveBannerAspectRatio / resolveBannerThumbhash read the pinned cover's
+// intrinsic metadata off the same dual-shape source resolveBannerUrl accepts
+// (nested galgame preferred, then top-level). Used to give a galgame card /
+// detail banner its real aspect-ratio + a ThumbHash blur-up placeholder.
+export const resolveBannerAspectRatio = (
+  source: BannerSource | null | undefined,
+  fallback = '16 / 9'
+): string =>
+  imageAspectRatio(
+    source?.galgame?.effective_banner_width ?? source?.effective_banner_width,
+    source?.galgame?.effective_banner_height ?? source?.effective_banner_height,
+    fallback
+  )
+
+export const resolveBannerThumbhash = (
+  source: BannerSource | null | undefined
+): string | undefined =>
+  (
+    source?.galgame?.effective_banner_thumbhash ??
+    source?.effective_banner_thumbhash ??
+    ''
+  ).trim() || undefined

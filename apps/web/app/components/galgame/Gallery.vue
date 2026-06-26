@@ -13,7 +13,10 @@
 // Screenshots only carry an image_hash (no cdn_url) and the screenshot preset
 // generates NO image_service variants, so thumb + lightbox both use the full
 // image (imageServiceUrl with no variant).
-import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
+import {
+  imageServiceUrl,
+  imageAspectRatio
+} from '~/shared/utils/resolveBannerUrl'
 
 const props = defineProps<{
   screenshots: GalgameScreenshotRow[]
@@ -109,7 +112,12 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
     </div>
 
     <KunLightboxGallery v-if="sorted.length">
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- items-start: screenshots render at their real aspect ratio now, so
+           don't stretch a row's cells to equal height (avoids background bars
+           around a shorter shot next to a taller one). -->
+      <div
+        class="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      >
         <KunLightboxGalleryItem
           v-for="s in sorted"
           :key="s.image_hash"
@@ -119,11 +127,16 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
           class="border-default/20 block overflow-hidden rounded-lg border"
         >
           <div class="relative">
+            <!-- Real aspect ratio (fallback 16/9 until metadata backfills) so a
+                 portrait / non-16:9 screenshot is no longer cropped; ThumbHash
+                 blur-up while the full image loads. Box ratio == image ratio, so
+                 the default object-cover fills without cropping. -->
             <KunImage
               :src="imgSrc(s)"
               :alt="s.caption || s.image_hash.slice(0, 8)"
               loading="lazy"
-              aspect-ratio="16 / 9"
+              :aspect-ratio="imageAspectRatio(s.width, s.height)"
+              :thumbhash="s.thumbhash"
               class-name="bg-default-100"
             />
             <!-- rating rings: outer=色情 inner=暴力, depth=level -->

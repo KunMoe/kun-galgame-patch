@@ -54,10 +54,16 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
            Don't add a sibling skeleton or `@load` listener on the component
            root — KunImage doesn't emit `load`, and any opacity class
            fall-through to the wrapper hides the whole image stack. -->
+      <!-- Card stays a 16:9 banner card (uniform grid + the `mini` variant is a
+           460×259 16:9 thumbnail), so we don't switch to the real aspect ratio
+           here — only add the ThumbHash blur-up placeholder (pinned cover's
+           thumbhash). The real-aspect-ratio anti-crop fix lives where the FULL
+           cover/screenshot is shown (detail banner, covers/screenshot gallery). -->
       <KunImage
         :src="bannerSrc"
         :alt="galgameName"
         aspect-ratio="16 / 9"
+        :thumbhash="resolveBannerThumbhash(props.patch)"
         class-name="rounded-t-lg"
       />
 

@@ -57,6 +57,12 @@ interface GalgameCard {
     name_zh_tw: string
     banner: string
     effective_banner_hash: string
+    // Pinned cover's intrinsic metadata (filled at read time by wiki from
+    // image_service; optional until its backfill runs). Drives the card/detail
+    // banner's real aspect-ratio + ThumbHash blur-up.
+    effective_banner_width?: number
+    effective_banner_height?: number
+    effective_banner_thumbhash?: string
     covers: GalgameCoverRow[]
     screenshots: GalgameScreenshotRow[]
     content_limit: string
@@ -79,6 +85,11 @@ interface GalgameCoverRow {
   // VNDB cover type (covers only): '' | main | pkgfront | dig | pkgback |
   // pkgcontent | pkgside | pkgmed. Optional because screenshots reuse this shape.
   kind?: string
+  // Intrinsic image metadata from image_service (optional until backfill).
+  // Real aspect-ratio (no portrait crop) + ThumbHash blur-up placeholder.
+  width?: number
+  height?: number
+  thumbhash?: string
 }
 
 interface GalgameScreenshotRow extends GalgameCoverRow {

@@ -433,9 +433,12 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 		OriginalLanguage:    g.OriginalLanguage,
 		ReleaseDate:         g.ReleaseDate,
 		ReleaseDateTBA:      g.ReleaseDateTBA,
-		EffectiveBannerHash: g.EffectiveBannerHash,
-		Covers:              g.Covers,
-		Screenshots:         g.Screenshots,
+		EffectiveBannerHash:      g.EffectiveBannerHash,
+		EffectiveBannerWidth:     g.EffectiveBannerWidth,
+		EffectiveBannerHeight:    g.EffectiveBannerHeight,
+		EffectiveBannerThumbhash: g.EffectiveBannerThumbhash,
+		Covers:                   g.Covers,
+		Screenshots:              g.Screenshots,
 	}
 
 	for _, t := range g.Tag {

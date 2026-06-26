@@ -146,18 +146,24 @@ const tabs = computed(() => [
              <NuxtLink> to the patch detail page (different intent). -->
         <div class="relative w-full shrink-0 sm:w-72 lg:w-80">
           <KunLightboxGallery>
+            <!-- Hero cover at its REAL aspect ratio (fallback 16/9 until the
+                 pinned cover's metadata backfills) so a portrait cover is no
+                 longer cropped to 16:9; KunImage owns the ratio box now, so the
+                 wrapper drops `aspect-video`. ThumbHash blur-up on the LCP. -->
             <KunLightboxGalleryItem
               :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
               :alt="displayName"
               as="div"
-              class="border-default/20 bg-default-100 aspect-video w-full overflow-hidden rounded-2xl border shadow-lg"
+              class="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg"
             >
               <KunImage
                 :src="resolveBannerUrl(patch) || '/kungalgame-trans.webp'"
                 :alt="displayName"
                 loading="eager"
                 fetchpriority="high"
-                class-name="block size-full"
+                :aspect-ratio="resolveBannerAspectRatio(patch)"
+                :thumbhash="resolveBannerThumbhash(patch)"
+                class-name="block w-full"
                 image-class-name="transition-transform duration-300 hover:scale-[1.03]"
               />
             </KunLightboxGalleryItem>
