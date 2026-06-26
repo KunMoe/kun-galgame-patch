@@ -1410,7 +1410,7 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceCreate",
-			"New resource added to patch",
+			"您收藏的游戏发布了新补丁资源",
 			fmt.Sprintf("/patch/%d/resource", patchID), true)
 	}
 }
@@ -1429,7 +1429,7 @@ func (s *PatchService) notifyResourceFavoritedUsers(resourceID, senderID int) {
 
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceUpdate",
-			"A subscribed resource was updated",
+			"您收藏的补丁资源有更新",
 			fmt.Sprintf("/resource/%d", resourceID), true)
 	}
 }
@@ -1491,7 +1491,7 @@ func (s *PatchService) CreateCommentNotification(senderID int, comment *model.Pa
 		if err == nil && parent.UserID != senderID {
 			// Deep-link to the reply so the recipient lands on it directly.
 			s.createDedupMessage(senderID, parent.UserID, "comment",
-				"Replied to your comment",
+				"回复了您的评论",
 				fmt.Sprintf("/patch/%d/comment#comment-%d", comment.GalgameID, comment.ID),
 				false)
 		}
@@ -1549,7 +1549,7 @@ func (s *PatchService) LocateComment(commentID, limit int) (*LocateCommentResult
 func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *model.PatchComment) {
 	if comment.UserID != senderID {
 		s.createDedupMessage(senderID, comment.UserID, "likeComment",
-			"Liked your comment",
+			"赞了您的评论",
 			fmt.Sprintf("/patch/%d", comment.GalgameID), false)
 	}
 }
