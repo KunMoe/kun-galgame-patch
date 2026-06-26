@@ -4,14 +4,15 @@
 // user available on the initial render -- no hydration guard / skeleton
 // needed; the template reads userStore directly.
 //
-// onMounted still fires /auth/me + /message/unread to refresh the cookie
-// snapshot (it can be up to 7 days stale) and pull live unread counts.
-import type { UserState } from '~/stores/userStore'
-
+// onMounted fires the shared refreshMe (/auth/me → setUser) to revalidate the
+// cookie snapshot (it can be up to 7 days stale) on every full page load, plus
+// /message/unread for live counts. Background revalidation on tab focus /
+// reconnect is handled by plugins/revalidate-me.client.ts; both go through
+// useRefreshMe so the staleTime dedup and auth-expiry handling stay in one place.
 const userStore = useUserStore()
 const messageStore = useMessageStore()
 const api = useApi()
-const { rememberUser } = useKnownAccounts()
+const { refreshMe } = useRefreshMe()
 
 // Top-bar surfaces a single solid "登录" button. Clicking opens the app-wide
 // login modal (AuthEntry: 登录 / 注册, both bounce to OAuth web) — the same modal
@@ -19,29 +20,6 @@ const { rememberUser } = useKnownAccounts()
 // default layout. The local /login + /register pages were deleted (L1 unified
 // registration), so the modal is the only auth entry point.
 const { open: openAuthModal } = useAuthModal()
-
-const fetchUserStatus = async () => {
-  const res = await api.get<UserState>('/auth/me')
-  if (res.code === 0) {
-    // setUser merges into existing state and preserves muted_message_types.
-    userStore.setUser(res.data)
-    // Keep this account fresh in the local switch list (account switching §3.6).
-    rememberUser(userStore.user)
-    return
-  }
-  // Only wipe the pinia store on signals the server-side session is truly
-  // dead — auth-expired (40101) means the middleware refresh permanently
-  // failed and the cookie was cleared; unauthorized (40100) means no cookie
-  // was sent. Any OTHER non-zero code (5xx, network blip, OAuth slow during
-  // background refresh, transient transport error → middleware returns 401
-  // but KEEPS the cookie for the next-request retry) must NOT wipe the
-  // store, or a single bad request silently logs the user out while the
-  // server still considers them authenticated. Previous behavior (logout
-  // on ANY non-zero) was the "登录之后过一会自动退出" bug.
-  if (res.code === 40100 || res.code === 40101) {
-    userStore.logout()
-  }
-}
 
 const fetchUnread = async () => {
   const res = await api.get<string[]>('/message/unread')
@@ -52,7 +30,7 @@ const fetchUnread = async () => {
 
 onMounted(async () => {
   if (userStore.user.id) {
-    await Promise.all([fetchUserStatus(), fetchUnread()])
+    await Promise.all([refreshMe(), fetchUnread()])
   }
 })
 </script>
