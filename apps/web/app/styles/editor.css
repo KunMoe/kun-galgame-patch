@@ -4,8 +4,24 @@
  * tokens like `default-800` shipped by @kungal/ui-tokens. */
 @reference './_reference.css';
 
+/* The 500px cap + scrolling now live on the overlayscrollbars wrapper around
+   <Milkdown /> (see Editor.vue) — NOT here — so the editor gets a thin, themed,
+   auto-hiding overlay bar instead of the glaring native dark-mode scrollbar. */
 .milkdown {
-  @apply text-default-800 max-h-[500px] overflow-y-scroll leading-7 whitespace-pre-line;
+  @apply text-default-800 leading-7 whitespace-pre-line;
+}
+
+/* overlayscrollbars theme for the editor's scroll viewport (host carries the
+   .kun-editor-scroll class). --os-* custom props inherit down to .os-scrollbar;
+   the handle color uses default-300/400/500, which auto-flip under
+   .kun-dark-mode, so the bar stays low-contrast in dark mode. */
+.kun-editor-scroll {
+  --os-size: 10px;
+  --os-padding-perpendicular: 2px;
+  --os-handle-border-radius: 5px;
+  --os-handle-bg: var(--color-default-300);
+  --os-handle-bg-hover: var(--color-default-400);
+  --os-handle-bg-active: var(--color-default-500);
 }
 
 .milkdown .ProseMirror[data-placeholder]::before {

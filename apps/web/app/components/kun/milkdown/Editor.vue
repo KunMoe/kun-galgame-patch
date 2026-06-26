@@ -2,6 +2,8 @@
 // Milkdown core
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/kit/core'
 import { Milkdown, useEditor } from '@milkdown/vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import type { PartialOptions } from 'overlayscrollbars'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 // Milkdown Plugins
@@ -79,6 +81,18 @@ const emits = defineEmits<{
 }>()
 
 const valueMarkdown = computed(() => props.valueMarkdown)
+
+// overlayscrollbars for the rich-text editing surface: native scroll kept, the
+// scrollbar replaced by a thin overlay handle that auto-hides on pointer leave
+// (themed in editor.css via --os-*). Replaces the glaring native dark-mode
+// scrollbar that .milkdown used to render. autoHide:'leave' keeps it out of the
+// way while typing.
+const osOptions: PartialOptions = {
+  scrollbars: {
+    autoHide: 'leave',
+    autoHideDelay: 500
+  }
+}
 
 const tooltip = tooltipFactory('Text')
 const mention = slashFactory('kun-mention')
@@ -234,7 +248,16 @@ watch(
     />
 
     <template v-if="activeTab === 'preview'">
-      <Milkdown />
+      <!-- overlayscrollbars wraps <Milkdown /> as an ANCESTOR (.os-host >
+           .os-viewport > .os-content > .milkdown), so ProseMirror's own DOM is
+           left untouched. The 500px cap + scrolling moved here off .milkdown. -->
+      <OverlayScrollbarsComponent
+        :options="osOptions"
+        class="kun-editor-scroll max-h-[500px]"
+        defer
+      >
+        <Milkdown />
+      </OverlayScrollbarsComponent>
 
       <div class="flex items-center justify-between text-sm">
         <slot name="footer" />

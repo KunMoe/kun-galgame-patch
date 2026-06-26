@@ -49,6 +49,8 @@
     "localforage": "^1.10.0",
     "nuxt": "^4.4.7",
     "nuxt-schema-org": "^5.0.10",
+    "overlayscrollbars": "^2.16.0",
+    "overlayscrollbars-vue": "^0.5.10",
     "pinia": "^3.0.4",
     "postcss": "^8.5.8",
     "rehype-stringify": "^10.0.1",

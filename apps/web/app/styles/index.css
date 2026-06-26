@@ -13,6 +13,11 @@
 @import '@kungal/ui-tokens';
 @import '@kungal/ui-vue/style.css';
 
+/* overlayscrollbars base structure (the .os-* layout/visibility rules). The
+   editor's handle is themed in editor.css via --os-* custom properties; this is
+   only the unstyled skeleton, so it must load before our overrides below. */
+@import 'overlayscrollbars/overlayscrollbars.css';
+
 /* moyu-specific styles (prose / editor / code theme — not KunUI primitives). */
 @import './prose.css';
 @import './editor.css';
@@ -120,6 +125,17 @@
     background-color: oklch(var(--background));
     color: oklch(var(--foreground));
     min-height: 100vh;
+  }
+
+  html {
+    /* Reserve the root scrollbar's gutter permanently. When a modal/drawer
+       locks page scroll (useScrollLock -> overflow:hidden), the scrollbar
+       would otherwise vanish and the page would reflow ~15px wider — the
+       visible "jump". A stable gutter keeps the width constant either way.
+       This is the ONLY page-scroll change: the scrollbar's own look (width /
+       color) is left fully native by request — only the editor's bar is
+       restyled (overlayscrollbars). */
+    scrollbar-gutter: stable;
   }
 }
 
