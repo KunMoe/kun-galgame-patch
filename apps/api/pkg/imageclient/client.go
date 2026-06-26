@@ -284,6 +284,82 @@ func (c *Client) ReferencePing(ctx context.Context, hashes []string) (*Reference
 	return &env.Data, nil
 }
 
+// ImageMeta is an image's intrinsic display metadata: pixel dimensions + the
+// base64 ThumbHash placeholder. Immutable per content-addressed hash, so it is
+// safe to cache forever. Mirrors one element of /image/meta-batch's response.
+type ImageMeta struct {
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Thumbhash string `json:"thumbhash,omitempty"`
+}
+
+// MetaBatch fetches width/height/thumbhash for a batch of hashes in one
+// roundtrip, keyed by hash. Hashes image_service doesn't know are simply absent
+// from the result. The server caps a batch at 1000. Lets a consumer reserve the
+// correct aspect ratio + render a ThumbHash blur-up for a page of images without
+// a per-image lookup. Metadata is immutable per hash (see MetaResolver for the
+// cached render-path wrapper).
+func (c *Client) MetaBatch(ctx context.Context, hashes []string) (map[string]ImageMeta, error) {
+	if len(hashes) == 0 {
+		return map[string]ImageMeta{}, nil
+	}
+	if c.baseURL == "" {
+		return nil, errors.New("image_service: client not configured (KUN_IMAGE_SERVICE_BASE_URL unset)")
+	}
+	if c.basicAuth == "" {
+		return nil, ErrUnauthorized
+	}
+	if len(hashes) > 1000 {
+		return nil, fmt.Errorf("imageclient: batch size %d exceeds limit 1000", len(hashes))
+	}
+
+	body, _ := json.Marshal(struct {
+		Hashes []string `json:"hashes"`
+	}{Hashes: hashes})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/image/meta-batch", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", c.basicAuth)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("image_service POST /image/meta-batch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var env struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(raw, &env)
+		switch env.Code {
+		case 80001, 80002, 80003, 80004, 80005:
+			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
+		}
+		return nil, fmt.Errorf("image_service meta-batch failed: status=%d code=%d msg=%q",
+			resp.StatusCode, env.Code, env.Message)
+	}
+
+	var env struct {
+		Data struct {
+			Metas map[string]ImageMeta `json:"metas"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("decode meta-batch response: %w (body=%s)", err, truncate(string(raw), 200))
+	}
+	if env.Data.Metas == nil {
+		return map[string]ImageMeta{}, nil
+	}
+	return env.Data.Metas, nil
+}
+
 // MainURL builds the canonical CDN URL for the full image (`.webp`).
 // Returns "" for empty / malformed hashes — caller can fall back to a
 // placeholder.

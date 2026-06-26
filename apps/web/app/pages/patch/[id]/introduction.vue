@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useContentBlurUp } from '@kungal/ui-vue'
+
 const route = useRoute()
 const api = useApi()
 const settingStore = useSettingStore()
@@ -14,6 +16,11 @@ const { data: detail } = await useAsyncData<PatchDetail | null>(
 )
 
 const lang = ref<Language>('zh-cn')
+
+// ThumbHash blur-up for the intro's body images (KunUI decodes the
+// data-thumbhash the API emits on each <img>; width/height reserve the ratio).
+const introEl = ref<HTMLElement | null>(null)
+useContentBlurUp(introEl)
 
 const pickInitialLang = () => {
   if (!detail.value?.introduction_html) return 'zh-cn' as Language
@@ -141,7 +148,12 @@ const wikiOrigin =
           @update:model-value="(v) => (lang = v as Language)"
         />
       </div>
-      <div v-if="introHtml" class="kun-prose max-w-none" v-html="introHtml" />
+      <div
+        v-if="introHtml"
+        ref="introEl"
+        class="kun-prose max-w-none"
+        v-html="introHtml"
+      />
       <KunNull
         v-else
         description="此 Galgame 暂无简介，可到 Galgame Wiki 补充"

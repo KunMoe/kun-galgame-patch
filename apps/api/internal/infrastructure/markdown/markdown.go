@@ -103,6 +103,74 @@ var resolveContentImage func(hash string) string
 // image AST transformer. Call once at startup, before serving.
 func SetContentImageResolver(fn func(hash string) string) { resolveContentImage = fn }
 
+// In addition to the hash→URL rewrite, content images get their intrinsic
+// metadata (width/height/thumbhash) attached as HTML attributes so the frontend
+// (KunContent / useContentBlurUp) can reserve the real aspect ratio (no layout
+// shift) and paint a ThumbHash blur-up. `data-thumbhash` is a data-* attribute,
+// which goldmark's default ImageAttributeFilter drops — extend it once so it
+// (and the already-allowed width/height) survive RenderAttributes.
+func init() {
+	html.ImageAttributeFilter = html.ImageAttributeFilter.Extend([]byte("data-thumbhash"))
+}
+
+// ImageMeta mirrors imageclient.ImageMeta but is declared locally so this
+// package stays dependency-free (like resolveContentImage). Wired at startup.
+type ImageMeta struct {
+	Width     int
+	Height    int
+	Thumbhash string
+}
+
+// resolveContentImageMeta returns metadata for a batch of content-image hashes.
+// nil when unwired (tests / image_service unconfigured) — attributes are then
+// simply not emitted. The render path calls it synchronously, so the wired impl
+// must be cached + time-bounded (see imageclient.MetaResolver).
+var resolveContentImageMeta func(hashes []string) map[string]ImageMeta
+
+// SetContentImageMetaResolver wires the hash→metadata resolver. Call once at
+// startup, before serving.
+func SetContentImageMetaResolver(fn func(hashes []string) map[string]ImageMeta) {
+	resolveContentImageMeta = fn
+}
+
+// imageMetaContextKey stashes the per-render hash→ImageMeta map in the parser
+// context so contentImageTransformer can read it without re-fetching.
+var imageMetaContextKey = parser.NewContextKey()
+
+// contentImageHashes returns the unique content-image hashes (the /image/<hash>
+// tokens) referenced in raw markdown, used to batch-resolve their metadata.
+func contentImageHashes(src string) []string {
+	ms := contentImageTokenRegex.FindAllStringSubmatch(src, -1)
+	if len(ms) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ms))
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		if _, ok := seen[m[1]]; ok {
+			continue
+		}
+		seen[m[1]] = struct{}{}
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// newRenderContext builds the parser context shared by Render / RenderWithTOC:
+// CJK-friendly heading IDs plus (when a meta resolver is wired) the content
+// image metadata map stashed for contentImageTransformer.
+func newRenderContext(src string) parser.Context {
+	ctx := parser.NewContext(parser.WithIDs(newCJKIDs()))
+	if resolveContentImageMeta != nil {
+		if hashes := contentImageHashes(src); len(hashes) > 0 {
+			if meta := resolveContentImageMeta(hashes); len(meta) > 0 {
+				ctx.Set(imageMetaContextKey, meta)
+			}
+		}
+	}
+	return ctx
+}
+
 // contentImageTokenRegex matches a content image token ANYWHERE in raw markdown
 // (the non-anchored sibling of contentImageRefRegex, which matches a whole AST
 // image destination). Used by ResolveContentImageTokens.
@@ -136,10 +204,14 @@ func ResolveContentImageTokens(src string) string {
 // (incl. not-yet-migrated legacy ones) and other links are unaffected.
 type contentImageTransformer struct{}
 
-func (contentImageTransformer) Transform(doc *ast.Document, _ text.Reader, _ parser.Context) {
+func (contentImageTransformer) Transform(doc *ast.Document, _ text.Reader, pc parser.Context) {
 	resolve := resolveContentImage
 	if resolve == nil {
 		return
+	}
+	var meta map[string]ImageMeta
+	if v := pc.Get(imageMetaContextKey); v != nil {
+		meta, _ = v.(map[string]ImageMeta)
 	}
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -153,8 +225,24 @@ func (contentImageTransformer) Transform(doc *ast.Document, _ text.Reader, _ par
 		if m == nil {
 			return ast.WalkContinue, nil
 		}
-		if url := resolve(string(m[1])); url != "" {
+		hash := string(m[1])
+		if url := resolve(hash); url != "" {
 			img.Destination = []byte(url)
+		}
+		// Attach intrinsic metadata so the frontend reserves the real aspect
+		// ratio (no layout shift) and paints a ThumbHash blur-up. width/height
+		// pass the default ImageAttributeFilter; data-thumbhash via init()'s
+		// extension. Reading a nil meta map is a safe no-op.
+		if im, ok := meta[hash]; ok {
+			if im.Width > 0 {
+				img.SetAttributeString("width", []byte(strconv.Itoa(im.Width)))
+			}
+			if im.Height > 0 {
+				img.SetAttributeString("height", []byte(strconv.Itoa(im.Height)))
+			}
+			if im.Thumbhash != "" {
+				img.SetAttributeString("data-thumbhash", []byte(im.Thumbhash))
+			}
 		}
 		return ast.WalkContinue, nil
 	})
@@ -292,8 +380,9 @@ func Render(src string) (string, error) {
 	}
 	var buf bytes.Buffer
 	// Each call gets its own parser context so heading IDs do not leak across
-	// documents (the default ids registry is shared otherwise).
-	ctx := parser.NewContext(parser.WithIDs(newCJKIDs()))
+	// documents (the default ids registry is shared otherwise); it also carries
+	// the resolved content-image metadata for the transformer.
+	ctx := newRenderContext(src)
 	if err := md.Convert([]byte(src), &buf, parser.WithContext(ctx)); err != nil {
 		return "", err
 	}
@@ -319,8 +408,9 @@ func RenderWithTOC(src string) (string, []TOCItem, error) {
 	}
 
 	source := []byte(src)
-	ids := newCJKIDs()
-	ctx := parser.NewContext(parser.WithIDs(ids))
+	// Shared context: CJK heading IDs (so the walked TOC ids match the rendered
+	// `id="..."`) plus the resolved content-image metadata for the transformer.
+	ctx := newRenderContext(src)
 
 	// Parse first so we can walk the AST for headings while sharing the same
 	// ids registry — this guarantees the TOC ids match what the renderer

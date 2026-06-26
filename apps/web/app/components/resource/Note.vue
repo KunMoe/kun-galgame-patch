@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useContentBlurUp } from '@kungal/ui-vue'
 // Resource note (rendered markdown). Collapses to `maxHeight` px when the
 // content is taller, with a 展开 / 收起 toggle + bottom fade, so a long note
 // doesn't dominate the resource list.
@@ -17,6 +18,9 @@ const props = withDefaults(
 )
 
 const contentRef = ref<HTMLElement | null>(null)
+// ThumbHash blur-up for the note's body images (KunUI decodes the
+// data-thumbhash the API now emits on each <img>). Reuses the same container ref.
+useContentBlurUp(contentRef)
 const measured = ref(false)
 const collapsible = ref(false)
 const collapsed = ref(true)

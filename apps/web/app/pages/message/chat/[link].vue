@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
+import { useContentBlurUp } from '@kungal/ui-vue'
 
 // Chat room. Feature-parity port of the next-web chat window MINUS realtime
 // (D9: REST-only). New messages arrive via a 5s incremental poll; edits /
@@ -32,6 +33,10 @@ const input = ref('')
 const sending = ref(false)
 const loading = ref(false)
 const scrollArea = ref<HTMLElement | null>(null)
+// ThumbHash blur-up for message-body images. One observer on the scroll
+// container covers every message (quote + body); its MutationObserver picks up
+// newly polled-in messages automatically.
+useContentBlurUp(scrollArea)
 // KunTextarea exposes { focus, blur, select, insertAtCaret, textareaRef }
 // — we use focus() for autofocus-on-reply and insertAtCaret() for emoji.
 type KunTextareaExposed = {

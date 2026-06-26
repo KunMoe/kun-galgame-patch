@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useContentBlurUp } from '@kungal/ui-vue'
+
 interface ApiEnvelope<T> {
   code: number
   message: string
@@ -15,6 +17,11 @@ const slugParam = computed(() => {
   const raw = route.params.slug
   return Array.isArray(raw) ? raw.join('/') : String(raw ?? '')
 })
+
+// ThumbHash blur-up for the doc body images (KunUI decodes the data-thumbhash
+// the API emits on each <img>; width/height reserve the aspect ratio).
+const contentEl = ref<HTMLElement | null>(null)
+useContentBlurUp(contentEl)
 
 // Use useFetch for both endpoints — Nuxt's payload mechanism transfers the
 // SSR-rendered data to the client without a refetch-on-mount window where the
@@ -92,7 +99,7 @@ const toc = computed<KunTOCItem[]>(() => detail.value?.toc ?? [])
 
     <article class="min-w-0">
       <AboutBlogHeader :frontmatter="detail.frontmatter" />
-      <div class="kun-prose mt-6" v-html="html" />
+      <div ref="contentEl" class="kun-prose mt-6" v-html="html" />
       <AboutNavigation :prev="detail.prev" :next="detail.next" />
     </article>
 

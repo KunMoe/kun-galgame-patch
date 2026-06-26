@@ -2,6 +2,7 @@ package app
 
 import (
 	"log/slog"
+	"time"
 
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
@@ -186,6 +187,21 @@ func New(cfg *config.Config) *App {
 	// fallback (image_service 契约 04). No-op when CDN base is unset (MainURL
 	// returns "" → token left for the 302 route to resolve at request time).
 	markdown.SetContentImageResolver(imgCli.MainURL)
+
+	// Also attach intrinsic image metadata (width/height/thumbhash) to those
+	// content <img> tags so the frontend (KunContent / useContentBlurUp) can
+	// reserve the real aspect ratio (no layout shift) and paint a ThumbHash
+	// blur-up. The cached resolver keeps warm renders network-free (metadata is
+	// immutable per content hash) and a 3s timeout bounds the cold path.
+	contentImageMeta := imgCli.NewMetaResolver(3 * time.Second)
+	markdown.SetContentImageMetaResolver(func(hashes []string) map[string]markdown.ImageMeta {
+		got := contentImageMeta.Resolve(hashes)
+		out := make(map[string]markdown.ImageMeta, len(got))
+		for h, m := range got {
+			out[h] = markdown.ImageMeta{Width: m.Width, Height: m.Height, Thumbhash: m.Thumbhash}
+		}
+		return out
+	})
 
 	// Chat module (D9: REST only, no WebSocket)
 	chatRepository := chatRepo.New(db)
