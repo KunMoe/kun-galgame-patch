@@ -11,9 +11,11 @@ const { isOpen } = useAuthModal()
     <div class="flex flex-col items-center gap-6 py-4">
       <h2 class="text-2xl font-bold">登录或注册</h2>
       <AuthEntry />
-      <!-- OAuth ecosystem strip: "一个账号可登录以下网站". Renders nothing when
-           the list is empty. Same-origin fetch (backend-proxied). -->
-      <AuthEcosystem />
+      <!-- OAuth ecosystem strip: "一个账号可登录以下网站". Temporarily disabled
+           until the app-directory feature is fully ready (the component +
+           backend proxy stay in place; nothing here is removed). To re-enable,
+           just uncomment the <AuthEcosystem /> below. -->
+      <!-- <AuthEcosystem /> -->
     </div>
   </KunModal>
 </template>
