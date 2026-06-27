@@ -568,7 +568,7 @@ if (
             v-for="r in detail.recommendations"
             :key="r.id"
             :to="`/resource/${r.id}`"
-            class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
+            class="border-default/20 bg-content1 shadow-kun-sm hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
           >
             <p class="font-semibold line-clamp-2">{{ recName(r) }}</p>
             <p v-if="r.note" class="text-default-500 line-clamp-2 text-sm">

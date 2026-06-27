@@ -481,7 +481,7 @@ watch(histPage, loadHistory)
       <div
         v-for="r in sortedResources"
         :key="r.id"
-        class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary/40 space-y-4 rounded-2xl border p-5 transition-colors"
+        class="border-default/20 bg-content1 shadow-kun-sm space-y-4 rounded-2xl border p-5 transition-colors"
       >
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
