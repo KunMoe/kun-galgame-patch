@@ -110,6 +110,22 @@
   @apply m-2 inline w-32;
 }
 
+/* The @mention dropdown is appended INSIDE .milkdown (SlashProvider), so the
+ * `.milkdown img` rule above (my-6 + border) bleeds onto its avatars and
+ * balloons each row to ~80px. Re-scope the dropdown avatar back to a 24px
+ * circle. Same specificity as `.milkdown img`, declared later + both unlayered,
+ * so this wins. */
+.kun-mention-dropdown img {
+  @apply m-0 size-6 shrink-0 rounded-full border-0 object-cover;
+}
+
+/* Same bleed on the list: the dropdown's <ul> is inside .milkdown, so the
+ * `.milkdown ul` rule (my-6 margin + pl-8 indent + list-disc bullets + space-y-3)
+ * leaks in — big margin/padding + bullets. Reset to a tight, bulletless list. */
+.kun-mention-dropdown ul {
+  @apply m-0 list-none space-y-0.5 p-0;
+}
+
 .milkdown table {
   @apply border-default-200 my-6 w-full overflow-hidden rounded-lg border;
 }

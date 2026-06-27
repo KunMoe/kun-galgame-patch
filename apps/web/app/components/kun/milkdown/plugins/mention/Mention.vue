@@ -10,6 +10,7 @@
 import { SlashProvider } from '@milkdown/kit/plugin/slash'
 import { editorViewCtx } from '@milkdown/kit/core'
 import { linkSchema } from '@milkdown/kit/preset/commonmark'
+import { TextSelection } from '@milkdown/kit/prose/state'
 import { useInstance } from '@milkdown/vue'
 import { usePluginViewContext } from '@prosemirror-adapter/vue'
 import { getRandomSticker } from '@kungal/ui-core'
@@ -121,9 +122,19 @@ const pickUser = (user: MentionUser) => {
     const link = linkSchema
       .type(ctx)
       .create({ href: `/user/${user.id}/resource` })
-    const node = state.schema.text(`@${user.name} `).mark([link])
+    // Only the "@name" text carries the link mark; the trailing space MUST be
+    // unmarked. Otherwise the caret sits inside the link and whatever the user
+    // types next (e.g. a URL) is pulled INTO the mention's link (the "粘连" bug).
+    const mention = state.schema.text(`@${user.name}`).mark([link])
+    const space = state.schema.text(' ')
     if (from - offset >= 0) {
-      dispatch(state.tr.replaceWith(from - offset, from, node))
+      const tr = state.tr.replaceWith(from - offset, from, [mention, space])
+      // Caret after the unmarked space + stored marks cleared, so typing keeps
+      // going as plain text rather than extending the mention link.
+      const after = from - offset + mention.nodeSize + space.nodeSize
+      tr.setSelection(TextSelection.create(tr.doc, after))
+      tr.setStoredMarks([])
+      dispatch(tr)
       targetView.focus()
     }
   })
@@ -141,7 +152,7 @@ const pickUser = (user: MentionUser) => {
        valid (a click would blur first). -->
   <div
     ref="divRef"
-    class="border-default-200 bg-content1 z-kun-popover absolute data-[show='false']:hidden max-h-64 w-64 overflow-y-auto rounded-lg border p-1 shadow-lg"
+    class="kun-mention-dropdown border-default-200 bg-content1 z-kun-popover absolute data-[show='false']:hidden max-h-64 w-64 overflow-y-auto rounded-lg border p-1 shadow-lg"
   >
     <ul v-if="users.length" class="space-y-0.5">
       <li
