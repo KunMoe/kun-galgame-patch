@@ -235,6 +235,12 @@ const linksOf = (d: ResourceLinkInfo) =>
 const storageLabelOf = (d: ResourceLinkInfo) =>
   SUPPORTED_RESOURCE_LINK_MAP[d.storage] ?? d.storage
 
+// aria2 command for a download URL — 16 parallel connections + resume (-c). The
+// link is single-quoted so its &/= query params survive the shell. Users paste
+// it into a terminal; any download manager (or the Aria2 Explorer extension)
+// works on the same URL since it natively supports HTTP Range.
+const aria2CommandOf = (url: string) => `aria2c -x16 -s16 -c '${url}'`
+
 // Bump the download counter when a revealed link is actually clicked,
 // mirroring the resource detail page.
 const onLinkDownload = (r: PatchResource) => {
@@ -667,13 +673,13 @@ watch(histPage, loadHistory)
             <div
               v-for="(lnk, i) in linksOf(fetched[r.id]!)"
               :key="i"
-              class="border-success/40 bg-content1 shadow-kun-sm hover:border-success flex items-center gap-3 rounded-lg border p-2.5"
+              class="border-success/40 bg-content1 shadow-kun-sm hover:border-success space-y-2.5 rounded-lg border p-3"
             >
               <a
                 :href="lnk"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="hover:text-success group flex min-w-0 flex-1 items-center gap-2 transition-colors"
+                class="hover:text-success group flex min-w-0 items-center gap-2 transition-colors"
                 @click="onLinkDownload(r)"
               >
                 <KunIcon
@@ -686,18 +692,27 @@ watch(histPage, loadHistory)
                   class="text-default-400 group-hover:text-success size-3.5 shrink-0"
                 />
               </a>
-              <KunButton
-                variant="light"
-                color="success"
-                size="xs"
-                is-icon-only
-                class-name="shrink-0"
-                aria-label="复制下载链接"
-                title="复制下载链接"
-                @click="useKunCopy(lnk)"
-              >
-                <KunIcon name="lucide:copy" class="size-4" />
-              </KunButton>
+              <!-- Prominent copy actions on their own row: the plain URL (works
+                   with any downloader / the Aria2 Explorer extension) and a
+                   ready-to-paste aria2 command (16-way + resume). -->
+              <div class="flex flex-wrap gap-2">
+                <KunCopy
+                  :text="lnk"
+                  name="复制下载链接"
+                  copied-text="已复制链接"
+                  color="success"
+                  variant="flat"
+                  size="md"
+                />
+                <KunCopy
+                  :text="aria2CommandOf(lnk)"
+                  name="复制 aria2 命令"
+                  copied-text="已复制命令"
+                  color="success"
+                  variant="flat"
+                  size="md"
+                />
+              </div>
             </div>
             <p
               v-if="!linksOf(fetched[r.id]!).length"

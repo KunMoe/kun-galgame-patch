@@ -108,6 +108,12 @@ const downloadLinks = computed(() =>
   )
 )
 
+// aria2 command for a download URL — 16 parallel connections + resume (-c). The
+// link is single-quoted so its &/= query params survive the shell. Any download
+// manager (or the Aria2 Explorer extension) works on the same URL since it
+// natively supports HTTP Range.
+const aria2CommandOf = (url: string) => `aria2c -x16 -s16 -c '${url}'`
+
 // status != 0 → download disabled (e.g. pulled for virus). The backend withholds
 // content/code/password for disabled resources, so downloadLinks is empty here;
 // show an explicit notice instead of a bare "暂无下载链接".
@@ -447,13 +453,13 @@ if (
               <div
                 v-for="(lnk, i) in downloadLinks"
                 :key="i"
-                class="border-success/40 bg-content1 shadow-kun-sm hover:border-success focus-within:border-success flex items-center gap-3 rounded-xl border p-3 transition-colors"
+                class="border-success/40 bg-content1 shadow-kun-sm hover:border-success focus-within:border-success space-y-3 rounded-xl border p-3 transition-colors"
               >
                 <a
                   :href="lnk"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="hover:text-success group flex min-w-0 flex-1 items-center gap-3 transition-colors"
+                  class="hover:text-success group flex min-w-0 items-center gap-3 transition-colors"
                   @click="onDownload"
                 >
                   <span
@@ -467,18 +473,27 @@ if (
                     class="text-default-400 group-hover:text-success size-4 shrink-0"
                   />
                 </a>
-                <KunButton
-                  variant="light"
-                  color="success"
-                  size="sm"
-                  is-icon-only
-                  class-name="shrink-0"
-                  aria-label="复制下载链接"
-                  title="复制下载链接"
-                  @click="useKunCopy(lnk)"
-                >
-                  <KunIcon name="lucide:copy" class="size-4" />
-                </KunButton>
+                <!-- Prominent copy actions on their own row: the plain URL (works
+                     with any downloader / the Aria2 Explorer extension) and a
+                     ready-to-paste aria2 command (16-way + resume). -->
+                <div class="flex flex-wrap gap-2">
+                  <KunCopy
+                    :text="lnk"
+                    name="复制下载链接"
+                    copied-text="已复制链接"
+                    color="success"
+                    variant="flat"
+                    size="md"
+                  />
+                  <KunCopy
+                    :text="aria2CommandOf(lnk)"
+                    name="复制 aria2 命令"
+                    copied-text="已复制命令"
+                    color="success"
+                    variant="flat"
+                    size="md"
+                  />
+                </div>
               </div>
               <p
                 v-if="!downloadLinks.length"
