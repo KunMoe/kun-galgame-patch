@@ -114,18 +114,18 @@ export const SUPPORTED_RESOURCE_LINK = ['s3', 'user']
 export const storageTypes = [
   {
     value: 's3',
-    label: '对象存储 (适合于 <1GB 的补丁文件)',
-    description: '此选项适合 <1GB 的补丁, 稳定, 永远不会失效过期'
+    label: '平台托管',
+    description: '上传到鲲补丁站，稳定、永不失效过期，CDN 加速下载，支持断点续传'
   },
   {
     value: 'user',
-    label: '自定义链接 (适用于 >1GB 的补丁文件)',
-    description: '此选项适合 >1GB 的补丁, 这需要您自行提供下载链接'
+    label: '自定义链接',
+    description: '网盘 / 外链等，适合超出上传上限的超大文件，需自行提供并维护下载链接'
   }
 ]
 
 export const SUPPORTED_RESOURCE_LINK_MAP: Record<string, string> = {
-  s3: '对象存储下载',
+  s3: '平台托管下载',
   user: '自定义链接下载'
 }
 

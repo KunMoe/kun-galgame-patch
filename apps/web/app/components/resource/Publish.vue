@@ -92,11 +92,6 @@ const toggle = (list: string[], v: string) => {
   else list.push(v)
 }
 
-const storageOptions = storageTypes.map((t) => ({
-  value: t.value,
-  label: t.label
-}))
-
 watch(
   () => form.storage,
   () => {
@@ -526,16 +521,51 @@ const existingFileName = computed(() => {
     <div class="-mx-1 flex-1 overflow-y-auto px-1">
       <form class="space-y-6" @submit.prevent="handleSubmit">
         <!-- storage type ----------------------------------- -->
-        <section class="space-y-2">
-          <h3 class="text-lg font-medium">选择存储类型</h3>
+        <section class="space-y-3">
+          <h3 class="text-lg font-medium">选择存储方式</h3>
           <p class="text-default-500 text-sm">
-            确定您的补丁体积大小以便选择合适的存储方式
+            根据补丁体积与来源选择合适的存储方式
           </p>
-          <KunSelect
-            v-model="form.storage"
-            label="请选择您的资源存储类型"
-            :options="storageOptions"
-          />
+          <div class="grid gap-3 sm:grid-cols-2">
+            <button
+              v-for="opt in storageTypes"
+              :key="opt.value"
+              type="button"
+              :class="
+                cn(
+                  'flex flex-col gap-1.5 rounded-xl border-2 p-4 text-left transition-colors',
+                  form.storage === opt.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-default-200 hover:border-default-300'
+                )
+              "
+              @click="form.storage = opt.value as 's3' | 'user'"
+            >
+              <div class="flex items-center gap-2">
+                <KunIcon
+                  :name="
+                    opt.value === 's3' ? 'lucide:upload-cloud' : 'lucide:link'
+                  "
+                  :class="
+                    cn(
+                      'size-5 shrink-0',
+                      form.storage === opt.value
+                        ? 'text-primary'
+                        : 'text-default-500'
+                    )
+                  "
+                />
+                <span class="font-medium">{{ opt.label }}</span>
+                <span v-if="opt.value === 's3'" class="ml-auto">
+                  <KunChip color="primary" variant="flat" size="sm">推荐</KunChip>
+                </span>
+              </div>
+              <p class="text-default-500 text-sm">{{ opt.description }}</p>
+              <p v-if="opt.value === 's3'" class="text-default-400 text-xs">
+                你当前账户（{{ roleLabel }}）单文件上限 {{ maxFileLabel }}
+              </p>
+            </button>
+          </div>
         </section>
 
         <!-- file uploader (s3 mode) ----------------------- -->
