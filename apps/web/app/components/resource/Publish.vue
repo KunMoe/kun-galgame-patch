@@ -440,22 +440,29 @@ const uploadStatusLabel = computed(
   () => STATUS_LABEL[uploader.status.value] ?? ''
 )
 
-const quotaLimitBytes = computed(() =>
-  userStore.isModerator ? 5 * 1024 * 1024 * 1024 : 100 * 1024 * 1024
+// Per-role caps mirror the backend constants.UploadTier; the server is
+// authoritative. dailyQuotaBytes < 0 means unlimited (admin). admin is checked
+// first since isModerator may also be true for admins.
+const GiB = 1024 * 1024 * 1024
+const maxFileBytes = computed(() =>
+  userStore.isAdmin ? 20 * GiB : userStore.isModerator ? 5 * GiB : GiB
 )
-const quotaUsedMB = computed(() =>
-  (userStore.user.daily_upload_size / (1024 * 1024)).toFixed(3)
+const maxFileLabel = computed(() => `${maxFileBytes.value / GiB} GB`)
+const dailyQuotaBytes = computed(() =>
+  userStore.isAdmin ? -1 : userStore.isModerator ? 100 * GiB : GiB
 )
-const quotaLimitMB = computed(() =>
-  (quotaLimitBytes.value / (1024 * 1024)).toFixed(0)
-)
+const isQuotaUnlimited = computed(() => dailyQuotaBytes.value < 0)
+const quotaUsedBytes = computed(() => userStore.user.daily_upload_size ?? 0)
 const quotaPercent = computed(() =>
-  Math.min(
-    100,
-    Math.round(
-      (userStore.user.daily_upload_size / quotaLimitBytes.value) * 100
-    )
-  )
+  isQuotaUnlimited.value
+    ? 0
+    : Math.min(
+        100,
+        Math.round((quotaUsedBytes.value / dailyQuotaBytes.value) * 100)
+      )
+)
+const roleLabel = computed(() =>
+  userStore.isAdmin ? '管理员' : userStore.isModerator ? '创作者' : '普通用户'
 )
 
 // File name to display in the "existing file" summary card. We don't have the
@@ -506,12 +513,12 @@ const existingFileName = computed(() => {
           </NuxtLink>
         </div>
         <p>
-          今日已使用存储 <strong>{{ quotaUsedMB }} MB</strong> /
-          {{ quotaLimitMB }} MB（{{
-            userStore.isModerator ? '创作者' : '普通用户'
+          今日已使用存储 <strong>{{ formatFileSize(quotaUsedBytes) }}</strong> /
+          {{ isQuotaUnlimited ? '无限制' : formatFileSize(dailyQuotaBytes) }}（{{
+            roleLabel
           }}每日额度，每天早上 8 点重置）
         </p>
-        <KunProgress :value="quotaPercent" size="sm" />
+        <KunProgress v-if="!isQuotaUnlimited" :value="quotaPercent" size="sm" />
       </div>
     </div>
 
@@ -537,7 +544,7 @@ const existingFileName = computed(() => {
             {{ isEdit ? '补丁文件' : '上传资源' }}
           </h3>
           <p class="text-default-500 text-sm">
-            支持 {{ ALLOWED_EXTENSIONS.join(' ') }} 压缩格式，单文件最大 1 GB。
+            支持 {{ ALLOWED_EXTENSIONS.join(' ') }} 压缩格式，单文件最大 {{ maxFileLabel }}。
             <span v-if="isDragging" class="text-primary font-medium">
               松开鼠标以上传文件
             </span>

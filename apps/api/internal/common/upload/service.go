@@ -81,39 +81,36 @@ func (s *Service) unmarkComplete(uuid string) {
 	s.rdb.Del(ctx, "upload:complete:"+uuid)
 }
 
-// validatePreUpload pre-checks at init time: extension, size cap, per-user daily
-// quota (based on the declared size). privileged grants the higher quota
-// (admins / moderators), resolved by the handler from the OAuth roles claim.
-func (s *Service) validatePreUpload(userID int, fileName string, declaredSize int64, privileged bool) error {
-	if declaredSize <= 0 || declaredSize > constants.MaxLargeFileSize {
-		return fmt.Errorf("文件大小超过 1GB 上限")
+const oneGiB int64 = 1024 * 1024 * 1024
+
+// validatePreUpload pre-checks at init time: extension, per-role single-file cap,
+// and (unless the tier is unlimited) the per-user daily quota based on the
+// declared size. tier is resolved by the handler from the OAuth roles claim.
+func (s *Service) validatePreUpload(userID int, fileName string, declaredSize int64, tier constants.UploadTier) error {
+	if declaredSize <= 0 || declaredSize > tier.MaxFileSize {
+		return fmt.Errorf("文件大小超过 %d GB 上限", tier.MaxFileSize/oneGiB)
 	}
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if !slices.Contains(constants.AllowedResourceExtensions, ext) {
 		return fmt.Errorf("不支持的文件类型: %s", ext)
 	}
+	if tier.DailyLimit == constants.UnlimitedDailyUpload {
+		return nil
+	}
 	var user authModel.User
 	if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
 		return fmt.Errorf("获取用户信息失败")
 	}
-	limit := s.dailyLimit(privileged)
-	if int64(user.DailyUploadSize)+declaredSize > limit {
-		return fmt.Errorf("超过今日上传限额 (%d MB)", limit/1024/1024)
+	if user.DailyUploadSize+declaredSize > tier.DailyLimit {
+		return fmt.Errorf("超过今日上传限额 (%d GB)", tier.DailyLimit/oneGiB)
 	}
 	return nil
 }
 
-func (s *Service) dailyLimit(privileged bool) int64 {
-	if privileged {
-		return constants.CreatorDailyUploadLimit
-	}
-	return constants.UserDailyUploadLimit
-}
-
 // Init validates, then asks the artifact service to start an upload. Artifact
 // returns the presigned single-PUT URL or the multipart parts (server-driven).
-func (s *Service) Init(ctx context.Context, userID int, privileged bool, req InitRequest) (*InitResponse, error) {
-	if err := s.validatePreUpload(userID, req.FileName, req.FileSize, privileged); err != nil {
+func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTier, req InitRequest) (*InitResponse, error) {
+	if err := s.validatePreUpload(userID, req.FileName, req.FileSize, tier); err != nil {
 		return nil, err
 	}
 
@@ -154,7 +151,7 @@ func (s *Service) Init(ctx context.Context, userID int, privileged bool, req Ini
 
 // Complete finalizes the upload via artifact (which HeadObject-verifies the size
 // server-side), then deducts the per-user daily quota once (idempotent).
-func (s *Service) Complete(ctx context.Context, userID int, privileged bool, req CompleteRequest) (*CompleteResponse, error) {
+func (s *Service) Complete(ctx context.Context, userID int, tier constants.UploadTier, req CompleteRequest) (*CompleteResponse, error) {
 	var cr artifactclient.CompleteUploadRequest
 	if len(req.Parts) > 0 {
 		parts := make([]artifactclient.CompletedPart, 0, len(req.Parts))
@@ -172,7 +169,7 @@ func (s *Service) Complete(ctx context.Context, userID int, privileged bool, req
 	// artifact verified actual == declared server-side; art.FileSize is the
 	// verified size. Deduct the per-user daily quota exactly once.
 	size := art.FileSize
-	if err := s.deductQuotaOnce(ctx, userID, req.ArtifactUUID, size, privileged); err != nil {
+	if err := s.deductQuotaOnce(ctx, userID, req.ArtifactUUID, size, tier); err != nil {
 		return nil, err
 	}
 	return &CompleteResponse{ArtifactUUID: req.ArtifactUUID, Size: size}, nil
@@ -181,7 +178,7 @@ func (s *Service) Complete(ctx context.Context, userID int, privileged bool, req
 // deductQuotaOnce increments daily_upload_size once per artifact uuid (Redis
 // SETNX, 24h TTL). If the user is over quota at this point the artifact is
 // soft-deleted (it's already uploaded) and an error is returned.
-func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, size int64, privileged bool) error {
+func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, size int64, tier constants.UploadTier) error {
 	first, err := s.markCompleteOnce(ctx, uuid)
 	if err != nil {
 		return fmt.Errorf("complete 幂等校验失败: %w", err)
@@ -196,13 +193,17 @@ func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, 
 		}
 	}()
 
-	var user authModel.User
-	if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
-		return fmt.Errorf("获取用户信息失败")
-	}
-	if int64(user.DailyUploadSize)+size > s.dailyLimit(privileged) {
-		_ = s.art.Delete(context.Background(), uuid)
-		return fmt.Errorf("超过今日上传限额，已删除")
+	// Unlimited tiers (admin) skip the ceiling check but still accrue usage, so
+	// the quota display reflects what they uploaded today.
+	if tier.DailyLimit != constants.UnlimitedDailyUpload {
+		var user authModel.User
+		if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
+			return fmt.Errorf("获取用户信息失败")
+		}
+		if user.DailyUploadSize+size > tier.DailyLimit {
+			_ = s.art.Delete(context.Background(), uuid)
+			return fmt.Errorf("超过今日上传限额，已删除")
+		}
 	}
 	if err := s.db.Model(&authModel.User{}).
 		Where("id = ?", userID).

@@ -1,15 +1,30 @@
 // Package constants centralizes business constants.
 package constants
 
-// MaxLargeFileSize is the upper bound for a single uploaded patch file (1 GB).
-// The artifact service enforces it (and the per-user daily quota) server-side
-// too; this is just the instant local check before init.
-const MaxLargeFileSize int64 = 1 * 1024 * 1024 * 1024
+const oneGiB int64 = 1024 * 1024 * 1024
 
-// Per-user daily upload quotas (reset at 00:00 by cron).
-const (
-	UserDailyUploadLimit    int64 = 100 * 1024 * 1024      // 100 MB
-	CreatorDailyUploadLimit int64 = 5 * 1024 * 1024 * 1024 // 5 GB
+// UnlimitedDailyUpload marks a tier with no per-day ceiling (admin).
+const UnlimitedDailyUpload int64 = -1
+
+// UploadTier is a role's patch-file upload allowance. MaxFileSize caps a single
+// file; DailyLimit caps the per-user per-day total (reset to 0 by the daily
+// cron). DailyLimit == UnlimitedDailyUpload means no daily ceiling.
+//
+// NOTE: the artifact service additionally enforces a per-SITE cap on moyu's
+// OAuth client (artifact_max_file_size / artifact_quota_bytes_daily). For a tier
+// to actually apply, that site cap must be >= the largest MaxFileSize here
+// (20 GB) and the site daily-byte quota generous enough for all users combined —
+// otherwise infra rejects (50004 / 50012) before this per-user check matters.
+type UploadTier struct {
+	MaxFileSize int64 // single-file cap (bytes)
+	DailyLimit  int64 // per-user per-day cap (bytes); UnlimitedDailyUpload = none
+}
+
+// Per-role upload tiers (resolved by the handler from the OAuth roles claim).
+var (
+	UserUploadTier      = UploadTier{MaxFileSize: 1 * oneGiB, DailyLimit: 1 * oneGiB}
+	ModeratorUploadTier = UploadTier{MaxFileSize: 5 * oneGiB, DailyLimit: 100 * oneGiB}
+	AdminUploadTier     = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: UnlimitedDailyUpload}
 )
 
 // AllowedResourceExtensions aligns with the frontend resource form.

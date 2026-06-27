@@ -34,7 +34,7 @@ type MeResponse struct {
 	Moemoepoint     int      `json:"moemoepoint"`
 	DailyCheckIn    int      `json:"daily_check_in"`
 	DailyImageCount int      `json:"daily_image_count"`
-	DailyUploadSize int      `json:"daily_upload_size"`
+	DailyUploadSize int64    `json:"daily_upload_size"`
 	FollowerCount   int      `json:"follower_count"`
 	FollowingCount  int      `json:"following_count"`
 }

@@ -20,7 +20,7 @@ type User struct {
 	Moemoepoint     int       `gorm:"default:0" json:"moemoepoint"`
 	DailyImageCount int       `gorm:"default:0" json:"-"`
 	DailyCheckIn    int       `gorm:"default:0" json:"-"`
-	DailyUploadSize int       `gorm:"default:0" json:"-"`
+	DailyUploadSize int64     `gorm:"default:0" json:"-"`
 	LastLoginTime   string    `gorm:"default:''" json:"-"`
 	FollowerCount   int       `gorm:"default:0" json:"follower_count"`
 	FollowingCount  int       `gorm:"default:0" json:"following_count"`

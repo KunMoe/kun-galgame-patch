@@ -19,10 +19,11 @@
 // Explicit cancel() aborts the artifact + drops the record; an interruption keeps
 // it so the publish modal can offer to continue.
 //
-// The 1 GB cap mirrors Go's internal/constants/upload.go for an instant local
-// error; the server enforces it (and the per-user quota) too.
+// The per-role single-file cap (1/5/20 GB for user/moderator/admin) mirrors Go's
+// internal/constants/upload.go UploadTier for an instant local error; the server
+// is authoritative (it also enforces the per-user daily quota).
 
-const MAX_LARGE_FILE_SIZE = 1024 * 1024 * 1024
+const GiB = 1024 * 1024 * 1024
 
 // Upload concurrency scales with file size to trade throughput against resume
 // granularity. The window a resume must re-upload after an interrupt is
@@ -94,6 +95,12 @@ type ResumeStore = ReturnType<typeof useResourceResumeUploads>
 
 export const useResourceUpload = () => {
   const api = useApi()
+  const userStore = useUserStore()
+  // Per-role single-file cap (mirrors backend constants.UploadTier). admin is
+  // checked first since isModerator may also be true for admins.
+  const maxFileSize = computed(() =>
+    userStore.isAdmin ? 20 * GiB : userStore.isModerator ? 5 * GiB : GiB
+  )
   const status = ref<UploadStatus>('idle')
   // Per-byte progress so the bar moves smoothly even during a single large PUT.
   // Multipart aggregates uploaded-bytes-so-far across parts.
@@ -245,8 +252,8 @@ export const useResourceUpload = () => {
     galgameId: number
   ): Promise<UploadResult> => {
     reset()
-    if (file.size > MAX_LARGE_FILE_SIZE) {
-      const msg = '文件大小超过 1GB 上限'
+    if (file.size > maxFileSize.value) {
+      const msg = `文件大小超过 ${maxFileSize.value / GiB} GB 上限`
       status.value = 'error'
       errorMessage.value = msg
       throw new Error(msg)

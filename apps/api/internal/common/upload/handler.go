@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"io"
 
+	"kun-galgame-patch-api/internal/constants"
 	galgameclient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
@@ -30,6 +31,19 @@ func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Clien
 	return &Handler{svc: svc, img: img, wiki: wiki}
 }
 
+// uploadTier resolves the caller's per-role upload allowance from the OAuth
+// roles claim (admin > moderator > user).
+func uploadTier(c *fiber.Ctx) constants.UploadTier {
+	switch {
+	case middleware.HasAnyRole(c, "admin"):
+		return constants.AdminUploadTier
+	case middleware.HasAnyRole(c, "moderator"):
+		return constants.ModeratorUploadTier
+	default:
+		return constants.UserUploadTier
+	}
+}
+
 // Init POST /api/upload/init — start an upload; the artifact service decides
 // single-PUT vs multipart and returns the presigned URL(s).
 func (h *Handler) Init(c *fiber.Ctx) error {
@@ -38,9 +52,8 @@ func (h *Handler) Init(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	user := middleware.MustGetUser(c)
-	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.Init(c.Context(), user.ID, privileged, req)
+	resp, err := h.svc.Init(c.Context(), user.ID, uploadTier(c), req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -55,9 +68,8 @@ func (h *Handler) Complete(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	user := middleware.MustGetUser(c)
-	privileged := middleware.HasAnyRole(c, "admin", "moderator")
 
-	resp, err := h.svc.Complete(c.Context(), user.ID, privileged, req)
+	resp, err := h.svc.Complete(c.Context(), user.ID, uploadTier(c), req)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
