@@ -7,6 +7,8 @@ export const SUPPORTED_TYPE = [
   'crack',
   'fix',
   'mod',
+  'r18',
+  'decensor',
   'other'
 ]
 
@@ -20,6 +22,8 @@ export const SUPPORTED_TYPE_MAP: Record<string, string> = {
   crack: '破解补丁',
   fix: '修正补丁',
   mod: '魔改补丁',
+  r18: 'R18 成人内容补丁',
+  decensor: '去马赛克补丁',
   other: '其它'
 }
 
@@ -72,6 +76,18 @@ export const resourceTypes = [
     label: '魔改补丁',
     description:
       '由 Cheat Engine 或者其它工具, 或者自行修改游戏资源数据, 对官方游戏内容, 玩法等产生变更, 产生的补丁'
+  },
+  {
+    value: 'r18',
+    label: 'R18 成人内容补丁',
+    description:
+      '为全年龄版 / 移植版游戏追加或解锁 R18 成人向内容 (成人 CG, 剧情, 事件等) 的补丁'
+  },
+  {
+    value: 'decensor',
+    label: '去马赛克补丁',
+    description:
+      '去除游戏 CG 或演出画面中的马赛克遮挡, 还原无修正 (无码) 画面的补丁'
   },
   {
     value: 'other',
