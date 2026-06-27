@@ -280,3 +280,18 @@
     @apply my-4;
   }
 }
+
+/* Comment (compact) images: cap the height so a tall image doesn't dominate the
+ * thread, and pin them to the START (left) instead of centered — block, on their
+ * own line, hugging the left edge (mx-0 kills any inherited margin-inline:auto).
+ *
+ * Written with BOTH classes (.kun-prose.kun-prose-compact, which KunContent's
+ * `compact` always sets together) so its (0,2,1) specificity beats the base
+ * `.kun-prose img` AND the doc page's non-scoped global `.kun-prose img
+ * { margin: 1em auto }` (centering that leaks onto every .kun-prose), regardless
+ * of stylesheet load order. Stickers (small inline w-32) are excluded. Only
+ * compact prose (comments / chat) is affected — article prose (resource notes,
+ * galgame 简介, docs) keeps its full-size images. */
+.kun-prose.kun-prose-compact img:not([alt='Sticker']) {
+  @apply my-3 mx-0 block max-h-72 w-auto max-w-full object-contain object-left;
+}

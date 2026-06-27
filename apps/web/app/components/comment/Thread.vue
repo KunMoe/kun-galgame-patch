@@ -35,9 +35,7 @@ const hasMore = computed(
 </script>
 
 <template>
-  <div
-    class="border-default/20 bg-content1 shadow-kun-sm hover:border-primary/30 rounded-2xl border p-5 transition-colors"
-  >
+  <KunCard :bordered="true" :is-hoverable="false">
     <CommentItem
       :comment="root"
       :galgame-id="galgameId"
@@ -50,10 +48,7 @@ const hasMore = computed(
       @removed="(id) => emit('removed', id)"
     >
       <template #replies>
-        <div
-          v-if="visibleReplies.length"
-          class="border-default/15 mt-3 space-y-4 border-l-2 pl-4"
-        >
+        <div v-if="visibleReplies.length" class="mt-3 space-y-4">
           <CommentItem
             v-for="r in visibleReplies"
             :key="r.id"
@@ -83,5 +78,5 @@ const hasMore = computed(
         </KunButton>
       </template>
     </CommentItem>
-  </div>
+  </KunCard>
 </template>
