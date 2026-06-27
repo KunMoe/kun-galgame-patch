@@ -58,3 +58,32 @@ type CompleteResponse struct {
 type AbortRequest struct {
 	ArtifactUUID string `json:"artifact_uuid" validate:"required,min=1,max=64"`
 }
+
+// ResumeRequest continues an interrupted upload by its artifact uuid (persisted
+// client-side at init). The artifact service lists the parts already in B2 and
+// re-presigns only the missing ones — no bytes already uploaded are re-sent.
+type ResumeRequest struct {
+	ArtifactUUID string `json:"artifact_uuid" validate:"required,min=1,max=64"`
+}
+
+// ResumePart is a part already stored on the artifact side — the client skips
+// re-uploading it and reuses its ETag at Complete.
+type ResumePart struct {
+	PartNumber int    `json:"part_number"`
+	ETag       string `json:"etag"`
+	Size       int64  `json:"size"`
+}
+
+// ResumeResponse mirrors InitResponse so the client's multipart loop is shared:
+// UploadedParts are already stored (skip + reuse ETag), Parts are fresh presigned
+// URLs for only the missing parts. A single-PUT upload comes back Multipart=false
+// + a fresh UploadURL to re-PUT the whole file.
+type ResumeResponse struct {
+	ArtifactUUID  string       `json:"artifact_uuid"`
+	Multipart     bool         `json:"multipart"`
+	UploadURL     string       `json:"upload_url,omitempty"`
+	PartSize      int64        `json:"part_size,omitempty"`
+	Parts         []PartURL    `json:"parts,omitempty"`
+	UploadedParts []ResumePart `json:"uploaded_parts,omitempty"`
+	ExpiresAt     string       `json:"expires_at"`
+}

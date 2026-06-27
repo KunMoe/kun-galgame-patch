@@ -64,6 +64,23 @@ func (h *Handler) Complete(c *fiber.Ctx) error {
 	return response.OK(c, resp)
 }
 
+// Resume POST /api/upload/resume — continue an interrupted upload. The artifact
+// service lists the parts already in B2 and re-presigns only the missing ones, so
+// a paused / dropped / page-refreshed upload finishes without re-sending bytes.
+func (h *Handler) Resume(c *fiber.Ctx) error {
+	var req ResumeRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	_ = middleware.MustGetUser(c)
+
+	resp, err := h.svc.Resume(c.Context(), req)
+	if err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	return response.OK(c, resp)
+}
+
 // UploadImageService POST /api/upload/image-service
 //
 // Proxies a multipart image upload to the centralized image_service

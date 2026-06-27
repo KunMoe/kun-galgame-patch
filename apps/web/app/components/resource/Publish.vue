@@ -109,6 +109,7 @@ watch(
     uploader.reset()
     pickedFile.value = null
     replaceMode.value = false
+    resumeUuid.value = null
   }
 )
 
@@ -118,6 +119,31 @@ const uploadError = ref('')
 // In edit mode the original file is shown until the user clicks "替换文件".
 // replaceMode flips the UI from "file summary card" to "drop zone + picker".
 const replaceMode = ref(false)
+// ─── Resumable uploads ────────────────────────────────────
+// Interrupted multipart uploads for THIS galgame are persisted (uuid + file
+// identity + progress) in localStorage so the modal can offer to continue them
+// across a page reload. resumeUuid is set when the staged file matches a pending
+// record (size+lastModified) — submit then resumes from the breakpoint instead
+// of restarting; the already-uploaded parts live in B2 on the artifact side.
+const resumeStore = useResourceResumeUploads(props.patchId)
+const pending = ref<PatchPendingUpload[]>([])
+const resumeUuid = ref<string | null>(null)
+const refreshPending = () => {
+  pending.value = resumeStore.list()
+}
+// Match the staged file against the pending records (size+lastModified, not name)
+// so a re-picked / moved / renamed-but-identical file resumes from its breakpoint.
+const syncResumeForPicked = () => {
+  const f = pickedFile.value
+  const match = f
+    ? resumeStore
+        .list()
+        .find((p) => p.size === f.size && p.lastModified === f.lastModified)
+    : undefined
+  resumeUuid.value = match ? match.artifactUuid : null
+}
+onMounted(refreshPending)
+
 // True iff we're showing the existing file with no replacement chosen.
 // Used to lock the file-card affordances to a read-only summary.
 const showingExistingFile = computed(
@@ -184,20 +210,69 @@ const handleFilePicked = (files: File[]) => {
   // so the new file's confirm button starts clean (no stale progress %).
   uploader.reset()
   pickedFile.value = f
+  // Re-picking the file of an interrupted upload offers to resume from the
+  // breakpoint instead of restarting.
+  syncResumeForPicked()
+}
+
+// New uploads are artifact-backed; clear any stale legacy s3_key.
+const applyUploadResult = (result: { artifactUuid: string; size: number }) => {
+  form.artifact_uuid = result.artifactUuid
+  form.s3_key = ''
+  form.size = `${(result.size / (1024 * 1024)).toFixed(3)} MB`
 }
 
 const confirmUpload = async () => {
-  if (!pickedFile.value) return
+  const file = pickedFile.value
+  if (!file) return
   uploadError.value = ''
   try {
-    const result = await uploader.upload(pickedFile.value, props.patchId)
-    // New uploads are artifact-backed; clear any stale legacy s3_key.
-    form.artifact_uuid = result.artifactUuid
-    form.s3_key = ''
-    form.size = `${(result.size / (1024 * 1024)).toFixed(3)} MB`
+    const result = resumeUuid.value
+      ? await uploader.resumeUpload(file, props.patchId, resumeUuid.value)
+      : await uploader.upload(file, props.patchId)
+    applyUploadResult(result)
   } catch (e) {
     uploadError.value = e instanceof Error ? e.message : '上传失败'
+  } finally {
+    // A completed upload drops its resume record (→ resumeUuid clears); an
+    // interrupted one keeps it so 重试 resumes from the breakpoint.
+    refreshPending()
+    syncResumeForPicked()
   }
+}
+
+// From the on-open resume list: the user re-picked the matching file (validated
+// in ResumeList), so stage it and continue from the breakpoint.
+const handleContinuePending = async (
+  record: PatchPendingUpload,
+  file: File
+) => {
+  uploader.reset()
+  pickedFile.value = file
+  resumeUuid.value = record.artifactUuid
+  uploadError.value = ''
+  try {
+    const result = await uploader.resumeUpload(
+      file,
+      props.patchId,
+      record.artifactUuid
+    )
+    applyUploadResult(result)
+  } catch (e) {
+    uploadError.value = e instanceof Error ? e.message : '续传失败'
+  } finally {
+    refreshPending()
+    syncResumeForPicked()
+  }
+}
+
+// Discard an unfinished upload: soft-delete the artifact (its B2 parts are
+// reclaimed by GC) and drop the local record.
+const handleDeletePending = async (artifactUuid: string) => {
+  await api.post('/upload/abort', { artifact_uuid: artifactUuid }).catch(() => {})
+  resumeStore.remove(artifactUuid)
+  if (resumeUuid.value === artifactUuid) resumeUuid.value = null
+  refreshPending()
 }
 
 const removeFile = () => {
@@ -218,6 +293,10 @@ const removeFile = () => {
     form.artifact_uuid = ''
     form.size = ''
   }
+  // cancel() aborts+drops the record only if a flow started this session; an
+  // old pending record (matched but never resumed) stays for the ResumeList.
+  resumeUuid.value = null
+  refreshPending()
 }
 
 const uploadingNow = computed(
@@ -467,6 +546,26 @@ const existingFileName = computed(() => {
             </span>
           </p>
 
+          <!-- Interrupted uploads for this galgame (persisted across reloads).
+               Resuming needs the user to re-pick the file (the browser can't
+               read it by path), so the hint spells that out. -->
+          <div v-if="pending.length && !pickedFile" class="space-y-2">
+            <div
+              class="text-warning border-warning/30 bg-warning/10 flex items-start gap-2 rounded-lg border p-3 text-sm"
+            >
+              <KunIcon name="lucide:history" class="mt-0.5 shrink-0" />
+              <span>
+                您有 {{ pending.length }}
+                个未完成的上传，点击「继续上传」后重新选择同一文件即可从断点续传
+              </span>
+            </div>
+            <ResourceResumeList
+              :pending="pending"
+              @continue="handleContinuePending"
+              @delete="handleDeletePending"
+            />
+          </div>
+
           <!-- Existing file summary (edit mode, no replacement chosen) -->
           <div
             v-if="showingExistingFile"
@@ -580,7 +679,7 @@ const existingFileName = computed(() => {
                   @click="confirmUpload"
                 >
                   <KunIcon name="lucide:cloud-upload" class="size-4" />
-                  确认上传
+                  {{ resumeUuid ? '继续上传' : '确认上传' }}
                 </KunButton>
                 <!-- error: 重试 -->
                 <KunButton
@@ -603,6 +702,16 @@ const existingFileName = computed(() => {
                 </KunButton>
               </div>
             </div>
+
+            <!-- Breakpoint hint: the staged file matches an interrupted upload,
+                 so submitting continues from where it stopped. -->
+            <p
+              v-if="resumeUuid && stagedNotUploaded"
+              class="text-warning flex items-center gap-1.5 text-xs"
+            >
+              <KunIcon name="lucide:history" class="size-3.5" />
+              检测到未完成的上传，将从断点继续
+            </p>
 
             <div v-if="uploadingNow || uploadedOk">
               <p class="text-default-500 mb-1 text-sm">

@@ -393,6 +393,7 @@ func (a *App) RegisterRoutes() {
 	uploadRoutes := api.Group("/upload", auth)
 	uploadRoutes.Post("/init", a.UploadHandler.Init)
 	uploadRoutes.Post("/complete", a.UploadHandler.Complete)
+	uploadRoutes.Post("/resume", a.UploadHandler.Resume)
 	uploadRoutes.Post("/abort", a.UploadHandler.Abort)
 	// W2 / PR3b: multipart file → image_service → hash + variant URLs.
 	// Used by the screenshot editor (Wiki accepts no multipart for those).

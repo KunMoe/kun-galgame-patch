@@ -43,6 +43,23 @@ interface PatchResource {
   patch?: PatchSummary | null
 }
 
+// A multipart upload started but not completed, persisted in localStorage per
+// galgame (useResourceResumeUploads) so the publish modal can surface "you have
+// unfinished uploads" across page reloads. The already-uploaded parts live in B2
+// on the artifact side, so a resume only re-sends the missing ones. The browser
+// can't read a file by path, so resuming needs the user to re-select it (matched
+// by size+lastModified, so a moved/renamed file still resumes; any content edit
+// changes size/mtime, keeping it the same version). name is display-only;
+// progress is the last-known % so the resume list shows how far it got.
+interface PatchPendingUpload {
+  artifactUuid: string
+  name: string
+  size: number
+  lastModified: number
+  progress: number
+  updatedAt: number
+}
+
 // Backwards-compat alias: `note_html` is now part of PatchResource itself.
 type PatchResourceHtml = PatchResource
 

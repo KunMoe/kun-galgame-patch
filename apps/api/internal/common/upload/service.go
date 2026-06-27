@@ -213,6 +213,48 @@ func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, 
 	return nil
 }
 
+// Resume continues an interrupted upload: it asks the artifact service which
+// parts are already stored (skip them) and returns fresh presigned URLs for only
+// the missing parts, so a paused / dropped / page-refreshed upload finishes
+// without re-sending bytes already in B2. No quota is touched here — the per-user
+// daily budget is pre-checked at Init and deducted once at Complete; calling
+// resume also refreshes the artifact's activity timestamp so the orphan GC won't
+// reap it mid-resume.
+func (s *Service) Resume(ctx context.Context, req ResumeRequest) (*ResumeResponse, error) {
+	out, err := s.art.Resume(ctx, req.ArtifactUUID)
+	if err != nil {
+		return nil, mapArtifactErr(err)
+	}
+
+	resp := &ResumeResponse{
+		ArtifactUUID: out.Uuid,
+		Multipart:    out.Multipart,
+		ExpiresAt:    out.ExpiresAt,
+	}
+	if out.Multipart {
+		if out.PartSize != nil {
+			resp.PartSize = *out.PartSize
+		}
+		if out.PartUrls != nil {
+			for _, p := range *out.PartUrls {
+				resp.Parts = append(resp.Parts, PartURL{PartNumber: int(p.PartNumber), URL: p.Url})
+			}
+		}
+		if out.UploadedParts != nil {
+			for _, p := range *out.UploadedParts {
+				resp.UploadedParts = append(resp.UploadedParts, ResumePart{
+					PartNumber: int(p.PartNumber),
+					ETag:       p.Etag,
+					Size:       p.Size,
+				})
+			}
+		}
+	} else if out.UploadUrl != nil {
+		resp.UploadURL = *out.UploadUrl
+	}
+	return resp, nil
+}
+
 // Abort soft-deletes an in-progress upload on client request (the artifact GC
 // also reclaims orphaned status=uploading rows after its TTL).
 func (s *Service) Abort(ctx context.Context, req AbortRequest) error {

@@ -15,9 +15,12 @@ package artifactclient
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -36,6 +39,30 @@ type (
 	PartURL               = gen.PartURL
 	ManifestInput         = gen.ManifestInput
 )
+
+// UploadedPart is a part already stored in B2 for an in-progress upload. Resume
+// returns these so the client can skip re-uploading them (reuse the etag).
+type UploadedPart struct {
+	PartNumber int32  `json:"part_number"`
+	Etag       string `json:"etag"`
+	Size       int64  `json:"size"`
+}
+
+// ResumeUploadResponse mirrors the artifact service's resume response: the parts
+// already stored (UploadedParts — skip them) plus fresh presigned URLs for the
+// parts still missing (PartUrls). A single-part upload comes back with UploadUrl
+// to re-PUT the whole file. Field shapes match gen.InitUploadResponse where they
+// overlap. Hand-written (not generated) until the contract is re-synced; see the
+// note in Resume below.
+type ResumeUploadResponse struct {
+	Uuid          string          `json:"uuid"`
+	Multipart     bool            `json:"multipart"`
+	ExpiresAt     string          `json:"expires_at"`
+	PartSize      *int64          `json:"part_size,omitempty"`
+	PartUrls      *[]gen.PartURL  `json:"part_urls,omitempty"`
+	UploadUrl     *string         `json:"upload_url,omitempty"`
+	UploadedParts *[]UploadedPart `json:"uploaded_parts,omitempty"`
+}
 
 // House error codes returned by the artifact service (see infra pkg/errors).
 const (
@@ -72,6 +99,10 @@ type Config struct {
 type Client struct {
 	inner     *gen.ClientWithResponses
 	basicAuth string
+	// baseURL + httpClient back the hand-written Resume call (the generated
+	// client predates the /resume endpoint); identical to what `inner` uses.
+	baseURL    string
+	httpClient *http.Client
 }
 
 // New constructs a Client. Empty BaseURL/credentials = no-op client whose calls
@@ -88,7 +119,7 @@ func New(cfg Config) *Client {
 		ba = "Basic " + base64.StdEncoding.EncodeToString([]byte(cfg.ClientID+":"+cfg.ClientSecret))
 	}
 
-	c := &Client{basicAuth: ba}
+	c := &Client{basicAuth: ba, baseURL: base, httpClient: hc}
 	if base != "" && ba != "" {
 		inner, err := gen.NewClientWithResponses(base,
 			gen.WithHTTPClient(hc),
@@ -137,6 +168,49 @@ func (c *Client) CompleteUpload(ctx context.Context, uuid string, req CompleteUp
 		return resp.JSON200.Data, nil
 	}
 	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+}
+
+// Resume restarts an interrupted upload. It asks the artifact service which
+// parts are already stored in B2 (UploadedParts — skip them, reuse their etags)
+// and returns fresh presigned URLs for the parts still missing (PartUrls); a
+// single-part upload comes back with a fresh UploadUrl to re-PUT the whole file.
+// Calling it also refreshes the upload's activity timestamp so artifact-gc won't
+// reap an upload that's still being resumed. See infra docs/artifact/06 §2.3.
+//
+// Hand-written rather than generated: the committed gen client predates the
+// /resume endpoint. It reuses the same base URL, HTTP client, Basic auth, and
+// {code,message,data} envelope / error mapping as the generated calls — a future
+// full re-gen from the synced contract can fold it back in.
+func (c *Client) Resume(ctx context.Context, uuid string) (*ResumeUploadResponse, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+	endpoint := c.baseURL + "/api/v1/artifacts/" + url.PathEscape(uuid) + "/resume"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", c.basicAuth)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusOK {
+		var env struct {
+			Code int                   `json:"code"`
+			Data *ResumeUploadResponse `json:"data"`
+		}
+		if json.Unmarshal(body, &env) == nil && env.Code == 0 && env.Data != nil {
+			return env.Data, nil
+		}
+	}
+	var he gen.HouseError
+	_ = json.Unmarshal(body, &he)
+	return nil, mapErr(resp.StatusCode, &he)
 }
 
 // Download returns a download URL (presigned GET, or a Worker URL for public
