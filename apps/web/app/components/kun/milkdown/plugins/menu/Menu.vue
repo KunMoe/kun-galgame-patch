@@ -63,6 +63,15 @@ const toggleTab = () => {
 const currentTabLabel = computed(() => {
   return activeTab.value === 'preview' ? tabs[1]!.textValue : tabs[0]!.textValue
 })
+
+// Merged sticker/emoji popover tab. Default 贴纸; the 贴纸 tab only shows when the
+// editor allows images (stickers ARE images) — the text-only editor (galgame
+// 简介, allowImage=false) shows 表情 alone.
+const insertTab = ref('sticker')
+const insertTabItems = [
+  { value: 'sticker', textValue: '贴纸', icon: 'lucide:sticker' },
+  { value: 'emoji', textValue: '表情', icon: 'lucide:smile-plus' }
+]
 </script>
 
 <template>
@@ -102,24 +111,35 @@ const currentTabLabel = computed(() => {
         />
       </KunButton>
 
-      <KunPopover inner-class="-left-28">
+      <!-- One merged popover for stickers + emoji. Emoji icon as the trigger; a
+           贴纸/表情 tab switches the body (tab hidden when images are disallowed,
+           leaving 表情 only). kun-ui 2.x auto-positions, so no manual nudge; opaque
+           so the panel isn't see-through. -->
+      <KunPopover opaque>
         <template #trigger>
           <KunButton variant="light" class-name="text-xl" :is-icon-only="true">
             <KunIcon class="text-foreground" name="lucide:smile-plus" />
           </KunButton>
         </template>
 
-        <KunMilkdownPluginsEmojiContainer :editor-info="editorInfo" />
-      </KunPopover>
-
-      <KunPopover v-if="props.allowImage" inner-class="-left-28">
-        <template #trigger>
-          <KunButton variant="light" class-name="text-xl" :is-icon-only="true">
-            <KunIcon class="text-foreground" name="lucide:sticker" />
-          </KunButton>
-        </template>
-
-        <KunMilkdownPluginsStickerContainer :editor-info="editorInfo" />
+        <div class="flex flex-col gap-1.5">
+          <KunTab
+            v-if="props.allowImage"
+            v-model="insertTab"
+            :items="insertTabItems"
+            variant="underlined"
+            color="primary"
+            full-width
+          />
+          <KunMilkdownPluginsStickerContainer
+            v-if="props.allowImage && insertTab === 'sticker'"
+            :editor-info="editorInfo"
+          />
+          <KunMilkdownPluginsEmojiContainer
+            v-if="!props.allowImage || insertTab === 'emoji'"
+            :editor-info="editorInfo"
+          />
+        </div>
       </KunPopover>
     </template>
   </div>
