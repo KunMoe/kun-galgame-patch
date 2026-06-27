@@ -113,6 +113,19 @@
   background-color: oklch(var(--background));
 }
 
+/* ─── Opaque modal panel ────────────────────────────────────────────────────
+ * Separate from the scrim above: KunUI's .kun-modal-panel hard-codes
+ * `bg-content1/85` — a Tailwind /85 alpha modifier baked into the component
+ * class, INDEPENDENT of --kun-surface-opacity (which only sets content1's own
+ * alpha). So the panel stays 85% see-through even though the surface tokens are
+ * pinned to 1 above. Force it fully opaque with solid content1; the --content1
+ * triplet swaps light/dark, so one rule adapts to both. The panel's kun-backdrop
+ * blur is kept (now invisible behind the opaque bg) so its open/close transform
+ * animation is unchanged. Un-layered → beats the Tailwind utilities layer. */
+.kun-modal-panel {
+  background-color: oklch(var(--content1));
+}
+
 @layer base {
   html,
   body {
