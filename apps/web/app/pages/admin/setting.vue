@@ -24,14 +24,14 @@ const definitions: SettingDefinition[] = [
   {
     key: 'comment-verify',
     name: '评论需要审核',
-    description: '开启后新评论需要管理员审核通过才能显示',
+    description: '开启后新评论需要版主审核通过才能显示',
     isInverse: false
   },
   {
     key: 'creator-only',
-    name: '仅管理员 / 超级管理员可发布 Galgame',
+    name: '仅创作者 / 版主 / 管理员可发布 Galgame',
     description:
-      '开启后仅管理员 / 超级管理员 (role > 2) 可以发布、认领或提交新的 Galgame 条目，普通用户将被拒绝',
+      '开启后仅创作者 / 版主 / 管理员（及以上）可以发布、认领或提交新的 Galgame 条目，普通用户将被拒绝',
     isInverse: false
   }
 ]

@@ -103,7 +103,7 @@ const handleRevert = async (rev: number) => {
       page.value = 1
       await refresh()
     } else {
-      useKunMessage(res.message || '回滚失败（仅创建者或管理员可操作）', 'error')
+      useKunMessage(res.message || '回滚失败（仅创建者或版主可操作）', 'error')
     }
   } finally {
     reverting.value = null

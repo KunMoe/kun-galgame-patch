@@ -74,7 +74,7 @@ const submit = async () => {
       content.value = ''
       composerKey.value++
       if (res.data?.status === 1) {
-        useKunMessage('评论已提交，等待管理员审核通过后显示', 'info')
+        useKunMessage('评论已提交，等待版主审核通过后显示', 'info')
       } else if (data.value) {
         res.data.reply = res.data.reply ?? []
         data.value.items.unshift(res.data)

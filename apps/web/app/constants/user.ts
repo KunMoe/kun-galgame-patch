@@ -1,30 +1,30 @@
-// Maps OAuth role strings (returned by /oauth/userinfo and /users/batch) to
-// the Chinese labels rendered in role badges. Mirrors
-// docs/user-migration/02-data-mapping.md §7:
+// Maps OAuth role strings (from the access-token `roles` claim / /users/batch)
+// to the Chinese badge labels. Names follow the AUTHORITATIVE 5-role contract
+// docs/oauth/11-roles.md §1 (Tier A) verbatim:
 //
-//   "admin"     -> 超级管理员 (moyu 老 super-admin / OAuth global admin)
-//   "moderator" -> 管理员     (moyu / kungal 老 admin)
-//   "user"      -> 用户       (普通用户, 默认)
+//   user      -> 普通用户   (implicit default; never appears in the claim)
+//   creator   -> 创作者     (trusted publisher; orthogonal to moderation)
+//   moderator -> 版主       (content moderation)
+//   admin     -> 管理员     (site & user management)
+//   ren (莲)  -> 莲         (super-admin above admin; DB-preset only)
 //
-// The display labels are deliberately one tier "up" from the OAuth role name
-// (moderator→管理员, admin→超级管理员): the OAuth migration kept the legacy role
-// *strings*, but the product names the tiers 用户 / 管理员 / 超级管理员.
+// (Previously moyu used a "one tier up" product naming — moderator=管理员,
+// admin=超级管理员 — now aligned to the contract's canonical names.)
 //
-// Use `pickRoleLabel(roles)` to render the single badge for a user that may
-// hold multiple OAuth roles (e.g. ["admin", "user"]).
+// The `roles` claim is a SET with NO "user" string (普通用户 = empty array), so
+// 普通用户 is the empty/fallback case. Use `pickRoleLabel(roles)` to render the
+// single badge for a user that may hold several roles.
 export const USER_ROLE_MAP: Record<string, string> = {
-  // `ren` (莲) is the DB-preset super-admin; it ranks with admin and shares the
-  // 超级管理员 badge (see userStore.isAdmin / middleware.SuperAdminRoles).
-  ren: '超级管理员',
-  admin: '超级管理员',
-  moderator: '管理员',
+  ren: '莲',
+  admin: '管理员',
+  moderator: '版主',
   creator: '创作者',
-  user: '用户'
+  user: '普通用户'
 }
 
-// Highest-priority first; the first role in this list that the user holds
-// wins, so an "admin + user" carrier shows up as 超级管理员. `creator` sits
-// between moderator and user — a trusted-publisher tier, not a moderation one.
+// Highest-priority first; the first role the user holds wins, mirroring the
+// contract's management axis (ren > admin > moderator) with `creator` slotted
+// as the orthogonal trusted-publisher tier between moderator and user.
 const ROLE_PRIORITY: readonly string[] = [
   'ren',
   'admin',
@@ -34,12 +34,12 @@ const ROLE_PRIORITY: readonly string[] = [
 ]
 
 export const pickRoleLabel = (roles: string[] | null | undefined): string => {
-  if (!roles || roles.length === 0) return USER_ROLE_MAP.user ?? '用户'
+  if (!roles || roles.length === 0) return USER_ROLE_MAP.user ?? '普通用户'
   for (const role of ROLE_PRIORITY) {
     if (roles.includes(role)) return USER_ROLE_MAP[role] ?? role
   }
   // Unknown role string -> render verbatim rather than mask the data.
-  return roles[0] ?? USER_ROLE_MAP.user ?? '用户'
+  return roles[0] ?? USER_ROLE_MAP.user ?? '普通用户'
 }
 
 export const USER_STATUS_MAP: Record<number, string> = {

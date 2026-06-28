@@ -222,7 +222,7 @@ const doDecline = async () => {
     <KunCard v-if="showForm" :bordered="true">
       <div class="space-y-3 p-4">
         <p class="text-default-500 text-xs">
-          仅需填写要修改的字段，留空表示不改。提交后由创建者 / 管理员审核合并。
+          仅需填写要修改的字段，留空表示不改。提交后由创建者 / 版主审核合并。
         </p>
         <KunInput v-model="form.name_zh_cn" label="名称（简体中文）" />
         <KunInput v-model="form.name_ja_jp" label="名称（日本語）" />
@@ -371,7 +371,7 @@ const doDecline = async () => {
             </KunButton>
           </div>
           <p class="text-default-400 mt-4 text-xs">
-            合并 / 拒绝仅创建者或管理员可操作；若 base 落后会自动 rebase，冲突时会提示具体字段。
+            合并 / 拒绝仅创建者或版主可操作；若 base 落后会自动 rebase，冲突时会提示具体字段。
           </p>
         </template>
       </div>

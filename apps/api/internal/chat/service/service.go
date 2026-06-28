@@ -162,7 +162,7 @@ func (s *ChatService) DeleteMessage(userID int, isPrivileged bool, messageID int
 		return fmt.Errorf("消息不存在")
 	}
 	if m.SenderID != userID && !isPrivileged {
-		return fmt.Errorf("仅发送者或管理员可删除消息")
+		return fmt.Errorf("仅发送者或版主可删除消息")
 	}
 	now := time.Now()
 	return s.repo.SoftDeleteMessage(messageID, userID, now)

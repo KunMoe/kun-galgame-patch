@@ -105,7 +105,7 @@ const submitReply = async () => {
       replying.value = false
       replyContent.value = ''
       if (res.data?.status === 1) {
-        useKunMessage('回复已提交，等待管理员审核通过后显示', 'info')
+        useKunMessage('回复已提交，等待版主审核通过后显示', 'info')
       } else {
         emit('replyAdded', res.data)
         useKunMessage('回复成功', 'success')

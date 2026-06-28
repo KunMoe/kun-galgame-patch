@@ -656,7 +656,7 @@ func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool, r
 	// notify the author + audit, mirroring DeleteResource. Best-effort; the
 	// author may be a since-deleted account (FK fails → skipped, not resurrected).
 	if comment.UserID != userID {
-		content := "您发布的评论已被管理员删除。"
+		content := "您发布的评论已被版主删除。"
 		if reason != "" {
 			content += "原因：" + reason
 		} else {
@@ -1181,7 +1181,7 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 		if resource.Name != "" {
 			subject = fmt.Sprintf("补丁资源「%s」", resource.Name)
 		}
-		content := fmt.Sprintf("您发布的%s已被管理员删除。", subject)
+		content := fmt.Sprintf("您发布的%s已被版主删除。", subject)
 		if reason != "" {
 			content += "原因：" + reason
 		} else {
@@ -1563,8 +1563,8 @@ func (s *PatchService) IsCommentVerifyEnabled() bool {
 	return s.setting.GetBool(settingService.KeyCommentVerify)
 }
 
-// IsCreatorOnlyEnabled reports the admin "仅创作者(role>2)可发布 Galgame" toggle.
-// When on, the publish handlers reject non-moderator/admin users.
+// IsCreatorOnlyEnabled reports the admin "仅创作者 / 版主 / 管理员可发布 Galgame" toggle.
+// When on, the publish handlers reject users without creator / moderator / admin.
 func (s *PatchService) IsCreatorOnlyEnabled() bool {
 	return s.setting.GetBool(settingService.KeyCreatorOnly)
 }

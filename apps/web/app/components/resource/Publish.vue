@@ -470,9 +470,9 @@ const quotaPercent = computed(() =>
         Math.round((quotaUsedBytes.value / dailyQuotaBytes.value) * 100)
       )
 )
-// Canonical site-wide role label (超级管理员 / 管理员 / 创作者 / 用户). The previous
-// hand-rolled ternary had no creator case (so creators showed "普通用户") and
-// mislabeled moderator as "创作者".
+// Canonical site-wide role label per the contract (莲 / 管理员 / 版主 / 创作者 /
+// 普通用户; see constants/user.ts). The previous hand-rolled ternary had no
+// creator case (so creators showed "普通用户") and mislabeled moderator.
 const roleLabel = computed(() => pickRoleLabel(userStore.user.roles))
 
 // File name to display in the "existing file" summary card. We don't have the

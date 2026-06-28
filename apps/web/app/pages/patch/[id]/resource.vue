@@ -276,7 +276,7 @@ const onResourceFavoriteChange = async (r: PatchResource, active: boolean) => {
 }
 
 // ─── 单资源操作菜单(卡片右上角三个点)──────────────────
-// 公共项:更改历史 / 分享(所有人,含未登录);作者 / 管理员额外:编辑 / 删除 /
+// 公共项:更改历史 / 分享(所有人,含未登录);作者 / 版主额外:编辑 / 删除 /
 // 禁用下载。KunDropdownItem 的形状(本地复刻,避免跨 layer 导入类型路径)。
 interface ResourceMenuItem {
   key: 'edit' | 'delete' | 'disable' | 'history' | 'share'
@@ -377,9 +377,9 @@ interface ResourceRevisionItem {
 }
 const ACTOR_ROLE_LABEL: Record<number, string> = {
   0: '未知',
-  1: '用户',
-  2: '管理员',
-  3: '超级管理员'
+  1: '普通用户',
+  2: '版主',
+  3: '管理员'
 }
 const histOpen = ref(false)
 const histResource = ref<PatchResource | null>(null)
@@ -526,7 +526,7 @@ watch(histPage, loadHistory)
             </div>
           </div>
           <!-- 三个点固定在右上角(shrink-0,不随标题换行);更改历史 / 分享
-               所有人可见,编辑 / 删除 / 禁用下载 作者 / 管理员可见。 -->
+               所有人可见,编辑 / 删除 / 禁用下载 作者 / 版主可见。 -->
           <KunDropdown
             :items="menuItems(r)"
             position="bottom-end"
@@ -555,7 +555,7 @@ watch(histPage, loadHistory)
         >
           <KunIcon name="lucide:shield-alert" class="size-4 shrink-0" />
           <span>
-            该资源已被禁用下载（可能存在安全风险，或应发布者 / 管理员要求下架），暂时无法获取下载链接。
+            该资源已被禁用下载（可能存在安全风险，或应发布者 / 版主要求下架），暂时无法获取下载链接。
           </span>
         </div>
 
