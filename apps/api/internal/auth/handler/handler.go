@@ -248,6 +248,17 @@ func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string,
 		resp.Avatar = brief.Avatar
 		resp.AvatarImageHash = brief.AvatarImageHash
 		resp.Bio = brief.Bio
+		// Prefer the live OAuth brief's roles over the JWT-derived `roles`. A role
+		// granted in OAuth (e.g. `creator`) only enters the access-token JWT after
+		// a token refresh (docs/oauth/08-creator-applications.md §下游耦合点), so
+		// decodeJWTRoles keeps showing the stale set and the user still renders as
+		// "用户". The /users/batch brief reflects the grant within the userclient
+		// TTL (~10min) — this mirrors kungal's /auth/me (RoleFromOAuthRoles(u.Roles)).
+		// Real authorization is still enforced server-side from the JWT
+		// (middleware.HasRole), so this only refreshes the display badge / FE gate.
+		if len(brief.Roles) > 0 {
+			resp.Roles = brief.Roles
+		}
 	}
 	return resp
 }
