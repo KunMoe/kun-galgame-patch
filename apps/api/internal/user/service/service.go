@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -283,7 +284,73 @@ func (s *UserService) CheckIn(userID int) (int, error) {
 // (the unified source of truth — moyu stores no local ledger). Cursor paginated
 // via beforeID (0 = newest page); reason is an optional filter.
 func (s *UserService) GetMoemoepointLog(ctx context.Context, userID, limit int, beforeID int64, reason string) ([]moemoepoint.LogEntry, bool, error) {
-	return s.mp.Log(ctx, userID, limit, beforeID, reason)
+	items, hasMore, err := s.mp.Log(ctx, userID, limit, beforeID, reason)
+	if err != nil {
+		return items, hasMore, err
+	}
+	s.attachMoemoepointLinks(items)
+	return items, hasMore, nil
+}
+
+// attachMoemoepointLinks fills LogEntry.Link for moyu-local rows so the records
+// modal can deep-link them. resource / galgame refs map straight to a page;
+// comment refs carry only the comment id, so resolve each to its galgame id in
+// one batch query (deleted comments stay linkless). Cross-app rows (forum / wiki)
+// are left linkless — their refs point at content moyu doesn't own.
+func (s *UserService) attachMoemoepointLinks(items []moemoepoint.LogEntry) {
+	commentIDs := make([]int, 0)
+	for i := range items {
+		if !items[i].IsLocal {
+			continue
+		}
+		if kind, id := parseRef(items[i].Ref); kind == "comment" && id > 0 {
+			commentIDs = append(commentIDs, id)
+		}
+	}
+	galgameByComment := map[int]int{}
+	if len(commentIDs) > 0 {
+		var rows []struct {
+			ID        int
+			GalgameID int
+		}
+		s.db.Model(&patchModel.PatchComment{}).
+			Select("id", "galgame_id").
+			Where("id IN ?", commentIDs).
+			Scan(&rows)
+		for _, r := range rows {
+			galgameByComment[r.ID] = r.GalgameID
+		}
+	}
+	for i := range items {
+		if !items[i].IsLocal {
+			continue
+		}
+		kind, id := parseRef(items[i].Ref)
+		if id <= 0 {
+			continue
+		}
+		switch kind {
+		case "resource":
+			items[i].Link = fmt.Sprintf("/resource/%d", id)
+		case "galgame", "patch":
+			items[i].Link = fmt.Sprintf("/patch/%d", id)
+		case "comment":
+			if gid := galgameByComment[id]; gid > 0 {
+				items[i].Link = fmt.Sprintf("/patch/%d/comment#comment-%d", gid, id)
+			}
+		}
+	}
+}
+
+// parseRef splits a "type:id" moemoepoint ref (e.g. "comment:42") into its kind
+// and numeric id; id is 0 when absent / unparseable.
+func parseRef(ref string) (kind string, id int) {
+	k, rest, ok := strings.Cut(ref, ":")
+	if !ok {
+		return "", 0
+	}
+	id, _ = strconv.Atoi(rest)
+	return k, id
 }
 
 // GetUserPatches retrieves the user's patch list.
