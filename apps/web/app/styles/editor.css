@@ -126,6 +126,14 @@
   @apply m-0 list-none space-y-0.5 p-0;
 }
 
+/* Inserted @mention chip (the `mention` atom node, rendered as a non-navigating
+ * span). Mirrors the primary-colored mention look without the link underline;
+ * a single opaque caret stop so typing / IME after it behaves normally. */
+.milkdown .kun-mention {
+  @apply text-primary-600 dark:text-primary-400 font-medium whitespace-nowrap;
+  cursor: default;
+}
+
 .milkdown table {
   @apply border-default-200 my-6 w-full overflow-hidden rounded-lg border;
 }

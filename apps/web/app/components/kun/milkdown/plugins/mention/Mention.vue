@@ -9,8 +9,8 @@
 // notifications, so the FE insert and BE extraction stay in lockstep.
 import { SlashProvider } from '@milkdown/kit/plugin/slash'
 import { editorViewCtx } from '@milkdown/kit/core'
-import { linkSchema } from '@milkdown/kit/preset/commonmark'
 import { TextSelection } from '@milkdown/kit/prose/state'
+import { mentionSchema } from './mentionNode'
 import { useInstance } from '@milkdown/vue'
 import { usePluginViewContext } from '@prosemirror-adapter/vue'
 import { getRandomSticker } from '@kungal/ui-core'
@@ -80,16 +80,38 @@ onMounted(() => {
   if (!el) return
   slashProvider = new SlashProvider({
     content: el,
+    // 0 = react immediately. The default 200ms debounce left the dropdown
+    // lingering after a pick and while typing the next characters (it only hid
+    // after a 200ms pause), which read as "still searching". kungal uses 0 too.
+    debounce: 0,
     shouldShow(targetView) {
-      const content = this.getContent(targetView)
-      if (!content) return false
-      const lastAt = content.lastIndexOf('@')
-      if (lastAt < 0) return false
-      const after = content.slice(lastAt + 1)
-      // Any whitespace after the @ ends the mention run. /\s/ also catches
-      // full-width / ideographic spaces that endsWith(' ') would miss.
-      if (/\s/.test(after)) return false
-      query.value = after
+      // Never show / re-search mid IME composition: touching reactive state
+      // here (query → fetch → dropdown re-render) as composition starts can
+      // abort it, committing the first CJK letter as Latin. SlashProvider's own
+      // #onUpdate guards composing, but we set `query` here, so guard too.
+      if (targetView.composing) return false
+      const { selection } = targetView.state
+      // Only a caret (empty selection) in a text block can carry an @query.
+      if (!selection.empty) return false
+      const { $from } = selection
+      // Text of the current block from its start up to the caret, read straight
+      // from the doc — NOT SlashProvider.getContent, whose default doesn't
+      // reliably include a trailing space, so a just-inserted mention's unmarked
+      // trailing space failed to end the run and typing kept re-searching.
+      const before = $from.parent.textBetween(
+        0,
+        $from.parentOffset,
+        undefined,
+        '￼'
+      )
+      // @query anchored at the caret: '@' must start the block or follow
+      // whitespace (so emails like foo@bar never trigger), then up to 30
+      // non-space / non-@ chars ending exactly at the caret. A completed mention
+      // ends with "@name " — the trailing space breaks the match, so continuing
+      // to type no longer searches. `\s` also covers the full-width space.
+      const match = before.match(/(?:^|\s)@([^\s@]{0,30})$/)
+      if (!match) return false
+      query.value = match[1] ?? ''
       return true
     }
   })
@@ -114,32 +136,40 @@ const pickUser = (user: MentionUser) => {
   get()?.action((ctx) => {
     const targetView = ctx.get(editorViewCtx)
     const { dispatch, state } = targetView
-    const { from, $from } = state.selection
-    const textContent = $from.node().textContent
-    const untilAt = textContent.lastIndexOf('@')
-    if (untilAt < 0) return
-    const offset = textContent.length - untilAt
-    const link = linkSchema
-      .type(ctx)
-      .create({ href: `/user/${user.id}/resource` })
-    // Only the "@name" text carries the link mark; the trailing space MUST be
-    // unmarked. Otherwise the caret sits inside the link and whatever the user
-    // types next (e.g. a URL) is pulled INTO the mention's link (the "粘连" bug).
-    const mention = state.schema.text(`@${user.name}`).mark([link])
-    const space = state.schema.text(' ')
-    if (from - offset >= 0) {
-      const tr = state.tr.replaceWith(from - offset, from, [mention, space])
-      // Caret after the unmarked space + stored marks cleared, so typing keeps
-      // going as plain text rather than extending the mention link.
-      const after = from - offset + mention.nodeSize + space.nodeSize
-      tr.setSelection(TextSelection.create(tr.doc, after))
-      tr.setStoredMarks([])
-      dispatch(tr)
-      targetView.focus()
-    }
+    const { $from } = state.selection
+    // Find the "@query" run ending at the caret (same detection as shouldShow)
+    // so we replace exactly it — never a leading space or earlier text.
+    const before = $from.parent.textBetween(
+      Math.max(0, $from.parentOffset - 100),
+      $from.parentOffset,
+      undefined,
+      '￼'
+    )
+    const match = before.match(/(?:^|\s)@([^\s@]{0,30})$/)
+    if (!match) return
+    const queryLen = (match[1]?.length ?? 0) + 1 // '@' + query text
+    const from = $from.pos - queryLen
+    const to = $from.pos
+    if (from < 0) return
+    // Insert the mention as an opaque ATOM node + a trailing space, caret after
+    // the space. The atom can't be re-matched as "@query" text and has no link
+    // mark, so typing afterwards (incl. IME) never re-searches or bleeds.
+    const node = mentionSchema.type(ctx).create({
+      userId: user.id,
+      name: user.name
+    })
+    const tr = state.tr.replaceWith(from, to, node)
+    const after = from + node.nodeSize
+    tr.insertText(' ', after)
+    tr.setSelection(TextSelection.create(tr.doc, after + 1))
+    dispatch(tr.scrollIntoView())
+    targetView.focus()
   })
   users.value = []
   query.value = ''
+  // Close the dropdown right now instead of waiting for the next provider
+  // update — otherwise it stays visible over the just-inserted mention.
+  slashProvider?.hide()
 }
 </script>
 

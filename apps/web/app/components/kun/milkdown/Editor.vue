@@ -29,6 +29,7 @@ import {
   linkCustomKeymap
 } from './plugins/stop-link/stopLinkPlugin'
 import { kunSpoilerPlugin } from './plugins/spoiler/spoilerPlugin'
+import { kunMentionNodePlugin } from './plugins/mention/mentionNode'
 
 // Code Block
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
@@ -213,6 +214,7 @@ const editorInfo = useEditor((root) => {
     .use(mention)
     .use(codeBlockComponent)
     .use([kunSpoilerPlugin, stopLinkCommand, linkCustomKeymap].flat())
+    .use(kunMentionNodePlugin)
     .use(remarkMathPlugin)
     .use(remarkMathBlockPlugin)
     .use(mathInlineSchema)
