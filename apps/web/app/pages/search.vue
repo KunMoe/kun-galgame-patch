@@ -10,6 +10,12 @@ import { useDebounceFn } from '@vueuse/core'
 //   2. crawlers ignore the dynamic NSFW-bearing payload regardless of query
 useKunDisableSeo('搜索')
 
+// keepalive: returning from a result restores the search (query / results /
+// page / scroll) instead of remounting and clearing. Safe here — /search is a
+// static route and its state lives in local refs (not route-param computeds),
+// so nothing misfires while the page is cached. Mirrors kungal's search page.
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
 const router = useRouter()
 const api = useApi()

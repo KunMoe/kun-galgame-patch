@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// keepalive: returning from a resource detail restores this list's page +
+// filters + scroll instead of remounting and resetting to page 1 (borrowed from
+// kungal's feed). The page stays URL-synced for fresh visits / shared links.
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
 const router = useRouter()
 const api = useApi()

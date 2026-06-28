@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// keepalive: returning from a comment's target restores this list's page +
+// scroll instead of resetting to page 1. Safe — static route, page seeded from
+// the URL into a plain ref (no route-param computeds that misfire when cached).
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
 const router = useRouter()
 const api = useApi()

@@ -2,6 +2,12 @@
 import { ALL_SUPPORTED_TYPE, SUPPORTED_TYPE_MAP } from '~/constants/resource'
 import { GALGAME_SORT_FIELD_LABEL_MAP } from '~/constants/galgame'
 
+// keepalive: returning from a detail page restores this list's state (page,
+// filters, scroll) instead of remounting and resetting to page 1. Borrowed from
+// kungal's index/search feed. The page is also URL-synced, so a fresh visit or
+// shared link still honors ?page=.
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
