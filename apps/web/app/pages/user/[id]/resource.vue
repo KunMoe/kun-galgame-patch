@@ -3,7 +3,12 @@
 // attaches each row's owning patch summary (id / vndb_id / name / banner)
 // from the Wiki Service via the same path the global resource list uses --
 // see attachPatchSummaries in apps/api/internal/user/service/service.go.
+// keepalive: returning from a detail restores this tab's page + scroll. `page`
+// is a computed off ?page=, so reactivation re-reads the URL for the right page.
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
+const router = useRouter()
 const api = useApi()
 const userId = computed(() => Number(route.params.id))
 
@@ -12,7 +17,12 @@ interface ListResponse {
   total: number
 }
 
-const page = ref(1)
+// Page in the URL (?page=) so back-nav / shared links restore it; switching to
+// another user lands on a clean URL → page 1.
+const page = computed({
+  get: () => Number(route.query.page) || 1,
+  set: (v) => router.replace({ query: { ...route.query, page: String(v) } })
+})
 const limit = 20
 const { data, pending } = await useAsyncData<ListResponse>(
   () => `user-${userId.value}-resources`,
@@ -24,9 +34,6 @@ const { data, pending } = await useAsyncData<ListResponse>(
   },
   { default: () => ({ items: [], total: 0 }), watch: [page] }
 )
-watch(userId, () => {
-  page.value = 1
-})
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
 const onChangePage = (v: number) => {
   page.value = v

@@ -9,6 +9,12 @@
 
 import type { KunUIColor } from '@kungal/ui-core'
 
+// keepalive: returning from a galgame restores this tag's page + scroll. The
+// page is a computed off `?page=`, so on reactivation it re-reads the URL and
+// refetches the right page (a brief, silent re-fetch — list fetches return null
+// on miss, no toast). Mirrors kungal's feed keepalive.
+definePageMeta({ keepalive: true })
+
 const route = useRoute()
 const router = useRouter()
 const ge = useGalgameEdit()

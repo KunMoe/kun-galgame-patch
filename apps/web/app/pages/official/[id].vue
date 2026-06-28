@@ -3,6 +3,10 @@
 // tag/[id].vue layout — Wiki's `GET /official/_?official_id=N` returns the
 // official + paginated associated galgames.
 
+// keepalive: returning from a galgame restores this official's page + scroll.
+// The page is a computed off `?page=`, so reactivation re-reads the URL and
+// refetches the right page (brief silent re-fetch). Mirrors kungal's feed.
+definePageMeta({ keepalive: true })
 
 const route = useRoute()
 const router = useRouter()
