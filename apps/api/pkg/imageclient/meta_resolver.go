@@ -14,11 +14,13 @@ import (
 // Resolve(hashes) SYNCHRONOUSLY, so the cache keeps warm renders network-free
 // and a tight per-call timeout bounds the cold path.
 //
-// Misses (hashes image_service doesn't know yet — e.g. before the thumbhash
-// backfill runs) are deliberately NOT cached, so they light up on a later render
-// once the backfill fills them in; once known they cache forever. After the
-// backfill completes every referenced hash is cached and renders stop touching
-// the network entirely.
+// Misses (hashes image_service doesn't know) AND partial hits (a hash that is
+// known but whose ThumbHash hasn't been computed/backfilled yet — width/height
+// present, thumbhash empty) are deliberately NOT cached, so they light up on a
+// later render once the backfill fills them in. Only complete entries (with a
+// ThumbHash) cache, and those cache forever (immutable per content hash). After
+// the backfill completes every referenced hash is complete → cached, and
+// renders stop touching the network entirely.
 type MetaResolver struct {
 	client  *Client
 	timeout time.Duration
@@ -67,8 +69,17 @@ func (r *MetaResolver) Resolve(hashes []string) map[string]ImageMeta {
 
 	r.mu.Lock()
 	for h, m := range fetched {
-		r.cache[h] = m
 		out[h] = m
+		// Cache COMPLETE entries only. A result with an empty ThumbHash is a
+		// partial hit — the hash is known (dimensions set) but its thumbhash
+		// hasn't been computed/backfilled yet. The cache has no TTL, so caching
+		// it would pin the empty placeholder forever and the image would never
+		// blur-up even after the backfill fills it in. Return it for its
+		// dimensions but DON'T cache, so a later render re-resolves and lights
+		// it up — same rationale as the not-caching-misses rule above.
+		if m.Thumbhash != "" {
+			r.cache[h] = m
+		}
 	}
 	r.mu.Unlock()
 	return out
