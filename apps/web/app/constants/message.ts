@@ -3,6 +3,7 @@ export const MESSAGE_TYPE = [
   'pm',
   'likeResource',
   'likeComment',
+  'favoriteResource',
   'favorite',
   'comment',
   'follow',
@@ -17,9 +18,15 @@ export const MESSAGE_TYPE = [
 export const MESSAGE_TYPE_MAP: Record<string, string> = {
   apply: '申请',
   pm: '私聊',
+  // Each like/favorite interaction is its own type so the message center can tell
+  // them apart (resource like vs comment like vs resource favorite vs patch
+  // favorite). `like` is a legacy mixed type (resource + comment likes) kept only
+  // so old rows still render a label.
   likeResource: '点赞资源',
   likeComment: '点赞评论',
-  favorite: '收藏',
+  like: '点赞',
+  favoriteResource: '收藏资源',
+  favorite: '收藏补丁',
   comment: '评论',
   follow: '关注',
   pr: '更新请求',
@@ -43,6 +50,8 @@ export const MESSAGE_TYPE_ICON: Record<string, string> = {
   pm: 'lucide:mail',
   likeComment: 'lucide:thumbs-up',
   likeResource: 'lucide:thumbs-up',
+  like: 'lucide:thumbs-up',
+  favoriteResource: 'lucide:heart',
   favorite: 'lucide:heart',
   comment: 'lucide:message-circle',
   pr: 'lucide:git-pull-request-arrow',

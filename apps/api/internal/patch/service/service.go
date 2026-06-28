@@ -1302,6 +1302,8 @@ func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) 
 	if resource.UserID != userID {
 		go s.mp.Award(context.Background(), resource.UserID, 1, "liked",
 			fmt.Sprintf("resource:%d", resourceID), fmt.Sprintf("moyu:resource_like:%d", rel.ID))
+		go s.notifyContentInteraction(userID, resource.UserID, resource.GalgameID,
+			"likeResource", fmt.Sprintf("/resource/%d", resourceID))
 	}
 	return true, nil
 }
@@ -1312,7 +1314,8 @@ func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) 
 // patchResourceUpdate notification whenever this resource's file/link changes
 // (see UpdateResource → notifyResourceFavoritedUsers).
 func (s *PatchService) ToggleResourceFavorite(resourceID, userID int) (bool, error) {
-	if _, err := s.repo.GetResourceByID(resourceID); err != nil {
+	resource, err := s.repo.GetResourceByID(resourceID)
+	if err != nil {
 		return false, fmt.Errorf("resource not found")
 	}
 	existing, err := s.repo.FindResourceFavorite(userID, resourceID)
@@ -1332,6 +1335,10 @@ func (s *PatchService) ToggleResourceFavorite(resourceID, userID int) (bool, err
 	}
 	if err := s.repo.CreateResourceFavorite(&model.UserPatchResourceFavoriteRelation{UserID: userID, ResourceID: resourceID}); err != nil {
 		return false, err
+	}
+	if resource.UserID != userID {
+		go s.notifyContentInteraction(userID, resource.UserID, resource.GalgameID,
+			"favoriteResource", fmt.Sprintf("/resource/%d", resourceID))
 	}
 	return true, nil
 }
@@ -1374,6 +1381,8 @@ func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 	if patch.UserID != userID {
 		go s.mp.Award(context.Background(), patch.UserID, 1, "liked",
 			fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:favorite:%d", rel.ID))
+		go s.notifyContentInteraction(userID, patch.UserID, patchID,
+			"favorite", fmt.Sprintf("/patch/%d/introduction", patchID))
 	}
 	return true, nil
 }
@@ -1552,6 +1561,70 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 			"赞了您的评论",
 			fmt.Sprintf("/patch/%d", comment.GalgameID), false)
 	}
+}
+
+// galgameDisplayName picks a human-readable name from a wiki brief, preferring
+// zh-CN, then ja-JP, en-US, zh-TW, falling back to the VNDB id.
+func galgameDisplayName(b *galgameClient.GalgameBrief) string {
+	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw} {
+		if n != "" {
+			return n
+		}
+	}
+	return b.VndbID
+}
+
+// resolveGalgameName fetches a patch's galgame display name. patch.id IS the
+// wiki galgame id (see ensureLocalPatch), so a single batch lookup suffices.
+// Best-effort: "" on any miss/error so the caller falls back to a name-less line.
+func (s *PatchService) resolveGalgameName(patchID int) string {
+	briefs, err := s.wiki.GalgameBatch(context.Background(), []int{patchID}, "")
+	if err != nil {
+		return ""
+	}
+	for i := range briefs {
+		if briefs[i].ID == patchID {
+			return galgameDisplayName(&briefs[i])
+		}
+	}
+	return ""
+}
+
+// notifyContentInteraction creates a "someone liked / favorited your content"
+// notification. msgType distinguishes the interaction so the message center
+// renders each kind separately: likeResource (点赞资源) / favoriteResource
+// (收藏资源) / favorite (收藏补丁). The galgame name is resolved for a richer
+// line; deduped once-ever per (type, actor, owner, link). Best-effort — meant to
+// run in a goroutine. Restores notifications that the legacy site emitted and the
+// Go rewrite had dropped.
+func (s *PatchService) notifyContentInteraction(actorID, ownerID, patchID int, msgType, link string) {
+	if ownerID == 0 || ownerID == actorID {
+		return
+	}
+	name := s.resolveGalgameName(patchID)
+	var content string
+	switch msgType {
+	case "likeResource":
+		content = "点赞了您发布的补丁资源"
+		if name != "" {
+			content = fmt.Sprintf("点赞了您在 %s 下发布的补丁资源", name)
+		}
+	case "favoriteResource":
+		content = "收藏了您发布的补丁资源"
+		if name != "" {
+			content = fmt.Sprintf("收藏了您在 %s 下发布的补丁资源", name)
+		}
+	case "favorite":
+		// Legacy style: bare game name; the 收藏补丁 chip in MessageCard supplies
+		// the verb. Falls back to a full sentence when the name can't be resolved.
+		content = "收藏了您发布的补丁"
+		if name != "" {
+			content = name
+		}
+	default:
+		return
+	}
+	s.createDedupMessage(actorID, ownerID, msgType, content, link, false)
 }
 
 // ===== Admin Settings Check =====
