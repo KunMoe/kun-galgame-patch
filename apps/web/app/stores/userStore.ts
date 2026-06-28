@@ -86,10 +86,24 @@ export const useUserStore = defineStore('user', {
     // `?? []` guards against a null roles surviving in an old persisted cookie
     // (pre-fix sessions): without it these getters throw "Cannot read
     // properties of null (reading 'includes')" during SSR of /patch/* pages.
-    isAdmin: (state) => (state.user.roles ?? []).includes('admin'),
+    // `ren` (莲) is a DB-preset super-admin and is treated exactly like `admin`
+    // everywhere in moyu (mirrors the backend middleware.SuperAdminRoles).
+    isAdmin: (state) =>
+      (state.user.roles ?? []).includes('admin') ||
+      (state.user.roles ?? []).includes('ren'),
     isModerator: (state) =>
       (state.user.roles ?? []).includes('admin') ||
-      (state.user.roles ?? []).includes('moderator')
+      (state.user.roles ?? []).includes('ren') ||
+      (state.user.roles ?? []).includes('moderator'),
+    // `creator` is OAuth's trusted-publisher tier (wiki direct-publish), and on
+    // moyu it also shares the moderator upload allowance (5GB / 100GB daily).
+    // It is NOT a moderation role, so it is deliberately separate from
+    // isModerator (no admin-panel / mod-action access).
+    isCreator: (state) => (state.user.roles ?? []).includes('creator'),
+    // Ad-free = holds any role other than "user" (creator / moderator / admin).
+    // Anonymous (no roles) and plain users still see ads; every elevated role is
+    // exempt. Drives the AIEro* ad gates.
+    isAdFree: (state) => (state.user.roles ?? []).some((r) => r !== 'user')
   },
   // Cookie-backed persistence is intentional: the cookie is sent on the
   // initial HTML request so the SSR pass already has the logged-in user

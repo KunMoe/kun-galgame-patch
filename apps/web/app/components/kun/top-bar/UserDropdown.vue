@@ -71,9 +71,11 @@ const onAddAccount = () => {
 }
 
 // Switching INTO an admin account forces an OP re-login (step-up, §3.5) — flag
-// it so the choice isn't surprising. The OP enforces it regardless; this is a hint.
+// it so the choice isn't surprising. The OP enforces it regardless; this is a
+// hint. `ren` (莲) is a super-admin too, so it gets the same step-up hint.
 const needsReauth = (account: KnownAccount) =>
-  (account.roles ?? []).includes('admin')
+  (account.roles ?? []).includes('admin') ||
+  (account.roles ?? []).includes('ren')
 
 const handleCheckIn = async () => {
   if (checking.value || userStore.user.daily_check_in) return

@@ -82,7 +82,7 @@ func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
 // entry point (CreatePatch / ClaimGalgame / SubmitGalgame) so the gate can't be
 // bypassed by hitting a different publish route.
 func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
-	if h.service.IsCreatorOnlyEnabled() && !middleware.HasAnyRole(c, "admin", "moderator", "creator") {
+	if h.service.IsCreatorOnlyEnabled() && !middleware.IsModerator(c) && !middleware.HasRole(c, "creator") {
 		return errors.New(40300, "本站当前仅允许创作者 / 版主 / 管理员发布 Galgame", fiber.StatusForbidden)
 	}
 	return nil
@@ -208,7 +208,7 @@ func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	isPrivileged := middleware.IsModerator(c)
 	if err := h.service.UpdatePatch(c.Context(), id, user.ID, isPrivileged, req.VndbID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -223,7 +223,7 @@ func (h *PatchHandler) DeletePatch(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isAdmin := middleware.HasRole(c, "admin")
+	isAdmin := middleware.IsAdmin(c)
 	if err := h.service.DeletePatch(id, user.ID, isAdmin); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -370,7 +370,7 @@ func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	isPrivileged := middleware.IsModerator(c)
 	if err := h.service.DeleteComment(commentID, user.ID, isPrivileged, parseDeleteReason(c)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -564,9 +564,9 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 	// at time of edit (MOYU-PR5 / M3). Mirrors the Wiki revision convention
 	// (3=admin / 2=mod / 1=user / 0=unknown).
 	actorRole := 1
-	if middleware.HasAnyRole(c, "admin") {
+	if middleware.IsAdmin(c) {
 		actorRole = 3
-	} else if middleware.HasAnyRole(c, "moderator") {
+	} else if middleware.HasRole(c, "moderator") {
 		actorRole = 2
 	}
 
@@ -593,7 +593,7 @@ func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
 	// Option B: privileged users (moderator / admin) can delete any resource
 	// from the public page; non-privileged callers fall through to the
 	// owner check inside the service.
-	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	isPrivileged := middleware.IsModerator(c)
 	if err := h.service.DeleteResource(resourceID, user.ID, isPrivileged, parseDeleteReason(c)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -609,7 +609,7 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	isPrivileged := middleware.IsModerator(c)
 	status, err := h.service.ToggleResourceDisable(resourceID, user.ID, isPrivileged)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))

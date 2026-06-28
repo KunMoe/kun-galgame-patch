@@ -279,7 +279,7 @@ func previewMessage(m *chatModel.ChatMessage) string {
 // CreateRoom POST /api/chat/room   (admin only)
 func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	if !middleware.HasRole(c, "admin") {
+	if !middleware.IsAdmin(c) {
 		return response.Error(c, errors.ErrForbidden())
 	}
 	var req dto.CreateRoomRequest
@@ -441,7 +441,7 @@ func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	isPrivileged := middleware.HasAnyRole(c, "admin", "moderator")
+	isPrivileged := middleware.IsModerator(c)
 	if err := h.svc.DeleteMessage(user.ID, isPrivileged, id); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}

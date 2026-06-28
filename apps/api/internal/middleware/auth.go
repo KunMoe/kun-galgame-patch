@@ -323,6 +323,22 @@ func HasAnyRole(c *fiber.Ctx, roles ...string) bool {
 	return false
 }
 
+// SuperAdminRoles / ModeratorRoles are the single source of moyu's privilege
+// tiers. The DB-preset `ren` (莲) is a full super-admin and is honored
+// everywhere `admin` is — listing it here means no gate has to remember it.
+// ren ranks with admin; moderator is the tier below. Use IsAdmin / IsModerator
+// (or pass these to RequireRole) instead of repeating role-name literals.
+var (
+	SuperAdminRoles = []string{"admin", "ren"}
+	ModeratorRoles  = []string{"admin", "ren", "moderator"}
+)
+
+// IsAdmin reports whether the caller holds a super-admin role (admin or ren).
+func IsAdmin(c *fiber.Ctx) bool { return HasAnyRole(c, SuperAdminRoles...) }
+
+// IsModerator reports whether the caller can moderate: super-admins or moderators.
+func IsModerator(c *fiber.Ctx) bool { return HasAnyRole(c, ModeratorRoles...) }
+
 // SecureCookies controls whether the session cookie is HTTPS-only. Set by
 // the app at startup based on KUN_SERVER_MODE; in dev over HTTP this must
 // be false or the browser refuses to store the cookie.

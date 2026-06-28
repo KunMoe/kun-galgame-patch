@@ -32,13 +32,16 @@ func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Clien
 }
 
 // uploadTier resolves the caller's per-role upload allowance from the OAuth
-// roles claim (admin > moderator > user).
+// roles claim: admin/ren > moderator > creator > user. Each tier is distinct;
+// a user holding several roles gets the highest (admin checked first).
 func uploadTier(c *fiber.Ctx) constants.UploadTier {
 	switch {
-	case middleware.HasAnyRole(c, "admin"):
+	case middleware.IsAdmin(c):
 		return constants.AdminUploadTier
-	case middleware.HasAnyRole(c, "moderator"):
+	case middleware.HasRole(c, "moderator"):
 		return constants.ModeratorUploadTier
+	case middleware.HasRole(c, "creator"):
+		return constants.CreatorUploadTier
 	default:
 		return constants.UserUploadTier
 	}

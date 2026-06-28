@@ -33,6 +33,7 @@ import {
   SUPPORTED_PLATFORM_MAP,
   ALLOWED_EXTENSIONS
 } from '~/constants/resource'
+import { pickRoleLabel } from '~/constants/user'
 
 interface Props {
   patchId: number
@@ -436,15 +437,28 @@ const uploadStatusLabel = computed(
 )
 
 // Per-role caps mirror the backend constants.UploadTier; the server is
-// authoritative. dailyQuotaBytes < 0 means unlimited (admin). admin is checked
-// first since isModerator may also be true for admins.
+// authoritative. dailyQuotaBytes < 0 means unlimited (admin/ren). Tiers checked
+// high-to-low: admin/ren 20GB·∞ > moderator 10GB·5000GB > creator 5GB·100GB >
+// user 1GB·1GB. isAdmin/isModerator fold admin in, so each branch is its tier.
 const GiB = 1024 * 1024 * 1024
 const maxFileBytes = computed(() =>
-  userStore.isAdmin ? 20 * GiB : userStore.isModerator ? 5 * GiB : GiB
+  userStore.isAdmin
+    ? 20 * GiB
+    : userStore.isModerator
+      ? 10 * GiB
+      : userStore.isCreator
+        ? 5 * GiB
+        : GiB
 )
 const maxFileLabel = computed(() => `${maxFileBytes.value / GiB} GB`)
 const dailyQuotaBytes = computed(() =>
-  userStore.isAdmin ? -1 : userStore.isModerator ? 100 * GiB : GiB
+  userStore.isAdmin
+    ? -1
+    : userStore.isModerator
+      ? 5000 * GiB
+      : userStore.isCreator
+        ? 100 * GiB
+        : GiB
 )
 const isQuotaUnlimited = computed(() => dailyQuotaBytes.value < 0)
 const quotaUsedBytes = computed(() => userStore.user.daily_upload_size ?? 0)
@@ -456,9 +470,10 @@ const quotaPercent = computed(() =>
         Math.round((quotaUsedBytes.value / dailyQuotaBytes.value) * 100)
       )
 )
-const roleLabel = computed(() =>
-  userStore.isAdmin ? '管理员' : userStore.isModerator ? '创作者' : '普通用户'
-)
+// Canonical site-wide role label (超级管理员 / 管理员 / 创作者 / 用户). The previous
+// hand-rolled ternary had no creator case (so creators showed "普通用户") and
+// mislabeled moderator as "创作者".
+const roleLabel = computed(() => pickRoleLabel(userStore.user.roles))
 
 // File name to display in the "existing file" summary card. We don't have the
 // original filename in the row (s3_key is sanitized path); show the trailing

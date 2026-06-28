@@ -13,6 +13,9 @@
 // Use `pickRoleLabel(roles)` to render the single badge for a user that may
 // hold multiple OAuth roles (e.g. ["admin", "user"]).
 export const USER_ROLE_MAP: Record<string, string> = {
+  // `ren` (莲) is the DB-preset super-admin; it ranks with admin and shares the
+  // 超级管理员 badge (see userStore.isAdmin / middleware.SuperAdminRoles).
+  ren: '超级管理员',
   admin: '超级管理员',
   moderator: '管理员',
   creator: '创作者',
@@ -23,6 +26,7 @@ export const USER_ROLE_MAP: Record<string, string> = {
 // wins, so an "admin + user" carrier shows up as 超级管理员. `creator` sits
 // between moderator and user — a trusted-publisher tier, not a moderation one.
 const ROLE_PRIORITY: readonly string[] = [
+  'ren',
   'admin',
   'moderator',
   'creator',

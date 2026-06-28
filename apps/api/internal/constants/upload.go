@@ -15,6 +15,8 @@ const UnlimitedDailyUpload int64 = -1
 // to actually apply, that site cap must be >= the largest MaxFileSize here
 // (20 GB) and the site daily-byte quota generous enough for all users combined —
 // otherwise infra rejects (50004 / 50012) before this per-user check matters.
+// The moderator daily 5000 GB exceeds moyu's site daily quota (~2 TB), so for
+// that tier the site-wide cap is the effective per-day ceiling.
 type UploadTier struct {
 	MaxFileSize int64 // single-file cap (bytes)
 	DailyLimit  int64 // per-user per-day cap (bytes); UnlimitedDailyUpload = none
@@ -23,7 +25,8 @@ type UploadTier struct {
 // Per-role upload tiers (resolved by the handler from the OAuth roles claim).
 var (
 	UserUploadTier      = UploadTier{MaxFileSize: 1 * oneGiB, DailyLimit: 1 * oneGiB}
-	ModeratorUploadTier = UploadTier{MaxFileSize: 5 * oneGiB, DailyLimit: 100 * oneGiB}
+	CreatorUploadTier   = UploadTier{MaxFileSize: 5 * oneGiB, DailyLimit: 100 * oneGiB}
+	ModeratorUploadTier = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 5000 * oneGiB}
 	AdminUploadTier     = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: UnlimitedDailyUpload}
 )
 

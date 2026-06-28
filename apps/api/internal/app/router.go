@@ -22,10 +22,12 @@ func (a *App) RegisterRoutes() {
 	auth := middleware.Auth(a.RDB, a.Config.OAuth)
 	optionalAuth := middleware.OptionalAuth(a.RDB, a.Config.OAuth)
 	// OAuth role mapping (see docs/user-migration/02-data-mapping.md §7):
-	//   moyu super-admin (legacy role 4) -> "admin"
+	//   moyu super-admin (legacy role 4) -> "admin" (and the DB-preset "ren")
 	//   moyu/kungal admin (legacy role 3) -> "moderator"
-	moderatorAuth := middleware.RequireRole("admin", "moderator")
-	adminAuth := middleware.RequireRole("admin")
+	// Role sets live in middleware (SuperAdminRoles / ModeratorRoles) so "ren"
+	// counts as admin everywhere without repeating it here.
+	moderatorAuth := middleware.RequireRole(middleware.ModeratorRoles...)
+	adminAuth := middleware.RequireRole(middleware.SuperAdminRoles...)
 
 	// NOTE: We do NOT rate-limit /user/check-in via Redis.
 	// "Once per day" is enforced by user.daily_check_in plus the daily cron

@@ -96,10 +96,18 @@ type ResumeStore = ReturnType<typeof useResourceResumeUploads>
 export const useResourceUpload = () => {
   const api = useApi()
   const userStore = useUserStore()
-  // Per-role single-file cap (mirrors backend constants.UploadTier). admin is
-  // checked first since isModerator may also be true for admins.
+  // Per-role single-file cap (mirrors backend constants.UploadTier):
+  // admin/ren 20GB > moderator 10GB > creator 5GB > user 1GB. Checked
+  // high-to-low; isAdmin/isModerator already fold admin into the higher tiers,
+  // so the isModerator branch is effectively moderator-only here.
   const maxFileSize = computed(() =>
-    userStore.isAdmin ? 20 * GiB : userStore.isModerator ? 5 * GiB : GiB
+    userStore.isAdmin
+      ? 20 * GiB
+      : userStore.isModerator
+        ? 10 * GiB
+        : userStore.isCreator
+          ? 5 * GiB
+          : GiB
   )
   const status = ref<UploadStatus>('idle')
   // Per-byte progress so the bar moves smoothly even during a single large PUT.
