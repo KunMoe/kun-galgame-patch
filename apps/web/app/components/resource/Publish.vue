@@ -665,7 +665,7 @@ const existingFileName = computed(() => {
               </p>
               <KunFileInput
                 :accept="ALLOWED_EXTENSIONS.join(',')"
-                :max-size="1024 * 1024 * 1024"
+                :max-size="maxFileBytes"
                 :trigger-text="isEdit ? '选择替换文件' : '选择补丁文件'"
                 trigger-icon="lucide:file-up"
                 :error="uploadError"
