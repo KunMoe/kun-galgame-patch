@@ -95,15 +95,17 @@ type Config struct {
 	HTTPClient   *http.Client // optional; default carries no global timeout — see *CallTimeout
 }
 
-// Per-call timeouts. Most artifact calls are quick metadata ops, but COMPLETING
-// a large multipart upload is not: the artifact service runs CompleteMultipart
-// + a server-side CopyObject (to bake the download filename) whose latency
-// scales with file size, so a 1GB+ complete routinely needs minutes. A single
-// blanket 30s client timeout aborted those ("Client.Timeout exceeded while
-// awaiting headers"). Give complete a generous ceiling; keep the rest snappy.
+// Per-call timeouts. The artifact HTTP client carries no global Timeout; each
+// call sets its own deadline via context. Quick metadata calls (init / download
+// / delete / resume) fail fast at callTimeout. Complete now returns in seconds —
+// infra bakes the download filename at CreateMultipartUpload, so finalize is
+// O(1), not a size-proportional CopyObject — so completeCallTimeout is just a
+// generous safety net against a stuck B2 / artifact, NOT a per-file-size budget.
+// (It was 10min while infra still did the O(size) copy that aborted ~1GB+
+// completes with "Client.Timeout exceeded while awaiting headers".)
 const (
 	callTimeout         = 30 * time.Second
-	completeCallTimeout = 10 * time.Minute
+	completeCallTimeout = 90 * time.Second
 )
 
 // Client is a thin singleton-friendly wrapper around the generated client.
@@ -122,8 +124,8 @@ func New(cfg Config) *Client {
 	hc := cfg.HTTPClient
 	if hc == nil {
 		// No global Timeout: each call applies its own deadline (callTimeout /
-		// completeCallTimeout) via context, so a slow large-file complete can run
-		// for minutes while the quick metadata calls still fail fast.
+		// completeCallTimeout) via context, so the rare slow complete gets room
+		// while the quick metadata calls still fail fast.
 		hc = &http.Client{}
 	}
 	base := strings.TrimRight(cfg.BaseURL, "/")
@@ -176,7 +178,8 @@ func (c *Client) CompleteUpload(ctx context.Context, uuid string, req CompleteUp
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
-	// Large multipart completes are slow server-side (see completeCallTimeout).
+	// Complete is O(1) server-side now; keep a generous safety-net deadline
+	// (completeCallTimeout) for B2 / artifact hiccups.
 	ctx, cancel := context.WithTimeout(ctx, completeCallTimeout)
 	defer cancel()
 	resp, err := c.inner.CompleteUploadWithResponse(ctx, uuid, req)
