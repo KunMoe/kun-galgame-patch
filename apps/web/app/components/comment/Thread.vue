@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // A root comment + its replies, rendered as ONE visual tier (replies sit in
 // the root's content column via Item's #replies slot — one indent + a smaller
-// avatar, matching kungal /galgame/:id). Inline shows the first few replies;
-// the rest open in the ThreadDrawer (`expanded` renders them all, no button).
+// avatar, matching kungal /galgame/:id). Inline shows the first few replies; the
+// rest expand IN PLACE below via a "展开更多" toggle (`expanded` is controlled by
+// the container so a deep-link jump can open the right thread).
 //
 // Pure presentation: every mutation bubbles up to the container (comment.vue),
 // which owns the comments array.
@@ -21,7 +22,7 @@ const emit = defineEmits<{
   replyAdded: [reply: PatchPageComment]
   edited: [updated: PatchPageComment]
   removed: [id: number]
-  openThread: [rootId: number]
+  toggleExpand: [rootId: number]
 }>()
 
 const INLINE_LIMIT = 3
@@ -29,9 +30,8 @@ const replies = computed(() => props.root.reply ?? [])
 const visibleReplies = computed(() =>
   props.expanded ? replies.value : replies.value.slice(0, INLINE_LIMIT)
 )
-const hasMore = computed(
-  () => !props.expanded && replies.value.length > INLINE_LIMIT
-)
+// More replies than the inline preview → show the expand / collapse toggle.
+const canToggle = computed(() => replies.value.length > INLINE_LIMIT)
 </script>
 
 <template>
@@ -65,16 +65,23 @@ const hasMore = computed(
         </div>
 
         <KunButton
-          v-if="hasMore"
+          v-if="canToggle"
           variant="light"
           color="primary"
           size="sm"
           full-width
           class-name="mt-3"
-          @click="emit('openThread', root.id)"
+          @click="emit('toggleExpand', root.id)"
         >
-          <KunIcon name="lucide:messages-square" class="size-4" />
-          查看全部 {{ replies.length }} 条回复
+          <KunIcon
+            :name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+            class="size-4"
+          />
+          {{
+            expanded
+              ? '收起回复'
+              : `展开更多 ${replies.length - INLINE_LIMIT} 条回复`
+          }}
         </KunButton>
       </template>
     </CommentItem>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Patch comment tab. Single-tier threaded model (matches kungal /galgame/:id):
 // root comments each carry their replies (one indent), with the first few shown
-// inline and the rest behind a ThreadDrawer. This page owns the comments array;
+// inline and the rest expandable in place. This page owns the comments array;
 // the Item/Thread components call the APIs and emit results, which the handlers
 // below apply optimistically (no refetch, no loading flash).
 const route = useRoute()
@@ -114,6 +114,9 @@ const onReplyAdded = (reply: PatchPageComment) => {
   reply.reply = reply.reply ?? []
   if (!root.reply) root.reply = []
   root.reply.push(reply)
+  // Expand the thread so the just-posted reply is visible even when it lands
+  // past the inline preview (otherwise it'd hide behind "展开更多").
+  expandedRoots.value.add(root.id)
   // total = root count → a reply doesn't change it (keeps totalPage correct).
 }
 
@@ -132,7 +135,7 @@ const onRemoved = (id: number) => {
     data.value.items.splice(rootIdx, 1)
     // total = root count → removing a root drops it by exactly 1.
     data.value.total = Math.max(0, data.value.total - 1)
-    if (drawerRoot.value?.id === id) drawerRoot.value = null
+    expandedRoots.value.delete(id)
     return
   }
   for (const c of data.value.items) {
@@ -145,10 +148,14 @@ const onRemoved = (id: number) => {
   }
 }
 
-// ─── drawer (full thread) ─────────────────────────────
-const drawerRoot = ref<PatchPageComment | null>(null)
-const openThread = (rootId: number) => {
-  drawerRoot.value = data.value?.items.find((c) => c.id === rootId) ?? null
+// ─── inline thread expansion ──────────────────────────
+// Root ids whose replies are fully expanded in place (a Set so several threads
+// can be open at once; a deep-link jump adds the target's root here). Vue 3
+// proxies Set mutations, so add/delete are reactive.
+const expandedRoots = ref<Set<number>>(new Set())
+const toggleExpand = (rootId: number) => {
+  if (expandedRoots.value.has(rootId)) expandedRoots.value.delete(rootId)
+  else expandedRoots.value.add(rootId)
 }
 
 // ─── deep-link: jump to a specific comment, across pages ──
@@ -172,10 +179,11 @@ const tryScroll = (id: number) => {
   return false
 }
 
-// A collapsed reply only renders once its thread drawer is open. The drawer
-// mounts asynchronously, so poll briefly for the reply element to appear.
-const revealReplyInDrawer = (rootId: number, id: number) => {
-  openThread(rootId)
+// A collapsed reply (beyond the inline preview) only renders once its thread is
+// expanded. Expand it in place, then poll briefly for the reply element to
+// appear (the extra replies mount on the next tick) and scroll to it.
+const revealReplyInline = (rootId: number, id: number) => {
+  expandedRoots.value.add(rootId)
   let tries = 0
   const tick = () => {
     if (tryScroll(id) || tries++ > 12) return
@@ -213,7 +221,7 @@ const resolveTarget = async () => {
     return
   }
   // Right page but not inline → a collapsed reply.
-  if (isReply) revealReplyInDrawer(rootId, id)
+  if (isReply) revealReplyInline(rootId, id)
 }
 
 // Finish a jump after the navigated-to page's data arrives (useAsyncData
@@ -225,7 +233,7 @@ watch(data, async () => {
   pendingTarget.value = null
   await nextTick()
   if (tryScroll(t.id)) return
-  if (t.isReply) revealReplyInDrawer(t.rootId, t.id)
+  if (t.isReply) revealReplyInline(t.rootId, t.id)
 })
 
 onMounted(resolveTarget)
@@ -282,12 +290,13 @@ watch(() => route.hash, resolveTarget)
         :key="c.id"
         :root="c"
         :galgame-id="galgameId"
+        :expanded="expandedRoots.has(c.id)"
         :can-moderate="userStore.isModerator"
         @liked="onLiked"
         @reply-added="onReplyAdded"
         @edited="onEdited"
         @removed="onRemoved"
-        @open-thread="openThread"
+        @toggle-expand="toggleExpand"
       />
     </div>
     <KunNull v-else description="暂无评论, 快来抢沙发吧~" />
@@ -298,16 +307,6 @@ watch(() => route.hash, resolveTarget)
       :total-page="totalPage"
       :is-loading="pending"
       class="mt-2"
-    />
-
-    <CommentThreadDrawer
-      v-model:root="drawerRoot"
-      :galgame-id="galgameId"
-      :can-moderate="userStore.isModerator"
-      @liked="onLiked"
-      @reply-added="onReplyAdded"
-      @edited="onEdited"
-      @removed="onRemoved"
     />
   </div>
 </template>
