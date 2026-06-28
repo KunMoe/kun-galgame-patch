@@ -627,30 +627,44 @@ watch(histPage, loadHistory)
               }}
             </p>
           </div>
-          <KunChip
-            v-if="isDisabled(r)"
-            color="danger"
-            variant="flat"
-            size="sm"
-          >
-            <KunIcon name="lucide:ban" class="size-3.5" />
-            已禁用下载
-          </KunChip>
-          <KunButton
-            v-else
-            color="primary"
-            size="sm"
-            rounded="full"
-            :loading="loadingId === r.id"
-            :disabled="loadingId === r.id"
-            @click="getResourceLink(r)"
-          >
-            <KunIcon
-              :name="fetched[r.id] ? 'lucide:chevron-up' : 'lucide:link'"
-              class="size-4"
-            />
-            {{ fetched[r.id] ? '收起' : '获取资源链接' }}
-          </KunButton>
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
+            <!-- Secondary: open this resource's own page (/resource/:id). href so
+                 middle-click / ctrl-click opens a new tab. -->
+            <KunButton
+              size="sm"
+              rounded="full"
+              variant="light"
+              color="default"
+              :href="`/resource/${r.id}`"
+            >
+              <KunIcon name="lucide:arrow-up-right" class="size-4" />
+              查看资源详情
+            </KunButton>
+            <KunChip
+              v-if="isDisabled(r)"
+              color="danger"
+              variant="flat"
+              size="sm"
+            >
+              <KunIcon name="lucide:ban" class="size-3.5" />
+              已禁用下载
+            </KunChip>
+            <KunButton
+              v-else
+              color="primary"
+              size="sm"
+              rounded="full"
+              :loading="loadingId === r.id"
+              :disabled="loadingId === r.id"
+              @click="getResourceLink(r)"
+            >
+              <KunIcon
+                :name="fetched[r.id] ? 'lucide:chevron-up' : 'lucide:link'"
+                class="size-4"
+              />
+              {{ fetched[r.id] ? '收起' : '获取资源链接' }}
+            </KunButton>
+          </div>
         </div>
 
         <!-- inline reveal: download links + hash + secrets -->
