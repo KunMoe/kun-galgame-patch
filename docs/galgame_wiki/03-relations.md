@@ -143,6 +143,8 @@
 
 screenshots 额外有 `caption` 字段（短描述，可空）；screenshots **没有** `kind`。
 
+> **只读富化字段（仅 GET 响应）`width` / `height` / `thumbhash`**：covers / screenshots 在 **GET 响应**里每条还会多带这三个字段——它们**不属于可编辑 shape**，是后端在读取时按 `image_hash` 从 image_service 批量补全的内在图片元信息（`POST /image/meta-batch`，详见 [image_service 03-api-design](../../image_service/03-api-design.md#post-imagemeta-batch)）。下游用途：`width`/`height` 预留正确宽高比（消除布局抖动 / CLS），`thumbhash`（base64）纯前端解码成 [ThumbHash](https://evanw.github.io/thumbhash/) blur-up 占位。**内容寻址 ⇒ 同 hash 永不变，可永久缓存**。旧图在 image_service 回填（`cmd/migrate-image-thumbhash`）跑完前 `thumbhash` 为空（`width`/`height` 上传时即写入、恒有）。**提交（PUT/POST/PR）时不要回传**——它们不在 `SnapshotCover` 里，不参与 revision diff。brief / 列表响应里同理：`effective_banner_hash` 旁多了 `effective_banner_width` / `effective_banner_height` / `effective_banner_thumbhash`。
+
 - `source` / `source_key`：`""` = 用户上传；`"vndb"` = 同步自 VNDB（`source_key` = VNDB 图片 id，即 cv-id）。
 - `kind`（**covers 专属**）：VNDB 封面类型，供"查看所有封面"分组/筛选。取值 `""`（用户上传 / 未知）、`"main"`（VN 主封面 vn.image）、`"pkgfront"`（盒装正面）、`"dig"`（数字版）、`"pkgback"`（封底）、`"pkgcontent"`（内页）、`"pkgside"`（书脊）、`"pkgmed"`（碟面）。wiki 的封面同步会把一部作品 VNDB `/cv` 页的**全部封面**（主 + 各 release 封面）灌进 `covers`，其中一张 `sort_order=0` 钉住为 banner，其余为备选。
 

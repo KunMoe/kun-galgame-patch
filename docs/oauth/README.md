@@ -46,6 +46,7 @@
 | 08 | [creator-applications.md](./08-creator-applications.md) | **创作者申请（Creator-Role Application）**：申请 → 管理员审核 → 通过/拒绝（可重申）的中央队列。`POST /creator/applications` + `GET /creator/applications/me`（用户）；资格门槛**下游自治**、角色授予归 OAuth；含「从未申请省略 `data`」契约 + 错误码 17001-17005 + 下游耦合点 |
 | 09 | [account-switching.md](./09-account-switching.md) | ✅ **账号切换（多账号 / Account Switching）——后端 + OP 选择器已实现，下游可接入**：Gmail 式多账号 + 一键切换。会话袋在 OP；切换走 `prompt=select_account` + `login_hint` 重定向（同站可用 `/auth/sessions` JSON API）；全局活跃 = 焦点对齐（同 `.kungal.com` 瞬时 / moyu 跨 TLD 对齐）；登出 = 撤销 + 短 TTL；管理员切入需重登（`10016`）。apps/web + wiki 切换器已接入，forum/moyu 待做。内部实现见 infra `docs/auth/02` |
 | 10 | [app-directory.md](./10-app-directory.md) | 🚧 **应用目录（生态一键登录 / App Directory）**：注册/登录时展示「拥有一个鲲 Galgame 账号即可一键登录以下网站」。每个 OAuth client 一个 opt-in `listed` 开关 + `logo_url`/`tagline`/`display_order`；公开只读 `GET /oauth/ecosystem` 返回 `listed` client 的展示字段；下游 modal / OAuth 注册页展示「生态 strip」。对应业界 App Launcher 模式（无 OAuth 标准，属产品元数据）|
+| 11 | [roles.md](./11-roles.md) | ⚖️ **角色与能力语义（权威定义，Tier A）**：全站五角色 `user`/`creator`/`moderator`/`admin`/`ren` 的唯一权威来源。`roles` claim = 角色名集合（普通用户为空数组，`user` 隐式）；管理轴逐级包含 `moderator ⊂ admin ⊂ ren`，`creator` 为正交的「直接发布」能力；**下游必须遵守的 MUST 规则** + 授予矩阵 + 当前 kungal/moyu 对 `ren` 的合规差距（必须整改）|
 
 ### 完整接入指南
 
@@ -83,6 +84,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 ---
 
 ## 变更摘要
+
+> **2026-06-27 角色语义定权威（重要）**：新增 [11-roles.md](./11-roles.md)——把全站五角色 `user`/`creator`/`moderator`/`admin`/`ren` 及其能力语义定为 **Tier A 权威**，下游必须遵守。要点：① `roles` claim 是**角色名集合**，普通用户为**空数组**（`user` 隐式，下游不得用「数组含 `user`」判断登录）；② 管理轴**逐级包含** `moderator ⊂ admin ⊂ ren`，任何把 claim 映射成内部权限的逻辑必须让 `ren ⊇ admin ⊇ moderator`；③ `creator` 是**正交**的「直接发布 galgame」能力，不含审核/管理权。**下游 kungal / moyu 必须整改对 `ren` 的处理**：kungal 数值等级把 `ren` 塌成普通用户、moyu 完全不识别 `ren`——目前仅因「ren 账号必同时持 admin」未出事，违反健壮性要求，须修复（见 11 §6）。
 
 > **2026-06-14 登出修复（RP-Initiated Logout）**：新增 [07-logout.md](./07-logout.md)。修复「在 wiki / 补丁站登出后，再点登录/注册会静默登回刚才的账号」——根因是 RP 登出没清掉 OP（`oauth.kungal.com`）的会话（OP 的 `localStorage` 跨 origin 清不掉 + 跨站 cookie 带不过去）。方案：RP 登出时**顶层跳转**到 OP 登出入口 `GET https://oauth.kungal.com/auth/logout?client_id=&redirect=`，由 OP 清会话再回跳。新增后端 `GET /oauth/post-logout-redirect` 白名单校验 + `GET /oauth/authorize` 的 `prompt=login` 参数。**下游 kungal / moyu 必须改登出实现**（见 07）。
 

@@ -110,6 +110,7 @@
 |---|---|
 | `status` | `0` 已发布；`3` / `4` 仅当请求带 Bearer 且调用者是该条 galgame 的 submitter 时才会返回（pending / declined 草稿）。匿名 / 非 owner 调用看不到非 0 条目 |
 | `effective_banner_hash` | image_service 哈希（= `covers[sort_order=0].image_hash`，PR5 退役 banner_image_hash 后唯一的 image_service banner 引用）；前端 `resolveBannerUrl` 优先用此字段拼 CDN URL，缺失时 fallback 到 `banner` 老 URL |
+| `effective_banner_width` / `effective_banner_height` / `effective_banner_thumbhash` | **只读富化字段**：钉住封面的内在 image_service 元信息，后端读取时按 hash 批量补全。下游卡片用宽高预留比例 + `thumbhash` 渲染 blur-up 占位（无布局抖动）。同 hash 永不变、可永久缓存；旧图回填前 `thumbhash` 省略。详见 [03-relations 只读富化字段](./03-relations.md#封面--截图pr2-新增)。GET 详情里 `covers[]` / `screenshots[]` 每条同样带 `width`/`height`/`thumbhash` |
 
 不存在或对调用者不可见的 ID 会被过滤，不会报错。返回数组长度可能小于请求的 ID 数量。
 

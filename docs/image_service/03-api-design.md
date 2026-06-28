@@ -123,6 +123,7 @@ V1 **仅接受** `multipart/form-data`，不支持 raw body + `Content-Type: ima
   "url": "https://cdn.example.com/img/ab/cd/abcd...ef.webp",
   "width": 512,
   "height": 512,
+  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
   "size_bytes": 45678,
   "variant_urls": {
     "256": "https://cdn.example.com/img/ab/cd/abcd...ef_256.webp",
@@ -135,6 +136,8 @@ V1 **仅接受** `multipart/form-data`，不支持 raw body + `Content-Type: ima
 **字段说明**：
 - `hash` — 内容 hash，调用方存入自己库（`users.avatar_image_hash`）作为外键
 - `url` — 主图 CDN 永久 URL，可直接用于 `<img src>`
+- `width` / `height` — 主图解码后的像素尺寸；连同 `thumbhash` 让调用方在图片加载前就预留正确的宽高比（消除布局抖动 / CLS）
+- `thumbhash` — base64 编码的 [ThumbHash](https://evanw.github.io/thumbhash/) 占位符（~30 字符），纯前端即可解码成模糊预览（blur-up），无需额外请求。**内容寻址 ⇒ 同一 hash 的该值永不变**，调用方可随 hash 一起反范式存储、永久缓存。上传前已存在的旧图在回填（`cmd/migrate-image-thumbhash`）跑完前该字段为空串
 - `variant_urls` — 按本次 preset 生成的变体清单。**字段里列出的都是实际落盘的静态 URL**，调用方直接使用
   - `preset=avatar` → `{ "256": "...", "100": "..." }`
   - `preset=galgame_banner` → `{ "mini": "..." }`
@@ -152,6 +155,7 @@ type UploadResult struct {
     VariantURLs  map[string]string `json:"variant_urls"`
     Width        int               `json:"width"`
     Height       int               `json:"height"`
+    Thumbhash    string            `json:"thumbhash,omitempty"`
     SizeBytes    int64             `json:"size_bytes"`
     Deduplicated bool              `json:"deduplicated"`
 }
@@ -225,6 +229,7 @@ Authorization: Bearer <token>
   },
   "width": 512,
   "height": 512,
+  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
   "size_bytes": 45678,
   "mime": "image/webp",
   "review_status": "approved",
@@ -234,9 +239,39 @@ Authorization: Bearer <token>
 ```
 
 - `variant_urls` 包含**当前已生成的全部变体**，不再按 preset 过滤
+- `thumbhash` — base64 ThumbHash 占位符（见 §1 上传响应）；旧图回填前为空串
 - `sites` 来自 `image_site_usage`，显示哪些站上传过此 hash（仅 `image:read` scope 的 admin 可见；普通调用方只看到自己站）
 
 **404** 如果 hash 不存在或已物理删除。
+
+---
+
+### `POST /image/meta-batch`
+
+一次拿一批 hash 的内在元信息（`width` / `height` / `thumbhash`）——即 `GET /image/:hash`
+的批量形式。供调用方一次性为整页图片预留宽高比 + 渲染 blur-up 占位，避免每图一个请求、
+消除布局抖动。**元信息内容寻址、永不变，调用方可永久缓存。**
+
+与所有 `/image` 端点一样需要调用方鉴权；**不做站点隔离**——尺寸 / thumbhash 非敏感信息
+（`GET /image/:hash` 本就跨站返回 width/height）。服务端不认识的 hash 直接从结果中省略。
+单批最多 **1000** 个 hash。
+
+**请求**：
+```json
+{ "hashes": ["abcd...ef", "0011...22"] }
+```
+
+**响应**：
+```json
+{
+  "metas": {
+    "abcd...ef": { "width": 512, "height": 724, "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI" },
+    "0011...22": { "width": 1920, "height": 1080, "thumbhash": "..." }
+  }
+}
+```
+
+- `thumbhash` 在旧图回填（`cmd/migrate-image-thumbhash`）跑完前为空串省略；`width`/`height` 始终有值（上传时即写入）
 
 ---
 
@@ -403,6 +438,7 @@ Prometheus 指标端点（标准 Go runtime + 自定义业务指标）。
 |--------|------|-------|--------|
 | POST | `/image/upload` | `image:upload` | V1 |
 | GET | `/image/:hash` | `image:read` | V1 |
+| POST | `/image/meta-batch` | `image:read` | V2 |
 | POST | `/image/reference-ping` | `image:upload` | V1 |
 | GET | `/stats` | `image:read` | V2 |
 | GET | `/admin/image/list` | `image:admin` | V3 |
