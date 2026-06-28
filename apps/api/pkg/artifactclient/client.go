@@ -92,8 +92,19 @@ type Config struct {
 	BaseURL      string // e.g. http://127.0.0.1:9279 (no trailing slash)
 	ClientID     string
 	ClientSecret string
-	HTTPClient   *http.Client // optional; defaults to a 30s-timeout client
+	HTTPClient   *http.Client // optional; default carries no global timeout — see *CallTimeout
 }
+
+// Per-call timeouts. Most artifact calls are quick metadata ops, but COMPLETING
+// a large multipart upload is not: the artifact service runs CompleteMultipart
+// + a server-side CopyObject (to bake the download filename) whose latency
+// scales with file size, so a 1GB+ complete routinely needs minutes. A single
+// blanket 30s client timeout aborted those ("Client.Timeout exceeded while
+// awaiting headers"). Give complete a generous ceiling; keep the rest snappy.
+const (
+	callTimeout         = 30 * time.Second
+	completeCallTimeout = 10 * time.Minute
+)
 
 // Client is a thin singleton-friendly wrapper around the generated client.
 type Client struct {
@@ -110,7 +121,10 @@ type Client struct {
 func New(cfg Config) *Client {
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 30 * time.Second}
+		// No global Timeout: each call applies its own deadline (callTimeout /
+		// completeCallTimeout) via context, so a slow large-file complete can run
+		// for minutes while the quick metadata calls still fail fast.
+		hc = &http.Client{}
 	}
 	base := strings.TrimRight(cfg.BaseURL, "/")
 
@@ -144,6 +158,8 @@ func (c *Client) InitUpload(ctx context.Context, req InitUploadRequest) (*InitUp
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	resp, err := c.inner.InitUploadWithResponse(ctx, req)
 	if err != nil {
 		return nil, err
@@ -160,6 +176,9 @@ func (c *Client) CompleteUpload(ctx context.Context, uuid string, req CompleteUp
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
+	// Large multipart completes are slow server-side (see completeCallTimeout).
+	ctx, cancel := context.WithTimeout(ctx, completeCallTimeout)
+	defer cancel()
 	resp, err := c.inner.CompleteUploadWithResponse(ctx, uuid, req)
 	if err != nil {
 		return nil, err
@@ -185,6 +204,8 @@ func (c *Client) Resume(ctx context.Context, uuid string) (*ResumeUploadResponse
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	endpoint := c.baseURL + "/api/v1/artifacts/" + url.PathEscape(uuid) + "/resume"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -219,6 +240,8 @@ func (c *Client) Download(ctx context.Context, uuid string) (*DownloadResponse, 
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	resp, err := c.inner.DownloadArtifactWithResponse(ctx, uuid)
 	if err != nil {
 		return nil, err
@@ -234,6 +257,8 @@ func (c *Client) Delete(ctx context.Context, uuid string) error {
 	if !c.Configured() {
 		return ErrNotConfigured
 	}
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	resp, err := c.inner.DeleteArtifactWithResponse(ctx, uuid)
 	if err != nil {
 		return err
