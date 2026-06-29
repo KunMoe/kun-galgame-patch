@@ -14,7 +14,8 @@ useKunDisableSeo('搜索')
 // page / scroll) instead of remounting and clearing. Safe here — /search is a
 // static route and its state lives in local refs (not route-param computeds),
 // so nothing misfires while the page is cached. Mirrors kungal's search page.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'search-page' })
 
 const route = useRoute()
 const router = useRouter()

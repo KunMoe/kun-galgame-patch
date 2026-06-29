@@ -6,7 +6,8 @@ import { GALGAME_SORT_FIELD_LABEL_MAP } from '~/constants/galgame'
 // filters, scroll) instead of remounting and resetting to page 1. Borrowed from
 // kungal's index/search feed. The page is also URL-synced, so a fresh visit or
 // shared link still honors ?page=.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'galgame-list' })
 
 const route = useRoute()
 const router = useRouter()

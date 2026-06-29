@@ -2,7 +2,8 @@
 // keepalive: returning from a resource detail restores this list's page +
 // filters + scroll instead of remounting and resetting to page 1 (borrowed from
 // kungal's feed). The page stays URL-synced for fresh visits / shared links.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'resource-list' })
 
 const route = useRoute()
 const router = useRouter()

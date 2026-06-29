@@ -13,7 +13,8 @@ import type { KunUIColor } from '@kungal/ui-core'
 // page is a computed off `?page=`, so on reactivation it re-reads the URL and
 // refetches the right page (a brief, silent re-fetch — list fetches return null
 // on miss, no toast). Mirrors kungal's feed keepalive.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'tag-detail' })
 
 const route = useRoute()
 const router = useRouter()

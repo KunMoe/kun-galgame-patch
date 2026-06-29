@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // keepalive: returning from a card restores the home feed + scroll position
 // instead of remounting. Safe — static route with a static useAsyncData key.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'home-page' })
 
 const api = useApi()
 

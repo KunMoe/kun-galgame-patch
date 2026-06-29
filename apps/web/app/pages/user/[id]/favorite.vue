@@ -3,7 +3,8 @@
 // enriched GalgameCards via enricher.EnrichPatches.
 // keepalive: returning from a detail restores this tab's page + scroll. `page`
 // is a computed off ?page=, so reactivation re-reads the URL for the right page.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'user-favorite' })
 
 const route = useRoute()
 const router = useRouter()

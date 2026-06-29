@@ -2,7 +2,8 @@
 // keepalive: returning from a comment's target restores this list's page +
 // scroll instead of resetting to page 1. Safe — static route, page seeded from
 // the URL into a plain ref (no route-param computeds that misfire when cached).
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'comment-feed' })
 
 const route = useRoute()
 const router = useRouter()

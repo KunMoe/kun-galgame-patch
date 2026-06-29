@@ -6,7 +6,8 @@
 // keepalive: returning from a galgame restores this official's page + scroll.
 // The page is a computed off `?page=`, so reactivation re-reads the URL and
 // refetches the right page (brief silent re-fetch). Mirrors kungal's feed.
-definePageMeta({ keepalive: true })
+// Kept alive via the central include list in app.vue, keyed by this name.
+defineOptions({ name: 'official-detail' })
 
 const route = useRoute()
 const router = useRouter()
