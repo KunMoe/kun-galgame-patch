@@ -237,6 +237,19 @@ func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string,
 		FollowingCount:  local.FollowingCount,
 	}
 
+	// composeMe is ONLY ever called for the current user (Me + OAuthCallback).
+	// The /users/batch brief is cached ~10min (userclient). For OTHER users that
+	// staleness is fine (contract C6), but this is the user's OWN /auth/me: if they
+	// changed their avatar / 用户名 / 签名 on another ecosystem site (the OAuth
+	// profile page, the forum), the cached brief would keep showing the old value
+	// for up to 10min — even though the frontend correctly re-pulls /auth/me on tab
+	// focus (plugins/revalidate-me.client.ts). moyu only auto-evicts on a SELF edit
+	// here (UpdateMe / UploadAvatar Invalidate); a cross-app change leaves no signal.
+	// Evict first so the current user's own profile is always live. Costs one
+	// single-id batch fetch per /auth/me (frontend-deduped to ~1/min/active user);
+	// the refetch repopulates the cache for any other context that needs this id.
+	h.users.Invalidate(uint(local.ID))
+
 	brief, err := h.users.User(c.Context(), uint(local.ID))
 	if err != nil {
 		slog.Warn("OAuth /users/batch lookup failed in composeMe; returning empty display fields",
