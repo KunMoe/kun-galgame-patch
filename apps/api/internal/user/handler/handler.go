@@ -160,7 +160,13 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 		req.Limit = 10
 	}
 
-	patches, total, err := h.service.GetUserFavorites(userID, req.Page, req.Limit, utils.IncludeEmptyGalgames(c))
+	// Favorites are the user's EXPLICIT collection — always show every favorited
+	// game, including ones with no downloadable patch yet (e.g. a 未收录 game
+	// favorited to watch for patches; favoriting lazily records it as a 0-resource
+	// row). The resource_count>0 filter (the include_empty toggle) is for discovery
+	// lists, not for "我的收藏" — without this a just-favorited game would vanish
+	// from the user's own favorites.
+	patches, total, err := h.service.GetUserFavorites(userID, req.Page, req.Limit, true)
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
