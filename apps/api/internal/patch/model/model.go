@@ -113,6 +113,14 @@ type Patch struct {
 	CommentCount       int       `gorm:"default:0" json:"comment_count"`
 	ResourceCount      int       `gorm:"default:0" json:"resource_count"`
 
+	// IsStub marks a row lazily materialized by an INTERACTION (favorite / comment
+	// / resource via ensureLocalPatch) with the wiki entry creator as a PLACEHOLDER
+	// owner — NOT a real publish. The first real registration (createPatchRow)
+	// ADOPTS such a stub: transfers user_id to the publisher, clears this flag,
+	// registers the contributor, grants +3. Without it the publisher would inherit
+	// the placeholder owner and get no reward. Gating-only — never sent to the FE.
+	IsStub bool `gorm:"default:false" json:"-"`
+
 	// Local mirror of Wiki galgame.release_date (PG `date`, day precision).
 	// Populated on patch creation + a one-time backfill (A-lite sync). Drives
 	// sort/filter by 发售日期 on GET /api/galgame — see migration 010 +

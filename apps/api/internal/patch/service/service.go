@@ -125,12 +125,16 @@ func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galga
 // transaction (insert patch + register the publisher as contributor + bump
 // contribute_count) and the post-commit +3 moemoepoint.
 func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int, vndbID string) (int, error) {
-	// Idempotent "选择此条目". A row may already exist (re-publish, or an
-	// interaction-stub from a prior favorite/comment). Selecting it again returns
-	// its id — NOT a 400 — so the FE navigates to the existing page. The early
-	// return skips the +3 + contributor, so re-selecting neither double-rewards
-	// nor mis-attributes a contribution.
+	// "选择此条目" on an existing row. Two cases:
+	//   - is_stub row (a prior favorite/comment lazily recorded it with the wiki
+	//     creator as placeholder owner): this IS the first real publish → ADOPT it
+	//     (transfer ownership, clear the flag, register the contributor, grant +3).
+	//   - real registration: idempotent return — re-selecting neither
+	//     double-rewards nor steals ownership.
 	if existing, _ := s.repo.GetPatchDetail(galgameID); existing != nil && existing.ID != 0 {
+		if existing.IsStub {
+			return s.adoptStub(ctx, userID, galgameID)
+		}
 		return existing.ID, nil
 	}
 
@@ -175,6 +179,54 @@ func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int
 	go s.mp.Award(context.Background(), userID, 3, "content_approved",
 		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:patch_create:%d", patchID))
 	return patchID, nil
+}
+
+// adoptStub upgrades an interaction-stub (a favorite/comment lazily recorded the
+// galgame with the wiki creator as placeholder owner) into a real registration
+// owned by the publisher: transfer user_id, clear is_stub, register the
+// contributor, grant +3. The `is_stub = true` guard on the UPDATE makes
+// concurrent first-publishes race-safe — only the winner flips the flag and is
+// rewarded; a loser sees RowsAffected==0 and returns idempotently. The +3 key
+// (moyu:patch_create:<id>) was never used by favorite/comment, so this is the
+// galgame's first publish reward (and OAuth-idempotent regardless).
+func (s *PatchService) adoptStub(ctx context.Context, userID, galgameID int) (int, error) {
+	var adopted bool
+	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.Patch{}).
+			Where("id = ? AND is_stub = ?", galgameID, true).
+			Updates(map[string]any{"user_id": userID, "is_stub": false})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// A concurrent publish already adopted it → idempotent, no reward.
+			return nil
+		}
+		adopted = true
+
+		// Register the publisher as the first contributor. Idempotent: if they
+		// already commented (and so are a contributor), don't double-bump the count.
+		rel := model.UserPatchContributeRelation{UserID: userID, GalgameID: galgameID}
+		cr := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&rel)
+		if cr.Error != nil {
+			return cr.Error
+		}
+		if cr.RowsAffected > 0 {
+			if err := tx.Model(&model.Patch{}).Where("id = ?", galgameID).
+				UpdateColumn("contribute_count", gorm.Expr("contribute_count + 1")).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		return 0, txErr
+	}
+	if adopted {
+		go s.mp.Award(context.Background(), userID, 3, "content_approved",
+			fmt.Sprintf("galgame:%d", galgameID), fmt.Sprintf("moyu:patch_create:%d", galgameID))
+	}
+	return galgameID, nil
 }
 
 // GetPatch returns the local patch row, or gorm.ErrRecordNotFound when moyu has
@@ -249,9 +301,11 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 		vndb = fmt.Sprintf("wiki-%d", id)
 	}
 
-	// Pure stats row. ON CONFLICT DO NOTHING makes concurrent first-interactions
-	// idempotent; we always re-read the canonical row afterwards.
-	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID}
+	// Pure stats STUB row (is_stub=true): user_id is the wiki entry creator as a
+	// placeholder owner, to be adopted by the first real publish (createPatchRow).
+	// ON CONFLICT DO NOTHING makes concurrent first-interactions idempotent; we
+	// always re-read the canonical row afterwards.
+	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID, IsStub: true}
 	// Don't let a freshly-recorded row (no resources yet) jump to the top of the
 	// "最近更新" sort — inherit the galgame's real resource_update_time from Wiki.
 	if t, pErr := time.Parse(time.RFC3339, brief.ResourceUpdateTime); pErr == nil {
