@@ -49,8 +49,7 @@
         "created": "2026-01-01T00:00:00Z",
         "tag": [...],
         "official": [...],
-        "cover": [...],
-        "screenshot": [...]
+        "covers": [...]
       }
     ],
     "total": 42
@@ -676,8 +675,10 @@ Content-Type: image/jpeg
 | `day` | `YYYY-MM-DD` | 确切发售日 |
 | `month` | `YYYY-MM-01`（归一到 1 号） | 只知年月，**日未定** |
 | `year` | `YYYY-01-01`（归一到 1/1） | 只知年，**月未定**（不属于任何具体月） |
-| `tba` | `null` | 已宣布、日期待定 |
+| `tba` | `null`（通常） | 已宣布、日期待定 |
 | `unknown` | `null` | 无任何日期信息 |
+
+> 边界：写入时若同时给了日期与 `release_date_tba=true`（「预计某月 + 待定」），`tba` 优先 → `release_precision='tba'` 但 `release_date` 仍为该归一化日期（非 null）。`/calendar/tba` 按精度归类（忽略该日期），故功能上一致。
 
 > ⚠️ 不要只看 `release_date`：`2026-06-01` 可能是「6月1日」（`day`）也可能是「6月内某天」（`month`）；`2026-01-01` 可能是「1月1日」也可能是「2026 年内」（`year`）。务必读 `release_precision`。
 >
@@ -705,7 +706,7 @@ Content-Type: image/jpeg
   "data": {
     "month": "2026-06",
     "today": "2026-06-29",
-    "items": [ { "...": "完整 galgame 对象，含 release_precision / covers / official 等，字段同 GET /galgame 条目" } ],
+    "items": [ { "...": "galgame 对象：标量字段 + release_precision，关联仅预加载 covers + official（不含 tag / screenshots）" } ],
     "links": {
       "self": "/api/galgame/calendar?month=2026-06",
       "prev": "/api/galgame/calendar?month=2026-05",
