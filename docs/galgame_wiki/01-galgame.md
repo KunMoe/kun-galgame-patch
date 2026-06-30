@@ -333,7 +333,7 @@ return r2.data.galgame
 
 - `status=0`（已发布）→ 任何人可见；
 - `status=3 / 4`（待审 / 被拒草稿）→ **提交者本人**，以及 **admin / moderator（审核者）** 可见 —— 后者让审核队列的「查看」可直接预览他人的待审提交（此前审核者非提交者会拿到 404）；
-- `status=1`（封禁）/ `status=2`（VNDB 草稿）/ 其它 → 404（封禁经 admin 端点、VNDB 草稿经 search + claim，均不走此端点）。
+- `status=1`（封禁）/ `status=2`（VNDB 草稿）/ 其它 → 404（封禁经 admin 端点；VNDB 草稿经 search / calendar 浏览 + claim 认领，均不走此详情端点 —— 月历里的草稿 item 自带名称/封面，下游直接渲染认领卡，不要回查此端点）。
 
 审核者预览非 0 草稿时**绕过 `content_limit` 过滤**（否则带 `sfw` 的审核者会看不到 NSFW 待审稿）；`status=0` 浏览仍照常按 `content_limit` 过滤。
 
@@ -666,6 +666,22 @@ Content-Type: image/jpeg
 
 > 给下游做「发售月历 / 本月新作」用的精度感知只读端点：按 ISO 自然月翻页，已发售 + 未发售混排；部分日期（只知月 / 只知年 / 待定）各有去处。月份边界按 **JST（日本时间）** 计。本服务自身不渲染月历，这组 API 专供下游（forum / moyu 等）消费。
 
+### 收录范围：已发布 + 未认领草稿（status）
+
+为让「新作月历」**完整**（而非只覆盖已人工收录的约 12%），calendar 三端点返回 **`status IN (0, 2)`**：
+
+- **`status = 0` 已发布**：正常 galgame，有详情页。
+- **`status = 2` 未认领草稿**：从 VNDB 同步进来、尚未被认领 / 发布的条目，带完整 VNDB 数据（名称 / 封面 / 发售日 / `release_precision`）。**这是月历里的大头**——一个近期月份可能是几个已发布 + **几百个草稿**（例：2024-06 ≈ 6 + 296）。
+
+> 不含 `status` `1`（封禁）/ `3`（待审）/ `4`（被拒）。`content_limit` 过滤对草稿照常生效（NSFW 草稿对 `sfw` 调用者不可见）。
+
+**下游必须按 `status` 分支**（每个 item 都带 `status`）：
+
+- `status = 0` → 照常链接到详情 `GET /galgame/:gid`。
+- `status = 2` → 渲染为「**未发布 / 可认领**」，点击走**认领流程** [`POST /galgame/:gid/claim`](./07-submission.md)（把草稿翻成 `status=0` 已发布并归属认领者）；**不要**链接到 `GET /galgame/:gid` —— 详情端点对草稿返回 **404**（见下「可见性（按 status）」），用 item 自带的名称 / 封面直接渲染认领卡即可。
+
+> 量级提醒：加入草稿后单月条目可达数百，且每个是完整 galgame 对象。下游若在意载荷，可在集成阶段反馈，届时再评估精简投影 / 分页（当前不分页）。
+
 ### release_precision（发售日精度）
 
 每个**完整 galgame 对象**（`GET /galgame` 列表 / `GET /galgame/:gid` / 本组 calendar 端点）新增字段 `release_precision`，标记 `release_date` 的精度；`release_date` 已**归一化**，必须配合本字段解读：
@@ -706,7 +722,7 @@ Content-Type: image/jpeg
   "data": {
     "month": "2026-06",
     "today": "2026-06-29",
-    "items": [ { "...": "galgame 对象：标量字段 + release_precision，关联仅预加载 covers + official（不含 tag / screenshots）" } ],
+    "items": [ { "...": "galgame 对象：标量字段（含 status、release_precision）+ 关联仅预加载 covers + official（不含 tag / screenshots）；status=2 = 未认领草稿，见上「收录范围」" } ],
     "links": {
       "self": "/api/galgame/calendar?month=2026-06",
       "prev": "/api/galgame/calendar?month=2026-05",
