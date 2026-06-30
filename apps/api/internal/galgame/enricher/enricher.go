@@ -562,6 +562,10 @@ func CardFromBrief(g *galgameClient.GalgameBrief) GalgameCard {
 type CalendarCard struct {
 	GalgameCard
 	HasPatch bool `json:"has_patch"`
+	// IsFavorite is stamped per-viewer by the handler (optionalAuth) so the
+	// calendar card can render an inline 收藏 toggle with the right initial state.
+	// false for anonymous viewers.
+	IsFavorite bool `json:"is_favorite"`
 }
 
 // EnrichCalendarBriefs turns wiki calendar briefs into CalendarCards. There is no

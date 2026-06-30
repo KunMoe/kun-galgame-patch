@@ -13,6 +13,9 @@ type GalgameReleasePrecision = 'day' | 'month' | 'year' | 'tba' | 'unknown'
 // on the nested `galgame` object.
 interface CalendarItem extends GalgameCard {
   has_patch: boolean
+  // Whether the logged-in viewer has favorited this game (false for anonymous).
+  // Drives the inline 收藏 toggle's initial state on the calendar card.
+  is_favorite: boolean
 }
 
 // GET /galgame/calendar?month=YYYY-MM

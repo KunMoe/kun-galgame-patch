@@ -149,9 +149,11 @@ func (a *App) RegisterRoutes() {
 	// "mine"/"submit"/etc. as a :gid value.
 	// Release calendar (发售月表) — public reads, delegated to the wiki and
 	// stamped with has_patch. Literal paths, so they also sit above /galgame/:gid.
-	api.Get("/galgame/calendar", a.CommonHandler.GetGalgameCalendar)
-	api.Get("/galgame/calendar/pending", a.CommonHandler.GetGalgameCalendarPending)
-	api.Get("/galgame/calendar/tba", a.CommonHandler.GetGalgameCalendarTBA)
+	// optionalAuth so each card can be stamped is_favorite for the logged-in
+	// viewer (inline 收藏 state) without requiring login to browse.
+	api.Get("/galgame/calendar", optionalAuth, a.CommonHandler.GetGalgameCalendar)
+	api.Get("/galgame/calendar/pending", optionalAuth, a.CommonHandler.GetGalgameCalendarPending)
+	api.Get("/galgame/calendar/tba", optionalAuth, a.CommonHandler.GetGalgameCalendarTBA)
 	api.Get("/galgame/mine", auth, a.PatchHandler.ListMyGalgames)
 	api.Get("/galgame/search/publish", auth, a.PatchHandler.SearchGalgameForPublish)
 	api.Get("/galgame/messages/mine", auth, a.PatchHandler.GetMyWikiMessages)

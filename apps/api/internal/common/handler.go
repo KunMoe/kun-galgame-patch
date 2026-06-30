@@ -921,15 +921,44 @@ func (h *CommonHandler) calendarHasPatchSet(ids []int) map[int]bool {
 }
 
 // enrichCalendarItems collects ids → looks up which moyu has a patch for → builds
-// the has_patch-stamped cards. No wiki re-fetch (briefs carry release fields).
-func (h *CommonHandler) enrichCalendarItems(briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
+// the has_patch-stamped cards, then stamps is_favorite for the logged-in viewer
+// (optionalAuth) so the FE can render an inline 收藏 toggle in the right state.
+// No wiki re-fetch (briefs carry release fields).
+func (h *CommonHandler) enrichCalendarItems(c *fiber.Ctx, briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
 	ids := make([]int, 0, len(briefs))
 	for i := range briefs {
 		if briefs[i].ID > 0 {
 			ids = append(ids, briefs[i].ID)
 		}
 	}
-	return enricher.EnrichCalendarBriefs(briefs, h.calendarHasPatchSet(ids))
+	cards := enricher.EnrichCalendarBriefs(briefs, h.calendarHasPatchSet(ids))
+
+	if uid := middleware.GetUserID(c); uid > 0 {
+		fav := h.calendarFavoriteSet(uid, ids)
+		for i := range cards {
+			if fav[cards[i].ID] {
+				cards[i].IsFavorite = true
+			}
+		}
+	}
+	return cards
+}
+
+// calendarFavoriteSet returns which of the given galgame ids the user has
+// favorited — one indexed query, used to render the calendar's inline 收藏 state.
+func (h *CommonHandler) calendarFavoriteSet(userID int, ids []int) map[int]bool {
+	set := make(map[int]bool, len(ids))
+	if userID <= 0 || len(ids) == 0 {
+		return set
+	}
+	var favs []int
+	h.db.Model(&patchModel.UserPatchFavoriteRelation{}).
+		Where("user_id = ? AND galgame_id IN ?", userID, ids).
+		Pluck("galgame_id", &favs)
+	for _, id := range favs {
+		set[id] = true
+	}
+	return set
 }
 
 // GetGalgameCalendar GET /api/galgame/calendar?month=YYYY-MM
@@ -963,7 +992,7 @@ func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
 	return response.OK(c, fiber.Map{
 		"month": merged.Month,
 		"today": merged.Today,
-		"items": h.enrichCalendarItems(merged.Items),
+		"items": h.enrichCalendarItems(c, merged.Items),
 		"meta":  merged.Meta,
 	})
 }
@@ -987,7 +1016,7 @@ func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
 	}
 	return response.OK(c, fiber.Map{
 		"year":  outYear,
-		"items": h.enrichCalendarItems(briefs),
+		"items": h.enrichCalendarItems(c, briefs),
 	})
 }
 
@@ -1004,7 +1033,7 @@ func (h *CommonHandler) GetGalgameCalendarTBA(c *fiber.Ctx) error {
 		briefs = append(briefs, b.Items...)
 	}
 	return response.OK(c, fiber.Map{
-		"items": h.enrichCalendarItems(briefs),
+		"items": h.enrichCalendarItems(c, briefs),
 	})
 }
 
