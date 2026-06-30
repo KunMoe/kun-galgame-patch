@@ -97,8 +97,10 @@ const selectingFor = ref<number | null>(null)
 const selectPublished = async (hit: GalgameHit) => {
   selectingFor.value = hit.id
   try {
+    // Register by galgame_id (always present), not vndb_id — 原创/同人 works have
+    // no vndb_id and the vndb path 400s ("VndbID is required") on them.
     const res = await api.post<{ id: number }>('/patch', {
-      vndb_id: hit.vndb_id
+      galgame_id: hit.id
     })
     if (res.code === 0 && res.data?.id) {
       useKunMessage('已关联，正在跳转到游戏页面', 'success')

@@ -107,11 +107,19 @@ func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	if !vndbIDRegex.MatchString(req.VndbID) {
-		return response.Error(c, errors.ErrBadRequest("vndb_id 格式不合法（应为 vXXX）"))
-	}
 
-	id, err := h.service.CreatePatch(c.Context(), user.ID, req.VndbID)
+	var id int
+	var err error
+	if req.GalgameID > 0 {
+		// Preferred path: register by Wiki galgame_id (handles 原创 works with no
+		// vndb_id, which the legacy vndb path 400s on with "VndbID is required").
+		id, err = h.service.CreatePatchByGalgameID(c.Context(), user.ID, req.GalgameID)
+	} else {
+		if !vndbIDRegex.MatchString(req.VndbID) {
+			return response.Error(c, errors.ErrBadRequest("请提供 galgame_id 或合法的 vndb_id（vXXX）"))
+		}
+		id, err = h.service.CreatePatch(c.Context(), user.ID, req.VndbID)
+	}
 	if err != nil {
 		// Distinct error code so the frontend can render a "前往 Wiki 创建"
 		// CTA when the vndb_id is missing on Wiki, vs the generic toast for

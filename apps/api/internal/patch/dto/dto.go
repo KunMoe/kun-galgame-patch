@@ -8,7 +8,11 @@ import "time"
 // comes from the Galgame Wiki; the client only needs to supply vndb_id. The server
 // calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
 type PatchCreateRequest struct {
-	VndbID string `json:"vndb_id" validate:"required,max=20"`
+	// GalgameID is the preferred input (the publish wizard sends it): register a
+	// carrier directly by Wiki galgame_id, which works for 原创/同人 works that have
+	// no vndb_id. VndbID is the legacy fallback when galgame_id is absent.
+	GalgameID int    `json:"galgame_id"`
+	VndbID    string `json:"vndb_id" validate:"max=20"`
 }
 
 // PatchUpdateRequest: after D12, the patch itself has almost no editable fields.

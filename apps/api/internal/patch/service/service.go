@@ -78,7 +78,9 @@ func New(repo *repository.PatchRepository, setting *settingService.Service, db *
 //  3. One transaction: insert patch with id=galgame_id, +3 moemoepoint,
 //     register contributor.
 func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID string) (int, error) {
-	// 1. Check with Wiki: must exist, and get galgame_id
+	// Legacy vndb_id path: map vndb_id → galgame_id via Wiki, then register by id.
+	// The FE now prefers CreatePatchByGalgameID (it also handles 原创 works that
+	// have no vndb_id, which this path cannot).
 	exists, galgameID, err := s.wiki.CheckGalgameByVndbID(ctx, vndbID)
 	if err != nil {
 		return 0, fmt.Errorf("调用 Wiki 校验 vndb_id 失败: %w", err)
@@ -87,39 +89,61 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 		// Sentinel error so the handler can map this to 44001 (typed AppError).
 		return 0, ErrWikiGalgameMissing
 	}
+	return s.createPatchRow(ctx, userID, galgameID, vndbID)
+}
 
-	// 2. Local dedup — idempotent "选择此条目". If this galgame already has a
-	// local patch row (it was created/selected before, possibly by another
-	// user), selecting it again just returns that id so the frontend navigates
-	// to the existing page — NOT a 400. Returning early here skips the +3
-	// reward + contributor registration below, so re-selecting an existing
-	// entry neither double-rewards nor mis-attributes a contribution.
-	if existing, _ := s.repo.FindPatchByVndbID(vndbID); existing != nil && existing.ID != 0 {
+// CreatePatchByGalgameID registers a local patch carrier directly by Wiki
+// galgame_id — the path the publish wizard ("选择此条目") uses. Unlike the vndb_id
+// path it works for 原创/同人 works with NO vndb_id (their row stores a
+// deterministic `wiki-<id>` placeholder, the same one ensureLocalPatch uses).
+// Verifies the galgame is publicly published (anonymous batch → status=0 only).
+func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galgameID int) (int, error) {
+	briefs, err := s.wiki.GalgameBatch(ctx, []int{galgameID}, "")
+	if err != nil {
+		return 0, fmt.Errorf("调用 Wiki 校验失败: %w", err)
+	}
+	var brief *galgameClient.GalgameBrief
+	for i := range briefs {
+		if briefs[i].ID == galgameID {
+			brief = &briefs[i]
+			break
+		}
+	}
+	if brief == nil {
+		// Not publicly visible (doesn't exist / banned / someone's private draft).
+		return 0, ErrWikiGalgameMissing
+	}
+	vndb := brief.VndbID
+	if vndb == "" {
+		vndb = fmt.Sprintf("wiki-%d", galgameID)
+	}
+	return s.createPatchRow(ctx, userID, galgameID, vndb)
+}
+
+// createPatchRow is the shared register-a-carrier body for both entrypoints:
+// idempotent dedup by id (= galgame_id), mirror the Wiki release_date, then one
+// transaction (insert patch + register the publisher as contributor + bump
+// contribute_count) and the post-commit +3 moemoepoint.
+func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int, vndbID string) (int, error) {
+	// Idempotent "选择此条目". A row may already exist (re-publish, or an
+	// interaction-stub from a prior favorite/comment). Selecting it again returns
+	// its id — NOT a 400 — so the FE navigates to the existing page. The early
+	// return skips the +3 + contributor, so re-selecting neither double-rewards
+	// nor mis-attributes a contribution.
+	if existing, _ := s.repo.GetPatchDetail(galgameID); existing != nil && existing.ID != 0 {
 		return existing.ID, nil
 	}
 
 	// Mirror Wiki's release_date locally so /api/galgame can sort/filter by
-	// 发售日期 (the local patch table is what that endpoint paginates over;
-	// see migration 010 + docs/galgame_wiki/00-handbook §17). Best-effort —
-	// a wiki blip just leaves release_date NULL; the one-time backfill cmd
-	// or a later re-sync fills it in. Never blocks patch creation.
-	//
-	// MUST use GetGalgame (/galgame/:gid), NOT GalgameBatch — the lightweight
-	// batch endpoint does NOT include release_date (it returns only id / name
-	// / banner / content_limit / status / user_id / resource_update_time /
-	// original_language / age_limit). The single-detail endpoint does.
+	// 发售日期 (best-effort; a wiki blip just leaves it NULL). MUST use GetGalgame
+	// — GalgameBatch does not include release_date.
 	var releaseDate *time.Time
 	if env, gErr := s.wiki.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
 		releaseDate = utils.ParseWikiReleaseDate(*env.Galgame.ReleaseDate)
 	}
 
-	// 3. Transaction
-	//
-	// D13: patch.id IS the Wiki galgame_id. We assign it explicitly here
-	// rather than relying on the autoincrement sequence. If a row with
-	// id=galgameID already exists (race / re-publish), the unique vndb_id
-	// constraint check above would normally have caught it; the INSERT will
-	// fail with a FK / pkey violation as a safety net.
+	// D13: patch.id IS the Wiki galgame_id (assigned explicitly). A concurrent
+	// first-publish that passed the dedup above hits the pkey on id as a safety net.
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		p := &model.Patch{
@@ -133,7 +157,6 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 		}
 		patchID = p.ID
 
-		// Register contributor
 		if err := tx.Create(&model.UserPatchContributeRelation{
 			UserID: userID, GalgameID: p.ID,
 		}).Error; err != nil {
@@ -148,8 +171,7 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 	if txErr != nil {
 		return 0, txErr
 	}
-	// +3 reward for creating a galgame entry — awarded AFTER commit via OAuth
-	// (s2s, out of the txn). content_approved; ref/key by galgame id (= patch id).
+	// +3 reward for registering a galgame on moyu — post-commit via OAuth s2s.
 	go s.mp.Award(context.Background(), userID, 3, "content_approved",
 		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:patch_create:%d", patchID))
 	return patchID, nil
