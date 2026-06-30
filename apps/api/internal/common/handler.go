@@ -878,3 +878,156 @@ func (h *CommonHandler) GetMoyuHasPatch(c *fiber.Ctx) error {
 
 	return response.OK(c, vndbIDs)
 }
+
+// ─── Galgame release calendar (发售月表) ───────────────
+// Thin moyu-side wrapper over the wiki calendar endpoints
+// (docs/galgame_wiki/01-galgame.md §发售月历). The wiki owns the data; moyu only
+// stamps each entry with has_patch (does moyu hold a local patch row → the card
+// links to /patch/:id, otherwise to the wiki entry) so the FE renders a
+// "智能跳转" calendar. content_limit is EXACT-match on the wiki side (sfw / nsfw),
+// so an "all" (R18) viewer fans out to both and we merge.
+
+// calendarContentLimits maps moyu's content_limit (sfw/nsfw/all/"") to the wiki
+// calendar's exact-match values. "all" needs both (the wiki has no combined mode).
+func calendarContentLimits(cl string) []string {
+	switch cl {
+	case "nsfw":
+		return []string{"nsfw"}
+	case "all":
+		return []string{"sfw", "nsfw"}
+	default:
+		return []string{"sfw"}
+	}
+}
+
+// calendarHasPatchSet returns the subset of galgame ids moyu holds a local patch
+// row for (patch.id == galgame_id). Drives each card's has_patch flag / link.
+func (h *CommonHandler) calendarHasPatchSet(ids []int) map[int]bool {
+	set := make(map[int]bool, len(ids))
+	if len(ids) == 0 {
+		return set
+	}
+	var existing []int
+	h.db.Model(&patchModel.Patch{}).Where("id IN ?", ids).Pluck("id", &existing)
+	for _, id := range existing {
+		set[id] = true
+	}
+	return set
+}
+
+// enrichCalendarItems collects ids → looks up which moyu has a patch for → builds
+// the has_patch-stamped cards. No wiki re-fetch (briefs carry release fields).
+func (h *CommonHandler) enrichCalendarItems(briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
+	ids := make([]int, 0, len(briefs))
+	for i := range briefs {
+		if briefs[i].ID > 0 {
+			ids = append(ids, briefs[i].ID)
+		}
+	}
+	return enricher.EnrichCalendarBriefs(briefs, h.calendarHasPatchSet(ids))
+}
+
+// GetGalgameCalendar GET /api/galgame/calendar?month=YYYY-MM
+func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+	month := strings.TrimSpace(c.Query("month"))
+
+	var merged *galgameClient.GalgameCalendar
+	for _, lim := range calendarContentLimits(cl) {
+		cal, err := h.wiki.GetGalgameCalendar(c.Context(), month, lim)
+		if err != nil {
+			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		}
+		if merged == nil {
+			merged = cal
+			continue
+		}
+		// "all" mode: fold the second content_limit's items + bounds into the first.
+		// Items stay unsorted across the two lists — the FE groups by day anyway.
+		merged.Items = append(merged.Items, cal.Items...)
+		merged.Meta.Count += cal.Meta.Count
+		merged.Meta.HasPrev = merged.Meta.HasPrev || cal.Meta.HasPrev
+		merged.Meta.HasNext = merged.Meta.HasNext || cal.Meta.HasNext
+		merged.Meta.MinMonth = minMonthStr(merged.Meta.MinMonth, cal.Meta.MinMonth)
+		merged.Meta.MaxMonth = maxMonthStr(merged.Meta.MaxMonth, cal.Meta.MaxMonth)
+	}
+	if merged == nil {
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+
+	return response.OK(c, fiber.Map{
+		"month": merged.Month,
+		"today": merged.Today,
+		"items": h.enrichCalendarItems(merged.Items),
+		"meta":  merged.Meta,
+	})
+}
+
+// GetGalgameCalendarPending GET /api/galgame/calendar/pending?year=YYYY
+func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+	year := strings.TrimSpace(c.Query("year"))
+
+	var briefs []galgameClient.GalgameBrief
+	outYear := year
+	for _, lim := range calendarContentLimits(cl) {
+		b, err := h.wiki.GetGalgameCalendarPending(c.Context(), year, lim)
+		if err != nil {
+			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		}
+		briefs = append(briefs, b.Items...)
+		if b.Year != "" {
+			outYear = b.Year
+		}
+	}
+	return response.OK(c, fiber.Map{
+		"year":  outYear,
+		"items": h.enrichCalendarItems(briefs),
+	})
+}
+
+// GetGalgameCalendarTBA GET /api/galgame/calendar/tba
+func (h *CommonHandler) GetGalgameCalendarTBA(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+
+	var briefs []galgameClient.GalgameBrief
+	for _, lim := range calendarContentLimits(cl) {
+		b, err := h.wiki.GetGalgameCalendarTBA(c.Context(), lim)
+		if err != nil {
+			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		}
+		briefs = append(briefs, b.Items...)
+	}
+	return response.OK(c, fiber.Map{
+		"items": h.enrichCalendarItems(briefs),
+	})
+}
+
+// minMonthStr / maxMonthStr compare zero-padded "YYYY-MM" lexicographically (==
+// chronologically), treating "" as absent. Used to union the data bounds when
+// "all" mode merges the sfw + nsfw calendars.
+func minMonthStr(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	case b < a:
+		return b
+	default:
+		return a
+	}
+}
+
+func maxMonthStr(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	case b > a:
+		return b
+	default:
+		return a
+	}
+}

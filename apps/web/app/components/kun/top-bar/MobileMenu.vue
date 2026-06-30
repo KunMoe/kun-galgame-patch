@@ -53,6 +53,7 @@ const setNsfw = (key: KunNsfwPreference) => {
 // constants list would also work but requires re-running `npm run icons`.
 const ICON_BY_HREF: Record<string, string> = {
   '/galgame': 'lucide:gamepad-2',
+  '/calendar': 'lucide:calendar-days',
   '/edit/create': 'lucide:plus-circle',
   '/ranking/user': 'lucide:chart-column-big',
   '/doc': 'lucide:book-open',

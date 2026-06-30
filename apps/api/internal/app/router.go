@@ -147,6 +147,11 @@ func (a *App) RegisterRoutes() {
 	// /galgame/search/publish, /galgame/messages/* must be registered BEFORE
 	// the parameterized /galgame/:gid routes below so Fiber doesn't match
 	// "mine"/"submit"/etc. as a :gid value.
+	// Release calendar (发售月表) — public reads, delegated to the wiki and
+	// stamped with has_patch. Literal paths, so they also sit above /galgame/:gid.
+	api.Get("/galgame/calendar", a.CommonHandler.GetGalgameCalendar)
+	api.Get("/galgame/calendar/pending", a.CommonHandler.GetGalgameCalendarPending)
+	api.Get("/galgame/calendar/tba", a.CommonHandler.GetGalgameCalendarTBA)
 	api.Get("/galgame/mine", auth, a.PatchHandler.ListMyGalgames)
 	api.Get("/galgame/search/publish", auth, a.PatchHandler.SearchGalgameForPublish)
 	api.Get("/galgame/messages/mine", auth, a.PatchHandler.GetMyWikiMessages)

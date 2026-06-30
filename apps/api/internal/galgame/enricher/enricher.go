@@ -545,3 +545,30 @@ func CardFromBrief(g *galgameClient.GalgameBrief) GalgameCard {
 	applyGalgame(&card, g)
 	return card
 }
+
+// CalendarCard is a release-calendar entry: a GalgameCard built straight from the
+// wiki calendar brief — which carries release_date + release_precision + covers,
+// fields /galgame/batch does NOT return, so the calendar path must NOT re-batch —
+// plus HasPatch: whether moyu has a local patch row for this galgame. HasPatch
+// drives the card's link (moyu /patch/:id when true, the wiki entry otherwise).
+type CalendarCard struct {
+	GalgameCard
+	HasPatch bool `json:"has_patch"`
+}
+
+// EnrichCalendarBriefs turns wiki calendar briefs into CalendarCards. There is no
+// wiki re-fetch (the briefs are already complete, incl. release_date /
+// release_precision) and no patch-stats overlay (the calendar card is
+// release-centric, not stats-centric) — only HasPatch is stamped from the set of
+// galgame ids moyu holds a local patch row for. release_date / release_precision
+// stay reachable on each card's nested `galgame` object.
+func EnrichCalendarBriefs(briefs []galgameClient.GalgameBrief, hasPatch map[int]bool) []CalendarCard {
+	cards := make([]CalendarCard, 0, len(briefs))
+	for i := range briefs {
+		cards = append(cards, CalendarCard{
+			GalgameCard: CardFromBrief(&briefs[i]),
+			HasPatch:    hasPatch[briefs[i].ID],
+		})
+	}
+	return cards
+}

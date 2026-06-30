@@ -13,6 +13,7 @@ export const kunNavItem: KunNavItem[] = [
 ]
 
 export const kunNavItemDesktop: KunNavItem[] = [
+  { name: '发售月表', href: '/calendar' },
   { name: '发布补丁', href: '/edit/create' },
   { name: '关于我们', href: '/doc' }
 ]
@@ -22,6 +23,7 @@ export const kunNavItemDesktop: KunNavItem[] = [
 // non-admins don't see (and can't 403 on) it.
 export const kunMobileNavItem: KunNavItem[] = [
   ...kunNavItem,
+  { name: '发售月表', href: '/calendar' },
   { name: '补丁评论列表', href: '/comment' },
   { name: '补丁资源列表', href: '/resource' },
   { name: '联系我们', href: '/doc/notice/feedback' }

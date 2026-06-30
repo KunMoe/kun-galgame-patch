@@ -19,6 +19,7 @@ const kunKeepaliveConfig = {
     'resource-list',
     'comment-feed',
     'search-page',
+    'calendar-page',
     'tag-detail',
     'official-detail',
     'user-galgame',

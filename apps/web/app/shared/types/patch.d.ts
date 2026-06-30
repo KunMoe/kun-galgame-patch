@@ -70,6 +70,10 @@ interface GalgameCard {
     original_language: string
     release_date: string | null
     release_date_tba: boolean
+    // How to read release_date: day | month | year | tba | unknown. Only the
+    // calendar endpoints (/galgame/calendar*) populate it; absent elsewhere.
+    // A "2026-06-01" with precision 'month' means "some day in June", not the 1st.
+    release_precision?: GalgameReleasePrecision
     user_id: number
     resource_update_time: string
   }
