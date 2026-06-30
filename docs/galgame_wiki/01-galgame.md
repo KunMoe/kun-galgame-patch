@@ -43,6 +43,7 @@
         "effective_banner_hash": "abcd1234...ef",
         "release_date": "2019-08-16",
         "release_date_tba": false,
+        "release_precision": "day",
         "content_limit": "sfw",
         "view": 100,
         "created": "2026-01-01T00:00:00Z",
@@ -496,8 +497,8 @@ return r2.data.galgame
 | engine_ids | 否 | 引擎 ID 数组 |
 | content_limit | 否 | `sfw` (默认) 或 `nsfw` |
 | age_limit | 否 | `r18` (默认) 或 `all` |
-| release_date | 否 | `YYYY-MM-DD` 字符串；`""` 表示未知（PR1 取代旧 `released` 字符串） |
-| release_date_tba | 否 | bool；`true` 表示官方已宣布但日期未定（与 `release_date` 独立） |
+| release_date | 否 | `YYYY-MM-DD` / `YYYY-MM` / `YYYY` / `""`（未知）。部分日期由后端归一化（`YYYY-MM`→`YYYY-MM-01`、`YYYY`→`YYYY-01-01`）并据粒度记 `release_precision`（见[发售月历 §release_precision](#release_precision发售日精度)）；非法串 → `400` |
+| release_date_tba | 否 | bool；`true` 表示官方已宣布但日期未定（精度记为 `tba`） |
 
 > **banner 优先级**：前端读取时优先派生只读字段 `effective_banner_hash`（= `covers[sort_order=0].image_hash`，拼 image_service URL），缺失时回退 `banner` 老 URL。PR5 起不再有 `banner_image_hash` 字段，banner 由 `covers` 表达。multipart 上传见下方 Banner 上传段（hash 经 `PromoteCoverHash` 由服务合并进 covers）。
 
@@ -555,7 +556,7 @@ return r2.data.galgame
 > - **传数组（含空 `[]`）** → 该字段是**权威全量集合**：服务端"清空旧的 → 按此重建"。`[]` = 显式清空全部。
 > - 因此下游（kungal/moyu）编辑表单**必须回传该 galgame 当前的全量集合**（在原集合上增/删后整体回传），**不要只回传"新增的"那几个**——会被当成"替换成只剩这几个"。
 > - 与标量字段一致：传了就改、不传就不动。整个编辑是**一次事务、一条 revision**（原子；集合语义、顺序无关，进 revision 快照与 PR diff）。
-> - **`release_date` / `release_date_tba`**（取代旧 `released` 字符串）现可经此端点编辑，各自走 presence 语义：`release_date` 用 `*string`（`null`/省略 = 保持，`""` = 清空为未知，`"YYYY-MM-DD"` = 设置）；`release_date_tba` 用 `*bool`。两者独立——可同时给值表达"预计 X 年某月 + TBA"。详见 §00-handbook BREAKING 段。
+> - **`release_date` / `release_date_tba`**（取代旧 `released` 字符串）现可经此端点编辑，各自走 presence 语义：`release_date` 用 `*string`（`null`/省略 = 保持，`""` = 清空为未知，`"YYYY-MM-DD"` / `"YYYY-MM"` / `"YYYY"` = 设置，部分日期归一化 + 记 `release_precision`）；`release_date_tba` 用 `*bool`。改了日期即按 raw 输入重算精度；只改 tba 不动日期则沿用既有精度。详见 §00-handbook BREAKING 段 + [发售月历 §release_precision](#release_precision发售日精度)。
 >
 > `aliases` / `links` 现已是本端点的一等字段（推荐整表单一次性提交）。`/galgame/:gid/aliases|links` 的增删端点保留为便捷糖（同样每次产生 revision），但一次性表单保存请走本端点以获得原子单条 revision。`bid`/Bangumi ID 为保留字段，暂不可编辑（sync 托管）。**`links` / `tag_ids` / `official_ids` 的"权威全量替换"仅作用于用户子集（`source=""`）；`source="vndb"` 的链接 / 标签 / 开发商同 `bid` 一样为 sync 托管、对编辑只读，恒被保留**（见上文链接/标签来源小节）。`engine_ids` 无此例外（引擎 wiki 自管，纯全量替换）。
 
@@ -659,6 +660,100 @@ Content-Type: image/jpeg
 **错误码**：透传 image_service 的状态码与错误码（`80008` 配额超限、`80015` 上传暂未开放、`60002` 审核拒绝等）。
 
 > banner 仍可走上方 Create / Update / PR 的 multipart `file` 模式（自动提升为 `covers[sort_order=0]`）；`POST /galgame/image` 则是「先拿 hash 再随数组提交」的通用入口，封面与截图都适用。
+
+---
+
+## Galgame 发售月历（calendar）
+
+> 给下游做「发售月历 / 本月新作」用的精度感知只读端点：按 ISO 自然月翻页，已发售 + 未发售混排；部分日期（只知月 / 只知年 / 待定）各有去处。月份边界按 **JST（日本时间）** 计。本服务自身不渲染月历，这组 API 专供下游（forum / moyu 等）消费。
+
+### release_precision（发售日精度）
+
+每个**完整 galgame 对象**（`GET /galgame` 列表 / `GET /galgame/:gid` / 本组 calendar 端点）新增字段 `release_precision`，标记 `release_date` 的精度；`release_date` 已**归一化**，必须配合本字段解读：
+
+| `release_precision` | `release_date` | 含义 |
+|---|---|---|
+| `day` | `YYYY-MM-DD` | 确切发售日 |
+| `month` | `YYYY-MM-01`（归一到 1 号） | 只知年月，**日未定** |
+| `year` | `YYYY-01-01`（归一到 1/1） | 只知年，**月未定**（不属于任何具体月） |
+| `tba` | `null` | 已宣布、日期待定 |
+| `unknown` | `null` | 无任何日期信息 |
+
+> ⚠️ 不要只看 `release_date`：`2026-06-01` 可能是「6月1日」（`day`）也可能是「6月内某天」（`month`）；`2026-01-01` 可能是「1月1日」也可能是「2026 年内」（`year`）。务必读 `release_precision`。
+>
+> 注：`GET /galgame/batch`（brief / detail）与 `GET /galgame/search` 的返回**不含** `release_precision`（brief 连 `release_date` 都不含；search 走 Meilisearch 文档）。要精度，用本组 calendar 端点或 `GET /galgame` / `GET /galgame/:gid`。
+>
+> 写入：`POST` / `PUT` / PR 的 `release_date` 现也接受 `YYYY-MM`、`YYYY`（除 `YYYY-MM-DD` / `""` 外），后端归一化并据此记 `release_precision`（见各写端点说明）。
+
+### GET /galgame/calendar
+
+某一个 ISO 月的发售列表（`day` + `month` 精度），已发售 + 未发售混排，按日期升序（同日内 `day` 在前、`month`「日未定」压后）。
+
+**查询参数**：
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| month | string | 否 | 当前月（JST） | 严格 `YYYY-MM`（零填充）。非法 → `400` |
+| content_limit | string | 否 | **sfw** | `sfw` / `nsfw`（精确匹配过滤）。**入 URL → 决定缓存键**，不同值各自缓存 |
+
+**成功响应**：
+
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "month": "2026-06",
+    "today": "2026-06-29",
+    "items": [ { "...": "完整 galgame 对象，含 release_precision / covers / official 等，字段同 GET /galgame 条目" } ],
+    "links": {
+      "self": "/api/galgame/calendar?month=2026-06",
+      "prev": "/api/galgame/calendar?month=2026-05",
+      "next": "/api/galgame/calendar?month=2026-07"
+    },
+    "meta": {
+      "prev_month": "2026-05",
+      "next_month": "2026-07",
+      "has_prev": true,
+      "has_next": false,
+      "min_month": "1985-06",
+      "max_month": "2026-10",
+      "count": 8
+    }
+  }
+}
+```
+
+- `today`：JST 当天，供「今日」标记。
+- `has_prev` / `has_next`：数据边界夹取——`min_month` / `max_month` 是有 `day`/`month` 精度数据的最早 / 最晚月（随 `content_limit` 变）；到边界时对应 `has_*` 为 `false`，下游据此禁用翻页。
+- **空月** = `200` + `items: []`（不是 404）。`items` 只含 `day` + `month` 精度；`year` / `tba` 见下两个端点。
+
+### GET /galgame/calendar/pending
+
+「只知年、月份待定」桶（`release_precision='year'`）。
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| year | string | 否 | 当前年（JST） | 严格 `YYYY`。非法 → `400` |
+| content_limit | string | 否 | sfw | 同上 |
+
+**成功响应** `data`：`{ "year": "2026", "items": [ ...galgame 对象 ], "meta": { "count": 12 } }`。
+
+### GET /galgame/calendar/tba
+
+全局「发售日未定（TBA）」桶（`release_precision='tba'`）。
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| content_limit | string | 否 | sfw | 同上 |
+
+**成功响应** `data`：`{ "items": [ ...galgame 对象 ], "meta": { "count": 3 } }`。
+
+### 缓存（三端点通用）
+
+- **ETag**（弱，如 `W/"cal-2026-06-sfw-8-1782029815"`）：带 `If-None-Match` 命中 → **`304 Not Modified`**（无 body）。ETag 内嵌该月 `max(updated)`，**编辑后自动失效**——下游可放心长缓存。
+- **Cache-Control**：过去月 `public, max-age=0, s-maxage=86400, stale-while-revalidate=3600`；当前 / 未来月（及 pending / tba）`public, max-age=0, s-maxage=300, stale-while-revalidate=60`。`max-age=0` = 浏览器每次以 ETag 复验（304 廉价），编辑不会被缓存成陈旧。
+- **Cache-Tag**：`gal-cal-<month>` / `gal-cal-pending-<year>` / `gal-cal-tba`，供 CDN 按键定向 purge（接 CDN 时的运维手段；不接也由 ETag 兜底）。
 
 ---
 
