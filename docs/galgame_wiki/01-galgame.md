@@ -680,7 +680,7 @@ Content-Type: image/jpeg
 - `status = 0` → 照常链接到详情 `GET /galgame/:gid`。
 - `status = 2` → 渲染为「**未发布 / 可认领**」，点击走**认领流程** [`POST /galgame/:gid/claim`](./07-submission.md)（把草稿翻成 `status=0` 已发布并归属认领者）；**不要**链接到 `GET /galgame/:gid` —— 详情端点对草稿返回 **404**（见下「可见性（按 status）」），用 item 自带的名称 / 封面直接渲染认领卡即可。
 
-> 量级提醒：加入草稿后单月条目可达数百，且每个是完整 galgame 对象。下游若在意载荷，可在集成阶段反馈，届时再评估精简投影 / 分页（当前不分页）。
+> 量级提醒：加入草稿后单月「全语言」条目可达数百，但 `original_language` **默认只返日 / 中原作**，已把典型月份从数百压到数十（如 2024-06：302 → 68）。要全量传 `original_language=all`。每个 item 仍是完整 galgame 对象；下游若在意载荷，可在集成阶段反馈，再评估精简投影 / 分页（当前不分页）。
 
 ### release_precision（发售日精度）
 
@@ -712,6 +712,7 @@ Content-Type: image/jpeg
 |------|------|------|--------|------|
 | month | string | 否 | 当前月（JST） | 严格 `YYYY-MM`（零填充）。非法 → `400` |
 | content_limit | string | 否 | **sfw** | `sfw` / `nsfw`（精确匹配过滤）。**入 URL → 决定缓存键**，不同值各自缓存 |
+| original_language | string | 否 | **`ja-jp,zh-cn,zh-tw`** | 原语言过滤。逗号分隔（如 `ja-jp,en-us`）；`all` = 不过滤。**默认只返日语 / 中文原作**——VNDB 含大量英文 / 西方 VN（约 1.9 万 en-us），默认过滤掉以保持「新作」相关性。入 URL → 决定缓存键 |
 
 **成功响应**：
 
@@ -742,7 +743,7 @@ Content-Type: image/jpeg
 ```
 
 - `today`：JST 当天，供「今日」标记。
-- `has_prev` / `has_next`：数据边界夹取——`min_month` / `max_month` 是有 `day`/`month` 精度数据的最早 / 最晚月（随 `content_limit` 变）；到边界时对应 `has_*` 为 `false`，下游据此禁用翻页。
+- `has_prev` / `has_next`：数据边界夹取——`min_month` / `max_month` 是有 `day`/`month` 精度数据的最早 / 最晚月（随 `content_limit` 与 `original_language` 变）；到边界时对应 `has_*` 为 `false`，下游据此禁用翻页。
 - **空月** = `200` + `items: []`（不是 404）。`items` 只含 `day` + `month` 精度；`year` / `tba` 见下两个端点。
 
 ### GET /galgame/calendar/pending
@@ -753,6 +754,7 @@ Content-Type: image/jpeg
 |------|------|------|--------|------|
 | year | string | 否 | 当前年（JST） | 严格 `YYYY`。非法 → `400` |
 | content_limit | string | 否 | sfw | 同上 |
+| original_language | string | 否 | `ja-jp,zh-cn,zh-tw` | 同上（默认只返日 / 中原作；`all` = 不过滤） |
 
 **成功响应** `data`：`{ "year": "2026", "items": [ ...galgame 对象 ], "meta": { "count": 12 } }`。
 
@@ -763,6 +765,7 @@ Content-Type: image/jpeg
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | content_limit | string | 否 | sfw | 同上 |
+| original_language | string | 否 | `ja-jp,zh-cn,zh-tw` | 同上（默认只返日 / 中原作；`all` = 不过滤） |
 
 **成功响应** `data`：`{ "items": [ ...galgame 对象 ], "meta": { "count": 3 } }`。
 
