@@ -110,6 +110,11 @@ type GalgameHit struct {
 type GalgameBrief struct {
 	ID                  int               `json:"id"`
 	VndbID              string            `json:"vndb_id"`
+	// Status: 0 = published, 2 = unclaimed vndb_draft. The wiki calendar now
+	// returns both (status IN (0,2)) so consumers can surface claimable drafts;
+	// moyu (a patch site with no claim flow) shows published only — see the
+	// calendar handlers' published-only filter.
+	Status              int               `json:"status"`
 	NameEnUs            string            `json:"name_en_us"`
 	NameZhCn            string            `json:"name_zh_cn"`
 	NameJaJp            string            `json:"name_ja_jp"`

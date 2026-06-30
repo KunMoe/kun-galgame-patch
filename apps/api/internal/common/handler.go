@@ -1004,7 +1004,25 @@ func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string
 		merged.Meta.MinMonth = minMonthStr(merged.Meta.MinMonth, cal.Meta.MinMonth)
 		merged.Meta.MaxMonth = maxMonthStr(merged.Meta.MaxMonth, cal.Meta.MaxMonth)
 	}
+	if merged != nil {
+		merged.Items = publishedBriefs(merged.Items)
+	}
 	return merged, nil
+}
+
+// publishedBriefs drops unclaimed vndb drafts (status != 0). The wiki calendar
+// now returns status IN (0,2) so the forum can surface claimable drafts; moyu is
+// a patch site with no claim flow — drafts can't be navigated (/patch/:id and
+// /galgame/:id 404 for them), favorited, or patched — so they'd be inert noise.
+// See the wiki contract's calendar consumer rule.
+func publishedBriefs(briefs []galgameClient.GalgameBrief) []galgameClient.GalgameBrief {
+	out := make([]galgameClient.GalgameBrief, 0, len(briefs))
+	for i := range briefs {
+		if briefs[i].Status == 0 {
+			out = append(out, briefs[i])
+		}
+	}
+	return out
 }
 
 // GetGalgameCalendarWindow GET /api/galgame/calendar/window?month=YYYY-MM
@@ -1020,13 +1038,24 @@ func (h *CommonHandler) GetGalgameCalendarWindow(c *fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 	}
 
-	// Default landing on an empty month → refocus on the latest month that has
-	// releases, so the wheel centers on real content (mirrors the single-month
-	// endpoint's FE fallback).
-	if month == "" && len(focus.Items) == 0 && focus.Meta.MaxMonth != "" &&
-		focus.Meta.MaxMonth != focus.Month {
-		if f, e := h.fetchCalendarMonth(ctx, focus.Meta.MaxMonth, cl); e == nil && f != nil {
-			focus = f
+	// Default landing on a month with no PUBLISHED releases → walk back to the
+	// most recent month that has some, so the wheel centers on real content.
+	// meta.max_month is draft-inclusive now (the wiki calendar returns far-future
+	// vndb drafts) so it can't be trusted as the published bound; a bounded
+	// walk-back finds the real latest-published month. fetchCalendarMonth already
+	// drops drafts, so len(Items)==0 means "no published releases".
+	if month == "" && len(focus.Items) == 0 {
+		m := focus.Month
+		for range 12 {
+			m = addMonths(m, -1)
+			back, e := h.fetchCalendarMonth(ctx, m, cl)
+			if e != nil || back == nil {
+				break
+			}
+			if len(back.Items) > 0 {
+				focus = back
+				break
+			}
 		}
 	}
 
@@ -1089,6 +1118,7 @@ func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
 			outYear = b.Year
 		}
 	}
+	briefs = publishedBriefs(briefs)
 	return response.OK(c, fiber.Map{
 		"year":  outYear,
 		"items": h.enrichCalendarItems(c, briefs),
@@ -1107,6 +1137,7 @@ func (h *CommonHandler) GetGalgameCalendarTBA(c *fiber.Ctx) error {
 		}
 		briefs = append(briefs, b.Items...)
 	}
+	briefs = publishedBriefs(briefs)
 	return response.OK(c, fiber.Map{
 		"items": h.enrichCalendarItems(c, briefs),
 	})
