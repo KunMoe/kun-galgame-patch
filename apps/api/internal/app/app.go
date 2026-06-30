@@ -147,7 +147,7 @@ func New(cfg *config.Config) *App {
 	// Message module
 	messageRepository := messageRepo.New(db)
 	messageSvc := messageService.New(messageRepository)
-	messageHdl := messageHandler.New(messageSvc, usrCli)
+	messageHdl := messageHandler.New(messageSvc, usrCli, wiki)
 
 	// Admin module (adminRepository built above — also patch-service's AuditLogger)
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, s3, patchSvc)

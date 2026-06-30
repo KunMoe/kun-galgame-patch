@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"regexp"
+	"strconv"
 
-	patchModel "kun-galgame-patch-api/internal/patch/model"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/message/dto"
 	"kun-galgame-patch-api/internal/message/service"
 	"kun-galgame-patch-api/internal/middleware"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	userModel "kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -19,10 +22,76 @@ import (
 type MessageHandler struct {
 	service *service.MessageService
 	users   *userclient.Client
+	wiki    *galgameClient.Client
 }
 
-func New(svc *service.MessageService, users *userclient.Client) *MessageHandler {
-	return &MessageHandler{service: svc, users: users}
+func New(svc *service.MessageService, users *userclient.Client, wiki *galgameClient.Client) *MessageHandler {
+	return &MessageHandler{service: svc, users: users, wiki: wiki}
+}
+
+// galgameNameTypes are the message types whose Content bakes a single-language
+// (zh-cn-first) game name; for these we attach the multilingual name so the
+// frontend can render it in the viewer's preferred title language.
+var galgameNameTypes = map[string]bool{
+	"favorite":         true,
+	"favoriteResource": true,
+	"likeResource":     true,
+}
+
+var patchLinkRe = regexp.MustCompile(`^/patch/(\d+)`)
+
+// attachGalgameNames batch-resolves the multilingual game name (from each
+// game-scoped message's /patch/<id> link) and stamps msg.GalgameName, so the
+// frontend renders the name in the viewer's preferred title language instead of
+// the baked Content. Best-effort: unresolved messages keep GalgameName=nil and
+// the frontend falls back to Content.
+func (h *MessageHandler) attachGalgameNames(ctx context.Context, msgs []userModel.UserMessage) {
+	if h.wiki == nil || len(msgs) == 0 {
+		return
+	}
+	idByIdx := make(map[int]int, len(msgs))
+	idSet := make(map[int]struct{})
+	for i := range msgs {
+		if !galgameNameTypes[msgs[i].Type] {
+			continue
+		}
+		m := patchLinkRe.FindStringSubmatch(msgs[i].Link)
+		if m == nil {
+			continue
+		}
+		id, _ := strconv.Atoi(m[1])
+		if id <= 0 {
+			continue
+		}
+		idByIdx[i] = id
+		idSet[id] = struct{}{}
+	}
+	if len(idSet) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	briefs, err := h.wiki.GalgameBatch(ctx, ids, "")
+	if err != nil {
+		return
+	}
+	nameByID := make(map[int]map[string]string, len(briefs))
+	for i := range briefs {
+		b := &briefs[i]
+		nameByID[b.ID] = map[string]string{
+			"en-us": b.NameEnUs,
+			"ja-jp": b.NameJaJp,
+			"zh-cn": b.NameZhCn,
+			"zh-tw": b.NameZhTw,
+		}
+	}
+	for idx, id := range idByIdx {
+		if n := nameByID[id]; n != nil {
+			msgs[idx].GalgameName = n
+		}
+	}
 }
 
 // attachSenders batch-resolves sender briefs from OAuth /users/batch and
@@ -76,6 +145,7 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	}
 
 	h.attachSenders(c.Context(), messages)
+	h.attachGalgameNames(c.Context(), messages)
 	return response.Paginated(c, messages, total)
 }
 
@@ -96,6 +166,7 @@ func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
 	}
 
 	h.attachSenders(c.Context(), messages)
+	h.attachGalgameNames(c.Context(), messages)
 	return response.Paginated(c, messages, total)
 }
 

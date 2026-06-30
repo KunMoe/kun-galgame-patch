@@ -50,6 +50,15 @@ type UserMessage struct {
 	// (sender_id NULL) or when the OAuth lookup misses; the frontend then
 	// renders the "系统" placeholder.
 	Sender *patchModel.PatchUser `gorm:"-" json:"sender,omitempty"`
+
+	// GalgameName is the multilingual name ({en-us, ja-jp, zh-cn, zh-tw}) of the
+	// patch a game-scoped message references (favorite / favoriteResource /
+	// likeResource), batch-filled by the message handler from the wiki. NOT a GORM
+	// column. Lets the frontend render the game name in the viewer's preferred
+	// title language instead of the zh-cn-first name baked into Content. Absent
+	// when the message isn't game-scoped or the name can't be resolved (the
+	// frontend then falls back to Content).
+	GalgameName map[string]string `gorm:"-" json:"galgame_name,omitempty"`
 }
 
 func (UserMessage) TableName() string { return "user_message" }

@@ -16,6 +16,27 @@ const cardHref = computed(() => {
 const iconName = computed(
   () => MESSAGE_TYPE_ICON[props.msg.type] ?? 'lucide:bell'
 )
+
+// Render the referenced game name in the viewer's 标题优先语言 (getPreferredLanguageText
+// with no locale honors the setting), falling back to the baked `content` when the
+// name isn't attached. For the resource interactions the verb sentence is rebuilt
+// around the preferred name; for `favorite` the name IS the line (the 收藏补丁 chip
+// supplies the verb).
+const gameName = computed(() => getPreferredLanguageText(props.msg.galgame_name))
+const displayContent = computed(() => {
+  const name = gameName.value
+  if (!name) return props.msg.content
+  switch (props.msg.type) {
+    case 'favorite':
+      return name
+    case 'favoriteResource':
+      return `收藏了您在 ${name} 下发布的补丁资源`
+    case 'likeResource':
+      return `点赞了您在 ${name} 下发布的补丁资源`
+    default:
+      return props.msg.content
+  }
+})
 </script>
 
 <template>
@@ -47,7 +68,7 @@ const iconName = computed(
           </span>
         </div>
         <p class="text-default-600 whitespace-pre-wrap">
-          {{ props.msg.content }}
+          {{ displayContent }}
         </p>
         <span class="text-default-400 text-xs">
           {{ formatDistanceToNow(props.msg.created) }}
