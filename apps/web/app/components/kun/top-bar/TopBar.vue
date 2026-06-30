@@ -1,9 +1,19 @@
 <script setup lang="ts">
+import { useWindowScroll } from '@vueuse/core'
 import { kunNavItemDesktop, kunTopBarCategories } from '~/constants/top-bar'
 
 const route = useRoute()
 const isMenuOpen = ref(false)
 const galgamePopover = ref<{ close: () => void } | null>(null)
+
+// Solid bg + blur are OFF at the top and snap ON once scrolled. backdrop-filter
+// is kept OUT of the transition list — animating it stutters (GPU repaint), so
+// the blur snaps at the threshold while bg / border / shadow fade smoothly.
+const { y } = useWindowScroll()
+const scrolled = computed(() => y.value > 8)
+
+// Nudge the 发售月表 entry when a Galgame releases today.
+const { hasReleaseToday } = useGalgameReleaseToday()
 
 watch(
   () => route.path,
@@ -19,7 +29,14 @@ watch(
 
 <template>
   <nav
-    class="bg-background/80 sticky top-0 z-40 flex h-16 w-full items-center px-3 backdrop-blur"
+    :class="
+      cn(
+        'sticky top-0 z-40 flex h-16 w-full items-center border-b px-3 transition-[background-color,border-color,box-shadow] duration-200',
+        scrolled
+          ? 'bg-background/80 border-default/40 shadow-kun-sm backdrop-blur'
+          : 'border-transparent bg-transparent'
+      )
+    "
   >
     <div class="mx-auto flex w-full max-w-7xl items-center gap-3">
       <KunButton
@@ -85,11 +102,18 @@ watch(
           :class="
             cn(
               'shrink-0 text-base',
-              route.path === item.href ? 'text-primary' : 'text-foreground'
+              route.path === item.href ||
+                (item.href === '/calendar' && hasReleaseToday)
+                ? 'text-primary'
+                : 'text-foreground'
             )
           "
         >
-          {{ item.name }}
+          {{
+            item.href === '/calendar' && hasReleaseToday
+              ? '有新作发售'
+              : item.name
+          }}
         </NuxtLink>
 
       </div>

@@ -36,7 +36,7 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
           v-else
           type="button"
           :disabled="c.count === 0"
-          class="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg border text-sm transition-colors"
+          class="relative flex min-h-11 items-center justify-center rounded-lg border text-sm transition-colors"
           :class="[
             c.count === 0 ? 'cursor-default' : 'hover:border-primary cursor-pointer',
             selected === c.key
@@ -55,9 +55,9 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
           {{ c.day }}
           <span
             v-if="c.count"
-            class="bg-primary rounded-full px-1.5 text-[10px] leading-tight font-medium text-white"
+            class="bg-primary absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-medium text-white"
           >
-            {{ c.count }}
+            {{ c.count > 99 ? '99+' : c.count }}
           </span>
         </button>
       </template>

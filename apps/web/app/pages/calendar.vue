@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// Galgame 新作发售月表 — release calendar over the wiki calendar API
-// (/galgame/calendar*). Month-at-a-glance grid (sticky) + a date-tile day list
-// you can click-to-scroll into; each card carries a countdown + an inline 收藏
-// (favoriting lazily records a 未收录 game and subscribes to its new-patch
-// notifications). A patch-status filter leans into moyu being a patch site. The
-// month + two 未定档 buckets cover every release.
-//
-// Kept alive via app.vue's include list; `month` is a computed off ?month=.
+// Galgame 新作发售月表 — release calendar over the wiki calendar API. Renders a
+// 3-month window [prev, focus, next] (GET /galgame/calendar/window) as a centered
+// scroll "wheel": a sticky focus-month grid (badge counts, click-to-scroll) on the
+// left, and the prev/focus/next day-list on the right aligned to the focus month's
+// start. Each card carries a countdown + inline 收藏 (favoriting lazily records
+// a 未收录 game and subscribes to its new-patch notifications). A patch-status
+// filter leans into moyu being a patch site. The two 未定档 buckets sit under the
+// grid on desktop. The window endpoint refocuses an empty current month onto the
+// latest month with releases, so the wheel always centers on real content.
 defineOptions({ name: 'calendar-page' })
 
 useKunSeoMeta({
@@ -25,40 +26,24 @@ const month = computed({
     router.push({ query: { ...route.query, month: v || undefined } })
 })
 
-const { data, pending } = await useAsyncData<CalendarMonthResponse | null>(
-  () => `calendar-${month.value || 'current'}`,
+const { data, pending } = await useAsyncData<CalendarWindowResponse | null>(
+  () => `calendar-window-${month.value || 'current'}`,
   async () => {
     const qs = month.value ? `?month=${month.value}` : ''
-    const res = await api.get<CalendarMonthResponse>(`/galgame/calendar${qs}`)
-    let d = res.code === 0 ? res.data : null
-    // Default landing (no ?month=) on an EMPTY month — e.g. the current month is
-    // past the latest scheduled release (data.meta.max_month) — falls back to the
-    // latest month that actually has releases, so the right side shows that whole
-    // month instead of an empty page. Only kicks in for the default view; an
-    // explicit ?month= is always respected (even if empty).
-    if (
-      d &&
-      !month.value &&
-      d.items.length === 0 &&
-      d.meta?.max_month &&
-      d.meta.max_month !== d.month
-    ) {
-      const r2 = await api.get<CalendarMonthResponse>(
-        `/galgame/calendar?month=${d.meta.max_month}`
-      )
-      if (r2.code === 0 && r2.data) d = r2.data
-    }
-    return d
+    const res = await api.get<CalendarWindowResponse>(
+      `/galgame/calendar/window${qs}`
+    )
+    return res.code === 0 ? res.data : null
   },
   { watch: [month] }
 )
 
-const curMonth = computed(() => data.value?.month ?? '')
-const meta = computed(() => data.value?.meta ?? null)
+const focusMonth = computed(() => data.value?.month ?? '')
 const today = computed(() => data.value?.today ?? '')
-const allItems = computed<CalendarItem[]>(() => data.value?.items ?? [])
+const meta = computed(() => data.value?.meta ?? null)
+const rawMonths = computed<CalendarMonthSection[]>(() => data.value?.months ?? [])
 
-// "无定档" buckets — fetched once, independent of month nav.
+// The two 无定档 buckets — fetched once, independent of the window.
 const { data: buckets } = await useAsyncData(
   'calendar-buckets',
   async () => {
@@ -75,66 +60,50 @@ const { data: buckets } = await useAsyncData(
   { default: () => ({ pendingYear: '', pending: [], tba: [] }) }
 )
 
-// ── Patch-status filter (moyu is a patch site — let users scope to downloadable)
+// ── Patch-status filter (moyu is a patch site — scope to downloadable).
 type PatchFilter = 'all' | 'has' | 'none'
 const patchFilter = ref<PatchFilter>('all')
+const allItems = computed(() => rawMonths.value.flatMap((m) => m.items))
 const hasCount = computed(() => allItems.value.filter((i) => i.has_patch).length)
 const filters = computed(() => [
   { key: 'all' as const, label: '全部', count: allItems.value.length },
   { key: 'has' as const, label: '本站有补丁', count: hasCount.value },
   { key: 'none' as const, label: '暂无补丁', count: allItems.value.length - hasCount.value }
 ])
-const items = computed<CalendarItem[]>(() => {
-  if (patchFilter.value === 'has') return allItems.value.filter((i) => i.has_patch)
-  if (patchFilter.value === 'none') return allItems.value.filter((i) => !i.has_patch)
-  return allItems.value
-})
+const months = computed<CalendarMonthSection[]>(() =>
+  rawMonths.value.map((m) => ({
+    month: m.month,
+    items:
+      patchFilter.value === 'has'
+        ? m.items.filter((i) => i.has_patch)
+        : patchFilter.value === 'none'
+          ? m.items.filter((i) => !i.has_patch)
+          : m.items
+  }))
+)
+const isEmpty = computed(() => months.value.every((m) => m.items.length === 0))
+const focusItems = computed(
+  () => months.value.find((m) => m.month === focusMonth.value)?.items ?? []
+)
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
-
-// ── Day grouping (filtered). month-precision entries → a trailing 待定 bucket.
-interface DayGroup {
-  key: string // YYYY-MM-DD or 'tbd'
-  day: number
-  weekday: string
-  isToday: boolean
-  isTbd: boolean
-  items: CalendarItem[]
-}
-const dayGroups = computed<DayGroup[]>(() => {
-  const exact = new Map<string, CalendarItem[]>()
-  const tbd: CalendarItem[] = []
-  for (const it of items.value) {
+// ── Focus-month grid (left): day counts + 待定 bucket count.
+const focusDays = computed(() => {
+  const byDay = new Map<string, number>()
+  let bucket = 0
+  for (const it of focusItems.value) {
     const precision = it.galgame?.release_precision
     const date = it.galgame?.release_date ?? ''
     if (precision === 'month' || !date) {
-      tbd.push(it)
+      bucket++
       continue
     }
-    const day = date.slice(0, 10)
-    if (!exact.has(day)) exact.set(day, [])
-    exact.get(day)!.push(it)
+    const key = date.slice(0, 10)
+    byDay.set(key, (byDay.get(key) ?? 0) + 1)
   }
-  const groups: DayGroup[] = [...exact.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, its]) => {
-      const [y, m, d] = key.split('-').map(Number)
-      return {
-        key,
-        day: d!,
-        isTbd: false,
-        isToday: key === today.value,
-        weekday: `周${WEEKDAYS[new Date(y!, m! - 1, d).getDay()]}`,
-        items: its
-      }
-    })
-  if (tbd.length) {
-    groups.push({ key: 'tbd', day: 0, weekday: '日期待定', isToday: false, isTbd: true, items: tbd })
-  }
-  return groups
+  return { byDay, bucket }
 })
+const tbdCount = computed(() => focusDays.value.bucket)
 
-// ── Month grid cells (full month; counts from the filtered day groups).
 interface GridCell {
   day: number
   key: string
@@ -142,75 +111,94 @@ interface GridCell {
   state: 'today' | 'upcoming' | 'past' | 'empty'
 }
 const gridCells = computed<GridCell[]>(() => {
-  const [y, m] = curMonth.value.split('-').map(Number)
+  const [y, m] = focusMonth.value.split('-').map(Number)
   if (!y || !m) return []
   const daysInMonth = new Date(y, m, 0).getDate()
   const firstWeekday = new Date(y, m - 1, 1).getDay()
-  const countByDay = new Map<string, number>()
-  for (const g of dayGroups.value) {
-    if (!g.isTbd) countByDay.set(g.key, g.items.length)
-  }
+  const byDay = focusDays.value.byDay
   const cells: GridCell[] = []
   for (let i = 0; i < firstWeekday; i++) {
     cells.push({ day: 0, key: '', count: 0, state: 'empty' })
   }
   for (let d = 1; d <= daysInMonth; d++) {
-    const key = `${curMonth.value}-${String(d).padStart(2, '0')}`
+    const key = `${focusMonth.value}-${String(d).padStart(2, '0')}`
     let state: GridCell['state'] = 'empty'
     if (key === today.value) state = 'today'
     else if (today.value && key > today.value) state = 'upcoming'
     else if (today.value && key < today.value) state = 'past'
-    cells.push({ day: d, key, count: countByDay.get(key) ?? 0, state })
+    cells.push({ day: d, key, count: byDay.get(key) ?? 0, state })
   }
   return cells
 })
-const tbdCount = computed(
-  () => dayGroups.value.find((g) => g.isTbd)?.items.length ?? 0
-)
 
-// ── Selected day (grid highlight) + click-to-scroll.
+// ── Selected day (grid highlight).
 const selected = ref('')
 watch(
-  dayGroups,
-  (groups) => {
-    if (!groups.length) {
-      selected.value = ''
+  [gridCells, focusMonth],
+  () => {
+    const withGames = gridCells.value.filter((c) => c.count > 0)
+    if (!withGames.length) {
+      selected.value = tbdCount.value ? 'tbd' : ''
       return
     }
-    selected.value = groups.some((g) => g.key === today.value)
-      ? today.value
-      : groups[0]!.key
+    selected.value =
+      withGames.find((c) => c.key === today.value)?.key ?? withGames[0]!.key
   },
   { immediate: true }
 )
+
+// ── The wheel: center the focus month in the right scroll panel.
+const scrollEl = ref<HTMLElement | null>(null)
+const isWheel = () => {
+  const vp = scrollEl.value
+  return !!vp && vp.scrollHeight > vp.clientHeight + 4
+}
+const alignFocus = (smooth: boolean) => {
+  const vp = scrollEl.value
+  if (!vp || !isWheel()) return
+  const el = vp.querySelector<HTMLElement>('[data-focus-month]')
+  if (!el) return
+  // Land at the prev→focus boundary: the focus month's header near the top with
+  // a small peek of the previous month above it. (Centering a tall focus month
+  // would instead land you in the MIDDLE of it.)
+  const offset =
+    el.getBoundingClientRect().top - vp.getBoundingClientRect().top + vp.scrollTop
+  vp.scrollTo({ top: Math.max(0, offset - 64), behavior: smooth ? 'smooth' : 'auto' })
+}
+const scheduleAlign = (smooth: boolean) => {
+  if (!import.meta.client) return
+  nextTick(() => requestAnimationFrame(() => alignFocus(smooth)))
+}
+onMounted(() => scheduleAlign(false))
+watch(focusMonth, () => scheduleAlign(true))
+
+// Grid cell click → scroll the wheel (desktop) / page (mobile) to that day.
 const scrollToDay = (key: string) => {
   selected.value = key
-  if (import.meta.client) {
-    document
-      .getElementById(`cal-day-${key}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (!import.meta.client) return
+  const id = key === 'tbd' ? `${focusMonth.value}-bucket` : key
+  const vp = scrollEl.value
+  const el = vp?.querySelector<HTMLElement>(`#cal-day-${id}`)
+  if (!el) return
+  if (vp && isWheel()) {
+    const top =
+      el.getBoundingClientRect().top - vp.getBoundingClientRect().top + vp.scrollTop - 8
+    vp.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  } else {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
 
-const tileClass = (g: DayGroup) => {
-  if (g.isToday) return 'bg-primary text-white'
-  if (g.isTbd) return 'bg-default-100 text-default-400'
-  if (today.value && g.key > today.value) return 'border-primary text-primary border-2'
-  return 'bg-default-100 text-default-500'
-}
-
-// ── Month navigation.
+// ── Month navigation (shifts the window by one month).
 const monthLabel = computed(() => {
-  const [y, mo] = curMonth.value.split('-')
+  const [y, mo] = focusMonth.value.split('-')
   return y && mo ? `${y} 年 ${Number(mo)} 月` : ''
 })
 const todayMonth = computed(() => today.value.slice(0, 7))
 const isCurrentMonth = computed(() => {
   if (!todayMonth.value) return true
-  if (curMonth.value === todayMonth.value) return true
-  // The default view fell back to the latest-data month (current month empty) —
-  // that IS the landing view, so don't show a no-op "回到本月".
-  return !month.value && curMonth.value === meta.value?.max_month
+  if (focusMonth.value === todayMonth.value) return true
+  return !month.value && focusMonth.value === meta.value?.max_month
 })
 const goPrev = () => {
   if (meta.value?.has_prev) month.value = meta.value.prev_month
@@ -224,13 +212,12 @@ const goToday = () => {
 </script>
 
 <template>
-  <div class="container mx-auto my-4 space-y-5">
+  <div class="container mx-auto my-4 space-y-4">
     <KunHeader
       name="Galgame 发售月表"
       description="按月浏览 Galgame 新作发售月历，收藏感兴趣的作品，有补丁时第一时间通知你"
     />
 
-    <!-- Patch-status filter -->
     <div class="flex flex-wrap items-center gap-2">
       <KunButton
         v-for="f in filters"
@@ -247,12 +234,10 @@ const goToday = () => {
     </div>
 
     <div class="grid gap-6 lg:grid-cols-3">
-      <!-- Left column: nav + grid + 无定档 buckets as ONE sticky unit (desktop)
-           so the buckets stay pinned instead of scrolling away; the column gets
-           an internal scroll when it's taller than the viewport. -->
+      <!-- Left column: nav + grid + 无定档 buckets as ONE sticky unit (desktop). -->
       <aside class="lg:col-span-1">
         <div
-          class="space-y-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
+          class="space-y-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto"
         >
           <div class="flex items-center justify-between gap-2">
             <KunButton
@@ -300,8 +285,7 @@ const goToday = () => {
             />
           </div>
 
-          <!-- 无定档 buckets — desktop only (hidden on mobile to keep the phone
-               view focused on the month). -->
+          <!-- 无定档 buckets — desktop only. -->
           <div
             v-if="buckets?.pending.length || buckets?.tba.length"
             class="hidden space-y-5 lg:block"
@@ -347,63 +331,32 @@ const goToday = () => {
         </div>
       </aside>
 
-      <!-- Day-row list -->
+      <!-- Right column: the 3-month wheel. -->
       <div class="lg:col-span-2">
         <KunLoading v-if="pending && !data" description="正在加载发售月历..." />
 
-        <KunNull
-          v-else-if="!dayGroups.length"
-          :description="
-            patchFilter === 'has'
-              ? '本月本站暂无有补丁的作品'
-              : patchFilter === 'none'
-                ? '本月作品本站均已有补丁'
-                : '本月暂无收录的发售信息'
-          "
-        />
-
-        <template v-else>
-          <section
-            v-for="g in dayGroups"
-            :id="`cal-day-${g.key}`"
-            :key="g.key"
-            class="border-default/15 flex scroll-mt-24 flex-col gap-3 border-t py-4 first:border-t-0 sm:flex-row sm:gap-5"
-          >
-            <div
-              class="flex shrink-0 items-center gap-3 sm:w-14 sm:flex-col sm:gap-1.5"
-            >
-              <div
-                class="flex size-14 shrink-0 flex-col items-center justify-center rounded-xl"
-                :class="tileClass(g)"
-              >
-                <span v-if="!g.isTbd" class="text-2xl leading-none font-bold">
-                  {{ g.day }}
-                </span>
-                <KunIcon v-else name="lucide:calendar-clock" class="size-6" />
-              </div>
-              <div class="flex items-center gap-2 sm:flex-col sm:gap-1">
-                <span class="text-default-500 text-xs">{{ g.weekday }}</span>
-                <KunChip
-                  v-if="g.isToday"
-                  color="primary"
-                  variant="solid"
-                  size="sm"
-                >
-                  今日
-                </KunChip>
-              </div>
-            </div>
-
-            <div class="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
-              <CalendarCard
-                v-for="it in g.items"
-                :key="it.id"
-                :item="it"
-                :today="today"
-              />
-            </div>
-          </section>
-        </template>
+        <div
+          v-else
+          ref="scrollEl"
+          class="lg:sticky lg:top-20 lg:h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pr-1"
+        >
+          <KunNull
+            v-if="isEmpty"
+            :description="
+              patchFilter === 'has'
+                ? '附近月份本站暂无有补丁的作品'
+                : patchFilter === 'none'
+                  ? '附近月份的作品本站均已有补丁'
+                  : '附近暂无收录的发售信息'
+            "
+          />
+          <CalendarMonthList
+            v-else
+            :months="months"
+            :today="today"
+            :focus-month="focusMonth"
+          />
+        </div>
       </div>
     </div>
   </div>

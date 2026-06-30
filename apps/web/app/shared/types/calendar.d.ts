@@ -39,3 +39,19 @@ interface CalendarBucketResponse {
   year?: string
   items: CalendarItem[]
 }
+
+// One month segment of the 3-month window.
+interface CalendarMonthSection {
+  month: string
+  items: CalendarItem[]
+}
+
+// GET /galgame/calendar/window?month=YYYY-MM — a [prev, focus, next] window so a
+// sparse focus month still shows neighbouring releases (rendered as a centered
+// scroll "wheel"). `month` is the resolved focus; `meta` is the focus month's.
+interface CalendarWindowResponse {
+  month: string
+  today: string
+  meta: CalendarMonthResponse['meta']
+  months: CalendarMonthSection[]
+}

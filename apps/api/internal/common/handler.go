@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -966,11 +967,29 @@ func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	month := strings.TrimSpace(c.Query("month"))
 
+	merged, err := h.fetchCalendarMonth(c.Context(), month, cl)
+	if err != nil || merged == nil {
+		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+	}
+
+	return response.OK(c, fiber.Map{
+		"month": merged.Month,
+		"today": merged.Today,
+		"items": h.enrichCalendarItems(c, merged.Items),
+		"meta":  merged.Meta,
+	})
+}
+
+// fetchCalendarMonth fetches one ISO month, folding the content_limit fan-out
+// ("all" → sfw + nsfw) into one merged GalgameCalendar. Shared by the month and
+// window endpoints. Takes a context (not the fiber Ctx) so it is safe to call
+// from the window endpoint's neighbour goroutines.
+func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string) (*galgameClient.GalgameCalendar, error) {
 	var merged *galgameClient.GalgameCalendar
 	for _, lim := range calendarContentLimits(cl) {
-		cal, err := h.wiki.GetGalgameCalendar(c.Context(), month, lim)
+		cal, err := h.wiki.GetGalgameCalendar(ctx, month, lim)
 		if err != nil {
-			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+			return nil, err
 		}
 		if merged == nil {
 			merged = cal
@@ -985,16 +1004,72 @@ func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
 		merged.Meta.MinMonth = minMonthStr(merged.Meta.MinMonth, cal.Meta.MinMonth)
 		merged.Meta.MaxMonth = maxMonthStr(merged.Meta.MaxMonth, cal.Meta.MaxMonth)
 	}
-	if merged == nil {
+	return merged, nil
+}
+
+// GetGalgameCalendarWindow GET /api/galgame/calendar/window?month=YYYY-MM
+// Returns a 3-month window [prev, focus, next] so a sparse focus month still has
+// neighbouring releases in view — the FE renders it as a centered scroll "wheel".
+func (h *CommonHandler) GetGalgameCalendarWindow(c *fiber.Ctx) error {
+	cl := utils.ContentLimitForListBrowse(c)
+	month := strings.TrimSpace(c.Query("month"))
+	ctx := c.Context()
+
+	focus, err := h.fetchCalendarMonth(ctx, month, cl)
+	if err != nil || focus == nil {
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 	}
 
+	// Default landing on an empty month → refocus on the latest month that has
+	// releases, so the wheel centers on real content (mirrors the single-month
+	// endpoint's FE fallback).
+	if month == "" && len(focus.Items) == 0 && focus.Meta.MaxMonth != "" &&
+		focus.Meta.MaxMonth != focus.Month {
+		if f, e := h.fetchCalendarMonth(ctx, focus.Meta.MaxMonth, cl); e == nil && f != nil {
+			focus = f
+		}
+	}
+
+	prevM := addMonths(focus.Month, -1)
+	nextM := addMonths(focus.Month, 1)
+
+	// Neighbours fan out in parallel; an erroring neighbour just yields no items.
+	var prev, next *galgameClient.GalgameCalendar
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); prev, _ = h.fetchCalendarMonth(ctx, prevM, cl) }()
+	go func() { defer wg.Done(); next, _ = h.fetchCalendarMonth(ctx, nextM, cl) }()
+	wg.Wait()
+
+	months := []fiber.Map{
+		{"month": prevM, "items": h.enrichCalendarItems(c, briefsOf(prev))},
+		{"month": focus.Month, "items": h.enrichCalendarItems(c, focus.Items)},
+		{"month": nextM, "items": h.enrichCalendarItems(c, briefsOf(next))},
+	}
+
 	return response.OK(c, fiber.Map{
-		"month": merged.Month,
-		"today": merged.Today,
-		"items": h.enrichCalendarItems(c, merged.Items),
-		"meta":  merged.Meta,
+		"month":  focus.Month,
+		"today":  focus.Today,
+		"meta":   focus.Meta,
+		"months": months,
 	})
+}
+
+// addMonths shifts an ISO "YYYY-MM" by delta calendar months.
+func addMonths(month string, delta int) string {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return month
+	}
+	return t.AddDate(0, delta, 0).Format("2006-01")
+}
+
+// briefsOf returns a calendar's items, or nil for a nil (errored) fetch.
+func briefsOf(cal *galgameClient.GalgameCalendar) []galgameClient.GalgameBrief {
+	if cal == nil {
+		return nil
+	}
+	return cal.Items
 }
 
 // GetGalgameCalendarPending GET /api/galgame/calendar/pending?year=YYYY
