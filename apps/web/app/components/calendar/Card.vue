@@ -115,7 +115,7 @@ const toggleFavorite = async () => {
       <div class="absolute top-1.5 left-1.5">
         <KunChip
           :color="item.content_limit === 'sfw' ? 'success' : 'danger'"
-          variant="flat"
+          variant="solid"
           size="sm"
         >
           {{ GALGAME_AGE_LIMIT_MAP[item.content_limit] }}
@@ -126,7 +126,7 @@ const toggleFavorite = async () => {
       <KunChip
         v-if="isDraft"
         color="warning"
-        variant="flat"
+        variant="solid"
         size="sm"
         class="absolute top-1.5 right-1.5"
       >
