@@ -37,6 +37,13 @@ const bannerSrc = computed(
 // slicing the first 10 chars is enough for a day-precision date and avoids a
 // date-lib dependency + timezone shift. Null/absent → not shown.
 const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
+
+// No real downloadable patch on moyu (resource_count === 0). Such a card is a
+// wiki galgame surfaced on an entity/calendar/search list that moyu has no patch
+// for; hide the patch-only stats/attributes (which would be empty 0s) and the
+// stub's garbage created-date, and show a 暂无补丁 tag instead. The detail page it
+// links to renders the matching read-only "本站暂无补丁" state.
+const isNoPatch = computed(() => (props.patch.count?.resource ?? 0) === 0)
 </script>
 
 <template>
@@ -78,6 +85,13 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
           {{ GALGAME_AGE_LIMIT_MAP[props.patch.content_limit] }}
         </KunChip>
       </div>
+
+      <div
+        v-if="isNoPatch"
+        class="bg-content1 shadow-kun-sm absolute top-2 right-2 z-10 rounded-full"
+      >
+        <KunChip color="default" variant="flat">暂无补丁</KunChip>
+      </div>
     </div>
 
     <div class="flex flex-col justify-between space-y-2 p-3">
@@ -87,7 +101,7 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
         >
           <span>{{ galgameName }}</span>
           <span
-            v-if="props.patch.created"
+            v-if="!isNoPatch && props.patch.created"
             class="text-default-500 text-xs font-normal"
           >
             {{ formatDistanceToNow(props.patch.created) }}
@@ -107,10 +121,10 @@ const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
         <KunIcon name="lucide:calendar" class="size-3.5" />
         <span>{{ releaseDate }} 发售</span>
       </div>
-      <KunCardStats :patch="props.patch" />
+      <KunCardStats v-if="!isNoPatch" :patch="props.patch" />
     </div>
 
-    <div class="px-3 pt-0 pb-3">
+    <div v-if="!isNoPatch" class="px-3 pt-0 pb-3">
       <KunPatchAttribute
         :types="props.patch.type"
         :languages="props.patch.language"

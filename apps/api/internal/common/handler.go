@@ -900,15 +900,20 @@ func calendarContentLimits(cl string) []string {
 	}
 }
 
-// calendarHasPatchSet returns the subset of galgame ids moyu holds a local patch
-// row for (patch.id == galgame_id). Drives each card's has_patch flag / link.
+// calendarHasPatchSet returns the subset of galgame ids that have a REAL
+// downloadable patch on moyu — i.e. resource_count > 0, NOT merely a row. The
+// detail endpoint lazily materializes a 0-resource stub on view, so "row exists"
+// is always true and would mislabel every viewed galgame as 有补丁; the honest
+// signal (matching /galgame's resource_count > 0 listing filter) is resource_count.
 func (h *CommonHandler) calendarHasPatchSet(ids []int) map[int]bool {
 	set := make(map[int]bool, len(ids))
 	if len(ids) == 0 {
 		return set
 	}
 	var existing []int
-	h.db.Model(&patchModel.Patch{}).Where("id IN ?", ids).Pluck("id", &existing)
+	h.db.Model(&patchModel.Patch{}).
+		Where("id IN ? AND resource_count > 0", ids).
+		Pluck("id", &existing)
 	for _, id := range existing {
 		set[id] = true
 	}

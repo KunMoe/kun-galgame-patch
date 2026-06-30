@@ -40,6 +40,12 @@ interface Props {
 
 const props = defineProps<Props>()
 
+// A galgame moyu hasn't 收录 yet (no real local patch row → is_on_forum=false).
+// Hide the patch-only "资源更新于" line and 删除 (nothing to delete until it's on
+// the site). 收藏 STAYS (favoriting lazily records the game — kungal's
+// interaction-driven ingest), as do 编辑游戏信息 (wiki) and 分享.
+const isNoPatch = computed(() => props.patch.is_on_forum === false)
+
 const config = useRuntimeConfig()
 const wikiOrigin =
   ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
@@ -89,6 +95,7 @@ const handleShare = () => {
 const editHref = computed(() => `/edit/rewrite?id=${props.patch.id}`)
 
 const canDelete = computed(() => {
+  if (isNoPatch.value) return false
   if (!userStore.user.id) return false
   return userStore.isAdmin || props.patch.user?.id === userStore.user.id
 })
@@ -156,7 +163,9 @@ const onMenuSelect = (item: { key: string }) => {
          (资源更新于 was under the creator chip) and put to the LEFT of the action
          bar per the header layout request. -->
     <div class="text-default-500 flex flex-col gap-1 text-xs">
-      <p>资源更新于 {{ formatDistanceToNow(props.patch.resource_update_time) }}</p>
+      <p v-if="!isNoPatch">
+        资源更新于 {{ formatDistanceToNow(props.patch.resource_update_time) }}
+      </p>
       <p>
         游戏元数据由
         <a
@@ -178,6 +187,9 @@ const onMenuSelect = (item: { key: string }) => {
          with. -->
     <div class="flex flex-col items-start gap-2 sm:items-end">
       <div class="flex items-center gap-2">
+        <!-- 收藏 stays available even for a not-yet-收录 game: favoriting lazily
+             records it on the backend (kungal's interaction-driven ingest) and
+             subscribes you to its new-patch notifications. -->
         <KunReaction
           v-model="favorite"
           icon="lucide:star"

@@ -17,6 +17,7 @@ useKunDisableSeo('发布 Galgame')
 
 const api = useApi()
 const route = useRoute()
+const userStore = useUserStore()
 
 // Unauthed users see the login modal in place (via <AuthRequired> in the
 // template) instead of a silent redirect to home — same modal the 登录 button
@@ -79,6 +80,17 @@ const doSearch = async () => {
     searching.value = false
   }
 }
+
+// Deep-link from a "发布补丁" CTA on a no-patch galgame page (/edit/create?q=名称):
+// prefill the box and auto-run the search so the user lands one click from
+// selecting that galgame. Only fire when logged in — the search endpoint needs a
+// Bearer; unauthed users see <AuthRequired>'s login modal and the prefilled box.
+onMounted(() => {
+  const q = String(route.query.q ?? '').trim()
+  if (!q) return
+  searchQuery.value = q
+  if (userStore.isLoggedIn) doSearch()
+})
 
 // ─── Scenario A: pick a published galgame (status=0) ──
 const selectingFor = ref<number | null>(null)

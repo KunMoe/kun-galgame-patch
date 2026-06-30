@@ -20,12 +20,6 @@ const route = useRoute()
 const router = useRouter()
 const api = useApi()
 
-// Wiki frontend origin — no-patch entries link to its galgame page.
-const config = useRuntimeConfig()
-const wikiOrigin =
-  ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-  'https://wiki.kungal.com'
-
 // Month in the URL (?month=YYYY-MM) so back-nav / shared links restore it; empty
 // → backend resolves to the current JST month and echoes it back.
 const month = computed({
@@ -212,7 +206,6 @@ const goToday = () => {
             v-for="it in g.items"
             :key="it.id"
             :item="it"
-            :wiki-origin="wikiOrigin"
           />
         </div>
       </section>
@@ -240,7 +233,6 @@ const goToday = () => {
             v-for="it in buckets.pending"
             :key="it.id"
             :item="it"
-            :wiki-origin="wikiOrigin"
           />
         </div>
       </div>
@@ -260,7 +252,6 @@ const goToday = () => {
             v-for="it in buckets.tba"
             :key="it.id"
             :item="it"
-            :wiki-origin="wikiOrigin"
           />
         </div>
       </div>

@@ -3,8 +3,6 @@ import { GALGAME_AGE_LIMIT_MAP } from '~/constants/galgame'
 
 interface Props {
   item: CalendarItem
-  // Wiki frontend origin, passed down so each card doesn't re-read runtimeConfig.
-  wikiOrigin: string
 }
 
 const props = defineProps<Props>()
@@ -19,27 +17,14 @@ const name = computed(() =>
 const bannerSrc = computed(
   () => resolveBannerUrl(props.item, 'mini') || '/kungalgame-trans.webp'
 )
-
-// Smart link: galgames moyu has a patch for go to the local 补丁页; the rest go
-// to the wiki entry page (new tab, since it leaves moyu). `<component :is>` keeps
-// the internal route a real NuxtLink (SPA nav / prefetch) and the external one a
-// plain target=_blank anchor.
-const NuxtLink = resolveComponent('NuxtLink')
-const isInternal = computed(() => props.item.has_patch)
-const link = computed(() =>
-  isInternal.value
-    ? `/patch/${props.item.id}/introduction`
-    : `${props.wikiOrigin}/galgame/${props.item.id}`
-)
 </script>
 
 <template>
-  <component
-    :is="isInternal ? NuxtLink : 'a'"
-    :to="isInternal ? link : undefined"
-    :href="isInternal ? undefined : link"
-    :target="isInternal ? undefined : '_blank'"
-    :rel="isInternal ? undefined : 'noopener noreferrer'"
+  <!-- Every entry links to /patch/:id. moyu has a patch → the normal detail page
+       (badged 本站有补丁); no patch yet → the read-only "本站暂无补丁" galgame page
+       (the backend lazily renders wiki metadata + a 发布补丁 CTA). -->
+  <NuxtLink
+    :to="`/patch/${props.item.id}/introduction`"
     class="group border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block overflow-hidden rounded-lg border transition-colors"
   >
     <div class="relative">
@@ -70,13 +55,6 @@ const link = computed(() =>
       >
         {{ name }}
       </h3>
-      <p
-        v-if="!item.has_patch"
-        class="text-default-400 mt-1 flex items-center gap-1 text-xs"
-      >
-        <KunIcon name="lucide:external-link" class="size-3 shrink-0" />
-        前往词条查看
-      </p>
     </div>
-  </component>
+  </NuxtLink>
 </template>

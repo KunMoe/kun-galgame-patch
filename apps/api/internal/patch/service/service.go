@@ -155,12 +155,14 @@ func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID strin
 	return patchID, nil
 }
 
-// GetPatch returns the header row, lazily materializing it the same way as
-// GetPatchDetail (the patch layout page hits /patch/:id in parallel with
-// /patch/:id/detail; both must trigger materialization or the header 404s
-// and the page shows "not found" even though detail would have created it).
+// GetPatch returns the local patch row, or gorm.ErrRecordNotFound when moyu has
+// none. It does NOT materialize: a galgame that only exists on the wiki ("本站
+// 尚未收录") must NOT silently get a stub row on mere view. The row is created only
+// on a real publish/claim (CreatePatch / RegisterClaimedGalgame), per
+// docs/galgame_wiki/00-handbook-for-downstream.md §7.1.4a ("INSERT on select").
+// The handler turns ErrRecordNotFound into a read-only wiki-only card.
 func (s *PatchService) GetPatch(ctx context.Context, id int) (*model.Patch, error) {
-	return s.ensureLocalPatch(ctx, id)
+	return s.repo.GetPatchDetail(id)
 }
 
 // GetPatchesByIDs returns existing patches for the given ids in the caller-
@@ -172,31 +174,26 @@ func (s *PatchService) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
 	return s.repo.GetPatchesByIDs(ids)
 }
 
-// GetPatchDetail returns the local patch row, lazily materializing it the
-// first time a moyu user opens a galgame that is globally published on Wiki
-// (e.g. created/claimed on kungal) but has no moyu row yet.
-//
-// Design: docs/galgame_wiki/00-handbook-for-downstream.md §7.1.4a — the
-// consumer INSERTs its local stats row when a user selects an already
-// published galgame. moyu's `patch` table is that stats row (D13:
-// patch.id == galgame_id).
-//
-// Behaviour decisions (confirmed):
-//   - Visibility/existence check uses anonymous Wiki /galgame/batch, which
-//     only returns status=0 rows — so a hit means "publicly published";
-//     a miss means "doesn't exist / banned / someone's private draft" and
-//     we keep the genuine 404.
-//   - The row is a PURE STATS row: no +3 moemoepoint, no contributor, no
-//     contribute_count bump (the publish/claim reward was already granted on
-//     the originating side; moyu must not double-count).
-//   - patch.user_id = the Wiki galgame's creator/claimer (brief.UserID); ids
-//     are OAuth-aligned globally so it resolves on moyu too.
+// GetPatchDetail returns the local patch row, or gorm.ErrRecordNotFound when moyu
+// has none. Like GetPatch it does NOT materialize on view (see GetPatch) — the
+// handler renders wiki-only metadata for a not-yet-收录 galgame. Materialization
+// happens only on a real publish/claim per handbook §7.1.4a ("INSERT on select").
 func (s *PatchService) GetPatchDetail(ctx context.Context, id int) (*model.Patch, error) {
-	return s.ensureLocalPatch(ctx, id)
+	return s.repo.GetPatchDetail(id)
 }
 
-// ensureLocalPatch is the shared "read, else lazily materialize" logic used
-// by both the header (/patch/:id) and detail (/patch/:id/detail) endpoints.
+// ensureLocalPatch reads the local patch row, lazily INSERTing a zero-stat stub
+// when it's missing. It is called from the INTERACTION paths (ToggleFavorite /
+// CreateComment / CreateResource) to record a wiki-catalogue galgame the moment a
+// user first interacts with it — matching kungal's EnsureLocalStub-on-interaction
+// model. It is deliberately NOT called on view: opening a galgame must not
+// silently 收录 it (GetPatch/GetPatchDetail read directly and the handler renders
+// a wiki-only card instead).
+//
+// Returns gorm.ErrRecordNotFound when the galgame is not a publicly-published
+// wiki entry, so the caller can reject the interaction. The stub is a PURE STATS
+// row: user_id = the wiki entry creator (placeholder owner), no +3 moemoepoint,
+// no contributor — the publish reward is granted only on a real resource publish.
 func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Patch, error) {
 	patch, err := s.repo.GetPatchDetail(id)
 	if err == nil {
@@ -208,11 +205,6 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 
 	// No local row. Ask Wiki (anonymously → status=0 only) whether this is a
 	// publicly published galgame and grab its vndb_id + creator.
-	//
-	// content_limit="" — no NSFW filter at this layer. The detail-handler
-	// caller (GetPatch / GetPatchDetail) decides whether to surface this
-	// patch through *its* sfw default; lazy-creating the local row even for
-	// NSFW games is fine since the listing endpoints filter them out anyway.
 	briefs, bErr := s.wiki.GalgameBatch(ctx, []int{id}, "")
 	if bErr != nil {
 		return nil, err // surface as not-found; Wiki transient failure
@@ -225,7 +217,7 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 		}
 	}
 	if brief == nil {
-		return nil, err // not publicly visible → real 404
+		return nil, err // not publicly visible → real "can't interact"
 	}
 
 	vndb := brief.VndbID
@@ -235,21 +227,18 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 		vndb = fmt.Sprintf("wiki-%d", id)
 	}
 
-	// Pure stats row. ON CONFLICT DO NOTHING makes concurrent first-opens
+	// Pure stats row. ON CONFLICT DO NOTHING makes concurrent first-interactions
 	// idempotent; we always re-read the canonical row afterwards.
 	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID}
-	// A lazily-materialized row (galgame merely opened on moyu, no resources yet)
-	// must NOT jump to the top of the "最近更新" sort. Inherit the galgame's real
-	// resource_update_time from Wiki instead of letting autoCreateTime stamp it
-	// to now. Bad/empty value → leave zero → autoCreateTime (safe fallback).
+	// Don't let a freshly-recorded row (no resources yet) jump to the top of the
+	// "最近更新" sort — inherit the galgame's real resource_update_time from Wiki.
 	if t, pErr := time.Parse(time.RFC3339, brief.ResourceUpdateTime); pErr == nil {
 		row.ResourceUpdateTime = t
 	}
-	// The galgame's owner (Wiki user id) may never have logged into moyu, so
-	// there may be no local user anchor row — without one this insert fails
-	// patch_user_id_fkey (23503) and the galgame can never materialize. Provision
-	// a stub anchor first (id only; profile fields live on OAuth), the same shape
-	// AuthService.FindOrCreateUserByID writes on login.
+	// The galgame's owner (Wiki user id) may never have logged into moyu, so there
+	// may be no local user anchor row — without one this insert fails
+	// patch_user_id_fkey (23503). Provision a stub anchor first (id only; profile
+	// fields live on OAuth), the same shape AuthService.FindOrCreateUserByID writes.
 	if row.UserID > 0 {
 		if uErr := s.db.WithContext(ctx).
 			Clauses(clause.OnConflict{DoNothing: true}).
@@ -264,6 +253,7 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 	}
 	return s.repo.GetPatchDetail(id)
 }
+
 
 // RegisterClaimedGalgame creates the local patch row for a galgame the user
 // just claimed on Wiki (status 2 → 0), awarding +3 moemoepoint and
@@ -548,6 +538,12 @@ func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
 }
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {
+	// Commenting on a not-yet-收录 galgame lazily records it (the patch_comment FK
+	// to patch(id) would 23503 otherwise). No-op when the row exists; errors when
+	// the galgame isn't a public wiki entry.
+	if _, err := s.ensureLocalPatch(context.Background(), patchID); err != nil {
+		return nil, fmt.Errorf("patch not found")
+	}
 	// When the admin "评论需要审核" toggle is on, the comment is created in the
 	// pending state (status=1), hidden from public reads until approved. All
 	// the visible-comment side effects (comment_count++, owner moemoepoint,
@@ -811,6 +807,13 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 
 func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
+
+	// Publishing a resource on a not-yet-收录 galgame lazily records it (the
+	// patch_resource FK to patch(id) would 23503 otherwise). No-op in the normal
+	// publish flow (the wizard's CreatePatch already made the row).
+	if _, err := s.ensureLocalPatch(ctx, resource.GalgameID); err != nil {
+		return fmt.Errorf("patch not found")
+	}
 
 	// MOYU-PR7 / M5 — upload-handle integrity.
 	//
@@ -1351,7 +1354,10 @@ func (s *PatchService) IsResourceFavorited(userID, resourceID int) bool {
 // ===== Favorites =====
 
 func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
-	patch, err := s.repo.GetPatchByID(patchID)
+	// Favoriting a not-yet-收录 galgame lazily records it (creates the local row),
+	// matching kungal's interaction-driven ingest. No-op when the row already
+	// exists; ErrRecordNotFound when the galgame isn't a public wiki entry.
+	patch, err := s.ensureLocalPatch(context.Background(), patchID)
 	if err != nil {
 		return false, fmt.Errorf("patch not found")
 	}
@@ -1575,7 +1581,7 @@ func galgameDisplayName(b *galgameClient.GalgameBrief) string {
 }
 
 // resolveGalgameName fetches a patch's galgame display name. patch.id IS the
-// wiki galgame id (see ensureLocalPatch), so a single batch lookup suffices.
+// wiki galgame id (D13: patch.id == galgame_id), so a single batch lookup suffices.
 // Best-effort: "" on any miss/error so the caller falls back to a name-less line.
 func (s *PatchService) resolveGalgameName(patchID int) string {
 	briefs, err := s.wiki.GalgameBatch(context.Background(), []int{patchID}, "")

@@ -75,6 +75,24 @@ const displayName = computed(() =>
   patch.value ? getPreferredLanguageText(patch.value.name) : ''
 )
 
+// "本站尚未收录" state. moyu no longer materializes a stub row on view, so the
+// backend returns `is_on_forum: false` on a wiki-only card when there is no real
+// local patch row. We render a read-only Galgame info page (wiki metadata) + a
+// 发布补丁 CTA, and hide the patch-only surfaces (stats / 资源 / 评论 / 收藏).
+//
+// Keyed on is_on_forum (row exists), NOT resource_count: a freshly-registered
+// game (just published via the wizard, 0 resources yet) HAS a row → is_on_forum
+// true → normal page, so the owner can reach the 资源 tab to upload the first
+// resource. `=== false` so a missing flag (shouldn't happen here) stays normal.
+const isNoPatch = computed(() => patch.value?.is_on_forum === false)
+
+// 发布补丁 CTA → the publish wizard, pre-seeded with this galgame's name so it
+// auto-searches and the user is one click from selecting it (works for VNDB and
+// original works alike — see edit/create.vue's ?q= handling).
+const publishHref = computed(
+  () => `/edit/create?q=${encodeURIComponent(displayName.value)}`
+)
+
 // SEO contract for this route:
 //   - patch loaded + sfw     → full SEO (title / desc / og image with banner)
 //   - patch loaded + nsfw    → disable SEO. The patch *is* visible to the
@@ -88,7 +106,7 @@ const displayName = computed(() =>
 // patch.banner survived the D12 metadata move because the enricher writes
 // the wiki galgame.banner verbatim onto GalgameCard — see
 // apps/api/internal/galgame/enricher/enricher.go applyGalgame.
-if (patch.value && patch.value.content_limit === 'sfw') {
+if (patch.value && patch.value.content_limit === 'sfw' && !isNoPatch.value) {
   const cover = resolveBannerUrl(patch.value) || undefined
   useKunSeoMeta({
     title: displayName.value || `补丁 ${galgameId.value}`,
@@ -103,6 +121,9 @@ if (patch.value && patch.value.content_limit === 'sfw') {
 }
 
 onMounted(async () => {
+  // No view count for a not-yet-收录 galgame — it has no row, so the increment is
+  // a backend no-op anyway; skip the wasted round-trip.
+  if (isNoPatch.value) return
   await api.put(`/patch/${galgameId.value}/view`).catch(() => {})
 })
 
@@ -119,13 +140,21 @@ const currentTab = computed({
 // "编辑历史" / "编辑请求" tabs proxy the Wiki revision/PR surface that
 // handbook §15 makes mandatory for moyu (pages/patch/[id]/revisions.vue,
 // prs.vue).
-const tabs = computed(() => [
-  { key: 'introduction', title: 'Galgame 信息', href: `/patch/${galgameId.value}/introduction` },
-  { key: 'resource', title: '补丁资源下载', href: `/patch/${galgameId.value}/resource` },
-  { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` },
-  { key: 'revisions', title: '编辑历史', href: `/patch/${galgameId.value}/revisions` },
-  { key: 'prs', title: '编辑请求', href: `/patch/${galgameId.value}/prs` }
-])
+const tabs = computed(() => {
+  const all = [
+    { key: 'introduction', title: 'Galgame 信息', href: `/patch/${galgameId.value}/introduction` },
+    { key: 'resource', title: '补丁资源下载', href: `/patch/${galgameId.value}/resource` },
+    { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` },
+    { key: 'revisions', title: '编辑历史', href: `/patch/${galgameId.value}/revisions` },
+    { key: 'prs', title: '编辑请求', href: `/patch/${galgameId.value}/prs` }
+  ]
+  // Not yet 收录 → drop only 补丁资源下载 (there's no patch to download; 发布补丁
+  // is the CTA). 游戏评论 STAYS — commenting lazily records the game (kungal's
+  // interaction-driven ingest), same as 收藏.
+  return isNoPatch.value
+    ? all.filter((t) => ['introduction', 'comment', 'revisions', 'prs'].includes(t.key))
+    : all
+})
 </script>
 
 <template>
@@ -235,16 +264,45 @@ const tabs = computed(() => [
                 />
               </div>
               <KunCardStats
+                v-if="!isNoPatch"
                 :patch="{ ...patch, created: patch.created }"
                 :disable-tooltip="false"
                 :is-mobile="false"
               />
+              <KunChip v-else color="warning" variant="flat" size="sm">
+                本站尚未收录
+              </KunChip>
             </div>
 
             <PatchHeaderActions :patch="patch" />
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ── 本站暂无补丁 CTA (no real patch on moyu yet) ──── -->
+    <div
+      v-if="isNoPatch"
+      class="border-warning/30 bg-warning/5 flex flex-col items-start gap-3 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div class="flex items-start gap-3">
+        <div
+          class="bg-warning/15 text-warning flex size-10 shrink-0 items-center justify-center rounded-full"
+        >
+          <KunIcon name="lucide:circle-alert" class="size-5" />
+        </div>
+        <div>
+          <p class="font-semibold">本站尚未收录此游戏</p>
+          <p class="text-default-500 text-sm">
+            当前页面的资料均来自 Galgame Wiki，本站还没有它的补丁或本地数据。收藏 / 评论
+            都会让它被本站收录（但您不会成为该游戏的创建者，也不会获得萌萌点奖励）；发布补丁同样会让它被收录，并照常获得发布补丁的萌萌点奖励。
+          </p>
+        </div>
+      </div>
+      <KunButton color="primary" :href="publishHref" class-name="shrink-0">
+        <KunIcon name="lucide:plus-circle" class="size-4" />
+        发布补丁
+      </KunButton>
     </div>
 
     <!-- ── Tabs ───────────────────────────────────────── -->

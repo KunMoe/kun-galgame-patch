@@ -58,7 +58,14 @@ type GalgameCard struct {
 	Platform           patchModel.JSONArray `json:"platform"`
 	ContentLimit       string               `json:"content_limit"`
 	Status             int                  `json:"status"`
-	Created            time.Time            `json:"created"`
+	// IsOnForum is true when moyu holds a REAL local patch row for this galgame —
+	// created on a real publish/claim, NOT on mere view (moyu no longer
+	// materializes a stub on open). It is false on a synthetic card built from
+	// wiki data alone: the galgame exists on the wiki but is "本站尚未收录", and the
+	// FE renders a read-only galgame page whose only action is 发布补丁. baseCard
+	// (built from a real row) sets it true; CardFromBrief leaves it false.
+	IsOnForum bool `json:"is_on_forum"`
+	Created   time.Time `json:"created"`
 	ResourceUpdateTime time.Time            `json:"resource_update_time"`
 	// ReleaseDate is the locally-mirrored wiki galgame.release_date (date
 	// only; see migration 010 + backfill). Null when unknown. Surfaced so
@@ -496,6 +503,7 @@ func baseCard(p *patchModel.Patch) GalgameCard {
 		Language:           p.Language,
 		Platform:           p.Platform,
 		Status:             p.Status,
+		IsOnForum:          true, // a real local patch row exists
 		Created:            p.Created,
 		ResourceUpdateTime: p.ResourceUpdateTime,
 		ReleaseDate:        p.ReleaseDate,
@@ -571,4 +579,121 @@ func EnrichCalendarBriefs(briefs []galgameClient.GalgameBrief, hasPatch map[int]
 		})
 	}
 	return cards
+}
+
+// GalgameOnlyCard builds a header card for a galgame moyu has NO local patch row
+// for, straight from wiki data (is_on_forum=false). Returns nil when the galgame
+// isn't publicly visible on wiki at this content_limit (→ the handler 404s, which
+// also preserves the NSFW gate). Used by GET /patch/:id so a "本站尚未收录" galgame
+// renders a read-only page instead of 404'ing.
+func GalgameOnlyCard(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, gid int, contentLimit string) *GalgameCard {
+	if wiki == nil || gid <= 0 {
+		return nil
+	}
+	briefs, err := wiki.GalgameBatch(ctx, []int{gid}, contentLimit)
+	if err != nil {
+		return nil
+	}
+	var brief *galgameClient.GalgameBrief
+	for i := range briefs {
+		if briefs[i].ID == gid {
+			brief = &briefs[i]
+			break
+		}
+	}
+	if brief == nil {
+		return nil
+	}
+	card := CardFromBrief(brief) // IsOnForum stays false (wiki-only)
+	// 词条创建者 = wiki galgame.user_id; the header's creator chip reads it.
+	card.Creator = resolveUser(ctx, users, brief.UserID)
+	return &card
+}
+
+// GalgameOnlyDetail builds the introduction-tab detail card for a galgame moyu
+// has NO local patch row for, from wiki GET /galgame/:gid (is_on_forum=false,
+// zero moyu stats). Returns nil when wiki has no publicly-visible row at this
+// content_limit (→ the handler 404s). Used by GET /patch/:id/detail. Mirrors
+// EnrichPatchDetail's wiki→card mapping, minus the local patch fields.
+func GalgameOnlyDetail(ctx context.Context, wiki *galgameClient.Client, users *userclient.Client, gid int, contentLimit string) *PatchDetailCard {
+	if wiki == nil || gid <= 0 {
+		return nil
+	}
+	env, err := wiki.GetGalgame(ctx, gid, contentLimit)
+	if err != nil {
+		return nil
+	}
+	g := &env.Galgame
+	base := &PatchDetailCard{}
+	base.GalgameCard = GalgameCard{
+		ID:       g.ID,
+		VndbID:   g.VndbID,
+		Type:     patchModel.JSONArray{},
+		Language: patchModel.JSONArray{},
+		Platform: patchModel.JSONArray{},
+		// IsOnForum stays false — this galgame is wiki-only ("本站尚未收录").
+	}
+	base.Name = KunLanguage{EnUs: g.NameEnUs, JaJp: g.NameJaJp, ZhCn: g.NameZhCn, ZhTw: g.NameZhTw}
+	base.Banner = g.Banner
+	base.ContentLimit = g.ContentLimit
+	// Surface the wiki entry's own timestamps so the intro tab's 创建/更新 lines
+	// don't render a zero-time ("0001-01-01"). Best-effort RFC3339 parse.
+	if t, perr := time.Parse(time.RFC3339, g.Created); perr == nil {
+		base.Created = t
+	}
+	if t, perr := time.Parse(time.RFC3339, g.Updated); perr == nil {
+		base.Updated = t
+	}
+	base.Tags = []PatchDetailTag{}
+	base.Officials = []PatchDetailOfficial{}
+	base.WikiEngineIDs = []int{}
+	base.IntroductionMarkdown = KunLanguage{EnUs: g.IntroEnUs, JaJp: g.IntroJaJp, ZhCn: g.IntroZhCn, ZhTw: g.IntroZhTw}
+	base.IntroductionHTML = KunLanguage{
+		EnUs: markdown.MustRender(g.IntroEnUs),
+		JaJp: markdown.MustRender(g.IntroJaJp),
+		ZhCn: markdown.MustRender(g.IntroZhCn),
+		ZhTw: markdown.MustRender(g.IntroZhTw),
+	}
+	base.Galgame = &galgameClient.GalgameBrief{
+		ID:                       g.ID,
+		VndbID:                   g.VndbID,
+		NameEnUs:                 g.NameEnUs,
+		NameZhCn:                 g.NameZhCn,
+		NameJaJp:                 g.NameJaJp,
+		NameZhTw:                 g.NameZhTw,
+		Banner:                   g.Banner,
+		ContentLimit:             g.ContentLimit,
+		AgeLimit:                 g.AgeLimit,
+		OriginalLanguage:         g.OriginalLanguage,
+		ReleaseDate:              g.ReleaseDate,
+		ReleaseDateTBA:           g.ReleaseDateTBA,
+		EffectiveBannerHash:      g.EffectiveBannerHash,
+		EffectiveBannerWidth:     g.EffectiveBannerWidth,
+		EffectiveBannerHeight:    g.EffectiveBannerHeight,
+		EffectiveBannerThumbhash: g.EffectiveBannerThumbhash,
+		Covers:                   g.Covers,
+		Screenshots:              g.Screenshots,
+	}
+	for _, t := range g.Tag {
+		base.Tags = append(base.Tags, PatchDetailTag{
+			ID:           t.Tag.ID,
+			Name:         t.Tag.Name,
+			Aliases:      t.Tag.Aliases,
+			Category:     t.Tag.Category,
+			SpoilerLevel: t.SpoilerLevel,
+		})
+	}
+	for _, o := range g.Official {
+		base.Officials = append(base.Officials, PatchDetailOfficial{
+			ID:       o.Official.ID,
+			Name:     o.Official.Name,
+			Aliases:  o.Official.Aliases,
+			Category: o.Official.Category,
+			Lang:     o.Official.Lang,
+		})
+	}
+	for _, e := range g.Engine {
+		base.WikiEngineIDs = append(base.WikiEngineIDs, e.EngineID)
+	}
+	return base
 }

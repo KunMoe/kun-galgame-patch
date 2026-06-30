@@ -145,12 +145,22 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
+	cl := utils.ContentLimitForListBrowse(c)
 	patch, err := h.service.GetPatch(c.Context(), id)
 	if err != nil {
+		// No local row → render the wiki galgame as a read-only "本站尚未收录"
+		// header (is_on_forum=false) instead of 404'ing. moyu materializes a row
+		// only on a real publish/claim, not on view. nil = not on wiki / filtered
+		// by content_limit (preserves the NSFW gate) → genuine 404.
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			if card := enricher.GalgameOnlyCard(c.Context(), h.wiki, h.users, id, cl); card != nil {
+				return response.OK(c, headerCard{GalgameCard: *card})
+			}
+		}
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
-	enriched := enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch, utils.ContentLimitForListBrowse(c))
+	enriched := enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch, cl)
 	if enriched == nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
@@ -177,11 +187,18 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
+	cl := utils.ContentLimitForListBrowse(c)
 	patch, err := h.service.GetPatchDetail(c.Context(), id)
 	if err != nil {
+		// No local row → wiki-only detail (is_on_forum=false); see GetPatch.
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			if detail := enricher.GalgameOnlyDetail(c.Context(), h.wiki, h.users, id, cl); detail != nil {
+				return response.OK(c, detail)
+			}
+		}
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
-	enriched := enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch, utils.ContentLimitForListBrowse(c))
+	enriched := enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch, cl)
 	if enriched == nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
