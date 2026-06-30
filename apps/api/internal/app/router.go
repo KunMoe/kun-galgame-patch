@@ -152,7 +152,6 @@ func (a *App) RegisterRoutes() {
 	// optionalAuth so each card can be stamped is_favorite for the logged-in
 	// viewer (inline 收藏 state) without requiring login to browse.
 	api.Get("/galgame/calendar", optionalAuth, a.CommonHandler.GetGalgameCalendar)
-	api.Get("/galgame/calendar/window", optionalAuth, a.CommonHandler.GetGalgameCalendarWindow)
 	api.Get("/galgame/calendar/pending", optionalAuth, a.CommonHandler.GetGalgameCalendarPending)
 	api.Get("/galgame/calendar/tba", optionalAuth, a.CommonHandler.GetGalgameCalendarTBA)
 	api.Get("/galgame/mine", auth, a.PatchHandler.ListMyGalgames)

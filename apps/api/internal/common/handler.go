@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -981,9 +980,7 @@ func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
 }
 
 // fetchCalendarMonth fetches one ISO month, folding the content_limit fan-out
-// ("all" → sfw + nsfw) into one merged GalgameCalendar. Shared by the month and
-// window endpoints. Takes a context (not the fiber Ctx) so it is safe to call
-// from the window endpoint's neighbour goroutines.
+// ("all" → sfw + nsfw) into one merged GalgameCalendar.
 func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string) (*galgameClient.GalgameCalendar, error) {
 	var merged *galgameClient.GalgameCalendar
 	for _, lim := range calendarContentLimits(cl) {
@@ -1004,101 +1001,7 @@ func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string
 		merged.Meta.MinMonth = minMonthStr(merged.Meta.MinMonth, cal.Meta.MinMonth)
 		merged.Meta.MaxMonth = maxMonthStr(merged.Meta.MaxMonth, cal.Meta.MaxMonth)
 	}
-	if merged != nil {
-		merged.Items = publishedBriefs(merged.Items)
-	}
 	return merged, nil
-}
-
-// publishedBriefs drops unclaimed vndb drafts (status != 0). The wiki calendar
-// now returns status IN (0,2) so the forum can surface claimable drafts; moyu is
-// a patch site with no claim flow — drafts can't be navigated (/patch/:id and
-// /galgame/:id 404 for them), favorited, or patched — so they'd be inert noise.
-// See the wiki contract's calendar consumer rule.
-func publishedBriefs(briefs []galgameClient.GalgameBrief) []galgameClient.GalgameBrief {
-	out := make([]galgameClient.GalgameBrief, 0, len(briefs))
-	for i := range briefs {
-		if briefs[i].Status == 0 {
-			out = append(out, briefs[i])
-		}
-	}
-	return out
-}
-
-// GetGalgameCalendarWindow GET /api/galgame/calendar/window?month=YYYY-MM
-// Returns a 3-month window [prev, focus, next] so a sparse focus month still has
-// neighbouring releases in view — the FE renders it as a centered scroll "wheel".
-func (h *CommonHandler) GetGalgameCalendarWindow(c *fiber.Ctx) error {
-	cl := utils.ContentLimitForListBrowse(c)
-	month := strings.TrimSpace(c.Query("month"))
-	ctx := c.Context()
-
-	focus, err := h.fetchCalendarMonth(ctx, month, cl)
-	if err != nil || focus == nil {
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
-	}
-
-	// Default landing on a month with no PUBLISHED releases → walk back to the
-	// most recent month that has some, so the wheel centers on real content.
-	// meta.max_month is draft-inclusive now (the wiki calendar returns far-future
-	// vndb drafts) so it can't be trusted as the published bound; a bounded
-	// walk-back finds the real latest-published month. fetchCalendarMonth already
-	// drops drafts, so len(Items)==0 means "no published releases".
-	if month == "" && len(focus.Items) == 0 {
-		m := focus.Month
-		for range 12 {
-			m = addMonths(m, -1)
-			back, e := h.fetchCalendarMonth(ctx, m, cl)
-			if e != nil || back == nil {
-				break
-			}
-			if len(back.Items) > 0 {
-				focus = back
-				break
-			}
-		}
-	}
-
-	prevM := addMonths(focus.Month, -1)
-	nextM := addMonths(focus.Month, 1)
-
-	// Neighbours fan out in parallel; an erroring neighbour just yields no items.
-	var prev, next *galgameClient.GalgameCalendar
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); prev, _ = h.fetchCalendarMonth(ctx, prevM, cl) }()
-	go func() { defer wg.Done(); next, _ = h.fetchCalendarMonth(ctx, nextM, cl) }()
-	wg.Wait()
-
-	months := []fiber.Map{
-		{"month": prevM, "items": h.enrichCalendarItems(c, briefsOf(prev))},
-		{"month": focus.Month, "items": h.enrichCalendarItems(c, focus.Items)},
-		{"month": nextM, "items": h.enrichCalendarItems(c, briefsOf(next))},
-	}
-
-	return response.OK(c, fiber.Map{
-		"month":  focus.Month,
-		"today":  focus.Today,
-		"meta":   focus.Meta,
-		"months": months,
-	})
-}
-
-// addMonths shifts an ISO "YYYY-MM" by delta calendar months.
-func addMonths(month string, delta int) string {
-	t, err := time.Parse("2006-01", month)
-	if err != nil {
-		return month
-	}
-	return t.AddDate(0, delta, 0).Format("2006-01")
-}
-
-// briefsOf returns a calendar's items, or nil for a nil (errored) fetch.
-func briefsOf(cal *galgameClient.GalgameCalendar) []galgameClient.GalgameBrief {
-	if cal == nil {
-		return nil
-	}
-	return cal.Items
 }
 
 // GetGalgameCalendarPending GET /api/galgame/calendar/pending?year=YYYY
@@ -1118,7 +1021,6 @@ func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
 			outYear = b.Year
 		}
 	}
-	briefs = publishedBriefs(briefs)
 	return response.OK(c, fiber.Map{
 		"year":  outYear,
 		"items": h.enrichCalendarItems(c, briefs),
@@ -1137,7 +1039,6 @@ func (h *CommonHandler) GetGalgameCalendarTBA(c *fiber.Ctx) error {
 		}
 		briefs = append(briefs, b.Items...)
 	}
-	briefs = publishedBriefs(briefs)
 	return response.OK(c, fiber.Map{
 		"items": h.enrichCalendarItems(c, briefs),
 	})

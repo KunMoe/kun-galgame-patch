@@ -16,6 +16,9 @@ interface CalendarItem extends GalgameCard {
   // Whether the logged-in viewer has favorited this game (false for anonymous).
   // Drives the inline 收藏 toggle's initial state on the calendar card.
   is_favorite: boolean
+  // Wiki status: 0 = published, 2 = unclaimed VNDB draft. Published cards link to
+  // /patch/:id; draft cards show a 未发布 badge and route to the publish wizard to 认领.
+  status: number
 }
 
 // GET /galgame/calendar?month=YYYY-MM
@@ -38,20 +41,4 @@ interface CalendarMonthResponse {
 interface CalendarBucketResponse {
   year?: string
   items: CalendarItem[]
-}
-
-// One month segment of the 3-month window.
-interface CalendarMonthSection {
-  month: string
-  items: CalendarItem[]
-}
-
-// GET /galgame/calendar/window?month=YYYY-MM — a [prev, focus, next] window so a
-// sparse focus month still shows neighbouring releases (rendered as a centered
-// scroll "wheel"). `month` is the resolved focus; `meta` is the focus month's.
-interface CalendarWindowResponse {
-  month: string
-  today: string
-  meta: CalendarMonthResponse['meta']
-  months: CalendarMonthSection[]
 }

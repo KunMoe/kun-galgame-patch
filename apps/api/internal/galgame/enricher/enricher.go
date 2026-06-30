@@ -566,6 +566,10 @@ type CalendarCard struct {
 	// calendar card can render an inline 收藏 toggle with the right initial state.
 	// false for anonymous viewers.
 	IsFavorite bool `json:"is_favorite"`
+	// Status mirrors the wiki galgame status: 0 = published, 2 = unclaimed VNDB
+	// draft. The calendar surfaces both; the FE renders a published card (links to
+	// /patch/:id) vs a 未发布 draft card (routes to the publish wizard to 认领).
+	Status int `json:"status"`
 }
 
 // EnrichCalendarBriefs turns wiki calendar briefs into CalendarCards. There is no
@@ -580,6 +584,7 @@ func EnrichCalendarBriefs(briefs []galgameClient.GalgameBrief, hasPatch map[int]
 		cards = append(cards, CalendarCard{
 			GalgameCard: CardFromBrief(&briefs[i]),
 			HasPatch:    hasPatch[briefs[i].ID],
+			Status:      briefs[i].Status,
 		})
 	}
 	return cards

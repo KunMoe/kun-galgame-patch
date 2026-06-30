@@ -18,6 +18,17 @@ const bannerSrc = computed(
   () => resolveBannerUrl(props.item, 'mini') || '/kungalgame-trans.webp'
 )
 
+// status=2 = unclaimed VNDB draft. It 404s at /patch/:id, so a draft card routes
+// to the publish wizard pre-searched by name → 认领并发布; it shows a 未发布 badge
+// and no 收藏 (can't favorite until it exists locally). Published cards link to
+// their patch page as usual.
+const isDraft = computed(() => props.item.status === 2)
+const cardHref = computed(() =>
+  isDraft.value
+    ? `/edit/create?q=${encodeURIComponent(name.value)}`
+    : `/patch/${props.item.id}/introduction`
+)
+
 // Countdown relative to `today`, honoring release precision. day → 还有 N 天 /
 // 今日发售 / 已发售 N 天; month/year → the fuzzy bucket label; tba/unknown → none.
 const ymd = (s: string) => {
@@ -89,7 +100,7 @@ const toggleFavorite = async () => {
 
 <template>
   <NuxtLink
-    :to="`/patch/${props.item.id}/introduction`"
+    :to="cardHref"
     class="group border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block overflow-hidden rounded-lg border transition-colors"
   >
     <div class="relative">
@@ -111,8 +122,20 @@ const toggleFavorite = async () => {
         </KunChip>
       </div>
 
-      <!-- Inline 收藏 (watch for patch). Own button, not the card link. -->
+      <!-- Draft (status=2): a 未发布 badge; the card routes to the claim wizard. -->
+      <KunChip
+        v-if="isDraft"
+        color="warning"
+        variant="flat"
+        size="sm"
+        class="absolute top-1.5 right-1.5"
+      >
+        未发布
+      </KunChip>
+
+      <!-- Published: inline 收藏 (watch for patch). Own button, not the card link. -->
       <button
+        v-else
         type="button"
         class="bg-background/85 hover:bg-background absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-full shadow-kun-sm backdrop-blur transition-colors"
         :aria-label="favorited ? '取消收藏' : '收藏（有补丁时通知你）'"
