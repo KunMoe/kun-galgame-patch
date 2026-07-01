@@ -1,31 +1,32 @@
-# CI test gate for the Go module under apps/api: build + vet + `go test ./...`.
+# Reusable CI test gate for the Go module under apps/api: build + vet + `go test`.
 #
 # One `unit` job, no service containers — every moyu test is self-contained
 # (miniredis for Redis, mocked wiki/OAuth/artifact clients), so the whole suite
-# runs green with nothing external. This is the day-one gate that catches
-# "compiles but the logic regressed" — exactly the net the Fiber v2->v3 migration
-# had to be verified by hand for its absence.
+# runs green with nothing external. Catches "compiles but the logic regressed".
 #
-# Independent of build.yml on purpose: deploys are NOT blocked while this proves
-# out. Once it's reliably green, add `needs: test` to build.yml's build job to
-# actually gate the deploy on a passing suite.
+# Two entry points:
+#   - pull_request (paths: apps/api) — standalone PR feedback.
+#   - workflow_call — build.yml calls this as its first job, so images only
+#     build / push / deploy when the suite is green (test -> build -> deploy).
+# There is deliberately no standalone `push` trigger: on a master push build.yml
+# runs and invokes this gate, so tests run before every deploy without a double
+# run on the same commit.
 name: test
 
 on:
-  push:
-    paths:
-      - "apps/api/**"
-      - ".github/workflows/test.yml"
   pull_request:
     paths:
       - "apps/api/**"
       - ".github/workflows/test.yml"
+  workflow_call: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  # Include github.workflow so a standalone PR run and a build.yml-invoked run
+  # never share a group and cancel each other.
+  group: test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:

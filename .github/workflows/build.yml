@@ -21,7 +21,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Gate: run the reusable go-test suite first. build / push / deploy only
+  # proceed if it passes, so a red suite never ships (test -> build -> deploy).
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
