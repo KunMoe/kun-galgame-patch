@@ -20,7 +20,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type ChatHandler struct {
@@ -165,7 +165,7 @@ func (h *ChatHandler) enrichMessages(ctx context.Context, msgs []chatModel.ChatM
 	}
 }
 
-func getMessageIDParam(c *fiber.Ctx) (int, error) {
+func getMessageIDParam(c fiber.Ctx) (int, error) {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil || id < 1 {
 		return 0, errors.ErrBadRequest("invalid message id")
@@ -180,7 +180,7 @@ func getMessageIDParam(c *fiber.Ctx) (int, error) {
 // Enriches each room with: the last-message text preview, and — for PRIVATE
 // rooms — the peer's name/avatar (the room row itself has none; the link is
 // "{lowUid}-{highUid}"). Briefs and last messages are batch-fetched, no N+1.
-func (h *ChatHandler) ListRooms(c *fiber.Ctx) error {
+func (h *ChatHandler) ListRooms(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	rooms, err := h.svc.ListRooms(user.ID)
 	if err != nil {
@@ -277,7 +277,7 @@ func previewMessage(m *chatModel.ChatMessage) string {
 }
 
 // CreateRoom POST /api/chat/room   (admin only)
-func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
+func (h *ChatHandler) CreateRoom(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	if !middleware.IsAdmin(c) {
 		return response.Error(c, errors.ErrForbidden())
@@ -297,7 +297,7 @@ func (h *ChatHandler) CreateRoom(c *fiber.Ctx) error {
 //
 // Returns the room plus its full member list (with each user's profile).
 // Caller must be a member.
-func (h *ChatHandler) GetRoomDetail(c *fiber.Ctx) error {
+func (h *ChatHandler) GetRoomDetail(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	link := c.Params("link")
 	detail, err := h.svc.GetRoomDetail(user.ID, link)
@@ -309,7 +309,7 @@ func (h *ChatHandler) GetRoomDetail(c *fiber.Ctx) error {
 }
 
 // JoinRoom POST /api/chat/room/join
-func (h *ChatHandler) JoinRoom(c *fiber.Ctx) error {
+func (h *ChatHandler) JoinRoom(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var req dto.JoinRoomRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
@@ -327,7 +327,7 @@ func (h *ChatHandler) JoinRoom(c *fiber.Ctx) error {
 // Returns the (created or existing) private chat room between the caller
 // and req.PeerUID. Front-end clicks "发消息" on a user profile, posts here
 // with peer_uid, then navigates to /message/chat/<room.link>.
-func (h *ChatHandler) StartPrivate(c *fiber.Ctx) error {
+func (h *ChatHandler) StartPrivate(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var req dto.StartPrivateChatRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
@@ -346,7 +346,7 @@ func (h *ChatHandler) StartPrivate(c *fiber.Ctx) error {
 // ─── Messages ───────────────────────────────────────
 
 // ListMessages GET /api/chat/room/:link/message?after=&limit=
-func (h *ChatHandler) ListMessages(c *fiber.Ctx) error {
+func (h *ChatHandler) ListMessages(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	link := c.Params("link")
 
@@ -396,7 +396,7 @@ func parseCSVInts(s string) []int {
 }
 
 // CreateMessage POST /api/chat/room/:link/message
-func (h *ChatHandler) CreateMessage(c *fiber.Ctx) error {
+func (h *ChatHandler) CreateMessage(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	link := c.Params("link")
 
@@ -416,7 +416,7 @@ func (h *ChatHandler) CreateMessage(c *fiber.Ctx) error {
 }
 
 // UpdateMessage PUT /api/chat/message/:id
-func (h *ChatHandler) UpdateMessage(c *fiber.Ctx) error {
+func (h *ChatHandler) UpdateMessage(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	id, err := getMessageIDParam(c)
 	if err != nil {
@@ -435,7 +435,7 @@ func (h *ChatHandler) UpdateMessage(c *fiber.Ctx) error {
 }
 
 // DeleteMessage DELETE /api/chat/message/:id
-func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
+func (h *ChatHandler) DeleteMessage(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	id, err := getMessageIDParam(c)
 	if err != nil {
@@ -449,7 +449,7 @@ func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
 }
 
 // ToggleReaction POST /api/chat/message/:id/reaction
-func (h *ChatHandler) ToggleReaction(c *fiber.Ctx) error {
+func (h *ChatHandler) ToggleReaction(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	id, err := getMessageIDParam(c)
 	if err != nil {
@@ -469,7 +469,7 @@ func (h *ChatHandler) ToggleReaction(c *fiber.Ctx) error {
 }
 
 // MarkSeen PUT /api/chat/room/:link/seen
-func (h *ChatHandler) MarkSeen(c *fiber.Ctx) error {
+func (h *ChatHandler) MarkSeen(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	link := c.Params("link")
 

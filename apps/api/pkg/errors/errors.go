@@ -1,6 +1,6 @@
 package errors
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 type AppError struct {
 	Code       int    `json:"code"`

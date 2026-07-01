@@ -20,7 +20,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +39,7 @@ func New(svc *service.PatchService, wiki *galgameClient.Client, users *userclien
 	return &PatchHandler{service: svc, wiki: wiki, users: users}
 }
 
-func getIDParam(c *fiber.Ctx, name string) (int, error) {
+func getIDParam(c fiber.Ctx, name string) (int, error) {
 	id, err := strconv.Atoi(c.Params(name))
 	if err != nil || id < 1 {
 		return 0, errors.ErrBadRequest("invalid ID")
@@ -61,7 +61,7 @@ func getIDParam(c *fiber.Ctx, name string) (int, error) {
 // Defaults to sfw via ContentLimitForListBrowse: an anonymous crawler with no
 // content_limit query gets the SEO-safe path. Wiki transient failure fails
 // closed (return false) — same SEO-safety reasoning as enricher / FilterBy.
-func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
+func (h *PatchHandler) gatePatchByContentLimit(c fiber.Ctx, patchID int) bool {
 	cl := utils.ContentLimitForListBrowse(c)
 	if cl == "" || h.wiki == nil {
 		return true
@@ -81,7 +81,7 @@ func (h *PatchHandler) gatePatchByContentLimit(c *fiber.Ctx, patchID int) bool {
 // Returns a 403 AppError to block, or nil to allow. Applied to every publish
 // entry point (CreatePatch / ClaimGalgame / SubmitGalgame) so the gate can't be
 // bypassed by hitting a different publish route.
-func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
+func (h *PatchHandler) ensureCanPublishGalgame(c fiber.Ctx) *errors.AppError {
 	if h.service.IsCreatorOnlyEnabled() && !middleware.IsModerator(c) && !middleware.HasRole(c, "creator") {
 		return errors.New(40300, "本站当前仅允许创作者 / 版主 / 管理员发布 Galgame", fiber.StatusForbidden)
 	}
@@ -97,7 +97,7 @@ func (h *PatchHandler) ensureCanPublishGalgame(c *fiber.Ctx) *errors.AppError {
 // "creator_only" toggle narrows publishing to the trusted-publisher set
 // (creator / moderator / admin) — see ensureCanPublishGalgame, applied to
 // every publish entry point.
-func (h *PatchHandler) CreatePatch(c *fiber.Ctx) error {
+func (h *PatchHandler) CreatePatch(c fiber.Ctx) error {
 	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -147,7 +147,7 @@ type headerCard struct {
 // wiki's "detail default = no filter" because *moyu's* detail surface is what
 // the search engine indexes). When wiki filters this id out, the enricher
 // returns nil and we 404 — the same shape as a missing patch.
-func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
+func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -189,7 +189,7 @@ func (h *PatchHandler) GetPatch(c *fiber.Ctx) error {
 // endpoint emits are the biggest single NSFW surface in moyu's SSR output
 // (Google indexes the full intro text), so 404'ing on a filter miss matters
 // even more here than on GetPatch.
-func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
+func (h *PatchHandler) GetPatchDetail(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -218,7 +218,7 @@ func (h *PatchHandler) GetPatchDetail(c *fiber.Ctx) error {
 // After D12 this only permits "rebinding vndb_id": the owner may rebind their
 // own patch; rebinding someone else's requires moderator/admin (isPrivileged).
 // Game name/introduction/banner etc. all live in Wiki; this endpoint no longer accepts them.
-func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
+func (h *PatchHandler) UpdatePatch(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -241,7 +241,7 @@ func (h *PatchHandler) UpdatePatch(c *fiber.Ctx) error {
 }
 
 // DeletePatch DELETE /api/patch/:id
-func (h *PatchHandler) DeletePatch(c *fiber.Ctx) error {
+func (h *PatchHandler) DeletePatch(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -257,7 +257,7 @@ func (h *PatchHandler) DeletePatch(c *fiber.Ctx) error {
 }
 
 // CheckDuplicate GET /api/patch/duplicate
-func (h *PatchHandler) CheckDuplicate(c *fiber.Ctx) error {
+func (h *PatchHandler) CheckDuplicate(c fiber.Ctx) error {
 	var req dto.DuplicateCheckRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -272,7 +272,7 @@ func (h *PatchHandler) CheckDuplicate(c *fiber.Ctx) error {
 }
 
 // IncrementView PUT /api/patch/:id/view
-func (h *PatchHandler) IncrementView(c *fiber.Ctx) error {
+func (h *PatchHandler) IncrementView(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -288,7 +288,7 @@ func (h *PatchHandler) IncrementView(c *fiber.Ctx) error {
 // NSFW gate: same shape as GetPatch — anonymous (sfw) callers see 404 on a
 // NSFW patch's comment list, so direct hits to /patch/<nsfw>/comment can't
 // bypass the SEO filter that already protects the parent detail endpoint.
-func (h *PatchHandler) GetComments(c *fiber.Ctx) error {
+func (h *PatchHandler) GetComments(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -312,7 +312,7 @@ func (h *PatchHandler) GetComments(c *fiber.Ctx) error {
 }
 
 // CreateComment POST /api/patch/:id/comment
-func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
+func (h *PatchHandler) CreateComment(c fiber.Ctx) error {
 	patchID, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -350,7 +350,7 @@ func (h *PatchHandler) CreateComment(c *fiber.Ctx) error {
 // visible-comment side effects (comment_count, owner moemoepoint, contributor)
 // and firing the deferred mention / comment notifications. Idempotent.
 // Registered under the moderator-gated /admin group.
-func (h *PatchHandler) ApproveComment(c *fiber.Ctx) error {
+func (h *PatchHandler) ApproveComment(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -367,7 +367,7 @@ func (h *PatchHandler) ApproveComment(c *fiber.Ctx) error {
 }
 
 // UpdateComment PUT /api/patch/comment/:commentId
-func (h *PatchHandler) UpdateComment(c *fiber.Ctx) error {
+func (h *PatchHandler) UpdateComment(c fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -388,7 +388,7 @@ func (h *PatchHandler) UpdateComment(c *fiber.Ctx) error {
 }
 
 // DeleteComment DELETE /api/patch/comment/:commentId
-func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
+func (h *PatchHandler) DeleteComment(c fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -407,11 +407,11 @@ func (h *PatchHandler) DeleteComment(c *fiber.Ctx) error {
 // ({"reason":"..."}) sent when a mod/admin deletes someone else's content from
 // the game-detail page. Absent / non-JSON body → "" (owner self-deletes send
 // nothing). Trimmed + rune-capped at 500 so it fits admin_log.content cleanly.
-func parseDeleteReason(c *fiber.Ctx) string {
+func parseDeleteReason(c fiber.Ctx) string {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = c.BodyParser(&body)
+	_ = c.Bind().Body(&body)
 	r := strings.TrimSpace(body.Reason)
 	if rs := []rune(r); len(rs) > 500 {
 		r = string(rs[:500])
@@ -420,7 +420,7 @@ func parseDeleteReason(c *fiber.Ctx) string {
 }
 
 // ToggleCommentLike PUT /api/patch/comment/:commentId/like
-func (h *PatchHandler) ToggleCommentLike(c *fiber.Ctx) error {
+func (h *PatchHandler) ToggleCommentLike(c fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -443,7 +443,7 @@ func (h *PatchHandler) ToggleCommentLike(c *fiber.Ctx) error {
 // content_limit check the parent /patch/:id/comment list applies. Without
 // this an anonymous caller who knows a NSFW comment id could fetch its raw
 // markdown — same exfiltration surface as GetComments itself.
-func (h *PatchHandler) GetCommentMarkdown(c *fiber.Ctx) error {
+func (h *PatchHandler) GetCommentMarkdown(c fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -471,7 +471,7 @@ func (h *PatchHandler) GetCommentMarkdown(c *fiber.Ctx) error {
 // paginated root-comment list so a deep-link can jump straight to it.
 // NSFW-gated like GetCommentMarkdown so a NSFW comment's location can't be
 // probed anonymously.
-func (h *PatchHandler) LocateComment(c *fiber.Ctx) error {
+func (h *PatchHandler) LocateComment(c fiber.Ctx) error {
 	commentID, err := getIDParam(c, "commentId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -501,7 +501,7 @@ func (h *PatchHandler) LocateComment(c *fiber.Ctx) error {
 // content explicitly, so listing them under a NSFW patch must 404 for sfw
 // callers — even though the resource rows themselves don't carry
 // content_limit (the field lives on the owning patch via wiki).
-func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
+func (h *PatchHandler) GetResources(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -520,7 +520,7 @@ func (h *PatchHandler) GetResources(c *fiber.Ctx) error {
 }
 
 // CreateResource POST /api/patch/:id/resource
-func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
+func (h *PatchHandler) CreateResource(c fiber.Ctx) error {
 	patchID, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -557,7 +557,7 @@ func (h *PatchHandler) CreateResource(c *fiber.Ctx) error {
 }
 
 // UpdateResource PUT /api/patch/resource/:resourceId
-func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
+func (h *PatchHandler) UpdateResource(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -608,7 +608,7 @@ func (h *PatchHandler) UpdateResource(c *fiber.Ctx) error {
 }
 
 // DeleteResource DELETE /api/patch/resource/:resourceId
-func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
+func (h *PatchHandler) DeleteResource(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -627,7 +627,7 @@ func (h *PatchHandler) DeleteResource(c *fiber.Ctx) error {
 }
 
 // ToggleResourceDisable PUT /api/patch/resource/:resourceId/disable
-func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
+func (h *PatchHandler) ToggleResourceDisable(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -649,7 +649,7 @@ func (h *PatchHandler) ToggleResourceDisable(c *fiber.Ctx) error {
 // Minimal payload for the "获取资源链接" reveal on the patch resource list:
 // only the storage type + download links + secrets. No Wiki enrichment, no
 // recommendations, no blake3 (the card already shows the hash).
-func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
+func (h *PatchHandler) GetResourceDownloadInfo(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -689,7 +689,7 @@ func (h *PatchHandler) GetResourceDownloadInfo(c *fiber.Ctx) error {
 	})
 }
 
-func (h *PatchHandler) IncrementResourceDownload(c *fiber.Ctx) error {
+func (h *PatchHandler) IncrementResourceDownload(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -703,7 +703,7 @@ func (h *PatchHandler) IncrementResourceDownload(c *fiber.Ctx) error {
 }
 
 // ToggleResourceLike PUT /api/patch/resource/:resourceId/like
-func (h *PatchHandler) ToggleResourceLike(c *fiber.Ctx) error {
+func (h *PatchHandler) ToggleResourceLike(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -724,7 +724,7 @@ func (h *PatchHandler) ToggleResourceLike(c *fiber.Ctx) error {
 // Per-resource SUBSCRIPTION — distinct from the resource LIKE (appreciation) and
 // the galgame FAVORITE (notified on new resources). A subscriber gets a
 // patchResourceUpdate notification when this resource's file/link changes.
-func (h *PatchHandler) ToggleResourceFavorite(c *fiber.Ctx) error {
+func (h *PatchHandler) ToggleResourceFavorite(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -745,7 +745,7 @@ func (h *PatchHandler) ToggleResourceFavorite(c *fiber.Ctx) error {
 // ===== Favorites =====
 
 // ToggleFavorite PUT /api/patch/:id/favorite
-func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
+func (h *PatchHandler) ToggleFavorite(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -768,7 +768,7 @@ func (h *PatchHandler) ToggleFavorite(c *fiber.Ctx) error {
 //
 // Returns publisher briefs (id/name/avatar) batch-resolved from OAuth
 // /users/batch. The local DB only stores the contributor user_ids.
-func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
+func (h *PatchHandler) GetContributors(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -797,7 +797,7 @@ func (h *PatchHandler) GetContributors(c *fiber.Ctx) error {
 // NSFW: forwards content_limit so the random landing page can't dump a NSFW
 // patch into an anonymous (sfw-default) browser session. Service drains a
 // 60-row random sample through wiki batch and picks from the survivors.
-func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
+func (h *PatchHandler) GetRandomPatch(c fiber.Ctx) error {
 	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c), utils.IncludeEmptyGalgames(c))
 	if err != nil {
 		// "no candidate passes the content_limit filter" is a not-found, not a
@@ -824,7 +824,7 @@ func (h *PatchHandler) GetRandomPatch(c *fiber.Ctx) error {
 // We do not enforce authorization locally: Wiki itself permits only the
 // creator or an admin. The user's OAuth access_token is forwarded verbatim
 // (carries the JWT roles claim Wiki validates).
-func (h *PatchHandler) UpdateGalgame(c *fiber.Ctx) error {
+func (h *PatchHandler) UpdateGalgame(c fiber.Ctx) error {
 	gid, err := getIDParam(c, "gid")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -844,9 +844,9 @@ func (h *PatchHandler) UpdateGalgame(c *fiber.Ctx) error {
 // updateGalgameJSON is the plain JSON path. Decoding into the client's
 // pointer-fielded shape filters out unsupported keys (e.g. vndb_id, which
 // Wiki rejects on update anyway).
-func (h *PatchHandler) updateGalgameJSON(c *fiber.Ctx, gid int, accessToken string) error {
+func (h *PatchHandler) updateGalgameJSON(c fiber.Ctx, gid int, accessToken string) error {
 	var req galgameClient.UpdateGalgameRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
@@ -860,7 +860,7 @@ func (h *PatchHandler) updateGalgameJSON(c *fiber.Ctx, gid int, accessToken stri
 // updateGalgameMultipart reads `data` + optional `file` from the incoming
 // multipart body and forwards them through the wiki client. Size cap is
 // 10 MB (consistent with other image-upload paths in this project).
-func (h *PatchHandler) updateGalgameMultipart(c *fiber.Ctx, gid int, accessToken string) error {
+func (h *PatchHandler) updateGalgameMultipart(c fiber.Ctx, gid int, accessToken string) error {
 	form, err := c.MultipartForm()
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest("multipart 表单解析失败"))
@@ -919,7 +919,7 @@ func (h *PatchHandler) updateGalgameMultipart(c *fiber.Ctx, gid int, accessToken
 // Wiki business errors (e.g. 80008 image quota, 60002 review rejected,
 // 40300 forbidden) flow through as-is via WikiError so the frontend can
 // render specific messages.
-func writeWikiResult(c *fiber.Ctx, data json.RawMessage, err error) error {
+func writeWikiResult(c fiber.Ctx, data json.RawMessage, err error) error {
 	if err != nil {
 		if werr, ok := err.(*galgameClient.WikiError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
@@ -941,7 +941,7 @@ func writeWikiResult(c *fiber.Ctx, data json.RawMessage, err error) error {
 // Two content types accepted (same shape as UpdateGalgame):
 //   - application/json
 //   - multipart/form-data with `data` + optional `file` for banner upload
-func (h *PatchHandler) SubmitGalgame(c *fiber.Ctx) error {
+func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -956,16 +956,16 @@ func (h *PatchHandler) SubmitGalgame(c *fiber.Ctx) error {
 	return h.submitGalgameJSON(c, accessToken)
 }
 
-func (h *PatchHandler) submitGalgameJSON(c *fiber.Ctx, accessToken string) error {
+func (h *PatchHandler) submitGalgameJSON(c fiber.Ctx, accessToken string) error {
 	var req galgameClient.SubmitGalgameRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	data, err := h.wiki.SubmitGalgame(c.Context(), accessToken, &req)
 	return writeWikiResult(c, data, err)
 }
 
-func (h *PatchHandler) submitGalgameMultipart(c *fiber.Ctx, accessToken string) error {
+func (h *PatchHandler) submitGalgameMultipart(c fiber.Ctx, accessToken string) error {
 	req, fileName, fileBytes, fileMime, err := parseGalgameMultipart(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -988,7 +988,7 @@ func (h *PatchHandler) submitGalgameMultipart(c *fiber.Ctx, accessToken string) 
 //
 // Response payload: { "id": <local patch id == galgame id> } so the frontend
 // can navigate straight to /patch/:id without a second round-trip.
-func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
+func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -1043,7 +1043,7 @@ func (h *PatchHandler) ClaimGalgame(c *fiber.Ctx) error {
 //
 // Edit one's own pending/declined draft. Wiki auto-flips status=4 back to 3.
 // Same dual-content-type as Submit/Update.
-func (h *PatchHandler) PatchGalgameDraft(c *fiber.Ctx) error {
+func (h *PatchHandler) PatchGalgameDraft(c fiber.Ctx) error {
 	gid, idErr := getIDParam(c, "gid")
 	if idErr != nil {
 		return response.Error(c, idErr.(*errors.AppError))
@@ -1068,7 +1068,7 @@ func (h *PatchHandler) PatchGalgameDraft(c *fiber.Ctx) error {
 		return writeWikiResult(c, data, callErr)
 	}
 	var req galgameClient.SubmitGalgameRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	data, err := h.wiki.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
@@ -1081,7 +1081,7 @@ func (h *PatchHandler) PatchGalgameDraft(c *fiber.Ctx) error {
 // + submitter check). NOTE: this conflicts at the path level with the local
 // patch DELETE /api/v1/patch/:id; we expose it under /galgame/:gid which is
 // what Wiki uses, so the verb is unambiguous.
-func (h *PatchHandler) DeleteGalgameDraft(c *fiber.Ctx) error {
+func (h *PatchHandler) DeleteGalgameDraft(c fiber.Ctx) error {
 	gid, idErr := getIDParam(c, "gid")
 	if idErr != nil {
 		return response.Error(c, idErr.(*errors.AppError))
@@ -1100,7 +1100,7 @@ func (h *PatchHandler) DeleteGalgameDraft(c *fiber.Ctx) error {
 }
 
 // ListMyGalgames GET /api/v1/galgame/mine
-func (h *PatchHandler) ListMyGalgames(c *fiber.Ctx) error {
+func (h *PatchHandler) ListMyGalgames(c fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -1129,7 +1129,7 @@ func (h *PatchHandler) ListMyGalgames(c *fiber.Ctx) error {
 // Used by the publish wizard. Forwards the user's Bearer + include_pending=true
 // so the response surfaces both public results and the caller's own
 // pending/declined drafts.
-func (h *PatchHandler) SearchGalgameForPublish(c *fiber.Ctx) error {
+func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -1155,7 +1155,7 @@ func (h *PatchHandler) SearchGalgameForPublish(c *fiber.Ctx) error {
 // notification-center to compute the unread badge (count of wiki messages
 // with id > last_read_message_id). State lives locally — wiki doesn't
 // maintain per-user read flags (see docs/galgame_wiki/08-messages.md §已读状态).
-func (h *PatchHandler) GetWikiMessagesReadState(c *fiber.Ctx) error {
+func (h *PatchHandler) GetWikiMessagesReadState(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var lastRead int64
 	row := h.service.DB().Raw(
@@ -1170,12 +1170,12 @@ func (h *PatchHandler) GetWikiMessagesReadState(c *fiber.Ctx) error {
 //
 // Body: { "last_read_message_id": int64 }. We only move forward — submitting
 // a smaller id is a no-op.
-func (h *PatchHandler) UpdateWikiMessagesReadState(c *fiber.Ctx) error {
+func (h *PatchHandler) UpdateWikiMessagesReadState(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var body struct {
 		LastReadMessageID int64 `json:"last_read_message_id"`
 	}
-	if err := c.BodyParser(&body); err != nil {
+	if err := c.Bind().Body(&body); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	if body.LastReadMessageID < 0 {
@@ -1194,7 +1194,7 @@ func (h *PatchHandler) UpdateWikiMessagesReadState(c *fiber.Ctx) error {
 }
 
 // GetMyWikiMessages GET /api/v1/galgame/messages/mine
-func (h *PatchHandler) GetMyWikiMessages(c *fiber.Ctx) error {
+func (h *PatchHandler) GetMyWikiMessages(c fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -1217,7 +1217,7 @@ func (h *PatchHandler) GetMyWikiMessages(c *fiber.Ctx) error {
 // parseGalgameMultipart is shared between SubmitGalgame and PatchGalgameDraft.
 // Returns the JSON body, the file name / bytes / mime if present, or an
 // AppError describing what failed.
-func parseGalgameMultipart(c *fiber.Ctx) (galgameClient.SubmitGalgameRequest, string, []byte, string, error) {
+func parseGalgameMultipart(c fiber.Ctx) (galgameClient.SubmitGalgameRequest, string, []byte, string, error) {
 	var req galgameClient.SubmitGalgameRequest
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -1260,7 +1260,7 @@ func parseGalgameMultipart(c *fiber.Ctx) (galgameClient.SubmitGalgameRequest, st
 // (when / who-role / why / old size + hash). Deliberately omits the old
 // download links + s3 key — those stay behind the rate-limited /link endpoint.
 // Lets any visitor (incl. anonymous) see a resource's change history.
-func (h *PatchHandler) GetResourceFileHistory(c *fiber.Ctx) error {
+func (h *PatchHandler) GetResourceFileHistory(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -1281,7 +1281,7 @@ func (h *PatchHandler) GetResourceFileHistory(c *fiber.Ctx) error {
 // Public per-field edit history (diff) for one resource: each row is one edit
 // with a list of {field, before, after}. Secret-free (see service). Lets any
 // visitor see "language changed from X to Y", etc.
-func (h *PatchHandler) GetResourceRevisions(c *fiber.Ctx) error {
+func (h *PatchHandler) GetResourceRevisions(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))

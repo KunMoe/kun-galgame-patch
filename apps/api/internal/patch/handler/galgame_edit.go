@@ -27,7 +27,7 @@ import (
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 const apiV1Prefix = "/api/v1"
@@ -37,13 +37,13 @@ const apiV1Prefix = "/api/v1"
 // undecoded path+query — important for the cosmetic non-ASCII /tag/:name
 // segment (Wiki ignores :name and queries by tag_id, but the URL must stay
 // syntactically valid).
-func wikiPathFromRequest(c *fiber.Ctx) string {
+func wikiPathFromRequest(c fiber.Ctx) string {
 	return strings.TrimPrefix(c.OriginalURL(), apiV1Prefix)
 }
 
 // WikiEditProxy is the generic GET / JSON-write pass-through used by every
 // §15 endpoint except the multipart-capable PR submit (see WikiPRSubmit).
-func (h *PatchHandler) WikiEditProxy(c *fiber.Ctx) error {
+func (h *PatchHandler) WikiEditProxy(c fiber.Ctx) error {
 	method := c.Method()
 	accessToken := middleware.GetAccessToken(c)
 	if method != fiber.MethodGet && accessToken == "" {
@@ -97,7 +97,7 @@ func (h *PatchHandler) WikiEditProxy(c *fiber.Ctx) error {
 // The rewritten field is renamed `galgame` → `galgames` to match the rest
 // of moyu's paginated list shape (and the existing FE TaxonomyListOpts
 // reader fallbacks).
-func (h *PatchHandler) WikiTaxonomyDetailProxy(c *fiber.Ctx) error {
+func (h *PatchHandler) WikiTaxonomyDetailProxy(c fiber.Ctx) error {
 	if c.Method() != fiber.MethodGet {
 		// Non-GETs (PUT/POST/DELETE) on tag/official go through the generic
 		// proxy in WikiEditProxy; this method is read-only enrichment.
@@ -204,7 +204,7 @@ func (h *PatchHandler) WikiTaxonomyDetailProxy(c *fiber.Ctx) error {
 // accepts JSON or multipart/form-data (`data` JSON + optional `file` banner)
 // so a PR proposal can carry a new banner thumbnail for the reviewer
 // (docs/galgame_wiki/02-revisions-and-prs.md §PR).
-func (h *PatchHandler) WikiPRSubmit(c *fiber.Ctx) error {
+func (h *PatchHandler) WikiPRSubmit(c fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())

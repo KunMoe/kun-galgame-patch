@@ -19,7 +19,7 @@ import (
 	"kun-galgame-patch-api/pkg/response"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -42,7 +42,7 @@ func NewTestApp(t *testing.T) *TestApp {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
+		ErrorHandler: func(c fiber.Ctx, err error) error {
 			return c.Status(500).JSON(response.Response{
 				Code:    50000,
 				Message: err.Error(),
@@ -99,7 +99,7 @@ func (ta *TestApp) Request(t *testing.T, method, path string, body string, sessi
 		})
 	}
 
-	resp, err := ta.App.Test(req, -1)
+	resp, err := ta.App.Test(req)
 	if err != nil {
 		t.Fatal(err)
 	}

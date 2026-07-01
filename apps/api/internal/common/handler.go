@@ -19,7 +19,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
 
@@ -105,7 +105,7 @@ type homeResponse struct {
 // is forwarded to wiki via the enricher; missing / invalid query falls back
 // to "sfw" — the home page is the single biggest SEO surface and must be
 // safe-by-default for anonymous crawlers.
-func (h *CommonHandler) GetHome(c *fiber.Ctx) error {
+func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 
 	var patches []patchModel.Patch
@@ -179,7 +179,7 @@ type galgameListRequest struct {
 // count — filtering happens after the page slice is drawn, so the trailing
 // pages can return a short slice when many rows in that range are NSFW.
 // Callers should not rely on `total == sum(len(galgames))`.
-func (h *CommonHandler) GetGalgameList(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	var req galgameListRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -257,7 +257,7 @@ type commentListRequest struct {
 }
 
 // GetGlobalComments GET /api/comment
-func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGlobalComments(c fiber.Ctx) error {
 	var req commentListRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -295,7 +295,7 @@ func (h *CommonHandler) GetGlobalComments(c *fiber.Ctx) error {
 // attachPatchSummaries fills the `Patch` field on every comment / resource row
 // in one Wiki batch call, avoiding an N+1 over the page. Either slice may be
 // nil when the corresponding endpoint does not need it.
-func (h *CommonHandler) attachPatchSummaries(c *fiber.Ctx, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
+func (h *CommonHandler) attachPatchSummaries(c fiber.Ctx, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
 	if len(comments) == 0 && len(resources) == 0 {
 		return
 	}
@@ -349,7 +349,7 @@ type resourceListRequest struct {
 // page can return fewer rows than the limit when many in that range belong to
 // NSFW patches. Acceptable trade-off — alternative would be a per-page wiki
 // pre-pass that doesn't scale.
-func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	var req resourceListRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -403,7 +403,7 @@ func (h *CommonHandler) GetGlobalResources(c *fiber.Ctx) error {
 // If the owning patch is filtered out → 404, so a NSFW resource never leaks
 // out via this detail surface. Recommendations are filtered the same way:
 // any rec whose galgame_id wiki doesn't return is dropped.
-func (h *CommonHandler) GetResourceDetail(c *fiber.Ctx) error {
+func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 
 	resourceID := c.Params("id")
@@ -620,7 +620,7 @@ type hikariPatch struct {
 }
 
 // hikariFail writes the legacy error envelope ({success:false, data:null}).
-func hikariFail(c *fiber.Ctx, status int, message string) error {
+func hikariFail(c fiber.Ctx, status int, message string) error {
 	return c.Status(status).JSON(hikariEnvelope{Success: false, Message: message, Data: nil})
 }
 
@@ -652,7 +652,7 @@ func (h *CommonHandler) hikariAvatarURL(b *userclient.Brief) string {
 // hikarinagi, …) are galgame sites themselves and need the full catalog. The
 // content_limit / SEO gate that protects the public browse endpoints does NOT
 // apply here, so this handler never calls the wiki.
-func (h *CommonHandler) GetHikari(c *fiber.Ctx) error {
+func (h *CommonHandler) GetHikari(c fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
 		return hikariFail(c, fiber.StatusBadRequest, "Missing required parameter: vndb_id")
@@ -762,7 +762,7 @@ type rankingUser struct {
 // timeRange is accepted for API parity with the legacy frontend but currently
 // ignored ("all" is the only behavior). Aggregate counts are computed in one
 // query so we do not pay an N+1 over 60 users.
-func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
+func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 	sortBy := c.Query("sort_by", c.Query("sortBy", "moemoepoint"))
 
 	const limit = 60
@@ -837,7 +837,7 @@ func (h *CommonHandler) GetUserRanking(c *fiber.Ctx) error {
 // elsewhere on the site. NSFW filter follows the wiki content_limit protocol
 // (default sfw for SEO safety); the returned slice may have fewer than 60
 // rows when NSFW games dominate the top of the ranking.
-func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
+func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	sortBy := c.Query("sort_by", c.Query("sortBy", "view"))
 
@@ -868,7 +868,7 @@ func (h *CommonHandler) GetPatchRanking(c *fiber.Ctx) error {
 }
 
 // GetMoyuHasPatch GET /api/moyu/patch/has-patch
-func (h *CommonHandler) GetMoyuHasPatch(c *fiber.Ctx) error {
+func (h *CommonHandler) GetMoyuHasPatch(c fiber.Ctx) error {
 	var vndbIDs []string
 	h.db.Model(&patchModel.Patch{}).
 		Joins("JOIN patch_resource ON patch_resource.galgame_id = patch.id").
@@ -924,7 +924,7 @@ func (h *CommonHandler) calendarHasPatchSet(ids []int) map[int]bool {
 // the has_patch-stamped cards, then stamps is_favorite for the logged-in viewer
 // (optionalAuth) so the FE can render an inline 收藏 toggle in the right state.
 // No wiki re-fetch (briefs carry release fields).
-func (h *CommonHandler) enrichCalendarItems(c *fiber.Ctx, briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
+func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
 	ids := make([]int, 0, len(briefs))
 	for i := range briefs {
 		if briefs[i].ID > 0 {
@@ -962,7 +962,7 @@ func (h *CommonHandler) calendarFavoriteSet(userID int, ids []int) map[int]bool 
 }
 
 // GetGalgameCalendar GET /api/galgame/calendar?month=YYYY-MM
-func (h *CommonHandler) GetGalgameCalendar(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	month := strings.TrimSpace(c.Query("month"))
 
@@ -1005,7 +1005,7 @@ func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string
 }
 
 // GetGalgameCalendarPending GET /api/galgame/calendar/pending?year=YYYY
-func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGalgameCalendarPending(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	year := strings.TrimSpace(c.Query("year"))
 
@@ -1028,7 +1028,7 @@ func (h *CommonHandler) GetGalgameCalendarPending(c *fiber.Ctx) error {
 }
 
 // GetGalgameCalendarTBA GET /api/galgame/calendar/tba
-func (h *CommonHandler) GetGalgameCalendarTBA(c *fiber.Ctx) error {
+func (h *CommonHandler) GetGalgameCalendarTBA(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 
 	var briefs []galgameClient.GalgameBrief

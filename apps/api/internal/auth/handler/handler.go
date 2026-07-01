@@ -20,7 +20,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -41,7 +41,7 @@ func New(svc *service.AuthService, rdb *redis.Client, db *gorm.DB, users *usercl
 // Exchanges the authorization code for tokens, fetches user identity from
 // /oauth/userinfo, ensures a local site row exists with id == userinfo.id,
 // stamps last_login_time + ip, and creates the Redis session.
-func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
+func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 	var req dto.OAuthCallbackRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -106,7 +106,7 @@ func (h *AuthHandler) OAuthCallback(c *fiber.Ctx) error {
 // token — sending the access_token is a no-op), then destroy the local
 // Redis session and clear the cookie. Revoke runs in a goroutine because
 // network failure to OAuth must not block logout from this site.
-func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+func (h *AuthHandler) Logout(c fiber.Ctx) error {
 	sessionID := c.Cookies(middleware.SessionCookieName)
 	if sessionID != "" {
 		if data, err := h.rdb.Get(c.Context(), middleware.SessionPrefix+sessionID).Result(); err == nil {
@@ -130,7 +130,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 // different TLD and is not in the provider's CORS allow-list, so a direct browser
 // fetch would be blocked. Always 200 with {apps:[...]} (empty on a cold-start
 // upstream failure) — a marketing strip must never break the login page.
-func (h *AuthHandler) Ecosystem(c *fiber.Ctx) error {
+func (h *AuthHandler) Ecosystem(c fiber.Ctx) error {
 	return response.OK(c, fiber.Map{"apps": h.service.ListEcosystem()})
 }
 
@@ -140,7 +140,7 @@ func (h *AuthHandler) Ecosystem(c *fiber.Ctx) error {
 // (name/avatar/bio from OAuth /users/batch), and site-local state
 // (moemoepoint, daily counters, follow counts) into a single response so
 // the frontend can render the whole profile without extra round-trips.
-func (h *AuthHandler) Me(c *fiber.Ctx) error {
+func (h *AuthHandler) Me(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	roles := middleware.GetRoles(c)
 
@@ -164,7 +164,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 
 // UpdateMe PATCH /api/v1/auth/me
 // Proxies → OAuth PATCH /auth/me. Accepts {name, avatar, avatar_image_hash, bio}.
-func (h *AuthHandler) UpdateMe(c *fiber.Ctx) error {
+func (h *AuthHandler) UpdateMe(c fiber.Ctx) error {
 	err := h.proxyUserOAuth(c, fiber.MethodPatch, "/auth/me")
 	// The userclient caches OAuth briefs ~10min. After a self profile edit, evict
 	// this user's entry so the next /auth/me (the frontend's refreshMe) reflects
@@ -180,7 +180,7 @@ func (h *AuthHandler) UpdateMe(c *fiber.Ctx) error {
 // Proxies multipart → OAuth POST /auth/me/avatar (OAuth handles
 // image_service upload internally and writes avatar_image_hash). Body is
 // forwarded as-is so the multipart boundary survives.
-func (h *AuthHandler) UploadAvatar(c *fiber.Ctx) error {
+func (h *AuthHandler) UploadAvatar(c fiber.Ctx) error {
 	err := h.proxyUserOAuth(c, fiber.MethodPost, "/auth/me/avatar")
 	// Same cache-staleness fix as UpdateMe: evict so the new avatar_image_hash
 	// shows on the next /auth/me instead of the ~10min-cached old avatar.
@@ -193,7 +193,7 @@ func (h *AuthHandler) UploadAvatar(c *fiber.Ctx) error {
 // proxyUserOAuth is the shared helper for the display-layer proxies.
 // Pulls access_token from session, forwards body + content-type to the
 // OAuth endpoint, writes OAuth's response back to the client unchanged.
-func (h *AuthHandler) proxyUserOAuth(c *fiber.Ctx, method, path string) error {
+func (h *AuthHandler) proxyUserOAuth(c fiber.Ctx, method, path string) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -216,7 +216,7 @@ func (h *AuthHandler) proxyUserOAuth(c *fiber.Ctx, method, path string) error {
 // into a MeResponse. If the OAuth /users/batch call fails we still return
 // the local fields -- name/avatar will simply be empty rather than crashing
 // the page.
-func (h *AuthHandler) composeMe(c *fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
+func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
 	// Never marshal roles as JSON null. A nil []string serializes to `null`,
 	// which the frontend persists into its cookie-backed user store; then
 	// isAdmin/isModerator run roles.includes(...) during SSR and throw

@@ -9,7 +9,7 @@ import (
 	"kun-galgame-patch-api/internal/testutil"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func TestRateLimit_AllowsWithinLimit(t *testing.T) {
 
 	ta.App.Get("/limited",
 		middleware.RateLimit(ta.RDB, "test", 3, time.Minute),
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "OK"})
 		},
 	)
@@ -34,7 +34,7 @@ func TestRateLimit_BlocksOverLimit(t *testing.T) {
 
 	ta.App.Get("/limited",
 		middleware.RateLimit(ta.RDB, "test2", 2, time.Minute),
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "OK"})
 		},
 	)

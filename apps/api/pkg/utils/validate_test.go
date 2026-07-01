@@ -8,7 +8,7 @@ import (
 
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ type testDTO struct {
 
 func TestParseAndValidate_Valid(t *testing.T) {
 	app := fiber.New()
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app.Post("/test", func(c fiber.Ctx) error {
 		var dto testDTO
 		if err := utils.ParseAndValidate(c, &dto); err != nil {
 			return c.Status(400).SendString(err.Error())
@@ -33,14 +33,14 @@ func TestParseAndValidate_Valid(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestParseAndValidate_MissingRequired(t *testing.T) {
 	app := fiber.New()
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app.Post("/test", func(c fiber.Ctx) error {
 		var dto testDTO
 		if err := utils.ParseAndValidate(c, &dto); err != nil {
 			return c.Status(400).SendString(err.Error())
@@ -52,14 +52,14 @@ func TestParseAndValidate_MissingRequired(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestParseAndValidate_InvalidEmail(t *testing.T) {
 	app := fiber.New()
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app.Post("/test", func(c fiber.Ctx) error {
 		var dto testDTO
 		if err := utils.ParseAndValidate(c, &dto); err != nil {
 			return c.Status(400).SendString(err.Error())
@@ -71,7 +71,7 @@ func TestParseAndValidate_InvalidEmail(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
@@ -84,7 +84,7 @@ type queryDTO struct {
 
 func TestParseQueryAndValidate_Valid(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		var dto queryDTO
 		if err := utils.ParseQueryAndValidate(c, &dto); err != nil {
 			return c.Status(400).SendString(err.Error())
@@ -93,14 +93,14 @@ func TestParseQueryAndValidate_Valid(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test?page=2&limit=10&sort=asc", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestParseQueryAndValidate_Invalid(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		var dto queryDTO
 		if err := utils.ParseQueryAndValidate(c, &dto); err != nil {
 			return c.Status(400).SendString(err.Error())
@@ -109,7 +109,7 @@ func TestParseQueryAndValidate_Invalid(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test?page=0&limit=100&sort=invalid", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }

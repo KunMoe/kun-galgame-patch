@@ -16,7 +16,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type MessageHandler struct {
@@ -132,7 +132,7 @@ func (h *MessageHandler) attachSenders(ctx context.Context, msgs []userModel.Use
 }
 
 // GetMessages GET /api/message
-func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
+func (h *MessageHandler) GetMessages(c fiber.Ctx) error {
 	var req dto.GetMessageRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -153,7 +153,7 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 //
 // Same as GET /api/message but ignores the type filter. Kept as a separate
 // route for parity with the legacy frontend that has /message/all hard-coded.
-func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
+func (h *MessageHandler) GetAllMessages(c fiber.Ctx) error {
 	var req dto.GetMessageRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -171,7 +171,7 @@ func (h *MessageHandler) GetAllMessages(c *fiber.Ctx) error {
 }
 
 // GetUnreadTypes GET /api/message/unread
-func (h *MessageHandler) GetUnreadTypes(c *fiber.Ctx) error {
+func (h *MessageHandler) GetUnreadTypes(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	types, err := h.service.GetUnreadTypes(user.ID)
 	if err != nil {
@@ -181,7 +181,7 @@ func (h *MessageHandler) GetUnreadTypes(c *fiber.Ctx) error {
 }
 
 // MarkAsRead PUT /api/message/read
-func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
+func (h *MessageHandler) MarkAsRead(c fiber.Ctx) error {
 	var req dto.ReadMessageRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))

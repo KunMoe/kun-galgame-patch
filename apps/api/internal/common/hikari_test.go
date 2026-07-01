@@ -12,7 +12,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -105,7 +105,7 @@ func TestGetHikariIntegration(t *testing.T) {
 		if origin != "" {
 			req.Header.Set("Origin", origin)
 		}
-		resp, err := app.Test(req, -1)
+		resp, err := app.Test(req)
 		if err != nil {
 			t.Fatalf("app.Test: %v", err)
 		}

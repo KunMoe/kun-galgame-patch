@@ -13,7 +13,7 @@ import (
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Handler exposes 5 HTTP endpoints + the image_service upload proxy.
@@ -34,7 +34,7 @@ func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Clien
 // uploadTier resolves the caller's per-role upload allowance from the OAuth
 // roles claim: admin/ren > moderator > creator > user. Each tier is distinct;
 // a user holding several roles gets the highest (admin checked first).
-func uploadTier(c *fiber.Ctx) constants.UploadTier {
+func uploadTier(c fiber.Ctx) constants.UploadTier {
 	switch {
 	case middleware.IsAdmin(c):
 		return constants.AdminUploadTier
@@ -49,7 +49,7 @@ func uploadTier(c *fiber.Ctx) constants.UploadTier {
 
 // Init POST /api/upload/init — start an upload; the artifact service decides
 // single-PUT vs multipart and returns the presigned URL(s).
-func (h *Handler) Init(c *fiber.Ctx) error {
+func (h *Handler) Init(c fiber.Ctx) error {
 	var req InitRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -65,7 +65,7 @@ func (h *Handler) Init(c *fiber.Ctx) error {
 
 // Complete POST /api/upload/complete — finalize (size verified by artifact) and
 // deduct the per-user daily quota.
-func (h *Handler) Complete(c *fiber.Ctx) error {
+func (h *Handler) Complete(c fiber.Ctx) error {
 	var req CompleteRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -82,7 +82,7 @@ func (h *Handler) Complete(c *fiber.Ctx) error {
 // Resume POST /api/upload/resume — continue an interrupted upload. The artifact
 // service lists the parts already in B2 and re-presigns only the missing ones, so
 // a paused / dropped / page-refreshed upload finishes without re-sending bytes.
-func (h *Handler) Resume(c *fiber.Ctx) error {
+func (h *Handler) Resume(c fiber.Ctx) error {
 	var req ResumeRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -116,7 +116,7 @@ func (h *Handler) Resume(c *fiber.Ctx) error {
 //
 // 10MB body cap is inherited from the Fiber app config; image_service itself
 // enforces per-preset size + per-client daily quota.
-func (h *Handler) UploadImageService(c *fiber.Ctx) error {
+func (h *Handler) UploadImageService(c fiber.Ctx) error {
 	_ = middleware.MustGetUser(c)
 
 	preset := c.FormValue("preset")
@@ -201,7 +201,7 @@ func (h *Handler) UploadImageService(c *fiber.Ctx) error {
 }
 
 // Abort POST /api/upload/abort — voluntarily cancel an in-progress upload.
-func (h *Handler) Abort(c *fiber.Ctx) error {
+func (h *Handler) Abort(c fiber.Ctx) error {
 	var req AbortRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))

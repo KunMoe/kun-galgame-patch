@@ -16,7 +16,7 @@ import (
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
 
@@ -56,7 +56,7 @@ type SearchHit struct {
 }
 
 // Search POST /api/search
-func (h *Handler) Search(c *fiber.Ctx) error {
+func (h *Handler) Search(c fiber.Ctx) error {
 	var req SearchRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))

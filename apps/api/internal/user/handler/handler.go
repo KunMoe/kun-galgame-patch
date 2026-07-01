@@ -15,11 +15,11 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Read the bytes of a single image file from a form, with a 10 MB size cap.
-func readImageFormFile(c *fiber.Ctx, field string) ([]byte, error) {
+func readImageFormFile(c fiber.Ctx, field string) ([]byte, error) {
 	f, err := c.FormFile(field)
 	if err != nil || f == nil {
 		return nil, errors.ErrBadRequest("缺少图片文件")
@@ -45,7 +45,7 @@ func New(svc *service.UserService, wiki *galgameClient.Client, users *userclient
 	return &UserHandler{service: svc, wiki: wiki, users: users}
 }
 
-func getUID(c *fiber.Ctx) (int, error) {
+func getUID(c fiber.Ctx) (int, error) {
 	userID, err := strconv.Atoi(c.Params("id"))
 	if err != nil || userID < 1 {
 		return 0, errors.ErrBadRequest("invalid user ID")
@@ -54,7 +54,7 @@ func getUID(c *fiber.Ctx) (int, error) {
 }
 
 // GetUserInfo GET /api/user/:id
-func (h *UserHandler) GetUserInfo(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserInfo(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -70,7 +70,7 @@ func (h *UserHandler) GetUserInfo(c *fiber.Ctx) error {
 }
 
 // GetUserFloating GET /api/user/:id/floating
-func (h *UserHandler) GetUserFloating(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserFloating(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -85,7 +85,7 @@ func (h *UserHandler) GetUserFloating(c *fiber.Ctx) error {
 }
 
 // GetUserPatches GET /api/user/:id/patch
-func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserPatches(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -110,7 +110,7 @@ func (h *UserHandler) GetUserPatches(c *fiber.Ctx) error {
 }
 
 // GetUserResources GET /api/user/:id/resource
-func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserResources(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -143,7 +143,7 @@ func (h *UserHandler) GetUserResources(c *fiber.Ctx) error {
 }
 
 // GetUserFavorites GET /api/user/:id/favorite
-func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserFavorites(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -174,7 +174,7 @@ func (h *UserHandler) GetUserFavorites(c *fiber.Ctx) error {
 }
 
 // GetUserComments GET /api/user/:id/comment
-func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserComments(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -200,7 +200,7 @@ func (h *UserHandler) GetUserComments(c *fiber.Ctx) error {
 }
 
 // GetUserContributions GET /api/user/:id/contribute
-func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
+func (h *UserHandler) GetUserContributions(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -229,7 +229,7 @@ func (h *UserHandler) GetUserContributions(c *fiber.Ctx) error {
 // redirected to oauth.kungal.com/profile.
 
 // Follow PUT /api/user/:id/follow
-func (h *UserHandler) Follow(c *fiber.Ctx) error {
+func (h *UserHandler) Follow(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -244,7 +244,7 @@ func (h *UserHandler) Follow(c *fiber.Ctx) error {
 }
 
 // Unfollow DELETE /api/user/:id/follow
-func (h *UserHandler) Unfollow(c *fiber.Ctx) error {
+func (h *UserHandler) Unfollow(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -259,7 +259,7 @@ func (h *UserHandler) Unfollow(c *fiber.Ctx) error {
 }
 
 // GetFollowers GET /api/user/:id/follower
-func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
+func (h *UserHandler) GetFollowers(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -286,7 +286,7 @@ func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
 }
 
 // GetFollowing GET /api/user/:id/following
-func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
+func (h *UserHandler) GetFollowing(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -311,7 +311,7 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 }
 
 // CheckIn POST /api/user/check-in
-func (h *UserHandler) CheckIn(c *fiber.Ctx) error {
+func (h *UserHandler) CheckIn(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	points, err := h.service.CheckIn(user.ID)
 	if err != nil {
@@ -326,7 +326,7 @@ func (h *UserHandler) CheckIn(c *fiber.Ctx) error {
 // session (never a path param), so one user can't read another's records. moyu
 // proxies OAuth's REDUCED s2s view (no admin note / actor). Cursor paginated via
 // before_id (0 / absent = newest page); optional reason filter.
-func (h *UserHandler) GetMoemoepointLog(c *fiber.Ctx) error {
+func (h *UserHandler) GetMoemoepointLog(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 
 	limit, _ := strconv.Atoi(c.Query("limit"))
@@ -343,7 +343,7 @@ func (h *UserHandler) GetMoemoepointLog(c *fiber.Ctx) error {
 }
 
 // SearchUsers GET /api/user/search
-func (h *UserHandler) SearchUsers(c *fiber.Ctx) error {
+func (h *UserHandler) SearchUsers(c fiber.Ctx) error {
 	var req dto.SearchUserRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -361,7 +361,7 @@ func (h *UserHandler) SearchUsers(c *fiber.Ctx) error {
 
 // UploadImage POST /api/user/image
 // Images used on the user's personal page. Rate-limited by daily_image_count.
-func (h *UserHandler) UploadImage(c *fiber.Ctx) error {
+func (h *UserHandler) UploadImage(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	raw, err := readImageFormFile(c, "image")
 	if err != nil {

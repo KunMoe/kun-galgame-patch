@@ -12,7 +12,7 @@ import (
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,12 +21,12 @@ func TestAuth_NoSession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		return c.JSON(response.Response{Code: 0, Message: "OK"})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	resp, err := ta.App.Test(req, -1)
+	resp, err := ta.App.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -38,7 +38,7 @@ func TestAuth_ValidSession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		user := middleware.MustGetUser(c)
 		return c.JSON(response.Response{Code: 0, Message: "OK", Data: user.ID})
 	})
@@ -55,7 +55,7 @@ func TestAuth_ExpiredSession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/protected", middleware.Auth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		return c.JSON(response.Response{Code: 0, Message: "OK"})
 	})
 
@@ -70,13 +70,13 @@ func TestOptionalAuth_NoSession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		userID := middleware.GetUserID(c)
 		return c.JSON(response.Response{Code: 0, Data: userID})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/optional", nil)
-	resp, err := ta.App.Test(req, -1)
+	resp, err := ta.App.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -89,7 +89,7 @@ func TestOptionalAuth_ValidSession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/optional", middleware.OptionalAuth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		userID := middleware.GetUserID(c)
 		return c.JSON(response.Response{Code: 0, Data: userID})
 	})
@@ -109,7 +109,7 @@ func TestRequireRole_InsufficientRole(t *testing.T) {
 	ta.App.Get("/admin",
 		middleware.Auth(ta.RDB, oauthCfg),
 		middleware.RequireRole("admin"),
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "admin"})
 		},
 	)
@@ -129,7 +129,7 @@ func TestRequireRole_SufficientRole(t *testing.T) {
 	ta.App.Get("/admin",
 		middleware.Auth(ta.RDB, oauthCfg),
 		middleware.RequireRole("admin", "moderator"),
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return c.JSON(response.Response{Code: 0, Message: "admin"})
 		},
 	)
@@ -147,19 +147,19 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 
 	var capturedCookie string
 
-	ta.App.Post("/login", func(c *fiber.Ctx) error {
+	ta.App.Post("/login", func(c fiber.Ctx) error {
 		session := &middleware.SessionData{
 			UserInfo: middleware.UserInfo{ID: 99, Sub: "test-sub"},
 		}
 		return middleware.CreateSession(c, ta.RDB, session)
 	})
 
-	ta.App.Post("/logout", func(c *fiber.Ctx) error {
+	ta.App.Post("/logout", func(c fiber.Ctx) error {
 		return middleware.DestroySession(c, ta.RDB)
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/login", nil)
-	resp, err := ta.App.Test(req, -1)
+	resp, err := ta.App.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -180,7 +180,7 @@ func TestCreateSession_And_DestroySession(t *testing.T) {
 
 	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	logoutReq.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: capturedCookie})
-	logoutResp, err := ta.App.Test(logoutReq, -1)
+	logoutResp, err := ta.App.Test(logoutReq)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, logoutResp.StatusCode)
 
@@ -192,7 +192,7 @@ func TestGetUser_Helpers(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 	oauthCfg := config.OAuthConfig{}
 
-	ta.App.Get("/helpers", middleware.Auth(ta.RDB, oauthCfg), func(c *fiber.Ctx) error {
+	ta.App.Get("/helpers", middleware.Auth(ta.RDB, oauthCfg), func(c fiber.Ctx) error {
 		user := middleware.GetUser(c)
 		must := middleware.MustGetUser(c)
 		userID := middleware.GetUserID(c)

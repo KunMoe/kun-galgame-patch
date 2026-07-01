@@ -5,20 +5,20 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 var validate = validator.New()
 
-func ParseAndValidate(c *fiber.Ctx, out any) error {
-	if err := c.BodyParser(out); err != nil {
+func ParseAndValidate(c fiber.Ctx, out any) error {
+	if err := c.Bind().Body(out); err != nil {
 		return fmt.Errorf("failed to parse request body: %w", err)
 	}
 	return validateStruct(out)
 }
 
-func ParseQueryAndValidate(c *fiber.Ctx, out any) error {
-	if err := c.QueryParser(out); err != nil {
+func ParseQueryAndValidate(c fiber.Ctx, out any) error {
+	if err := c.Bind().Query(out); err != nil {
 		return fmt.Errorf("failed to parse query parameters: %w", err)
 	}
 	return validateStruct(out)

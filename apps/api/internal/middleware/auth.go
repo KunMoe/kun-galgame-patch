@@ -30,7 +30,7 @@ import (
 
 	"bytes"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -127,7 +127,7 @@ func RevokeUserSessions(ctx context.Context, rdb *redis.Client, userID int) (int
 }
 
 func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		sessionID := c.Cookies(SessionCookieName)
 		if sessionID == "" {
 			return response.Error(c, errors.ErrUnauthorized())
@@ -202,7 +202,7 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 }
 
 func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		sessionID := c.Cookies(SessionCookieName)
 		if sessionID == "" {
 			return c.Next()
@@ -260,7 +260,7 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 	}
 }
 
-func GetUser(c *fiber.Ctx) *UserInfo {
+func GetUser(c fiber.Ctx) *UserInfo {
 	user, ok := c.Locals(userContextKey).(*UserInfo)
 	if !ok {
 		return nil
@@ -268,11 +268,11 @@ func GetUser(c *fiber.Ctx) *UserInfo {
 	return user
 }
 
-func MustGetUser(c *fiber.Ctx) *UserInfo {
+func MustGetUser(c fiber.Ctx) *UserInfo {
 	return c.Locals(userContextKey).(*UserInfo)
 }
 
-func GetUserID(c *fiber.Ctx) int {
+func GetUserID(c fiber.Ctx) int {
 	user := GetUser(c)
 	if user == nil {
 		return 0
@@ -285,7 +285,7 @@ func GetUserID(c *fiber.Ctx) int {
 // upstream services (e.g. the Galgame Wiki Service) forward this token as
 // `Authorization: Bearer ...` so the upstream can validate user identity and
 // apply its own creator/admin authorization.
-func GetAccessToken(c *fiber.Ctx) string {
+func GetAccessToken(c fiber.Ctx) string {
 	v, ok := c.Locals(accessTokenContextKey).(string)
 	if !ok {
 		return ""
@@ -295,7 +295,7 @@ func GetAccessToken(c *fiber.Ctx) string {
 
 // GetRoles returns the OAuth roles for the current request, or an empty slice
 // if no session is attached. Roles come from the access_token JWT roles claim.
-func GetRoles(c *fiber.Ctx) []string {
+func GetRoles(c fiber.Ctx) []string {
 	v, ok := c.Locals(rolesContextKey).([]string)
 	if !ok {
 		return nil
@@ -304,13 +304,13 @@ func GetRoles(c *fiber.Ctx) []string {
 }
 
 // HasRole reports whether the current request's roles set contains role.
-func HasRole(c *fiber.Ctx, role string) bool {
+func HasRole(c fiber.Ctx, role string) bool {
 	return slices.Contains(GetRoles(c), role)
 }
 
 // HasAnyRole reports whether the current request's roles set contains any of
 // the listed roles. Pass nothing to require "at least logged in".
-func HasAnyRole(c *fiber.Ctx, roles ...string) bool {
+func HasAnyRole(c fiber.Ctx, roles ...string) bool {
 	if len(roles) == 0 {
 		return GetUser(c) != nil
 	}
@@ -334,10 +334,10 @@ var (
 )
 
 // IsAdmin reports whether the caller holds a super-admin role (admin or ren).
-func IsAdmin(c *fiber.Ctx) bool { return HasAnyRole(c, SuperAdminRoles...) }
+func IsAdmin(c fiber.Ctx) bool { return HasAnyRole(c, SuperAdminRoles...) }
 
 // IsModerator reports whether the caller can moderate: super-admins or moderators.
-func IsModerator(c *fiber.Ctx) bool { return HasAnyRole(c, ModeratorRoles...) }
+func IsModerator(c fiber.Ctx) bool { return HasAnyRole(c, ModeratorRoles...) }
 
 // SecureCookies controls whether the session cookie is HTTPS-only. Set by
 // the app at startup based on KUN_SERVER_MODE; in dev over HTTP this must
@@ -351,7 +351,7 @@ var SecureCookies = true
 // 10s is consistent with the wiki/userclient transports.
 var oauthRefreshHTTP = &http.Client{Timeout: 10 * time.Second}
 
-func CreateSession(c *fiber.Ctx, rdb *redis.Client, session *SessionData) error {
+func CreateSession(c fiber.Ctx, rdb *redis.Client, session *SessionData) error {
 	sessionID, err := generateSessionID()
 	if err != nil {
 		return err
@@ -395,7 +395,7 @@ func CreateSession(c *fiber.Ctx, rdb *redis.Client, session *SessionData) error 
 // background token refresh / rotation and clobber freshly-rotated tokens.
 // Best-effort: a Redis hiccup just skips this round. Call only with a
 // validated session present.
-func renewSlidingSession(c *fiber.Ctx, rdb *redis.Client, sessionID string) {
+func renewSlidingSession(c fiber.Ctx, rdb *redis.Client, sessionID string) {
 	ctx := c.Context()
 	if ok, _ := rdb.SetNX(ctx, sessionRenewPrefix+sessionID, "1", SessionTTL/2).Result(); !ok {
 		return
@@ -412,7 +412,7 @@ func renewSlidingSession(c *fiber.Ctx, rdb *redis.Client, sessionID string) {
 	})
 }
 
-func DestroySession(c *fiber.Ctx, rdb *redis.Client) error {
+func DestroySession(c fiber.Ctx, rdb *redis.Client) error {
 	sessionID := c.Cookies(SessionCookieName)
 	if sessionID != "" {
 		rdb.Del(context.Background(), SessionPrefix+sessionID)
@@ -612,7 +612,7 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 // when we reject a request because the upstream OAuth refresh permanently
 // failed -- the cookie no longer points to a valid Redis session so it
 // shouldn't keep being presented.
-func clearSessionCookie(c *fiber.Ctx) {
+func clearSessionCookie(c fiber.Ctx) {
 	c.Cookie(&fiber.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",

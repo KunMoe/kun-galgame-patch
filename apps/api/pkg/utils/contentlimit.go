@@ -1,6 +1,6 @@
 package utils
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 // Wiki NSFW filter values per docs/galgame_wiki/00-handbook-for-downstream.md §16.
 const (
@@ -21,7 +21,7 @@ const (
 // Casing is strict (wiki spec §16.1 explicitly does NOT identify uppercase) —
 // "SFW" / "Sfw" / "NSFW" all fall through to "" so a typo never silently
 // upgrades to "all".
-func ContentLimitFromQuery(c *fiber.Ctx) string {
+func ContentLimitFromQuery(c fiber.Ctx) string {
 	switch c.Query("content_limit") {
 	case ContentLimitSFW, ContentLimitNSFW, ContentLimitAll:
 		return c.Query("content_limit")
@@ -40,7 +40,7 @@ func ContentLimitFromQuery(c *fiber.Ctx) string {
 // wiki's batch-is-explicit default). See docs/galgame_wiki/00-handbook §16.2
 // — wiki gives list endpoints a sfw default; we mirror that here for moyu
 // list endpoints that go through the batch enrichment path.
-func ContentLimitForListBrowse(c *fiber.Ctx) string {
+func ContentLimitForListBrowse(c fiber.Ctx) string {
 	if v := ContentLimitFromQuery(c); v != "" {
 		return v
 	}
@@ -60,6 +60,6 @@ func ContentLimitForListBrowse(c *fiber.Ctx) string {
 // on resource create/delete (patch/service UpdateCount), so > 0 == "has at
 // least one patch resource". Wiki-delegated lists (tag / search) are NOT moyu
 // owned and intentionally don't honor this.
-func IncludeEmptyGalgames(c *fiber.Ctx) bool {
-	return c.QueryBool("include_empty", false)
+func IncludeEmptyGalgames(c fiber.Ctx) bool {
+	return fiber.Query(c, "include_empty", false)
 }

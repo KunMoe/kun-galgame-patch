@@ -6,8 +6,8 @@ import (
 
 	"kun-galgame-patch-api/pkg/config"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func CORS(cfg config.CORSConfig) fiber.Handler {
@@ -16,15 +16,29 @@ func CORS(cfg config.CORSConfig) fiber.Handler {
 		// allowlist (HikariCORS) — skip the app-frontend CORS for it so the
 		// route owns the preflight + Access-Control-Allow-Origin (this CORS
 		// allows only moyu's own origins, which would reject every partner).
-		Next: func(c *fiber.Ctx) bool {
+		Next: func(c fiber.Ctx) bool {
 			return strings.HasPrefix(c.Path(), "/api/v1/hikari")
 		},
-		AllowOrigins:     cfg.AllowOrigins,
-		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowOrigins:     splitOrigins(cfg.AllowOrigins),
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
 		MaxAge:           86400,
 	})
+}
+
+// splitOrigins turns the comma-separated CORS_ALLOW_ORIGINS env value into the
+// []string that Fiber v3's cors.Config expects, trimming incidental whitespace
+// (v3 matches origins exactly, so a stray space would silently break CORS).
+func splitOrigins(csv string) []string {
+	parts := strings.Split(csv, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // hikariOriginPatterns is the partner-site allowlist for the external Hikari
@@ -65,7 +79,7 @@ func hikariOriginAllowed(origin string) bool {
 // OPTIONS preflight. Public read API → no credentials. Applied via api.Use so
 // it runs for both GET and the OPTIONS preflight.
 func HikariCORS() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		origin := c.Get("Origin")
 		if origin != "" && hikariOriginAllowed(origin) {
 			c.Set("Access-Control-Allow-Origin", origin)

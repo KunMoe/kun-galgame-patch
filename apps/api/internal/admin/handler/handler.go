@@ -17,7 +17,7 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type AdminHandler struct {
@@ -108,7 +108,7 @@ func (h *AdminHandler) attachLogUsers(ctx context.Context, ls []adminModel.Admin
 	}
 }
 
-func getIDParam(c *fiber.Ctx, name string) (int, error) {
+func getIDParam(c fiber.Ctx, name string) (int, error) {
 	id, err := strconv.Atoi(c.Params(name))
 	if err != nil || id < 1 {
 		return 0, errors.ErrBadRequest("invalid ID")
@@ -119,7 +119,7 @@ func getIDParam(c *fiber.Ctx, name string) (int, error) {
 // ===== Comments =====
 
 // GetComments GET /api/admin/comment
-func (h *AdminHandler) GetComments(c *fiber.Ctx) error {
+func (h *AdminHandler) GetComments(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -135,7 +135,7 @@ func (h *AdminHandler) GetComments(c *fiber.Ctx) error {
 }
 
 // UpdateComment PUT /api/admin/comment/:id
-func (h *AdminHandler) UpdateComment(c *fiber.Ctx) error {
+func (h *AdminHandler) UpdateComment(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -154,7 +154,7 @@ func (h *AdminHandler) UpdateComment(c *fiber.Ctx) error {
 }
 
 // DeleteComment DELETE /api/admin/comment/:id
-func (h *AdminHandler) DeleteComment(c *fiber.Ctx) error {
+func (h *AdminHandler) DeleteComment(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -170,7 +170,7 @@ func (h *AdminHandler) DeleteComment(c *fiber.Ctx) error {
 // ===== Resources =====
 
 // GetResources GET /api/admin/resource
-func (h *AdminHandler) GetResources(c *fiber.Ctx) error {
+func (h *AdminHandler) GetResources(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -186,7 +186,7 @@ func (h *AdminHandler) GetResources(c *fiber.Ctx) error {
 }
 
 // UpdateResource PUT /api/admin/resource/:id
-func (h *AdminHandler) UpdateResource(c *fiber.Ctx) error {
+func (h *AdminHandler) UpdateResource(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -205,7 +205,7 @@ func (h *AdminHandler) UpdateResource(c *fiber.Ctx) error {
 }
 
 // DeleteResource DELETE /api/admin/resource/:id
-func (h *AdminHandler) DeleteResource(c *fiber.Ctx) error {
+func (h *AdminHandler) DeleteResource(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -225,12 +225,12 @@ func (h *AdminHandler) DeleteResource(c *fiber.Ctx) error {
 // Dry run: returns the count breakdown of everything a purge would remove. The
 // purge_owned_patches query flag mirrors the execute-time force option so the
 // owned-patch collateral counts reflect the same choice.
-func (h *AdminHandler) GetUserPurgePreview(c *fiber.Ctx) error {
+func (h *AdminHandler) GetUserPurgePreview(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	preview, perr := h.service.PurgeUserPreview(id, c.QueryBool("purge_owned_patches", false))
+	preview, perr := h.service.PurgeUserPreview(id, fiber.Query(c, "purge_owned_patches", false))
 	if perr != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
@@ -243,7 +243,7 @@ func (h *AdminHandler) GetUserPurgePreview(c *fiber.Ctx) error {
 // their S3 files, likes/favorites/contributes, follows, chat, private messages)
 // and the local user row, fixing denormalized counters on surviving content.
 // Out of scope: OAuth identity, Wiki, kungal, image_service. Admin-only.
-func (h *AdminHandler) PurgeUser(c *fiber.Ctx) error {
+func (h *AdminHandler) PurgeUser(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
@@ -273,7 +273,7 @@ func (h *AdminHandler) PurgeUser(c *fiber.Ctx) error {
 // admin frontend pairs this list with the per-row "open detail" link to drill
 // down). Each row is enriched via Wiki so the admin sees the same name/banner
 // they see elsewhere on the site.
-func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
+func (h *AdminHandler) GetGalgame(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -295,12 +295,12 @@ func (h *AdminHandler) GetGalgame(c *fiber.Ctx) error {
 // ===== Settings =====
 
 // GetCommentVerify GET /api/admin/setting/comment-verify
-func (h *AdminHandler) GetCommentVerify(c *fiber.Ctx) error {
+func (h *AdminHandler) GetCommentVerify(c fiber.Ctx) error {
 	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting(settingService.KeyCommentVerify)})
 }
 
 // SetCommentVerify PUT /api/admin/setting/comment-verify
-func (h *AdminHandler) SetCommentVerify(c *fiber.Ctx) error {
+func (h *AdminHandler) SetCommentVerify(c fiber.Ctx) error {
 	var req dto.AdminSettingBoolRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -312,7 +312,7 @@ func (h *AdminHandler) SetCommentVerify(c *fiber.Ctx) error {
 }
 
 // GetCreatorOnly GET /api/admin/setting/creator-only
-func (h *AdminHandler) GetCreatorOnly(c *fiber.Ctx) error {
+func (h *AdminHandler) GetCreatorOnly(c fiber.Ctx) error {
 	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting(settingService.KeyCreatorOnly)})
 }
 
@@ -320,7 +320,7 @@ func (h *AdminHandler) GetCreatorOnly(c *fiber.Ctx) error {
 //
 // When on, only moderators / admins (role > 2) may publish a galgame — enforced
 // in the patch publish handlers (CreatePatch / ClaimGalgame / SubmitGalgame).
-func (h *AdminHandler) SetCreatorOnly(c *fiber.Ctx) error {
+func (h *AdminHandler) SetCreatorOnly(c fiber.Ctx) error {
 	var req dto.AdminSettingBoolRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -338,7 +338,7 @@ func (h *AdminHandler) SetCreatorOnly(c *fiber.Ctx) error {
 // ===== Stats =====
 
 // GetStats GET /api/admin/stats
-func (h *AdminHandler) GetStats(c *fiber.Ctx) error {
+func (h *AdminHandler) GetStats(c fiber.Ctx) error {
 	var req dto.AdminStatsRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -347,7 +347,7 @@ func (h *AdminHandler) GetStats(c *fiber.Ctx) error {
 }
 
 // GetStatsSum GET /api/admin/stats/sum
-func (h *AdminHandler) GetStatsSum(c *fiber.Ctx) error {
+func (h *AdminHandler) GetStatsSum(c fiber.Ctx) error {
 	return response.OK(c, h.service.GetStatsSum())
 }
 
@@ -364,7 +364,7 @@ func (h *AdminHandler) GetStatsSum(c *fiber.Ctx) error {
 // Use case: when a user reports "this download is broken", an admin can pull
 // up the resource's history and see exactly when the file was swapped, by
 // whom, and why.
-func (h *AdminHandler) GetResourceFileHistory(c *fiber.Ctx) error {
+func (h *AdminHandler) GetResourceFileHistory(c fiber.Ctx) error {
 	resourceID, perr := strconv.Atoi(c.Params("id"))
 	if perr != nil || resourceID <= 0 {
 		return response.Error(c, errors.ErrBadRequest("invalid resource id"))
@@ -381,7 +381,7 @@ func (h *AdminHandler) GetResourceFileHistory(c *fiber.Ctx) error {
 }
 
 // GetLogs GET /api/admin/log
-func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
+func (h *AdminHandler) GetLogs(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -411,7 +411,7 @@ func (h *AdminHandler) GetLogs(c *fiber.Ctx) error {
 //
 // Alongside `items`, the response returns pending_count (vndb_id = pending-N)
 // and bad_vndb_count (vndb_id malformed — not vN and not pending-).
-func (h *AdminHandler) GetOrphanPatches(c *fiber.Ctx) error {
+func (h *AdminHandler) GetOrphanPatches(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))

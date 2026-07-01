@@ -3,7 +3,7 @@ package response
 import (
 	"kun-galgame-patch-api/pkg/errors"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Response struct {
@@ -18,7 +18,7 @@ type PaginatedData struct {
 	Total int64 `json:"total"`
 }
 
-func OK(c *fiber.Ctx, data any) error {
+func OK(c fiber.Ctx, data any) error {
 	return c.JSON(Response{
 		Code:    0,
 		Message: "OK",
@@ -26,7 +26,7 @@ func OK(c *fiber.Ctx, data any) error {
 	})
 }
 
-func OKMessage(c *fiber.Ctx, msg string) error {
+func OKMessage(c fiber.Ctx, msg string) error {
 	return c.JSON(Response{
 		Code:    0,
 		Message: msg,
@@ -36,7 +36,7 @@ func OKMessage(c *fiber.Ctx, msg string) error {
 
 // Paginated emits { code, message, data: { items, total } }.
 // Nullish items are normalized to an empty slice to keep the shape stable for the frontend.
-func Paginated(c *fiber.Ctx, items any, total int64) error {
+func Paginated(c fiber.Ctx, items any, total int64) error {
 	return c.JSON(Response{
 		Code:    0,
 		Message: "OK",
@@ -44,7 +44,7 @@ func Paginated(c *fiber.Ctx, items any, total int64) error {
 	})
 }
 
-func Error(c *fiber.Ctx, err *errors.AppError) error {
+func Error(c fiber.Ctx, err *errors.AppError) error {
 	return c.Status(err.HTTPStatus).JSON(Response{
 		Code:    err.Code,
 		Message: err.Message,

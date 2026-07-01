@@ -5,14 +5,14 @@ import (
 
 	"kun-galgame-patch-api/internal/middleware"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func (a *App) RegisterRoutes() {
 	// Liveness probe — root /healthz, used by container HEALTHCHECK (no auth, no
 	// DB touch). The `server healthcheck` subcommand GETs this and exits 0/1 —
 	// see cmd/server/main.go + pkg/health. Unified to /healthz across services.
-	a.Fiber.Get("/healthz", func(c *fiber.Ctx) error {
+	a.Fiber.Get("/healthz", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 

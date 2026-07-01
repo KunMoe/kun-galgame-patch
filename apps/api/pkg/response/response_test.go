@@ -10,7 +10,7 @@ import (
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,12 +21,12 @@ func setupApp() *fiber.App {
 
 func TestOK(t *testing.T) {
 	app := setupApp()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		return response.OK(c, map[string]string{"key": "value"})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -41,12 +41,12 @@ func TestOK(t *testing.T) {
 
 func TestOKMessage(t *testing.T) {
 	app := setupApp()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		return response.OKMessage(c, "done")
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 
 	body := readBody(t, resp)
@@ -60,12 +60,12 @@ func TestOKMessage(t *testing.T) {
 
 func TestPaginated(t *testing.T) {
 	app := setupApp()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		return response.Paginated(c, []int{1, 2, 3}, 100)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 
 	body := readBody(t, resp)
@@ -86,12 +86,12 @@ func TestPaginated(t *testing.T) {
 
 func TestError(t *testing.T) {
 	app := setupApp()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("item not found"))
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 

@@ -7,12 +7,12 @@ import (
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // CreatorStatus — GET /api/user/creator/status: moyu eligibility snapshot +
 // the user's current creator application (from the central OAuth queue).
-func (h *UserHandler) CreatorStatus(c *fiber.Ctx) error {
+func (h *UserHandler) CreatorStatus(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	token := middleware.GetAccessToken(c)
 	// token is forwarded to OAuth as the user's Bearer; a live session with no
@@ -29,7 +29,7 @@ func (h *UserHandler) CreatorStatus(c *fiber.Ctx) error {
 
 // CreatorApply — POST /api/user/creator/apply {message?}: checks moyu's
 // eligibility gate then files the application on the OAuth queue.
-func (h *UserHandler) CreatorApply(c *fiber.Ctx) error {
+func (h *UserHandler) CreatorApply(c fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	token := middleware.GetAccessToken(c)
 	if userID == 0 || token == "" {

@@ -12,7 +12,7 @@ import (
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
 
@@ -24,7 +24,7 @@ func New(svc *service.DocService) *DocHandler {
 	return &DocHandler{svc: svc}
 }
 
-func docID(c *fiber.Ctx) (int, *apperrors.AppError) {
+func docID(c fiber.Ctx) (int, *apperrors.AppError) {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil || id < 1 {
 		return 0, apperrors.ErrBadRequest("invalid doc id")
@@ -35,7 +35,7 @@ func docID(c *fiber.Ctx) (int, *apperrors.AppError) {
 // ===== Public =====
 
 // ListPosts GET /doc/posts — published flat list + category tree.
-func (h *DocHandler) ListPosts(c *fiber.Ctx) error {
+func (h *DocHandler) ListPosts(c fiber.Ctx) error {
 	out, err := h.svc.List()
 	if err != nil {
 		return response.Error(c, apperrors.ErrInternal(""))
@@ -45,7 +45,7 @@ func (h *DocHandler) ListPosts(c *fiber.Ctx) error {
 
 // ListPinnedPosts GET /doc/pinned — pinned published docs for the home
 // carousel, newest first by display date.
-func (h *DocHandler) ListPinnedPosts(c *fiber.Ctx) error {
+func (h *DocHandler) ListPinnedPosts(c fiber.Ctx) error {
 	items, err := h.svc.ListPinned()
 	if err != nil {
 		return response.Error(c, apperrors.ErrInternal(""))
@@ -54,7 +54,7 @@ func (h *DocHandler) ListPinnedPosts(c *fiber.Ctx) error {
 }
 
 // GetPost GET /doc/post?slug=<category>/<name> — published only.
-func (h *DocHandler) GetPost(c *fiber.Ctx) error {
+func (h *DocHandler) GetPost(c fiber.Ctx) error {
 	slug := c.Query("slug")
 	if slug == "" {
 		return response.Error(c, apperrors.ErrBadRequest("slug 不能为空"))
@@ -70,7 +70,7 @@ func (h *DocHandler) GetPost(c *fiber.Ctx) error {
 }
 
 // IncrementView PUT /doc/view?slug=... — best-effort view counter.
-func (h *DocHandler) IncrementView(c *fiber.Ctx) error {
+func (h *DocHandler) IncrementView(c fiber.Ctx) error {
 	slug := c.Query("slug")
 	if slug != "" {
 		h.svc.IncrementViewBySlug(slug)
@@ -81,7 +81,7 @@ func (h *DocHandler) IncrementView(c *fiber.Ctx) error {
 // ===== Admin (moderator+) =====
 
 // AdminListPosts GET /admin/doc — all docs incl. drafts.
-func (h *DocHandler) AdminListPosts(c *fiber.Ctx) error {
+func (h *DocHandler) AdminListPosts(c fiber.Ctx) error {
 	items, err := h.svc.ListAdmin()
 	if err != nil {
 		return response.Error(c, apperrors.ErrInternal(""))
@@ -90,7 +90,7 @@ func (h *DocHandler) AdminListPosts(c *fiber.Ctx) error {
 }
 
 // AdminGetPost GET /admin/doc/:id — raw doc for the editor.
-func (h *DocHandler) AdminGetPost(c *fiber.Ctx) error {
+func (h *DocHandler) AdminGetPost(c fiber.Ctx) error {
 	id, appErr := docID(c)
 	if appErr != nil {
 		return response.Error(c, appErr)
@@ -106,7 +106,7 @@ func (h *DocHandler) AdminGetPost(c *fiber.Ctx) error {
 }
 
 // CreatePost POST /admin/doc
-func (h *DocHandler) CreatePost(c *fiber.Ctx) error {
+func (h *DocHandler) CreatePost(c fiber.Ctx) error {
 	var req dto.DocCreateRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, apperrors.ErrBadRequest(err.Error()))
@@ -120,7 +120,7 @@ func (h *DocHandler) CreatePost(c *fiber.Ctx) error {
 }
 
 // UpdatePost PUT /admin/doc/:id
-func (h *DocHandler) UpdatePost(c *fiber.Ctx) error {
+func (h *DocHandler) UpdatePost(c fiber.Ctx) error {
 	id, appErr := docID(c)
 	if appErr != nil {
 		return response.Error(c, appErr)
@@ -140,7 +140,7 @@ func (h *DocHandler) UpdatePost(c *fiber.Ctx) error {
 }
 
 // DeletePost DELETE /admin/doc/:id
-func (h *DocHandler) DeletePost(c *fiber.Ctx) error {
+func (h *DocHandler) DeletePost(c fiber.Ctx) error {
 	id, appErr := docID(c)
 	if appErr != nil {
 		return response.Error(c, appErr)

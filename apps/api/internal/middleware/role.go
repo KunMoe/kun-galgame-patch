@@ -4,7 +4,7 @@ import (
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // RequireRole returns a middleware that admits requests whose OAuth roles
@@ -15,7 +15,7 @@ import (
 // docs/user-migration/02-data-mapping.md §7 for the mapping from legacy
 // integer roles to OAuth roles.
 func RequireRole(roles ...string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		if GetUser(c) == nil {
 			return response.Error(c, errors.ErrUnauthorized())
 		}
