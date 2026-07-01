@@ -23,6 +23,8 @@ This repo is one of the **downstreams of kun-galgame-infra (OAuth / identity / c
 8. If a change requires running a migration, tell the user explicitly at the end — which command, and against which database.
 9. Always seek the most modern, elegant solution that fits the project's current state; consult the latest official docs and resources online when useful.
 10. Never let the pursuit of elegance or modularity make the code complex or hard to follow, and don't write over-defensive code.
+11. A Nuxt page — and any component used as a page/route root — must have a **single real root element**: never `display: contents` (generates no box, so the transition can't attach) and never a leading comment / whitespace / sibling at the template root (a comment is itself a root node). Either trips Nuxt's "does not have a single root node" warning and drops the page-transition enter animation (the page appears without animating). Keep explanatory comments *inside* the root element.
+12. Reserve the scrollbar gutter globally — `html { scrollbar-gutter: stable }`, with an `overflow-y: scroll` `@supports` fallback — so the document width is constant across routes. Otherwise navigating from a scrolling page to a height-locked one (no scrollbar) removes the classic scrollbar's ~15px and the centered layout shifts sideways: a "teleport" at the tail of the page transition. This is a browser layout fact, not a transition bug. Use single-edge `stable` (`both-edges` is buggy in Chrome); it's a harmless no-op under overlay scrollbars (macOS/iOS).
 
 ## Cross-Service Contracts (Inviolable — owned by kun-galgame-infra)
 
