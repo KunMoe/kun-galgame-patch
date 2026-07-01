@@ -309,7 +309,8 @@ PR 详情，包含与 base revision 的差异。
       "galgame_id": 1,
       "user_id": 2,
       "status": 0,
-      "note": "修改标题",
+      "title": "修改标题",
+      "message": "把中文标题改成正式译名",
       "base_revision": 1,
       "snapshot": { ... },
       "completed_by": null,
@@ -352,7 +353,8 @@ PR 详情，包含与 base revision 的差异。
 {
   "name_zh_cn": "新标题",
   "tag_ids": [1, 2, 3],
-  "note": "修改标题和标签"
+  "title": "修改标题和标签",
+  "message": "把中文标题改成正式译名，并补了 2 个标签"
 }
 ```
 
@@ -369,7 +371,8 @@ PR 详情，包含与 base revision 的差异。
 | screenshots | ScreenshotInput[] | image_service hash 数组（替换全部），无"钉住"约束 |
 | release_date | string | `YYYY-MM-DD` 字符串或 `""`（未知） |
 | release_date_tba | bool | 是否官方已宣布日期未定 |
-| note | string | PR 说明 |
+| title | string | PR 标题 |
+| message | string | PR 说明（改动的详细描述；旧版单 `note` 字段已废弃，PR 用 title + message，revision 才用 note） |
 
 **成功响应**：返回**新建的 PR 对象**（`status=0` pending），结构同 [GET /galgame/:gid/prs/:id](#get-galgamegidprsid) 的 `data.pr`（`completed_by` / `completed_time` / `revision_id` 在 pending 阶段为空，被 `omitempty` 省略）。
 
