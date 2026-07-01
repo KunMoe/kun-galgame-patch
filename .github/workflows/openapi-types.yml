@@ -1,0 +1,47 @@
+name: openapi-types
+
+# Drift gate for the generated TypeScript arm of the galgame-wiki OpenAPI
+# contract. The committed generated *.ts must equal a fresh openapi-typescript
+# run against the PUBLISHED wiki spec — this catches a stale regeneration, a
+# hand-edit to a generated file, or an upstream spec change moyu hasn't picked
+# up yet (regenerate with `pnpm --filter @apps/web run gen:types:galgame-*`).
+#
+# The spec's single source is infra (docs-kungal.nextmoe.dev/specs); moyu only
+# consumes it, so there is no local spec file to watch — the gate re-fetches the
+# published spec on each run. If infra changes a field, the next run here goes
+# red until the types are regenerated + committed.
+
+on:
+  push:
+    paths: &paths
+      - "apps/web/app/shared/types/generated/**"
+      - "apps/web/package.json"
+      - ".github/workflows/openapi-types.yml"
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openapi-types-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: generated TS types match the published wiki spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # `pnpm dlx openapi-typescript@<pinned>` fetches the generator on the fly;
+      # no install / lockfile entry is needed.
+      - name: Regenerate TS types from the published wiki spec
+        run: |
+          pnpm --filter "@apps/web" run gen:types:galgame-read
+          pnpm --filter "@apps/web" run gen:types:galgame-calendar
+      - name: Fail if the generated types are stale vs the published spec
+        run: git diff --exit-code -- apps/web/app/shared/types/generated/
