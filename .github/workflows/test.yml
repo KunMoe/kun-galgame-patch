@@ -1,0 +1,47 @@
+# CI test gate for the Go module under apps/api: build + vet + `go test ./...`.
+#
+# One `unit` job, no service containers — every moyu test is self-contained
+# (miniredis for Redis, mocked wiki/OAuth/artifact clients), so the whole suite
+# runs green with nothing external. This is the day-one gate that catches
+# "compiles but the logic regressed" — exactly the net the Fiber v2->v3 migration
+# had to be verified by hand for its absence.
+#
+# Independent of build.yml on purpose: deploys are NOT blocked while this proves
+# out. Once it's reliably green, add `needs: test` to build.yml's build job to
+# actually gate the deploy on a passing suite.
+name: test
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/test.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/api
+
+jobs:
+  unit:
+    name: unit (build · vet · test, no services)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
