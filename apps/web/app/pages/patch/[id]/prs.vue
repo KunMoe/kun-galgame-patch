@@ -307,12 +307,12 @@ const doDecline = async () => {
                 base #{{ pr.base_revision }}
               </span>
             </div>
-            <p v-if="pr.note" class="text-default-700 mt-1 truncate text-sm">
-              {{ pr.note }}
+            <p v-if="pr.title" class="text-default-700 mt-1 truncate text-sm">
+              {{ pr.title }}
             </p>
             <p class="text-default-500 mt-1 text-xs">
               用户 #{{ pr.user_id }} ·
-              {{ formatDate(pr.created, { isPrecise: true, isShowYear: true }) }}
+              {{ pr.created ? formatDate(pr.created, { isPrecise: true, isShowYear: true }) : '' }}
             </p>
           </div>
           <KunIcon name="lucide:chevron-right" class="size-4 shrink-0" />
@@ -339,8 +339,14 @@ const doDecline = async () => {
               {{ PR_STATUS[detail.pr.status]?.text }}
             </KunChip>
           </div>
-          <p v-if="detail.pr.note" class="text-default-700 mb-4 text-sm">
-            {{ detail.pr.note }}
+          <p v-if="detail.pr.title" class="mb-1 font-medium">
+            {{ detail.pr.title }}
+          </p>
+          <p
+            v-if="detail.pr.message"
+            class="text-default-700 mb-4 text-sm whitespace-pre-wrap"
+          >
+            {{ detail.pr.message }}
           </p>
 
           <GalgameEditDiffView

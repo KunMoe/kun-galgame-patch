@@ -165,7 +165,7 @@ const snapshotEntries = computed(() =>
             </p>
             <p class="text-default-500 text-xs">
               用户 #{{ r.user_id }} ·
-              {{ formatDate(r.created, { isPrecise: true, isShowYear: true }) }}
+              {{ r.created ? formatDate(r.created, { isPrecise: true, isShowYear: true }) : '' }}
             </p>
           </div>
 

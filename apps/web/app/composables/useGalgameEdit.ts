@@ -15,84 +15,21 @@ export interface WikiPage<T> {
   total: number
 }
 
-export interface GalgameRevision {
-  id: number
-  galgame_id: number
-  revision: number
-  user_id: number
-  action: 'created' | 'updated' | 'merged' | 'reverted' | 'declined' | string
-  note: string
-  is_minor: boolean
-  reverted_to: number | null
-  created: string
-}
-
-// Wiki revision/PR snapshots are an open shape (vndb_id, name_*, intro_*,
-// aliases, tag_ids, official_ids, engine_ids, links, ...). Keep it permissive
-// and let the diff view iterate keys generically.
-export type GalgameSnapshot = Record<string, unknown>
-
-export interface GalgameRevisionDetail extends GalgameRevision {
-  snapshot: GalgameSnapshot
-}
-
-// K-PR 2026-05-22: diff / PR detail responses now include a `names` map of
-// taxonomy id → display name covering every tag / official / engine / series
-// referenced in either snapshot. Missing keys = the entity was soft/hard-
-// deleted Wiki-side; consumers should fall back to `已删除 #<id>`. Avoids
-// the previous N+1 follow-up to resolve display names.
-// See docs/galgame_wiki/02-revisions-and-prs.md §names callout.
-export interface GalgameDiffNames {
-  tags: Record<string, string>
-  officials: Record<string, string>
-  engines: Record<string, string>
-  series: Record<string, string>
-}
-
-export interface GalgameDiff {
-  changed_keys: Record<string, boolean>
-  old: GalgameSnapshot
-  new: GalgameSnapshot
-  names?: GalgameDiffNames
-}
-
-export interface GalgamePR {
-  id: number
-  galgame_id: number
-  user_id: number
-  status: 0 | 1 | 2 // 0 pending, 1 merged, 2 declined
-  note: string
-  base_revision: number
-  snapshot: GalgameSnapshot
-  completed_by: number | null
-  revision_id: number | null
-  created: string
-}
-
-export interface GalgamePRDetail {
-  pr: GalgamePR
-  changed_keys: Record<string, boolean>
-  // K-PR 2026-05-22: same names map as GalgameDiff.names, covering both
-  // the base revision and the PR snapshot. See GalgameDiffNames docstring.
-  names?: GalgameDiffNames
-}
-
-export interface GalgameLink {
-  id: number
-  galgame_id: number
-  name: string
-  link: string
-  created: string
-  updated: string
-}
-
-export interface GalgameAlias {
-  id: number
-  galgame_id: number
-  name: string
-  created: string
-  updated: string
-}
+// Wiki-proxied edit shapes are aliased to the generated OpenAPI schemas
+// (shared/types/galgame-wiki.ts) so a backend wire change fails the drift gate
+// + tsc here instead of breaking at runtime. Re-exported so the edit surface
+// keeps importing them from this one composable.
+export type {
+  GalgameSnapshot,
+  GalgameRevision,
+  GalgameRevisionDetail,
+  GalgameDiff,
+  GalgameDiffNames,
+  GalgamePR,
+  GalgamePRDetail,
+  GalgameLink,
+  GalgameAlias
+} from '~/shared/types/galgame-wiki'
 
 // W3 / Wiki U3 — taxonomy revision (multi-polymorphic single-table on the
 // Wiki side; entity column distinguishes tag/official/engine/series). snapshot
