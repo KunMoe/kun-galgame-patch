@@ -13,25 +13,28 @@ func TestMentionLink(t *testing.T) {
 		in   string
 		want string
 	}{
+		// rel="nofollow" is appended by the bluemonday sanitize pass (UGCPolicy)
+		// to every rendered <a>; the mention chip (class + data-id) and the
+		// relative internal href both survive it.
 		{
 			name: "mention with /resource sub-route",
 			in:   "hi [@kun](/user/1/resource) hello",
-			want: `<a class="kun-mention" data-id="1" href="/user/1/resource">@kun</a>`,
+			want: `<a class="kun-mention" data-id="1" href="/user/1/resource" rel="nofollow">@kun</a>`,
 		},
 		{
 			name: "bare /user/<userID>",
 			in:   "[@yui](/user/42)",
-			want: `<a class="kun-mention" data-id="42" href="/user/42">@yui</a>`,
+			want: `<a class="kun-mention" data-id="42" href="/user/42" rel="nofollow">@yui</a>`,
 		},
 		{
 			name: "non-mention link is unchanged",
 			in:   "[click](https://example.com)",
-			want: `<a href="https://example.com">click</a>`,
+			want: `<a href="https://example.com" rel="nofollow">click</a>`,
 		},
 		{
 			name: "user link without leading @ falls back to plain link",
 			in:   "[whatever](/user/7/resource)",
-			want: `<a href="/user/7/resource">whatever</a>`,
+			want: `<a href="/user/7/resource" rel="nofollow">whatever</a>`,
 		},
 	}
 	for _, tc := range cases {
@@ -71,31 +74,55 @@ func TestRenderEmptyString(t *testing.T) {
 	}
 }
 
-func TestRenderRawHTMLIsEscaped(t *testing.T) {
-	out := markdown.MustRender("<script>alert(1)</script>")
-	if strings.Contains(out, "<script>") {
-		t.Errorf("raw <script> leaked into output: %s", out)
+// TestRenderSanitizesRawHTML locks the server-side XSS boundary: goldmark runs
+// with WithUnsafe (raw user HTML passes through) and the bluemonday allow-list
+// (sanitize.go) neutralizes it. This is the only sanitizer now that the frontend
+// binds *_html via v-html with no client-side DOMPurify — each `bad` substring
+// (a live element, event handler, or unsafe scheme) must NOT survive. Note the
+// property is "neutralized", not "escaped": a dangerous attribute is stripped
+// while a safe carrier tag may remain (e.g. <img onerror> → <img src>).
+func TestRenderSanitizesRawHTML(t *testing.T) {
+	cases := []struct{ name, in, bad string }{
+		{"script element", `<script>alert(1)</script>`, "<script"},
+		{"style element", `<style>body{}</style>`, "<style"},
+		{"img onerror handler", `<img src=x onerror="alert(1)">`, "onerror"},
+		{"svg onload handler", `<svg onload="alert(1)"></svg>`, "<svg"},
+		{"iframe element", `<iframe src="https://evil.example"></iframe>`, "<iframe"},
+		{"anchor onclick handler", `<a href="/x" onclick="alert(1)">x</a>`, "onclick"},
+		{"javascript: href", `<a href="javascript:alert(1)">x</a>`, "javascript:"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := strings.ToLower(markdown.MustRender(tc.in))
+			if strings.Contains(out, tc.bad) {
+				t.Errorf("dangerous %q survived sanitization for input %q:\n  %s", tc.bad, tc.in, out)
+			}
+		})
 	}
 }
 
-// TestRenderRawHTMLTagsEscaped locks the server-side XSS boundary: with
-// html.WithUnsafe off, every raw HTML tag a user can type must be escaped to
-// text, never emitted as a live element. This is the only sanitizer now that
-// the frontend binds *_html via v-html with no client-side DOMPurify — if a
-// future change enables WithUnsafe, these fail.
-func TestRenderRawHTMLTagsEscaped(t *testing.T) {
-	cases := []struct{ in, tag string }{
-		{`<script>alert(1)</script>`, "<script"},
-		{`<img src=x onerror="alert(1)">`, "<img"},
-		{`<svg onload="alert(1)"></svg>`, "<svg"},
-		{`<iframe src="https://evil.example"></iframe>`, "<iframe"},
-		{`<a href="javascript:alert(1)">x</a>`, "javascript:"},
+// TestSanitizePreservesRichContent is the companion to the XSS test: the
+// allow-list must NOT strip anything this package's renderers legitimately emit,
+// or real content silently breaks. Each `want` substring is a feature the policy
+// has to let through (mention chip, image blur-up metadata, heading anchor, code
+// language class, GFM task-list + table alignment, internal relative link).
+func TestSanitizePreservesRichContent(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"mention chip class + data-id", "[@kun](/user/1)", `class="kun-mention" data-id="1"`},
+		{"internal relative link href", "[patch](/patch/42)", `href="/patch/42"`},
+		{"heading anchor id", "## 关于\n", `id="关于"`},
+		{"fenced code language class", "```go\nx := 1\n```\n", `class="language-go"`},
+		{"gfm task list checkbox", "- [x] done\n", `type="checkbox"`},
+		{"gfm table cell alignment", "| a |\n|:-:|\n| b |\n", `align="center"`},
+		{"strikethrough", "~~x~~", `<del>x</del>`},
 	}
 	for _, tc := range cases {
-		out := markdown.MustRender(tc.in)
-		if strings.Contains(out, tc.tag) {
-			t.Errorf("raw HTML %q leaked unescaped for input %q:\n  %s", tc.tag, tc.in, out)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			out := markdown.MustRender(tc.in)
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("sanitizer stripped legitimate %q from input %q:\n  %s", tc.want, tc.in, out)
+			}
+		})
 	}
 }
 

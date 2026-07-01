@@ -355,21 +355,19 @@ var md = goldmark.New(
 	goldmark.WithRendererOptions(
 		html.WithHardWraps(),
 		html.WithXHTML(),
+		// SECURITY BOUNDARY — raw user HTML passes through here (WithUnsafe) and
+		// is made safe by the bluemonday allow-list applied to the rendered
+		// output (sanitize.go, run by Render / RenderWithTOC). That whitelist
+		// pass is the ONLY XSS sanitization for user content: the web frontend
+		// binds these *_html fields via v-html with no client-side sanitizer (the
+		// old DOMPurify-on-jsdom was removed — it leaked SSR memory and broke the
+		// Nitro build). Do NOT add a render path that skips Sanitize, and do NOT
+		// drop WithUnsafe expecting goldmark's escaping to protect you instead —
+		// WithUnsafe + the bluemonday pass are a pair (see markdown_test.go).
+		html.WithUnsafe(),
 		renderer.WithNodeRenderers(
 			util.Prioritized(newMentionLinkRenderer(), 99),
 		),
-		// SECURITY BOUNDARY — do NOT enable html.WithUnsafe.
-		//
-		// This is the ONLY XSS sanitization for user content now: the web
-		// frontend renders these *_html fields via v-html with no client-side
-		// sanitizer (the old DOMPurify-on-jsdom was removed — it leaked SSR
-		// memory and broke the Nitro build). With WithUnsafe off, goldmark
-		// escapes raw user HTML (<script>, <img onerror>, …) and the default
-		// link/image renderers run html.IsDangerousURL, which drops
-		// javascript:/vbscript:/data: URLs (see defaultLinkRender above and the
-		// XSS tests in markdown_test.go). If you ever need raw-HTML passthrough,
-		// you MUST add a server-side allow-list sanitizer (e.g. bluemonday)
-		// here first — enabling WithUnsafe alone reopens stored XSS.
 	),
 )
 
@@ -386,7 +384,7 @@ func Render(src string) (string, error) {
 	if err := md.Convert([]byte(src), &buf, parser.WithContext(ctx)); err != nil {
 		return "", err
 	}
-	return buf.String(), nil
+	return Sanitize(buf.String()), nil
 }
 
 // MustRender returns the original text on render failure (as a fallback).
@@ -449,7 +447,7 @@ func RenderWithTOC(src string) (string, []TOCItem, error) {
 	if err := md.Renderer().Render(&buf, source, doc); err != nil {
 		return "", nil, err
 	}
-	return buf.String(), toc, nil
+	return Sanitize(buf.String()), toc, nil
 }
 
 // ExtractMentionedUserIDs scans markdown source for [@text](/user/<id>/...)
