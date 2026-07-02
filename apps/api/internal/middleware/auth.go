@@ -561,16 +561,42 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+	// Tolerant reader (standard-wire cutover, mirrors service.go oauthPostJSON):
+	// the body is either the legacy {code,message,data} envelope (`code` key
+	// present) or the OAuth server's spec-compliant top-level JSON, whose errors
+	// are RFC 6749 {error,error_description} objects.
 	var env struct {
-		Code    int    `json:"code"`
+		Code    *int   `json:"code"`
 		Message string `json:"message"`
 		Data    struct {
 			AccessToken  string `json:"access_token"`
 			RefreshToken string `json:"refresh_token"`
 			ExpiresIn    int64  `json:"expires_in"`
 		} `json:"data"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+		AccessToken      string `json:"access_token"`
+		RefreshToken     string `json:"refresh_token"`
+		ExpiresIn        int64  `json:"expires_in"`
 	}
 	_ = json.Unmarshal(respBody, &env)
+
+	code := 0
+	msg := env.Message
+	if env.Code != nil {
+		code = *env.Code
+	} else if env.Error != "" {
+		// Map the standard error string back to the envelope code the check
+		// below branches on: invalid_grant / unauthorized_client (grant not
+		// allowed, legacy 15005) / invalid_client all mean refresh-dead.
+		switch env.Error {
+		case "invalid_grant", "unauthorized_client":
+			code = 15005
+		case "invalid_client":
+			code = 15008
+		}
+		msg = env.ErrorDescription
+	}
 
 	// Permanent reject: 401/403 (RFC 6749 invalid_grant style) or the
 	// OAuth-side business codes that mean "this session can never refresh":
@@ -585,24 +611,34 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 	// In every case we destroy the local session — there is no recovery.
 	if resp.StatusCode == http.StatusUnauthorized ||
 		resp.StatusCode == http.StatusForbidden ||
-		env.Code == 10002 || env.Code == 10003 || env.Code == 15003 ||
-		env.Code == 10014 || env.Code == 15005 || env.Code == 15008 {
+		code == 10002 || code == 10003 || code == 15003 ||
+		code == 10014 || code == 15005 || code == 15008 {
 		slog.Warn("OAuth refresh permanently rejected; destroying session",
-			"status", resp.StatusCode, "code", env.Code, "msg", env.Message)
+			"status", resp.StatusCode, "code", code, "msg", msg)
 		rdb.Del(ctx, SessionPrefix+sessionID)
-		return fmt.Errorf("refresh permanently rejected (status=%d code=%d)", resp.StatusCode, env.Code)
+		return fmt.Errorf("refresh permanently rejected (status=%d code=%d)", resp.StatusCode, code)
 	}
 	// Transient failure: leave the session for a future retry.
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("oauth refresh status=%d body=%s", resp.StatusCode, truncate(string(respBody), 200))
 	}
-	if env.Code != 0 {
-		return fmt.Errorf("oauth refresh code=%d msg=%s", env.Code, env.Message)
+	if code != 0 {
+		return fmt.Errorf("oauth refresh code=%d msg=%s", code, msg)
 	}
 
-	session.OAuthAccessToken = env.Data.AccessToken
-	session.OAuthRefreshToken = env.Data.RefreshToken
-	session.OAuthExpiresAt = time.Now().Unix() + env.Data.ExpiresIn
+	access, refresh, expires := env.Data.AccessToken, env.Data.RefreshToken, env.Data.ExpiresIn
+	if access == "" {
+		access, refresh, expires = env.AccessToken, env.RefreshToken, env.ExpiresIn
+	}
+	// A 200 with no token in either shape is malformed — treat as transient
+	// rather than storing an empty access token into the session.
+	if access == "" {
+		return fmt.Errorf("oauth refresh returned no access_token body=%s", truncate(string(respBody), 200))
+	}
+
+	session.OAuthAccessToken = access
+	session.OAuthRefreshToken = refresh
+	session.OAuthExpiresAt = time.Now().Unix() + expires
 
 	blob, _ := json.Marshal(session)
 	return rdb.Set(ctx, SessionPrefix+sessionID, blob, SessionTTL).Err()
