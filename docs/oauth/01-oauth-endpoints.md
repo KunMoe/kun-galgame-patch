@@ -41,7 +41,7 @@
 ```json
 {
   "grant_type": "refresh_token",
-  "refresh_token": "eyJhbGc...",
+  "refresh_token": "kx3v9q…（不透明随机串）",
   "client_id": "your-client-id",
   "client_secret": "your-client-secret"
 }
@@ -57,7 +57,7 @@
     "access_token": "eyJhbGc...",
     "token_type": "Bearer",
     "expires_in": 900,
-    "refresh_token": "eyJhbGc...",
+    "refresh_token": "kx3v9q…（不透明随机串）",
     "scope": "openid profile"
   }
 }
@@ -65,11 +65,14 @@
 
 | 字段 | 说明 |
 |------|------|
-| access_token | JWT，有效期 15 分钟 |
+| access_token | JWT，有效期 15 分钟（claims 见 [04](./04-tokens-and-errors.md)） |
 | token_type | 固定 "Bearer" |
 | expires_in | 900 秒（15 分钟） |
-| refresh_token | JWT，有效期 7 天。每次刷新会轮换 |
+| refresh_token | **不透明随机串**（不是 JWT，不要尝试解析/解码它）。有效期以服务端 session 为准（默认 90 天，admin 可按 client 调整）。每次刷新会轮换 |
 | scope | 可选，回显授权时的 scope |
+| id_token | 可选（授权带 `openid` scope 时返回），RS256 签名的 OIDC id_token，用 `{issuer}/oauth/jwks` 验签 |
+
+> **refresh_token 是不透明的**：服务端按值匹配（DB 查找），从不验签。历史上它曾是 JWT——已签发的旧 JWT 格式 refresh_token 依然有效（同样按值匹配），但新签发的一律是随机串，**不要**依赖其内部结构（例如解析过期时间——请以刷新失败作为过期信号）。
 
 > **限流**：此端点用 client_id 维度限流（不是 IP），所以 kungal/moyu 这种走 SSR 后端代理整个用户群的 confidential client 不会被踢到匿名 IP 桶里。一般不会撞到上限。
 
@@ -168,4 +171,4 @@
 
 ---
 
-错误码（15001 - 15009）的详细含义见 [04-tokens-and-errors.md §OAuth 错误](./04-tokens-and-errors.md#oauth-错误-15xxx)。
+错误码（15001 - 15011）的详细含义见 [04-tokens-and-errors.md §OAuth 错误](./04-tokens-and-errors.md#oauth-错误-15xxx)。

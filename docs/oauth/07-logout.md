@@ -54,11 +54,15 @@ GET {OAUTH_API_BASE}/oauth/logout?client_id=<client_id>&redirect=<post_logout_ur
 - **RP 必须用 `window.location.href`（浏览器顶层导航）跳过来，不能用 fetch/XHR** —— fetch 清不掉 OP 的 `localStorage`/cookie（见上文根因）。
 - 这是**后端入口**，会 302 跳到 OP 前端登出页 `/auth/logout`（与 `/oauth/authorize` 跳到前端同意页同一模式）。前端页执行：清 OP 会话（`POST /api/v1/auth/logout` 删 session + 清 refresh cookie）+ 清 OP 前端 `localStorage` 的 `user` 与 `access_token` cookie → 校验 `redirect` → `window.location` 跳回。
 - RP 复用访问 `/oauth/authorize` 时用的同一个 `OAUTH_API_BASE`（含 `/api/v1`），无需额外配置 OP 前端域名；dev（前后端不同源）下也能正确解析（后端用 `cfg.Server.FrontendURL` 找前端页）。
+- 该入口同时是 discovery 里宣告的 **`end_session_endpoint`**，接受 GET 与 POST（form），并支持 OIDC RP-Initiated Logout 标准参数（见下表）——标准 OIDC 库无需任何适配。
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `client_id` | 是 | 发起登出的 RP 客户端 ID（用于校验 `redirect` 白名单）|
-| `redirect` | 否 | 登出后回跳地址（post-logout redirect URI）。缺省 / 校验不过 → 跳 OP 首页 |
+| `client_id` | 否* | 发起登出的 RP 客户端 ID（用于校验回跳白名单）。*缺省时从 `id_token_hint` 的 `aud` 推导；两者都缺则无法回跳（登出后停留在 OP）|
+| `redirect` | 否 | 登出后回跳地址（一方 RP 的历史参数名）。缺省 / 校验不过 → 跳 OP 首页 |
+| `post_logout_redirect_uri` | 否 | OIDC 标准参数，与 `redirect` 等价（`redirect` 优先）|
+| `state` | 否 | OIDC 标准参数；校验通过的回跳地址上会原样回带 `state`（仅回带到白名单地址，不回带到 OP 首页兜底）|
+| `id_token_hint` | 否 | OIDC 标准参数；用其 `aud` 识别 client（不验签——它只用于选择校验白名单的 client，伪造它得不到该 client 白名单之外的任何跳转）|
 
 ### 2. 回跳白名单校验（OP 登出页内部用）
 

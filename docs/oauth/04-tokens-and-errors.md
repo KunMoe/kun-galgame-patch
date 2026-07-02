@@ -10,20 +10,32 @@
 
 ## JWT Access Token Claims
 
+Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
+
 ```json
 {
   "sub": "用户UUID",
+  "id": 12345,
   "email": "邮箱",
   "name": "用户名",
   "roles": ["admin", "ren"],
-  "site_id": 0,
+  "scope": "openid profile",
+  "site_id": 2,
+  "client_id": "签发给的 OAuth client",
+  "iss": "https://oauth.kungal.com",
+  "aud": ["www.moyu.moe"],
+  "jti": "随机 token id",
   "exp": 1700000000,
   "iat": 1699999100,
   "nbf": 1699999100
 }
 ```
 
-签名算法：HS256
+- `iss` 固定为 OP issuer（`{issuer}/.well-known/openid-configuration` 的 `issuer`）。
+- `aud` 是资源方标识 = 该 client 绑定站点的域名（RFC 9068 audience 限制）；client 未绑定站点时省略。**下游现有的站点校验仍以 `site_id` 为准**，`aud` 供标准校验器使用。
+- `scope` / `site_id` / `client_id` 在对应值为空时省略。
+
+签名算法：HS256（现状）。OIDC 切换（`KUN_OIDC_SIGN_ASYMMETRIC`）后改为 **ES256**（header 带 `kid`，公钥见 `{issuer}/oauth/jwks`）；切换窗口内两种签名都会被各服务接受，**下游把 access_token 当不透明字符串用即可**，不要对签名算法做硬编码假设。
 
 > **`roles` 是角色名的集合,普通用户为空数组 `[]`**（`user` 是隐式默认,**不会**出现在 claim 里)。角色及其能力语义的权威定义、以及下游必须遵守的规则,见 [11-roles.md](./11-roles.md)。
 
@@ -47,11 +59,27 @@
 | 15002 | 400 | 无效的回调地址 | redirect_uri 未注册 |
 | 15003 | 400 | 无效的授权码 | code 已过期 / 已使用 / 不存在 |
 | 15004 | 400 | 无效的代码验证器 | PKCE code_verifier 不匹配 |
-| 15005 | 400 | 无效的授权类型 | client 的 `grants` 列里没有当前 grant_type — **常见：admin 创建 client 时漏勾 `refresh_token`** |
+| 15005 | 400 | 客户端未被授权使用该授权类型 | client 的 `grants` 列里没有当前 grant_type — **常见：admin 创建 client 时漏勾 `refresh_token`**。RP 应按「refresh 已死 → 强制重新登录」处理 |
 | 15006 | 400 | 无效的权限范围 | 请求的 scope 不在 client 的 `allowed_scopes` 内 |
 | 15007 | 400 | 访问被拒绝 | 用户拒绝授权 |
 | 15008 | 400 | 无效的 client secret | confidential client 没传或填错 client_secret |
 | 15009 | 400 | 需要 PKCE | public client 没传 code_verifier |
+| 15011 | 400 | 不支持的授权类型 | `grant_type` 本身不被实现（仅 `authorization_code` / `refresh_token`） |
+
+### 标准 wire 格式下的错误（RFC 6749）
+
+OP 切换 `KUN_OIDC_STANDARD_WIRE` 后，`/oauth/token`、`/oauth/userinfo`、`/oauth/revoke` 的错误改为标准 OAuth 错误对象 `{"error": "...", "error_description": "..."}`（不再有 `code` 字段）。错误字符串与上表错误码的对应：
+
+| `error` | 对应错误码 | RP 处理 |
+|---------|-----------|---------|
+| `invalid_client` | 15001 / 15008 | 配置错误（client_id / secret），refresh 已死 |
+| `invalid_grant` | 15002 / 15003 / 15004 / 10002 / 10003 / 10014 | 授权凭据无效或会话已死 → 强制重新登录 |
+| `unauthorized_client` | 15005 | client 未被允许该 grant → refresh 已死 |
+| `invalid_scope` | 15006 | scope 配置错误 |
+| `unsupported_grant_type` | 15011 | 请求 bug（grant_type 写错） |
+| `invalid_request` | 其他 | 请求格式问题 |
+
+> 一方 RP 的宽容读取器必须把 `invalid_grant` / `unauthorized_client` / `invalid_client` 分类为「refresh 已死」（清会话、要求重新登录），**未知字符串才当瞬态错误重试** —— 否则死会话会无限重试。
 
 ### 认证错误 (10xxx)
 
