@@ -205,27 +205,36 @@ func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 	}
 	defer resp.Body.Close()
 
-	// Parse the envelope eagerly so we can detect business codes (e.g. 10014
-	// banned) that ship under non-2xx responses.
+	// Tolerant reader: envelope {code,message,data:userinfo} OR standard-wire
+	// top-level userinfo JSON. Banned still surfaces as the enveloped 10014
+	// (middleware.Auth's house error, unaffected by the wire cutover) or HTTP 403.
 	respBody, _ := io.ReadAll(resp.Body)
 	var env struct {
-		Code    int           `json:"code"`
-		Message string        `json:"message"`
-		Data    OAuthUserInfo `json:"data"`
+		Code    *int            `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
 	_ = json.Unmarshal(respBody, &env)
 
-	if env.Code == 10014 || resp.StatusCode == http.StatusForbidden {
+	if (env.Code != nil && *env.Code == 10014) || resp.StatusCode == http.StatusForbidden {
 		return nil, ErrUserBanned
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("OAuth userinfo request failed (%d): %s", resp.StatusCode, string(respBody))
 	}
-	if env.Code != 0 {
-		return nil, fmt.Errorf("OAuth userinfo error code=%d: %s", env.Code, env.Message)
+	payload := env.Data
+	if env.Code != nil {
+		if *env.Code != 0 {
+			return nil, fmt.Errorf("OAuth userinfo error code=%d: %s", *env.Code, env.Message)
+		}
+	} else {
+		payload = json.RawMessage(respBody)
 	}
-	out := env.Data
-	return &out, nil
+	var info OAuthUserInfo
+	if err := json.Unmarshal(payload, &info); err != nil {
+		return nil, fmt.Errorf("decode userinfo: %w", err)
+	}
+	return &info, nil
 }
 
 // FindOrCreateUserByID looks up the local user row by id, inserting an empty
@@ -291,25 +300,47 @@ func (s *AuthService) oauthPostJSON(path string, body any, out any) error {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+
+	// Tolerant reader (expand→contract for the OAuth server's standard-wire
+	// cutover): accept BOTH the legacy {code,message,data} envelope AND the
+	// spec-compliant top-level JSON. `code` is present iff it's the envelope; a
+	// standard error object carries `error`/`error_description`.
+	var env struct {
+		Code             *int            `json:"code"`
+		Message          string          `json:"message"`
+		Data             json.RawMessage `json:"data"`
+		Error            string          `json:"error"`
+		ErrorDescription string          `json:"error_description"`
+	}
+	_ = json.Unmarshal(respBody, &env) // best-effort; body may be non-JSON on 5xx
+
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("OAuth %s failed (%d): %s", path, resp.StatusCode, truncate(string(respBody), 500))
+		msg := env.ErrorDescription
+		if msg == "" {
+			msg = env.Error
+		}
+		if msg == "" {
+			msg = env.Message
+		}
+		if msg == "" {
+			msg = truncate(string(respBody), 500)
+		}
+		return fmt.Errorf("OAuth %s failed (%d): %s", path, resp.StatusCode, msg)
 	}
 
-	var env struct {
-		Code    int             `json:"code"`
-		Message string          `json:"message"`
-		Data    json.RawMessage `json:"data"`
+	// respPayload = the envelope's data, or the whole body when standard-wire.
+	respPayload := env.Data
+	if env.Code != nil {
+		if *env.Code != 0 {
+			return fmt.Errorf("OAuth %s error code=%d: %s", path, *env.Code, env.Message)
+		}
+	} else {
+		respPayload = json.RawMessage(respBody)
 	}
-	if err := json.Unmarshal(respBody, &env); err != nil {
-		return fmt.Errorf("decode oauth envelope: %w (body=%s)", err, truncate(string(respBody), 200))
-	}
-	if env.Code != 0 {
-		return fmt.Errorf("OAuth %s error code=%d: %s", path, env.Code, env.Message)
-	}
-	if out == nil || len(env.Data) == 0 {
+	if out == nil || len(respPayload) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal(env.Data, out); err != nil {
+	if err := json.Unmarshal(respPayload, out); err != nil {
 		return fmt.Errorf("decode oauth data: %w", err)
 	}
 	return nil
