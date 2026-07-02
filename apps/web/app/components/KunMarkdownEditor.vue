@@ -21,8 +21,11 @@ const props = withDefaults(
     image?: boolean
     /** UI language for the toolbar labels / placeholders. */
     locale?: string
+    /** Placeholder shown while the editor is empty (visual decoration only —
+        not part of the document / markdown output). */
+    placeholder?: string
   }>(),
-  { image: true, locale: 'zh-cn' }
+  { image: true, locale: 'zh-cn', placeholder: '' }
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -39,6 +42,7 @@ const onUpdate = (value: string) => emit('update:modelValue', value)
     :model-value="modelValue"
     :adapters="adapters"
     :locale="locale"
+    :placeholder="placeholder"
     @update:model-value="onUpdate"
   >
     <!-- Preview/Markdown switch as a real KunUI <KunTab variant="underlined">

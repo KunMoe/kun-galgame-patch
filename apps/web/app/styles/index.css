@@ -12,6 +12,12 @@
 @import 'tailwindcss';
 @import '@kungal/ui-tokens';
 @import '@kungal/ui-vue/style.css';
+/* @kungal/editor-nuxt's KunUI toolbar/view-switch use raw Tailwind utilities
+   (grid-cols-*, aspect-square, …). Tailwind ignores node_modules, so this file
+   carries a self-relative `@source "./runtime"` — one @import wires the scan,
+   layout-independent (no manual `@source ../../node_modules/...`). Without it the
+   sticker/emoji grid collapses. */
+@import '@kungal/editor-nuxt/tailwind.css';
 
 /* overlayscrollbars base structure (the .os-* layout/visibility rules). The
    editor's handle is themed in editor.css via --os-* custom properties; this is

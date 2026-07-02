@@ -52,6 +52,20 @@
   word-wrap: break-word;
 }
 
+/* Placeholder: the editor sets a `data-placeholder` attr + `.kun-editor__placeholder`
+   class on the empty block (a ProseMirror decoration, not real content). Render the
+   text via ::before so it never enters the doc / markdown or moves the caret. Synced
+   from the docs reference kun-editor.css. */
+.kun-editor__placeholder::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--color-default-200);
+  font-size: 0.875rem;
+  font-style: italic;
+  pointer-events: none;
+  height: 0;
+}
+
 /* ── Formatting toolbar ─────────────────────────────────────────────────── */
 .kun-editor__format-toolbar {
   display: flex;

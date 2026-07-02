@@ -77,7 +77,10 @@ const submit = async () => {
         useKunMessage('评论已提交，等待版主审核通过后显示', 'info')
       } else if (data.value) {
         res.data.reply = res.data.reply ?? []
-        data.value.items.unshift(res.data)
+        // The create response carries user_id but NOT the resolved `user` (only
+        // the list endpoint enriches it via the OAuth batch). The author is the
+        // current user, so stamp it — else <Item> throws on comment.user.name.
+        data.value.items.unshift({ ...res.data, user: userStore.user })
         data.value.total++
         useKunMessage('评论发布成功', 'success')
       }
@@ -252,6 +255,7 @@ watch(() => route.hash, resolveTarget)
         <KunMarkdownEditor
           :key="composerKey"
           :model-value="content"
+          placeholder="发布一条可爱的评论吧～"
           @update:model-value="(val) => (content = val)"
         />
         <div class="flex justify-end">

@@ -48,10 +48,12 @@ const uploadEditorImage = async (apiBase: string, file: File): Promise<string> =
 const STICKER_BASE = 'https://sticker.kungal.com/stickers'
 const SET_SIZES = [80, 80, 80, 80, 80, 80, 18]
 const stickerPacks = SET_SIZES.map((size, setIndex) => ({
-  name: `KUNgal${setIndex + 1}`,
+  // Display name shown as the pack label in the picker — friendly, not the raw
+  // sticker.kungal.com set id (KUNgal1). The URL path still uses the raw id.
+  name: `鲲 Galgame 表情包 [${setIndex + 1}]`,
   stickers: Array.from({ length: size }, (_, i) => ({
     src: `${STICKER_BASE}/KUNgal${setIndex + 1}/${i + 1}.webp`,
-    name: `KUNgal${setIndex + 1}-${i + 1}`
+    name: `鲲 Galgame 表情包 [${setIndex + 1}] - ${i + 1}`
   }))
 }))
 

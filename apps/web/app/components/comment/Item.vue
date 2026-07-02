@@ -107,7 +107,9 @@ const submitReply = async () => {
       if (res.data?.status === 1) {
         useKunMessage('回复已提交，等待版主审核通过后显示', 'info')
       } else {
-        emit('replyAdded', res.data)
+        // Same as the root composer: the create response omits the resolved
+        // `user`; the replier is the current user, so stamp it before emitting.
+        emit('replyAdded', { ...res.data, user: userStore.user })
         useKunMessage('回复成功', 'success')
       }
     } else {
