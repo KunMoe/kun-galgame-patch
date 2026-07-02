@@ -476,11 +476,11 @@ const handleSubmit = async () => {
           </label>
           <label class="block space-y-1">
             <span class="text-default-700 text-sm">简介 (Markdown)</span>
-            <KunMilkdownDualEditorProvider
-              :value-markdown="activeIntro"
-              :language="activeLang"
-              :allow-image="false"
-              @set-markdown="setActiveIntro"
+            <KunMarkdownEditor
+              :model-value="activeIntro"
+              :image="false"
+              :locale="activeLang"
+              @update:model-value="setActiveIntro"
             />
           </label>
         </div>

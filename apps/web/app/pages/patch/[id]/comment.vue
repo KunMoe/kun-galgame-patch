@@ -54,8 +54,8 @@ const totalPage = computed(() =>
 // ─── new top-level comment composer ───────────────────
 const content = ref('')
 const submitting = ref(false)
-// KunMilkdownDualEditorProvider is uncontrolled; bump the key to remount it
-// empty after a successful post.
+// <KunMarkdownEditor> is uncontrolled; bump the key to remount it empty after a
+// successful post.
 const composerKey = ref(0)
 
 const submit = async () => {
@@ -249,10 +249,10 @@ watch(() => route.hash, resolveTarget)
     >
       <KunAvatar :user="userStore.user" size="sm" :is-navigation="false" />
       <div class="min-w-0 flex-1 space-y-3">
-        <KunMilkdownDualEditorProvider
+        <KunMarkdownEditor
           :key="composerKey"
-          :value-markdown="content"
-          @set-markdown="(val) => (content = val)"
+          :model-value="content"
+          @update:model-value="(val) => (content = val)"
         />
         <div class="flex justify-end">
           <KunButton
@@ -276,7 +276,7 @@ watch(() => route.hash, resolveTarget)
       <button
         type="button"
         class="text-primary font-medium hover:underline"
-        @click="startOAuthLogin"
+        @click="() => startOAuthLogin()"
       >
         登录
       </button>

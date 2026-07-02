@@ -943,10 +943,10 @@ const existingFileName = computed(() => {
                formatting, image upload, and @mention. Uncontrolled — key by the
                resource id so it remounts with the right initial note when the
                edit modal is reused for a different resource. -->
-          <KunMilkdownDualEditorProvider
+          <KunMarkdownEditor
             :key="`note-${props.resource?.id ?? 'new'}`"
-            :value-markdown="form.note"
-            @set-markdown="(val) => (form.note = val)"
+            :model-value="form.note"
+            @update:model-value="(val) => (form.note = val)"
           />
         </section>
 

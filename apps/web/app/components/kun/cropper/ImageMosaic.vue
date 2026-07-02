@@ -37,10 +37,12 @@ const pixelate = (src: ImageData, size: number): ImageData => {
       for (let y = by; y < by + size && y < h; y++) {
         for (let x = bx; x < bx + size && x < w; x++) {
           const i = (y * w + x) * 4
-          r += s[i]
-          g += s[i + 1]
-          b += s[i + 2]
-          a += s[i + 3]
+          // i is in-bounds by the loop guards; assert to satisfy
+          // noUncheckedIndexedAccess without a per-pixel `?? 0` branch.
+          r += s[i]!
+          g += s[i + 1]!
+          b += s[i + 2]!
+          a += s[i + 3]!
           n++
         }
       }

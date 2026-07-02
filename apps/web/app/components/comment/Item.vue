@@ -211,10 +211,10 @@ const confirmDelete = async () => {
       <!-- View vs edit -->
       <KunContent v-if="!editing" compact :content="comment.content_html" />
       <div v-else class="space-y-2">
-        <KunMilkdownDualEditorProvider
+        <KunMarkdownEditor
           :key="`edit-${editKey}`"
-          :value-markdown="editContent"
-          @set-markdown="(val) => (editContent = val)"
+          :model-value="editContent"
+          @update:model-value="(val) => (editContent = val)"
         />
         <div class="flex justify-end gap-2">
           <KunButton variant="light" size="sm" @click="editing = false">
@@ -282,10 +282,10 @@ const confirmDelete = async () => {
 
       <!-- Reply composer -->
       <div v-if="replying" class="space-y-2 pt-1">
-        <KunMilkdownDualEditorProvider
+        <KunMarkdownEditor
           :key="`reply-${replyKey}`"
-          :value-markdown="replyContent"
-          @set-markdown="(val) => (replyContent = val)"
+          :model-value="replyContent"
+          @update:model-value="(val) => (replyContent = val)"
         />
         <div class="flex justify-end gap-2">
           <KunButton variant="light" size="sm" @click="replying = false">

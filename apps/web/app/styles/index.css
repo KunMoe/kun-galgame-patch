@@ -24,6 +24,10 @@
 @import './editor/code-mirror.css';
 @import './editor/katex.css';
 @import './code-theme.css';
+/* Reference styling for the headless @kungal/editor-vue <KunEditor> hooks
+   (.kun-editor__*, .kun-mention-dropdown*). Loaded LAST so it wins ties against
+   the legacy editor.css prose rules on the shared .ProseMirror surface. */
+@import './kun-editor.css';
 
 /*
  * Tailwind v4 ignores node_modules, so it won't see the compiled KunUI classes

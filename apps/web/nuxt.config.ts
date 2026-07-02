@@ -10,7 +10,12 @@ export default defineNuxtConfig({
   // image. Unlike the old in-repo @kun/ui layer, it ships NO Tailwind entry —
   // moyu owns that in styles/index.css (tokens + @source). Design tokens come
   // from @kungal/ui-tokens; icons are registered in app/plugins/kun-icons.ts.
-  extends: ['@kungal/ui-nuxt'],
+  // @kungal/editor-nuxt is the KunEditor Nuxt layer — it auto-imports <KunEditor>
+  // (the shared Milkdown editor) the same way @kungal/ui-nuxt does its components,
+  // replacing the deleted in-repo components/kun/milkdown/ port. Host policy
+  // (upload / mention / sticker / notify) is injected per call site via
+  // useKunEditorAdapters(); see app/composables/useKunEditorAdapters.ts.
+  extends: ['@kungal/ui-nuxt', '@kungal/editor-nuxt'],
 
   devtools: { enabled: false },
 
@@ -142,6 +147,9 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()]
+    // NB: the Vite dev optimizeDeps for the editor/Milkdown chain (the
+    // micromark→`debug` CJS interop fix) is now owned by the @kungal/editor-nuxt
+    // layer (>=0.13.0) and merged in automatically — moyu no longer configures it.
   },
 
   umami: {

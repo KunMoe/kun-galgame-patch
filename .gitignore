@@ -71,3 +71,5 @@ refs
 
 # Nuxt specific
 app.config.timestamp_*.js
+# Playwright MCP verification artifacts (screenshots/snapshots)
+.playwright-mcp/
