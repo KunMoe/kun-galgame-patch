@@ -41,6 +41,11 @@ const onUpdate = (value: string) => emit('update:modelValue', value)
     :locale="locale"
     @update:model-value="onUpdate"
   >
+    <!-- Preview/Markdown switch as a real KunUI <KunTab variant="underlined">
+         (editor-nuxt's <KunEditorViewSwitch>), replacing the headless default. -->
+    <template #view-switch="s">
+      <KunEditorViewSwitch v-bind="s" />
+    </template>
     <template #toolbar="api">
       <KunEditorToolbar v-bind="api" />
     </template>
