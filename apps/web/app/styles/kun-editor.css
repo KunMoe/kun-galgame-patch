@@ -66,6 +66,45 @@
   height: 0;
 }
 
+/* In-document "uploading…" placeholder shown at the caret while an image upload
+   runs (paste / drop / toolbar), replaced by the image when it resolves. */
+.kun-editor__uploading {
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  user-select: none;
+}
+
+/* ── Selection bubble toolbar (floats over a text selection) ────────────── */
+/* Positioned by floating-ui (absolute left/top); visibility via data-show. */
+.kun-editor__bubble {
+  position: absolute;
+  display: flex;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  background: var(--color-background);
+  border: 1px solid var(--color-default-200);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  z-index: 40;
+}
+.kun-editor__bubble[data-show='false'] {
+  display: none;
+}
+.kun-editor__bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+}
+.kun-editor__bubble-btn:hover {
+  background: var(--color-default-100);
+}
+
 /* ── Formatting toolbar ─────────────────────────────────────────────────── */
 .kun-editor__format-toolbar {
   display: flex;

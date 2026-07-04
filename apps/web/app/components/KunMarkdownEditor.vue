@@ -11,8 +11,10 @@
 // Pass `:image="false"` for the galgame 简介 editor — omitting the uploadImage /
 // stickerSource adapters is how the editor drops every image affordance.
 //
-// <KunEditor> and <KunEditorToolbar> are auto-imported by the @kungal/editor-nuxt
-// layer; useKunEditorAdapters is a moyu composable (app/composables).
+// <KunEditor> / <KunEditorToolbar> / <KunEditorViewSwitch> are auto-imported by the
+// @kungal/editor-nuxt layer; useKunEditorAdapters + <KunMarkdownImageDialog> are moyu's.
+import type { KunToolbarItem } from '@kungal/editor-vue'
+
 const props = withDefaults(
   defineProps<{
     /** Bound markdown (v-model). */
@@ -35,6 +37,37 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const adapters = useKunEditorAdapters({ image: props.image })
 
 const onUpdate = (value: string) => emit('update:modelValue', value)
+
+// moyu drops the 分栏 (split) view everywhere — it's for long-form desktop
+// writing, overkill for comments / intros. Keep 预览(WYSIWYG) + Markdown only.
+// Link button, selection-bubble toolbar and doc-mode placeholder stay on their
+// (sensible) defaults.
+const editorViews: ('wysiwyg' | 'source')[] = ['wysiwyg', 'source']
+
+// The KunUI toolbar WITHOUT its built-in image button — moyu supplies its own
+// <KunMarkdownImageDialog> beside it (paste-URL / multi-upload / drag / persisted
+// history). 'image' is dropped so there's no duplicate; the dialog only renders
+// when an uploadImage adapter exists (not the image-free 简介 editor). Pasting /
+// dropping straight into the editor still auto-uploads via the adapter.
+const toolbarItems: KunToolbarItem[] = [
+  'heading',
+  '|',
+  'bold',
+  'italic',
+  'strike',
+  'code',
+  'link',
+  '|',
+  'bulletList',
+  'orderedList',
+  'quote',
+  'codeBlock',
+  'hr',
+  '|',
+  'spoiler',
+  '|',
+  'picker'
+]
 </script>
 
 <template>
@@ -43,6 +76,7 @@ const onUpdate = (value: string) => emit('update:modelValue', value)
     :adapters="adapters"
     :locale="locale"
     :placeholder="placeholder"
+    :views="editorViews"
     @update:model-value="onUpdate"
   >
     <!-- Preview/Markdown switch as a real KunUI <KunTab variant="underlined">
@@ -50,8 +84,15 @@ const onUpdate = (value: string) => emit('update:modelValue', value)
     <template #view-switch="s">
       <KunEditorViewSwitch v-bind="s" />
     </template>
+    <!-- Fixed toolbar (built-in image button removed) + moyu's own image dialog. -->
     <template #toolbar="api">
-      <KunEditorToolbar v-bind="api" />
+      <div class="flex flex-wrap items-center gap-0.5">
+        <KunEditorToolbar v-bind="api" :items="toolbarItems" />
+        <template v-if="api.adapters.uploadImage">
+          <span class="bg-default-200 mx-1 h-5 w-px" aria-hidden="true" />
+          <KunMarkdownImageDialog :api="api" :upload="api.adapters.uploadImage!" />
+        </template>
+      </div>
     </template>
   </KunEditor>
 </template>
