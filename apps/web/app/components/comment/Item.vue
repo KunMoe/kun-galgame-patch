@@ -190,6 +190,37 @@ const confirmDelete = async () => {
     deleteOpen.value = false
   }
 }
+
+// ─── Actions menu (⋮) ──────────────────────────────────
+// Edit + delete live in a top-right "⋮" dropdown (not inline buttons), keeping
+// the action row to 点赞 / 回复. Shape mirrors resource.vue's KunDropdown items.
+interface CommentMenuItem {
+  key: 'edit' | 'delete'
+  label: string
+  icon: string
+  color?:
+    | 'default'
+    | 'primary'
+    | 'secondary'
+    | 'success'
+    | 'warning'
+    | 'danger'
+    | 'info'
+}
+const menuItems = computed<CommentMenuItem[]>(() => {
+  const items: CommentMenuItem[] = []
+  if (canEdit.value) {
+    items.push({ key: 'edit', label: '编辑', icon: 'lucide:pencil' })
+  }
+  if (canDelete.value) {
+    items.push({ key: 'delete', label: '删除', icon: 'lucide:trash-2', color: 'danger' })
+  }
+  return items
+})
+const onMenuSelect = (item: { key: string }) => {
+  if (item.key === 'edit') startEdit()
+  else if (item.key === 'delete') askDelete()
+}
 </script>
 
 <template>
@@ -200,14 +231,39 @@ const confirmDelete = async () => {
     <KunAvatar :user="comment.user" :size="depth === 0 ? 'sm' : 'xs'" />
 
     <div class="min-w-0 flex-1 space-y-1.5">
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="text-sm font-semibold">{{ comment.user.name }}</span>
-        <span class="text-default-400 text-xs">
-          {{ formatDate(comment.created, { isPrecise: true, isShowYear: true }) }}
-        </span>
-        <span v-if="isEdited" class="text-default-400 text-xs italic">
-          (已编辑)
-        </span>
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <span class="text-sm font-semibold">{{ comment.user.name }}</span>
+          <span class="text-default-400 text-xs">
+            {{ formatDate(comment.created, { isPrecise: true, isShowYear: true }) }}
+          </span>
+          <span v-if="isEdited" class="text-default-400 text-xs italic">
+            (已编辑)
+          </span>
+        </div>
+
+        <!-- ⋮ menu — edit / delete (top-right). Only when the viewer can do
+             either and isn't already editing; keeps the action row to 点赞/回复. -->
+        <KunDropdown
+          v-if="!editing && menuItems.length"
+          :items="menuItems"
+          position="bottom-end"
+          @select="onMenuSelect"
+        >
+          <template #trigger>
+            <KunButton
+              is-icon-only
+              variant="light"
+              color="default"
+              size="xs"
+              rounded="full"
+              class-name="text-default-400 -mr-1 shrink-0"
+              aria-label="更多操作"
+            >
+              <KunIcon name="lucide:ellipsis-vertical" class="size-4" />
+            </KunButton>
+          </template>
+        </KunDropdown>
       </div>
 
       <!-- View vs edit -->
@@ -255,30 +311,6 @@ const confirmDelete = async () => {
         >
           <KunIcon name="lucide:reply" class="size-3.5" />
           回复
-        </KunButton>
-
-        <KunButton
-          v-if="canEdit"
-          variant="light"
-          color="default"
-          size="xs"
-          rounded="full"
-          @click="startEdit"
-        >
-          <KunIcon name="lucide:pencil" class="size-3.5" />
-          编辑
-        </KunButton>
-
-        <KunButton
-          v-if="canDelete"
-          variant="light"
-          color="danger"
-          size="xs"
-          rounded="full"
-          @click="askDelete"
-        >
-          <KunIcon name="lucide:trash-2" class="size-3.5" />
-          删除
         </KunButton>
       </div>
 
