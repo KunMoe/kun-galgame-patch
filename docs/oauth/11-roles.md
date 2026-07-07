@@ -100,16 +100,16 @@ IdP 保证(并由运维约定):**任何 `ren` 账号都同时持有 `admin`**。
 
 ---
 
-## 6. 当前下游合规差距（必须整改）
+## 6. 下游合规状态（已整改 · 存档）
 
-> 截至本文落地时,下游对 `ren` 的处理与本契约不符,**必须修复**:
+> 本节最初记录的是本文落地时下游对 `ren` 处理的合规差距;**两站均已整改完毕**,以下为存档与现状锚点:
 
-- **kungal（论坛)**:后端把 `roles` 折叠成数值等级,只认 `admin`/`super_admin`→最高、`moderator`→审核,**其余(含 `ren`、`creator`)全部塌成普通用户**。→ 必须让 `ren` 映射到最高管理级(等同 `admin`)。当前仅因 ren 账号同时持有 `admin` 才未出事(违反 §3.2 的健壮性要求)。
-- **moyu（补丁站)**:后端按角色名判定,但**完全不识别 `ren`**——一个只持 `ren` 的账号会被所有门禁拒绝。→ 必须把 `ren` 视为 ≥ `admin`。
-- 两站对 `creator` 的"不授予审核权"处理符合本契约(§3.1),无需改动。
-- 历史别名 `super_admin`:IdP 从不签发,下游可移除对它的特殊处理(留着也无害,因为不会出现)。
+- **kungal（论坛)**:✅ 已整改(commit `58d3f68c` "unify roles to OAuth's named-role model; drop numeric tier")。数值等级已废弃;`apps/api/pkg/role/role.go` 以角色名集合 + 能力函数(`CanModerate` = moderator∪admin∪ren、`CanAdminister` = admin∪ren、`IsCreator`)实现 §3 语义,`super_admin` 已按本文 §1 移除。
+- **moyu（补丁站)**:✅ 已整改(commit `58b9710e` "align role labels site-wide with the OAuth 5-role contract")。`apps/api/internal/middleware/auth.go` 的 `SuperAdminRoles = {admin, ren}` / `ModeratorRoles = {admin, ren, moderator}` 完整识别 `ren` 为最高管理级;前端标签已对齐契约命名。
+- 两站对 `creator` 的"不授予审核权"处理始终符合本契约(§3.1)。
+- 历史别名 `super_admin`:IdP 从不签发;两下游均已不依赖该字符串。
 
-整改后,只持 `ren`(无 `admin`)的账号也应在三站获得完整管理权,系统不再依赖"ren 必同时持 admin"这一运维约定。
+整改后,只持 `ren`(无 `admin`)的账号在各站均获得完整管理权,系统不再依赖 §3.2 的"ren 必同时持 admin"运维约定,该不变量退回为纵深防御。新接入的 RP 直接按 §3、§4 实现即可,不需要参考任何历史数值等级。
 
 ---
 
