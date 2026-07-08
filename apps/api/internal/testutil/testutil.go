@@ -72,12 +72,40 @@ func (ta *TestApp) CreateTestSession(t *testing.T, userID int, roles ...string) 
 	return sessionID
 }
 
+// CreateTestSessionSiteRoles is like CreateTestSession but also stamps
+// site-scoped roles into the fake JWT's `site_roles` claim, so tests can
+// exercise the `roles ∪ site_roles` gating (docs/oauth/12-site-roles.md).
+func (ta *TestApp) CreateTestSessionSiteRoles(t *testing.T, userID int, roles, siteRoles []string) string {
+	t.Helper()
+	sessionID := fmt.Sprintf("test-session-%d-%d", userID, time.Now().UnixNano())
+	session := middleware.SessionData{
+		UserInfo: middleware.UserInfo{
+			ID:  userID,
+			Sub: fmt.Sprintf("test-sub-%d", userID),
+		},
+		OAuthAccessToken: fakeJWTWithClaims(roles, siteRoles),
+	}
+	data, _ := json.Marshal(session)
+	ta.RDB.Set(context.Background(), middleware.SessionPrefix+sessionID, data, middleware.SessionTTL)
+	return sessionID
+}
+
 // fakeJWTWithRoles builds a header.payload.sig JWT-shaped string whose
 // payload encodes {"roles": [...]}. Signature is dummy; middleware decodes
 // without verifying.
 func fakeJWTWithRoles(roles []string) string {
+	return fakeJWTWithClaims(roles, nil)
+}
+
+// fakeJWTWithClaims is fakeJWTWithRoles plus an optional `site_roles` claim
+// (omitted when nil), so tests can build tokens with site-scoped roles.
+func fakeJWTWithClaims(roles, siteRoles []string) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	payloadJSON, _ := json.Marshal(map[string]any{"roles": roles})
+	claims := map[string]any{"roles": roles}
+	if siteRoles != nil {
+		claims["site_roles"] = siteRoles
+	}
+	payloadJSON, _ := json.Marshal(claims)
 	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
 	return header + "." + payload + ".sig"
 }

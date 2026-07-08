@@ -163,6 +163,8 @@ type OAuthUserInfo struct {
 	Email   string   `json:"email"`
 	Picture string   `json:"picture"`
 	Roles   []string `json:"roles"`
+	// SiteRoles are moyu-scoped roles (never admin/ren); see 12-site-roles.md.
+	SiteRoles []string `json:"site_roles"`
 }
 
 // ExchangeCode trades an authorization code (+ PKCE verifier) for tokens.

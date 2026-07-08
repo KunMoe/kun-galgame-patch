@@ -26,6 +26,7 @@ type UserInfoResponse struct {
 	Avatar         string   `json:"avatar"`
 	Bio            string   `json:"bio"`
 	Roles          []string `json:"roles"`
+	SiteRoles      []string `json:"site_roles"`
 	Moemoepoint    int      `json:"moemoepoint"`
 	FollowerCount  int      `json:"follower_count"`
 	FollowingCount int      `json:"following_count"`

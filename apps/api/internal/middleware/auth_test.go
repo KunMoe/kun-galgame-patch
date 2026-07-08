@@ -142,6 +142,49 @@ func TestRequireRole_SufficientRole(t *testing.T) {
 	assert.Equal(t, 0, r.Code)
 }
 
+// A moyu-only moderator — site_roles=["moderator"] with NO global roles —
+// passes a moderator gate: the `roles ∪ site_roles` union grants moderation on
+// this site without any new decision path (docs/oauth/12-site-roles.md §5).
+func TestRequireRole_SiteRoleGrantsModerator(t *testing.T) {
+	ta := testutil.NewTestApp(t)
+	oauthCfg := config.OAuthConfig{}
+
+	ta.App.Get("/mod",
+		middleware.Auth(ta.RDB, oauthCfg),
+		middleware.RequireRole(middleware.ModeratorRoles...),
+		func(c fiber.Ctx) error {
+			return c.JSON(response.Response{Code: 0, Message: "mod"})
+		},
+	)
+
+	sessionID := ta.CreateTestSessionSiteRoles(t, 1, nil, []string{"moderator"})
+	resp := ta.Request(t, http.MethodGet, "/mod", "", sessionID)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	r := testutil.ParseResponse(t, resp)
+	assert.Equal(t, 0, r.Code)
+}
+
+// The ceiling holds: a site moderator still cannot reach an admin-only gate.
+// site_roles can never be admin/ren (docs/oauth/12-site-roles.md §3), so the
+// union grants moderation but never management.
+func TestRequireRole_SiteModeratorDeniedAdmin(t *testing.T) {
+	ta := testutil.NewTestApp(t)
+	oauthCfg := config.OAuthConfig{}
+
+	ta.App.Get("/admin",
+		middleware.Auth(ta.RDB, oauthCfg),
+		middleware.RequireRole(middleware.SuperAdminRoles...),
+		func(c fiber.Ctx) error {
+			return c.JSON(response.Response{Code: 0, Message: "admin"})
+		},
+	)
+
+	sessionID := ta.CreateTestSessionSiteRoles(t, 1, nil, []string{"moderator"})
+	resp := ta.Request(t, http.MethodGet, "/admin", "", sessionID)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
 func TestCreateSession_And_DestroySession(t *testing.T) {
 	ta := testutil.NewTestApp(t)
 

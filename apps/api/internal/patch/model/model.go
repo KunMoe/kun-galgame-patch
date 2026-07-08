@@ -166,6 +166,7 @@ type PatchUser struct {
 	Avatar          string   `json:"avatar"`
 	AvatarImageHash string   `json:"avatar_image_hash"`
 	Roles           []string `json:"roles,omitempty"`
+	SiteRoles       []string `json:"site_roles,omitempty"`
 }
 
 // RenderResourceNotes fills note_html for every resource in the slice.
@@ -378,20 +379,20 @@ func (UserPatchResourceFavoriteRelation) TableName() string {
 // NOT write a row. CASCADE on delete: history goes with the resource — see
 // migrations/007_patch_resource_file_history.up.sql §rationale.
 type PatchResourceFileHistory struct {
-	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	ResourceID int       `gorm:"not null;index:idx_prfh_resource,priority:1" json:"resource_id"`
-	OldStorage string    `gorm:"type:varchar(16);not null" json:"old_storage"`
-	OldS3Key   string    `gorm:"type:varchar(2048);not null;default:''" json:"old_s3_key"`
+	ID         int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	ResourceID int    `gorm:"not null;index:idx_prfh_resource,priority:1" json:"resource_id"`
+	OldStorage string `gorm:"type:varchar(16);not null" json:"old_storage"`
+	OldS3Key   string `gorm:"type:varchar(2048);not null;default:''" json:"old_s3_key"`
 	// OldArtifactUUID is the previous artifact-service blob id (artifact-backed
 	// rows; parallels OldS3Key for the legacy direct-B2 rows).
-	OldArtifactUUID string `gorm:"column:old_artifact_uuid;type:varchar(36);not null;default:''" json:"old_artifact_uuid"`
-	OldBlake3  string    `gorm:"type:varchar(128);not null;default:''" json:"old_blake3"`
-	OldSize    string    `gorm:"type:varchar(107);not null;default:''" json:"old_size"`
-	OldContent string    `gorm:"type:text;not null;default:''" json:"old_content"`
-	Reason     string    `gorm:"type:varchar(500);not null;default:''" json:"reason"`
-	ActorID    int       `gorm:"not null" json:"actor_id"`
-	ActorRole  int       `gorm:"not null;default:0" json:"actor_role"` // 3=admin / 2=mod / 1=user / 0=unknown
-	CreatedAt  time.Time `gorm:"autoCreateTime;index:idx_prfh_resource,priority:2,sort:desc" json:"created_at"`
+	OldArtifactUUID string    `gorm:"column:old_artifact_uuid;type:varchar(36);not null;default:''" json:"old_artifact_uuid"`
+	OldBlake3       string    `gorm:"type:varchar(128);not null;default:''" json:"old_blake3"`
+	OldSize         string    `gorm:"type:varchar(107);not null;default:''" json:"old_size"`
+	OldContent      string    `gorm:"type:text;not null;default:''" json:"old_content"`
+	Reason          string    `gorm:"type:varchar(500);not null;default:''" json:"reason"`
+	ActorID         int       `gorm:"not null" json:"actor_id"`
+	ActorRole       int       `gorm:"not null;default:0" json:"actor_role"` // 3=admin / 2=mod / 1=user / 0=unknown
+	CreatedAt       time.Time `gorm:"autoCreateTime;index:idx_prfh_resource,priority:2,sort:desc" json:"created_at"`
 }
 
 func (PatchResourceFileHistory) TableName() string { return "patch_resource_file_history" }

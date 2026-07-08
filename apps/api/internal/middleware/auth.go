@@ -80,6 +80,7 @@ const (
 	sessionRenewPrefix    = "moyu:session-renew:"
 	userContextKey        = "user"
 	rolesContextKey       = "oauth_roles"
+	siteRolesContextKey   = "oauth_site_roles"
 	accessTokenContextKey = "oauth_access_token"
 )
 
@@ -194,8 +195,10 @@ func Auth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler {
 		// the absolute cap. Anonymous callers already returned above.
 		renewSlidingSession(c, rdb, sessionID)
 
+		roles, siteRoles := decodeJWTClaims(session.OAuthAccessToken)
 		c.Locals(userContextKey, &session.UserInfo)
-		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
+		c.Locals(rolesContextKey, roles)
+		c.Locals(siteRolesContextKey, siteRoles)
 		c.Locals(accessTokenContextKey, session.OAuthAccessToken)
 		return c.Next()
 	}
@@ -253,8 +256,10 @@ func OptionalAuth(rdb *redis.Client, oauthCfg config.OAuthConfig) fiber.Handler 
 		// the absolute cap. Anonymous callers already returned above.
 		renewSlidingSession(c, rdb, sessionID)
 
+		roles, siteRoles := decodeJWTClaims(session.OAuthAccessToken)
 		c.Locals(userContextKey, &session.UserInfo)
-		c.Locals(rolesContextKey, decodeJWTRoles(session.OAuthAccessToken))
+		c.Locals(rolesContextKey, roles)
+		c.Locals(siteRolesContextKey, siteRoles)
 		c.Locals(accessTokenContextKey, session.OAuthAccessToken)
 		return c.Next()
 	}
@@ -303,18 +308,52 @@ func GetRoles(c fiber.Ctx) []string {
 	return v
 }
 
-// HasRole reports whether the current request's roles set contains role.
-func HasRole(c fiber.Ctx, role string) bool {
-	return slices.Contains(GetRoles(c), role)
+// GetSiteRoles returns the site-scoped roles (the access_token `site_roles`
+// claim) for the current request — roles that apply ONLY on moyu and never
+// carry admin/ren (docs/oauth/12-site-roles.md §3). Empty if none.
+func GetSiteRoles(c fiber.Ctx) []string {
+	v, ok := c.Locals(siteRolesContextKey).([]string)
+	if !ok {
+		return nil
+	}
+	return v
 }
 
-// HasAnyRole reports whether the current request's roles set contains any of
-// the listed roles. Pass nothing to require "at least logged in".
+// mergeRoles returns the de-duplicated union of two role sets (order-preserving).
+func mergeRoles(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	out := append([]string(nil), a...)
+	for _, r := range b {
+		if !slices.Contains(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// effectiveRoles is the set every capability check runs against:
+// `roles ∪ site_roles` (docs/oauth/12-site-roles.md §5). Unioning the
+// site-scoped roles lets a moyu-only moderator pass IsModerator with no new
+// decision path; because site_roles can never be admin/ren, IsAdmin is
+// unaffected.
+func effectiveRoles(c fiber.Ctx) []string {
+	return mergeRoles(GetRoles(c), GetSiteRoles(c))
+}
+
+// HasRole reports whether the current request's effective roles contain role.
+func HasRole(c fiber.Ctx, role string) bool {
+	return slices.Contains(effectiveRoles(c), role)
+}
+
+// HasAnyRole reports whether the current request's effective roles contain any
+// of the listed roles. Pass nothing to require "at least logged in".
 func HasAnyRole(c fiber.Ctx, roles ...string) bool {
 	if len(roles) == 0 {
 		return GetUser(c) != nil
 	}
-	have := GetRoles(c)
+	have := effectiveRoles(c)
 	for _, want := range roles {
 		if slices.Contains(have, want) {
 			return true
@@ -439,33 +478,36 @@ func generateSessionID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// decodeJWTRoles extracts the `roles` claim from a JWT without verifying the
-// signature. Safe here because the token came out of our Redis session
-// (placed by OAuthCallback after a verified /oauth/token exchange) -- it is
-// never user-controlled at request time. Returns nil on any decode error.
-func decodeJWTRoles(token string) []string {
+// decodeJWTClaims extracts the `roles` and `site_roles` claims from a JWT
+// without verifying the signature. Safe here because the token came out of our
+// Redis session (placed by OAuthCallback after a verified /oauth/token
+// exchange) -- it is never user-controlled at request time. Returns nil, nil on
+// any decode error. `site_roles` (docs/oauth/12-site-roles.md) is a site-scoped
+// role set that the capability checks union with `roles`.
+func decodeJWTClaims(token string) (roles, siteRoles []string) {
 	if token == "" {
-		return nil
+		return nil, nil
 	}
 	parts := strings.SplitN(token, ".", 3)
 	if len(parts) < 2 {
-		return nil
+		return nil, nil
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		// Some encoders pad; try the std variant.
 		payload, err = base64.URLEncoding.DecodeString(parts[1])
 		if err != nil {
-			return nil
+			return nil, nil
 		}
 	}
 	var claims struct {
-		Roles []string `json:"roles"`
+		Roles     []string `json:"roles"`
+		SiteRoles []string `json:"site_roles"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil
+		return nil, nil
 	}
-	return claims.Roles
+	return claims.Roles, claims.SiteRoles
 }
 
 // refreshOAuthToken performs one OAuth refresh round-trip and persists the

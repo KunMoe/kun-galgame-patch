@@ -36,6 +36,9 @@ type Brief struct {
 	Bio             string   `json:"bio"`
 	Status          int      `json:"status"`
 	Roles           []string `json:"roles"`
+	// SiteRoles are the user's roles scoped to the REQUESTING client's site
+	// (moyu) — never admin/ren. See docs/oauth/12-site-roles.md.
+	SiteRoles []string `json:"site_roles"`
 }
 
 const (

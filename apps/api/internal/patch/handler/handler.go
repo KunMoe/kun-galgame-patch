@@ -540,13 +540,13 @@ func (h *PatchHandler) CreateResource(c fiber.Ctx) error {
 		ArtifactUUID: req.ArtifactUUID,
 		S3Key:        req.S3Key,
 		Content:      req.Content,
-		Size:      req.Size,
-		Code:      req.Code,
-		Password:  req.Password,
-		Note:      req.Note,
-		Type:      model.JSONArray(req.Type),
-		Language:  model.JSONArray(req.Language),
-		Platform:  model.JSONArray(req.Platform),
+		Size:         req.Size,
+		Code:         req.Code,
+		Password:     req.Password,
+		Note:         req.Note,
+		Type:         model.JSONArray(req.Type),
+		Language:     model.JSONArray(req.Language),
+		Platform:     model.JSONArray(req.Platform),
 	}
 
 	if err := h.service.CreateResource(c.Context(), resource, user.ID); err != nil {
@@ -576,13 +576,13 @@ func (h *PatchHandler) UpdateResource(c fiber.Ctx) error {
 		ArtifactUUID: req.ArtifactUUID,
 		S3Key:        req.S3Key,
 		Content:      req.Content,
-		Size:      req.Size,
-		Code:      req.Code,
-		Password:  req.Password,
-		Note:      req.Note,
-		Type:      model.JSONArray(req.Type),
-		Language:  model.JSONArray(req.Language),
-		Platform:  model.JSONArray(req.Platform),
+		Size:         req.Size,
+		Code:         req.Code,
+		Password:     req.Password,
+		Note:         req.Note,
+		Type:         model.JSONArray(req.Type),
+		Language:     model.JSONArray(req.Language),
+		Platform:     model.JSONArray(req.Platform),
 	}
 
 	// Snapshot the actor's privilege so the file-history row records who+role
@@ -786,7 +786,7 @@ func (h *PatchHandler) GetContributors(c fiber.Ctx) error {
 	out := make([]model.PatchUser, 0, len(ids))
 	for _, userID := range ids {
 		if b := briefs[userID]; b != nil {
-			out = append(out, model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles})
+			out = append(out, model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles})
 		}
 	}
 	return response.OK(c, out)

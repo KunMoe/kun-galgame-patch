@@ -53,7 +53,7 @@ func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
-			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
+			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }
@@ -69,7 +69,7 @@ func (h *CommonHandler) attachCommentUsers(ctx context.Context, cs []patchModel.
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range cs {
 		if b := briefs[cs[i].UserID]; b != nil {
-			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
+			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }

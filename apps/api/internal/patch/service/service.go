@@ -13,11 +13,11 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/infrastructure/storage"
-	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	settingService "kun-galgame-patch-api/internal/setting/service"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
@@ -330,7 +330,6 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 	return s.repo.GetPatchDetail(id)
 }
 
-
 // RegisterClaimedGalgame creates the local patch row for a galgame the user
 // just claimed on Wiki (status 2 → 0), awarding +3 moemoepoint and
 // registering the contributor — all in one transaction.
@@ -610,7 +609,7 @@ func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
 	if b == nil {
 		return nil
 	}
-	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
+	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 }
 
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {

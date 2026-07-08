@@ -46,27 +46,27 @@ type Counts struct {
 // GalgameCard is the Go mirror of the frontend `interface GalgameCard`.
 // All JSON tags are snake_case to match the backend-wide convention.
 type GalgameCard struct {
-	ID                 int                  `json:"id"`
-	Name               KunLanguage          `json:"name"`
-	VndbID             string               `json:"vndb_id"`
-	BID                *int                 `json:"bid"`
-	Banner             string               `json:"banner"`
-	View               int                  `json:"view"`
-	Download           int                  `json:"download"`
-	Type               patchModel.JSONArray `json:"type"`
-	Language           patchModel.JSONArray `json:"language"`
-	Platform           patchModel.JSONArray `json:"platform"`
-	ContentLimit       string               `json:"content_limit"`
-	Status             int                  `json:"status"`
+	ID           int                  `json:"id"`
+	Name         KunLanguage          `json:"name"`
+	VndbID       string               `json:"vndb_id"`
+	BID          *int                 `json:"bid"`
+	Banner       string               `json:"banner"`
+	View         int                  `json:"view"`
+	Download     int                  `json:"download"`
+	Type         patchModel.JSONArray `json:"type"`
+	Language     patchModel.JSONArray `json:"language"`
+	Platform     patchModel.JSONArray `json:"platform"`
+	ContentLimit string               `json:"content_limit"`
+	Status       int                  `json:"status"`
 	// IsOnForum is true when moyu holds a REAL local patch row for this galgame —
 	// created on a real publish/claim, NOT on mere view (moyu no longer
 	// materializes a stub on open). It is false on a synthetic card built from
 	// wiki data alone: the galgame exists on the wiki but is "本站尚未收录", and the
 	// FE renders a read-only galgame page whose only action is 发布补丁. baseCard
 	// (built from a real row) sets it true; CardFromBrief leaves it false.
-	IsOnForum bool `json:"is_on_forum"`
-	Created   time.Time `json:"created"`
-	ResourceUpdateTime time.Time            `json:"resource_update_time"`
+	IsOnForum          bool      `json:"is_on_forum"`
+	Created            time.Time `json:"created"`
+	ResourceUpdateTime time.Time `json:"resource_update_time"`
 	// ReleaseDate is the locally-mirrored wiki galgame.release_date (date
 	// only; see migration 010 + backfill). Null when unknown. Surfaced so
 	// list cards can render the release month and the date filter result is
@@ -187,6 +187,7 @@ func attachUsersToCards(ctx context.Context, users *userclient.Client, patches [
 				Avatar:          b.Avatar,
 				AvatarImageHash: b.AvatarImageHash,
 				Roles:           b.Roles,
+				SiteRoles:       b.SiteRoles,
 			}
 		}
 	}
@@ -211,6 +212,7 @@ func resolveUser(ctx context.Context, users *userclient.Client, id int) *patchMo
 		Avatar:          b.Avatar,
 		AvatarImageHash: b.AvatarImageHash,
 		Roles:           b.Roles,
+		SiteRoles:       b.SiteRoles,
 	}
 }
 
@@ -428,18 +430,18 @@ func EnrichPatchDetail(ctx context.Context, wiki *galgameClient.Client, users *u
 	// original_language without an extra round-trip. Brief fields only --
 	// intro/tags/officials are surfaced via their own response fields.
 	base.Galgame = &galgameClient.GalgameBrief{
-		ID:                  g.ID,
-		VndbID:              g.VndbID,
-		NameEnUs:            g.NameEnUs,
-		NameZhCn:            g.NameZhCn,
-		NameJaJp:            g.NameJaJp,
-		NameZhTw:            g.NameZhTw,
-		Banner:              g.Banner,
-		ContentLimit:        g.ContentLimit,
-		AgeLimit:            g.AgeLimit,
-		OriginalLanguage:    g.OriginalLanguage,
-		ReleaseDate:         g.ReleaseDate,
-		ReleaseDateTBA:      g.ReleaseDateTBA,
+		ID:                       g.ID,
+		VndbID:                   g.VndbID,
+		NameEnUs:                 g.NameEnUs,
+		NameZhCn:                 g.NameZhCn,
+		NameJaJp:                 g.NameJaJp,
+		NameZhTw:                 g.NameZhTw,
+		Banner:                   g.Banner,
+		ContentLimit:             g.ContentLimit,
+		AgeLimit:                 g.AgeLimit,
+		OriginalLanguage:         g.OriginalLanguage,
+		ReleaseDate:              g.ReleaseDate,
+		ReleaseDateTBA:           g.ReleaseDateTBA,
 		EffectiveBannerHash:      g.EffectiveBannerHash,
 		EffectiveBannerWidth:     g.EffectiveBannerWidth,
 		EffectiveBannerHeight:    g.EffectiveBannerHeight,

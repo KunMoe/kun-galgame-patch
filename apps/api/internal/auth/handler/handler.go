@@ -11,8 +11,8 @@ import (
 	"log/slog"
 	"time"
 
-	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/auth/dto"
+	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/auth/service"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
@@ -83,7 +83,7 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 
 	session := &middleware.SessionData{
 		UserInfo: middleware.UserInfo{
-	ID: userInfo.ID,
+			ID:  userInfo.ID,
 			Sub: userInfo.Sub,
 		},
 		OAuthAccessToken:  tokenResp.AccessToken,
@@ -96,7 +96,7 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
-	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles))
+	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles, userInfo.SiteRoles))
 }
 
 // Logout POST /api/v1/auth/logout
@@ -149,7 +149,7 @@ func (h *AuthHandler) Me(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("user not found"))
 	}
 
-	return response.OK(c, h.composeMe(c, &local, user.Sub, roles))
+	return response.OK(c, h.composeMe(c, &local, user.Sub, roles, middleware.GetSiteRoles(c)))
 }
 
 // ─── OAuth display-layer proxy ────────────────────────────────────────
@@ -216,7 +216,7 @@ func (h *AuthHandler) proxyUserOAuth(c fiber.Ctx, method, path string) error {
 // into a MeResponse. If the OAuth /users/batch call fails we still return
 // the local fields -- name/avatar will simply be empty rather than crashing
 // the page.
-func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles []string) dto.MeResponse {
+func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles, siteRoles []string) dto.MeResponse {
 	// Never marshal roles as JSON null. A nil []string serializes to `null`,
 	// which the frontend persists into its cookie-backed user store; then
 	// isAdmin/isModerator run roles.includes(...) during SSR and throw
@@ -225,10 +225,14 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 	if roles == nil {
 		roles = []string{}
 	}
+	if siteRoles == nil {
+		siteRoles = []string{}
+	}
 	resp := dto.MeResponse{
 		ID:              local.ID,
 		Sub:             sub,
 		Roles:           roles,
+		SiteRoles:       siteRoles,
 		Moemoepoint:     local.Moemoepoint,
 		DailyCheckIn:    local.DailyCheckIn,
 		DailyImageCount: local.DailyImageCount,
@@ -271,6 +275,12 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		// (middleware.HasRole), so this only refreshes the display badge / FE gate.
 		if len(brief.Roles) > 0 {
 			resp.Roles = brief.Roles
+		}
+		// Same freshness tradeoff as roles above: prefer the live brief's
+		// site_roles, but only when it carried some so an empty brief slice
+		// doesn't clobber the JWT/userinfo-derived set.
+		if len(brief.SiteRoles) > 0 {
+			resp.SiteRoles = brief.SiteRoles
 		}
 	}
 	return resp

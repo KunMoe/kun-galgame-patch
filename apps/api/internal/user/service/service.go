@@ -119,6 +119,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int) (
 			resp.Avatar = b.Avatar
 			resp.Bio = b.Bio
 			resp.Roles = b.Roles
+			resp.SiteRoles = b.SiteRoles
 		}
 	}
 
@@ -411,7 +412,7 @@ func (s *UserService) attachResourceUsers(ctx context.Context, rs []patchModel.P
 	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
-			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
+			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }
@@ -424,7 +425,7 @@ func (s *UserService) attachCommentUsers(ctx context.Context, cs []patchModel.Pa
 	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
 	for i := range cs {
 		if b := briefs[cs[i].UserID]; b != nil {
-			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles}
+			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }

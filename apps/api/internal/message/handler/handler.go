@@ -126,6 +126,7 @@ func (h *MessageHandler) attachSenders(ctx context.Context, msgs []userModel.Use
 				Avatar:          b.Avatar,
 				AvatarImageHash: b.AvatarImageHash,
 				Roles:           b.Roles,
+				SiteRoles:       b.SiteRoles,
 			}
 		}
 	}
