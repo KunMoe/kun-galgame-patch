@@ -43,7 +43,9 @@ const introHtml = computed(() => {
   return getPreferredLanguageText(detail.value.introduction_html, lang.value)
 })
 
-const langOptions = [
+// KunSelect became generic over its option type in KunUI 2.12.0, so the option
+// values must match the v-model's `Language`, not the widened `string`.
+const langOptions: { value: Language; label: string }[] = [
   { value: 'zh-cn', label: '中文' },
   { value: 'ja-jp', label: '日本語' },
   { value: 'en-us', label: 'English' }
@@ -145,7 +147,9 @@ const wikiOrigin =
           :model-value="lang"
           :options="langOptions"
           class-name="max-w-36"
-          @update:model-value="(v) => (lang = v as Language)"
+          @update:model-value="
+            (v: Language | Language[] | null) => (lang = v as Language)
+          "
         />
       </div>
       <div
