@@ -19,6 +19,7 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
   "email": "邮箱",
   "name": "用户名",
   "roles": ["admin", "ren"],
+  "site_roles": ["moderator"],
   "scope": "openid profile",
   "site_id": 2,
   "client_id": "签发给的 OAuth client",
@@ -33,11 +34,12 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
 
 - `iss` 固定为 OP issuer（`{issuer}/.well-known/openid-configuration` 的 `issuer`）。
 - `aud` 是资源方标识 = 该 client 绑定站点的域名（RFC 9068 audience 限制）；client 未绑定站点时省略。**下游现有的站点校验仍以 `site_id` 为准**，`aud` 供标准校验器使用。
-- `scope` / `site_id` / `client_id` 在对应值为空时省略。
+- `scope` / `site_id` / `client_id` / `site_roles` 在对应值为空时省略。
 
 签名算法：HS256（现状）。OIDC 切换（`KUN_OIDC_SIGN_ASYMMETRIC`）后改为 **ES256**（header 带 `kid`，公钥见 `{issuer}/oauth/jwks`）；切换窗口内两种签名都会被各服务接受，**下游把 access_token 当不透明字符串用即可**，不要对签名算法做硬编码假设。
 
 > **`roles` 是角色名的集合,普通用户为空数组 `[]`**（`user` 是隐式默认,**不会**出现在 claim 里)。角色及其能力语义的权威定义、以及下游必须遵守的规则,见 [11-roles.md](./11-roles.md)。
+> **`site_roles`(可选)是站点域角色**——只含用户在**本 client 所属站点**的未过期授予,与 `roles` 取并集后喂给你既有的能力判定;权威定义见 [12-site-roles.md](./12-site-roles.md)。
 
 ---
 

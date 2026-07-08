@@ -62,6 +62,7 @@
 | users[].bio | 个人简介 |
 | users[].status | 0=正常；非 0 时调用方应隐藏或脱敏渲染 |
 | users[].roles | 角色名称数组，如 `["admin"]` |
+| users[].site_roles | 站点域角色数组（按**请求方 client** 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
 | users[].created_at | 用户 **OAuth 注册时间**，UTC RFC3339（如 `2023-10-29T10:41:34Z`）。渲染「注册 / 加入时间」**必须用此字段**——不要用下游本地行的 created（未登录过本站的用户根本没有本地行→空白；首次登录晚于注册的用户本地时间也是错的）。 |
 | not_found | 请求中存在但 OAuth 库里查不到的 ID 列表 |
 

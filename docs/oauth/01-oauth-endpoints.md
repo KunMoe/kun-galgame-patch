@@ -133,6 +133,7 @@
 | email | 邮箱（仅 `email` scope 或空 scope 时返回） |
 | picture | 头像 URL（仅 `profile` scope 或空 scope 时返回，可能为空） |
 | roles | 角色名称数组，与 JWT `roles` claim 一致 |
+| site_roles | 站点域角色数组（按调用所用 token 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
 | updated_at | 最后更新时间（Unix 时间戳） |
 
 **关于 scope 与字段过滤**：
