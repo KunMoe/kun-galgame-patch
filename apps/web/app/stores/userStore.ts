@@ -24,6 +24,10 @@ export interface UserState {
   bio: string
   moemoepoint: number
   roles: string[]
+  // Site-scoped roles (MeResponse.site_roles): roles that apply ONLY on moyu
+  // (e.g. a moyu-only 版主), never admin/ren. The capability getters gate on
+  // `roles ∪ site_roles`. See docs/oauth/12-site-roles.md.
+  site_roles: string[]
 
   daily_check_in: number
   daily_image_count: number
@@ -41,11 +45,22 @@ const initialUserState: UserState = {
   bio: '',
   moemoepoint: 0,
   roles: [],
+  site_roles: [],
   daily_check_in: 1,
   daily_image_count: 0,
   daily_upload_size: 0,
   muted_message_types: []
 }
+
+// effectiveRoles is the set every capability getter runs against — the union of
+// global roles and moyu site-scoped roles (docs/oauth/12-site-roles.md §5). A
+// moyu-only 版主 has site_roles=['moderator'] with roles=[], so unioning is what
+// makes isModerator true for them. `?? []` guards a null surviving in an old
+// persisted cookie (these are read with .includes during SSR).
+const effectiveRoles = (u: UserState): string[] => [
+  ...(u.roles ?? []),
+  ...(u.site_roles ?? [])
+]
 
 export const useUserStore = defineStore('user', {
   state: (): { user: UserState } => ({
@@ -60,6 +75,7 @@ export const useUserStore = defineStore('user', {
         // not poison the store: isAdmin/isModerator call roles.includes() during
         // SSR. Coerce to an array so we never persist null.
         roles: user.roles ?? this.user.roles ?? [],
+        site_roles: user.site_roles ?? this.user.site_roles ?? [],
         muted_message_types: this.user.muted_message_types
       }
     },
@@ -88,22 +104,27 @@ export const useUserStore = defineStore('user', {
     // properties of null (reading 'includes')" during SSR of /patch/* pages.
     // `ren` (莲) is a DB-preset super-admin and is treated exactly like `admin`
     // everywhere in moyu (mirrors the backend middleware.SuperAdminRoles).
-    isAdmin: (state) =>
-      (state.user.roles ?? []).includes('admin') ||
-      (state.user.roles ?? []).includes('ren'),
-    isModerator: (state) =>
-      (state.user.roles ?? []).includes('admin') ||
-      (state.user.roles ?? []).includes('ren') ||
-      (state.user.roles ?? []).includes('moderator'),
+    isAdmin: (state) => {
+      const roles = effectiveRoles(state.user)
+      return roles.includes('admin') || roles.includes('ren')
+    },
+    isModerator: (state) => {
+      const roles = effectiveRoles(state.user)
+      return (
+        roles.includes('admin') ||
+        roles.includes('ren') ||
+        roles.includes('moderator')
+      )
+    },
     // `creator` is OAuth's trusted-publisher tier (wiki direct-publish), and on
     // moyu it also shares the moderator upload allowance (5GB / 100GB daily).
     // It is NOT a moderation role, so it is deliberately separate from
     // isModerator (no admin-panel / mod-action access).
-    isCreator: (state) => (state.user.roles ?? []).includes('creator'),
+    isCreator: (state) => effectiveRoles(state.user).includes('creator'),
     // Ad-free = holds any role other than "user" (creator / moderator / admin).
     // Anonymous (no roles) and plain users still see ads; every elevated role is
     // exempt. Drives the AIEro* ad gates.
-    isAdFree: (state) => (state.user.roles ?? []).some((r) => r !== 'user')
+    isAdFree: (state) => effectiveRoles(state.user).some((r) => r !== 'user')
   },
   // Cookie-backed persistence is intentional: the cookie is sent on the
   // initial HTML request so the SSR pass already has the logged-in user

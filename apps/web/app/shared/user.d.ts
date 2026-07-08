@@ -20,4 +20,7 @@ interface KunUser {
   // OAuth role set (e.g. ["admin"], ["moderator"]). Surfaced here so the UI
   // can render an admin / mod badge without a second round-trip.
   roles?: string[]
+  // moyu site-scoped roles (never admin/ren) — pair with `roles` in
+  // pickRoleBadge to render a "本站版主" badge. See docs/oauth/12-site-roles.md.
+  site_roles?: string[]
 }

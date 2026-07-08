@@ -10,6 +10,7 @@ interface UserInfo {
   avatar: string
   bio: string
   roles: string[]
+  site_roles: string[]
   moemoepoint: number
   register_time: string
   follower_count: number

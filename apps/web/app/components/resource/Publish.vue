@@ -33,7 +33,7 @@ import {
   SUPPORTED_PLATFORM_MAP,
   ALLOWED_EXTENSIONS
 } from '~/constants/resource'
-import { pickRoleLabel } from '~/constants/user'
+import { pickRoleBadge } from '~/constants/user'
 
 interface Props {
   patchId: number
@@ -473,7 +473,9 @@ const quotaPercent = computed(() =>
 // Canonical site-wide role label per the contract (莲 / 管理员 / 版主 / 创作者 /
 // 普通用户; see constants/user.ts). The previous hand-rolled ternary had no
 // creator case (so creators showed "普通用户") and mislabeled moderator.
-const roleLabel = computed(() => pickRoleLabel(userStore.user.roles))
+const roleLabel = computed(
+  () => pickRoleBadge(userStore.user.roles, userStore.user.site_roles).label
+)
 
 // File name to display in the "existing file" summary card. We don't have the
 // original filename in the row (s3_key is sanitized path); show the trailing

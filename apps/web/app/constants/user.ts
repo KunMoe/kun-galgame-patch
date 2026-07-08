@@ -33,14 +33,46 @@ const ROLE_PRIORITY: readonly string[] = [
   'user'
 ]
 
-export const pickRoleLabel = (roles: string[] | null | undefined): string => {
-  if (!roles || roles.length === 0) return USER_ROLE_MAP.user ?? '普通用户'
-  for (const role of ROLE_PRIORITY) {
-    if (roles.includes(role)) return USER_ROLE_MAP[role] ?? role
-  }
-  // Unknown role string -> render verbatim rather than mask the data.
-  return roles[0] ?? USER_ROLE_MAP.user ?? '普通用户'
+export interface RoleBadge {
+  label: string
+  // true → the winning role is moyu site-scoped (rendered with a 本站 prefix and
+  // a distinct chip color); false → a global role (or the 普通用户 fallback).
+  site: boolean
 }
+
+// pickRoleBadge picks the single most-significant role badge across a user's
+// global `roles` and moyu site-scoped `site_roles` (docs/oauth/12-site-roles.md).
+// Both sets are ranked together by ROLE_PRIORITY; the winner is prefixed 本站
+// when it is site-scoped (a moyu-only 版主 → "本站版主"). The implicit `user` and
+// unknown/custom site names never win; the fallback is 普通用户.
+export const pickRoleBadge = (
+  roles?: string[] | null,
+  siteRoles?: string[] | null
+): RoleBadge => {
+  const candidates = [
+    ...(roles ?? []).map((role) => ({ role, site: false })),
+    ...(siteRoles ?? []).map((role) => ({ role, site: true }))
+  ]
+  let best: { role: string; site: boolean } | null = null
+  let bestRank = ROLE_PRIORITY.length
+  for (const cand of candidates) {
+    if (cand.role === 'user') continue
+    const rank = ROLE_PRIORITY.indexOf(cand.role)
+    if (rank === -1) continue
+    // Lower index = higher priority; on a tie prefer the global one (no 本站).
+    if (rank < bestRank || (rank === bestRank && best?.site && !cand.site)) {
+      best = cand
+      bestRank = rank
+    }
+  }
+  if (!best) return { label: USER_ROLE_MAP.user ?? '普通用户', site: false }
+  const label = USER_ROLE_MAP[best.role] ?? best.role
+  return { label: best.site ? `本站${label}` : label, site: best.site }
+}
+
+// pickRoleLabel returns just the badge text for a global role set (back-compat).
+export const pickRoleLabel = (roles: string[] | null | undefined): string =>
+  pickRoleBadge(roles).label
 
 export const USER_STATUS_MAP: Record<number, string> = {
   0: '正常',

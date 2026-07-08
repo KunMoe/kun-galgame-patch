@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { pickRoleLabel } from '~/constants/user'
+import { pickRoleBadge } from '~/constants/user'
 
 const route = useRoute()
 const api = useApi()
@@ -133,8 +133,16 @@ const toggleFollow = async () => {
               <!-- name + role share one line -->
               <div class="flex flex-wrap items-center gap-2">
                 <h4 class="text-2xl font-bold break-words">{{ user.name }}</h4>
-                <KunChip color="primary" variant="flat" size="sm">
-                  {{ pickRoleLabel(user.roles) }}
+                <KunChip
+                  :color="
+                    pickRoleBadge(user.roles, user.site_roles).site
+                      ? 'secondary'
+                      : 'primary'
+                  "
+                  variant="flat"
+                  size="sm"
+                >
+                  {{ pickRoleBadge(user.roles, user.site_roles).label }}
                 </KunChip>
               </div>
 
