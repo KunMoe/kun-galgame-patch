@@ -245,7 +245,7 @@ func TestGetUser_Helpers(t *testing.T) {
 		return c.JSON(map[string]any{
 			"user_nil": user == nil,
 			"must_nil": must == nil,
-			"userID":      userID,
+			"userID":   userID,
 			"roles":    roles,
 			"is_mod":   isMod,
 		})

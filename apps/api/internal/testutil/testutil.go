@@ -62,7 +62,7 @@ func (ta *TestApp) CreateTestSession(t *testing.T, userID int, roles ...string) 
 	sessionID := fmt.Sprintf("test-session-%d-%d", userID, time.Now().UnixNano())
 	session := middleware.SessionData{
 		UserInfo: middleware.UserInfo{
-	ID: userID,
+			ID:  userID,
 			Sub: fmt.Sprintf("test-sub-%d", userID),
 		},
 		OAuthAccessToken: fakeJWTWithRoles(roles),
