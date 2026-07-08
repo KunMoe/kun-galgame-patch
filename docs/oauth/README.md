@@ -47,6 +47,7 @@
 | 09 | [account-switching.md](./09-account-switching.md) | ✅ **账号切换（多账号 / Account Switching）——后端 + OP 选择器已实现，下游可接入**：Gmail 式多账号 + 一键切换。会话袋在 OP；切换走 `prompt=select_account` + `login_hint` 重定向（同站可用 `/auth/sessions` JSON API）；全局活跃 = 焦点对齐（同 `.kungal.com` 瞬时 / moyu 跨 TLD 对齐）；登出 = 撤销 + 短 TTL；管理员切入需重登（`10016`）。apps/web + wiki 切换器已接入，forum/moyu 待做。内部实现见 infra `docs/auth/02` |
 | 10 | [app-directory.md](./10-app-directory.md) | 🚧 **应用目录（生态一键登录 / App Directory）**：注册/登录时展示「拥有一个鲲 Galgame 账号即可一键登录以下网站」。每个 OAuth client 一个 opt-in `listed` 开关 + `logo_url`/`tagline`/`display_order`；公开只读 `GET /oauth/ecosystem` 返回 `listed` client 的展示字段；下游 modal / OAuth 注册页展示「生态 strip」。对应业界 App Launcher 模式（无 OAuth 标准，属产品元数据）|
 | 11 | [roles.md](./11-roles.md) | ⚖️ **角色与能力语义（权威定义，Tier A）**：全站五角色 `user`/`creator`/`moderator`/`admin`/`ren` 的唯一权威来源。`roles` claim = 角色名集合（普通用户为空数组，`user` 隐式）；管理轴逐级包含 `moderator ⊂ admin ⊂ ren`，`creator` 为正交的「直接发布」能力；**下游必须遵守的 MUST 规则** + 授予矩阵 + 当前 kungal/moyu 对 `ren` 的合规差距（必须整改）|
+| 12 | [site-roles.md](./12-site-roles.md) | 🧩 **站点域角色（site-scoped roles，权威定义，Tier A）**：让账号**只在某一个站点**持职（如「letmoe 的 moderator」），是 11 五角色契约的**加法扩展**（不改其语义）。`site_roles` claim = 按签发 client 站点定界的扁平角色名数组（access token / userinfo / `/users/batch` 三处出现）；下游**并入**既有角色集喂能力函数；名策略禁 `user`/`admin`/`ren`（安全不变量）+ 允许自定义捆名；授予/撤销仅 OAuth 后台（`admin`/`ren`）|
 
 ### 完整接入指南
 
