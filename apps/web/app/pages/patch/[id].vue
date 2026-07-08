@@ -3,6 +3,12 @@ import {
   GALGAME_AGE_LIMIT_DETAIL,
   GALGAME_AGE_LIMIT_MAP
 } from '~/constants/galgame'
+import {
+  SUPPORTED_TYPE_MAP,
+  SUPPORTED_LANGUAGE_MAP,
+  SUPPORTED_PLATFORM_MAP
+} from '~/constants/resource'
+import { kunMoyuMoe } from '~/config/moyu-moe'
 
 const route = useRoute()
 const api = useApi()
@@ -98,6 +104,9 @@ const publishHref = computed(
 //   - patch loaded + nsfw    → disable SEO. The patch *is* visible to the
 //     viewer (they got here because they're logged-in / acked / opted-in),
 //     but we must not let search engines index a NSFW page.
+//   - patch loaded + R18 类别 → disable SEO. Independent of content_limit: a
+//     patch whose 类别(type) includes 'r18' (R18 成人内容补丁) is adult content
+//     by category, so it must never be indexed even if the age gate reads 'sfw'.
 //   - patch null + NSFW gate → disable SEO (the confirm placeholder is
 //     intentionally generic; an indexable title would itself be a NSFW
 //     signal: "X 不存在" vs "X 含 NSFW 内容确认页" are distinguishable).
@@ -106,15 +115,127 @@ const publishHref = computed(
 // patch.banner survived the D12 metadata move because the enricher writes
 // the wiki galgame.banner verbatim onto GalgameCard — see
 // apps/api/internal/galgame/enricher/enricher.go applyGalgame.
-if (patch.value && patch.value.content_limit === 'sfw' && !isNoPatch.value) {
-  const cover = resolveBannerUrl(patch.value) || undefined
-  useKunSeoMeta({
-    title: displayName.value || `补丁 ${galgameId.value}`,
-    description: displayName.value
-      ? `${displayName.value} 的中文补丁、汉化补丁、AI 翻译补丁等资源下载`
-      : '',
-    ogType: 'article',
-    ogImage: cover
+const isR18Patch = patch.value?.type?.includes('r18') ?? false
+if (
+  patch.value &&
+  patch.value.content_limit === 'sfw' &&
+  !isR18Patch &&
+  !isNoPatch.value
+) {
+  const p = patch.value
+  const base = displayName.value || `补丁 ${galgameId.value}`
+  const cover = resolveBannerUrl(p) || undefined
+
+  // Canonical: consolidate all 5 tabs onto the 补丁资源下载 tab — it's moyu's
+  // primary intent (download), the tab that should win in search. Every
+  // /patch/:id/* tab then declares the same canonical + og:url, so they no
+  // longer compete as near-duplicate pages.
+  const canonicalPath = `/patch/${galgameId.value}/resource`
+  const canonicalUrl = `${kunMoyuMoe.domain.main}${canonicalPath}`
+
+  // Bilingual <title>: append the Japanese name when it differs, so JA-name
+  // searches match too (mirrors kungal's galgame detail SEO).
+  const jaName = p.name['ja-jp']
+  const title = jaName && jaName !== base ? `${base} | ${jaName}` : base
+
+  // Per-game, patch-intent description built from moyu's OWN data (类别 / 语言 /
+  // 平台), NOT the wiki intro — this both differentiates moyu from the wiki
+  // (which owns the encyclopedia description) and stays unique per game instead
+  // of the old one-template-fits-all string.
+  const typeLabels = p.type.map((t) => SUPPORTED_TYPE_MAP[t]).filter(Boolean)
+  const langLabels = p.language
+    .map((l) => SUPPORTED_LANGUAGE_MAP[l])
+    .filter(Boolean)
+  const platLabels = p.platform
+    .map((pl) => SUPPORTED_PLATFORM_MAP[pl])
+    .filter(Boolean)
+  const description =
+    `《${base}》补丁资源下载。` +
+    `${typeLabels.length ? `提供${typeLabels.slice(0, 5).join('、')}` : '提供汉化补丁等资源'}` +
+    `${platLabels.length ? `，支持 ${platLabels.join('、')}` : ''}` +
+    `${langLabels.length ? `，语言 ${langLabels.join('、')}` : ''}。` +
+    `开源免费、CDN 加速下载。`
+
+  useKunSeoMeta(
+    {
+      title,
+      description,
+      ogType: 'article',
+      ...(cover && { ogImage: cover }),
+      articlePublishedTime: new Date(p.created).toISOString(),
+      articleModifiedTime: new Date(p.resource_update_time).toISOString()
+    },
+    undefined,
+    canonicalPath
+  )
+
+  // Structured data (JSON-LD): mirror kungal's galgame detail but stay HONEST to
+  // moyu's data — a lean VideoGame (no faked ratings / staff, which moyu has
+  // none of) + a BreadcrumbList. Emitted as raw ld+json since nuxt-schema-org
+  // ships no defineVideoGame. Empty fields are dropped so crawlers never see
+  // blank properties.
+  const alternateNames = (['ja-jp', 'en-us', 'zh-cn', 'zh-tw'] as const)
+    .map((l) => p.name[l])
+    .filter((n): n is string => !!n && n !== base)
+  const videoGameLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'VideoGame',
+    name: base,
+    url: canonicalUrl,
+    datePublished: p.release_date || new Date(p.created).toISOString(),
+    dateModified: new Date(p.resource_update_time).toISOString(),
+    ...(alternateNames.length && { alternateName: alternateNames }),
+    ...(cover && { image: cover }),
+    ...(p.galgame?.original_language && {
+      inLanguage: p.galgame.original_language
+    }),
+    ...(platLabels.length && { gamePlatform: platLabels }),
+    ...(typeLabels.length && { keywords: typeLabels.join(', ') }),
+    interactionStatistic: [
+      {
+        '@type': 'InteractionCounter',
+        interactionType: { '@type': 'WatchAction' },
+        userInteractionCount: p.view
+      },
+      {
+        '@type': 'InteractionCounter',
+        interactionType: { '@type': 'LikeAction' },
+        userInteractionCount: p.count.favorite_by
+      }
+    ]
+  }
+  const breadcrumbLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: '首页',
+        item: kunMoyuMoe.domain.main
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Galgame 补丁',
+        item: `${kunMoyuMoe.domain.main}/galgame`
+      },
+      { '@type': 'ListItem', position: 3, name: base, item: canonicalUrl }
+    ]
+  }
+  useHead({
+    script: [
+      {
+        id: 'schema-org-video-game',
+        type: 'application/ld+json',
+        innerHTML: JSON.stringify(videoGameLd)
+      },
+      {
+        id: 'schema-org-breadcrumb',
+        type: 'application/ld+json',
+        innerHTML: JSON.stringify(breadcrumbLd)
+      }
+    ]
   })
 } else {
   useKunDisableSeo(displayName.value || `补丁 ${galgameId.value}`)

@@ -174,6 +174,25 @@ const recName = (r: PatchResource) =>
 const noteText = computed(() =>
   noteHtml.value ? noteHtml.value.replace(/<[^>]+>/g, '').slice(0, 140) : ''
 )
+const seoDescription = computed(() => {
+  if (noteText.value) return noteText.value
+  const r = resource.value
+  if (!r) return `${patchName.value} 的补丁资源下载`
+  const attrs = [
+    (r.platform ?? []).map((p) => SUPPORTED_PLATFORM_MAP[p] ?? p).join('、'),
+    (r.language ?? []).map((l) => SUPPORTED_LANGUAGE_MAP[l] ?? l).join('、'),
+    (r.type ?? []).map((t) => SUPPORTED_TYPE_MAP[t] ?? t).join('、')
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    `《${patchName.value}》补丁资源免费下载` +
+    (attrs ? `：${attrs}` : '') +
+    (r.size ? `，文件 ${r.size}` : '') +
+    (storageLabel.value ? `，${storageLabel.value}` : '') +
+    '，支持 aria2 多线程加速下载与 BLAKE3 完整性校验。'
+  )
+})
 if (
   detail.value &&
   resource.value &&
@@ -182,7 +201,7 @@ if (
 ) {
   useKunSeoMeta({
     title: composedTitle.value,
-    description: noteText.value || `${patchName.value} 的补丁资源下载`,
+    description: seoDescription.value,
     ogType: 'article',
     ogImage: bannerSrc.value || undefined
   })

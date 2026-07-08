@@ -16,7 +16,11 @@ export const kunMoyuMoe: KunSiteConfig = {
     '免费',
     '开源',
     'Nuxt',
-    ...Object.values(SUPPORTED_TYPE_MAP)
+    // Exclude the R18 类别 label (r18: 'R18 成人内容补丁') from site-wide SEO
+    // keywords — adult-content terms shouldn't ride on every page's <meta>.
+    ...Object.entries(SUPPORTED_TYPE_MAP)
+      .filter(([key]) => key !== 'r18')
+      .map(([, label]) => label)
   ],
   canonical: 'https://www.moyu.moe',
   author: [
