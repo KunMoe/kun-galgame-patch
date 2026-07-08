@@ -4,6 +4,7 @@
 
 1. **Commit, but do not push.** Commit changes whenever appropriate, but do not run `git push` on your own initiative — the user pushes. When a push is genuinely required, and especially when several repos must be pushed in a specific order, stop and tell the user the exact push order instead of pushing yourself.
 2. **No background gradients in any UI, ever.** Never use gradient backgrounds in UI design (`bg-gradient-*`, `from-*/via-*/to-*`, `linear-gradient()`, `radial-gradient()`, `conic-gradient()`, etc.); use solid colors from the project's palette.
+3. **Prefer KunUI components; do not modify KunUI itself.** When adding or changing frontend UI, reach for a KunUI component (`@kungal/ui-*`) first — do not hand-roll a native/custom component unless there is genuinely no KunUI equivalent for what you need. If KunUI appears to have a bug or is missing a feature, **do not edit KunUI's code** (it is a shared upstream library) — report it to the user directly instead, and let them decide how to proceed.
 
 
 galgame **patch / resource site**. `apps/api` = Go Fiber v3 + GORM + Postgres, `apps/web` = Nuxt 4.
