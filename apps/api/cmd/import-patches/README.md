@@ -28,6 +28,24 @@ resource is never touched. `art.Delete` soft-deletes the artifact blob, the row
 is hard-deleted (FK cascades take likes / favorites / history), and aggregates
 are recomputed.
 
+## Wiki drafts (status=2) — post-run remediation
+
+`CheckGalgameByVndbID` returns `exists=true` even for **unclaimed VNDB drafts**
+(wiki `status=2`, auto-created by `sync-vndb`). The importer happily creates
+patches on them, but wiki's public `/galgame/batch` + `/galgame/:id` return
+**status=0 only**, so those galgames — and their imported resources — are
+**invisible on moyu** (homepage / list / detail) until published. Claiming needs
+a user/admin JWT the S2S importer can't obtain, so the run instead **detects and
+reports** the drafts at the end with the exact fix:
+
+```
+UPDATE galgame SET status=0 WHERE id IN (<ids>) AND status=2;   -- on kun_galgame_wiki
+reindex-search --index=galgames                                 -- rebuild Meilisearch
+```
+
+Run both after any import that logs `UNPUBLISHED wiki drafts`. (`status 2→0` via
+raw SQL skips the search write-through hook, hence the reindex.)
+
 Config is read from the environment (`godotenv.Load()` + `config.Load()`), same
 keys as `moyu-api`: `KUN_DATABASE_URL`, `KUN_ARTIFACT_SERVICE_BASE_URL`,
 `KUN_ARTIFACT_OAUTH_CLIENT_ID/_SECRET` (fall back to `OAUTH_CLIENT_ID/_SECRET`),

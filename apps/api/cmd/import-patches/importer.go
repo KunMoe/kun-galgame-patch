@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,6 +48,13 @@ type Importer struct {
 	art    *artifactclient.Client
 	userID int
 	dryRun bool
+	// touched collects every galgame_id we resolved (published or draft) so the
+	// run can flag the ones still at wiki status=2 afterwards. CheckGalgameByVndbID
+	// returns exists=true even for unclaimed VNDB drafts, so a naive import creates
+	// patches on galgames the public wiki batch/detail won't return → invisible on
+	// moyu. We can't claim them here (needs a user/admin JWT the S2S importer
+	// lacks), so we DETECT + report them with the exact remediation instead.
+	touched map[int]struct{}
 }
 
 func (imp *Importer) processFile(ctx context.Context, path string) fileResult {
@@ -65,6 +73,9 @@ func (imp *Importer) processFile(ctx context.Context, path string) fileResult {
 		// Premise: vndb_id is expected to exist on the Wiki; a miss is the rare
 		// case — record it for manual review, never crash the batch.
 		return fileResult{name, statusWikiMissing, "vndb " + p.VndbID + " not on wiki"}
+	}
+	if imp.touched != nil {
+		imp.touched[galgameID] = struct{}{}
 	}
 
 	sanitized := sanitizeFileName(p.FileName)
@@ -258,4 +269,42 @@ func (imp *Importer) processDelete(ctx context.Context, rawLine string) fileResu
 		slog.Warn("recalc aggregates failed", "galgame", galgameID, "err", e)
 	}
 	return fileResult{name, statusOK, fmt.Sprintf("deleted resource %d (galgame %d)", res.ID, galgameID)}
+}
+
+// unpublishedDrafts returns the touched galgame_ids that the public wiki batch
+// does NOT return — i.e. still at status=2 (unclaimed VNDB draft). Their imported
+// resources are invisible on moyu (homepage/list/detail read only published
+// galgames) until they're published. Claiming needs a user/admin JWT the S2S
+// importer has no way to obtain, so we surface them for the operator to publish.
+func (imp *Importer) unpublishedDrafts(ctx context.Context) []int {
+	if len(imp.touched) == 0 {
+		return nil
+	}
+	ids := make([]int, 0, len(imp.touched))
+	for id := range imp.touched {
+		ids = append(ids, id)
+	}
+	published := make(map[int]struct{}, len(ids))
+	for i := 0; i < len(ids); i += 80 {
+		end := i + 80
+		if end > len(ids) {
+			end = len(ids)
+		}
+		briefs, err := imp.wiki.GalgameBatch(ctx, ids[i:end], "all")
+		if err != nil {
+			slog.Warn("draft check: wiki batch failed (skipping this chunk)", "err", err)
+			continue
+		}
+		for j := range briefs {
+			published[briefs[j].ID] = struct{}{}
+		}
+	}
+	var drafts []int
+	for _, id := range ids {
+		if _, ok := published[id]; !ok {
+			drafts = append(drafts, id)
+		}
+	}
+	sort.Ints(drafts)
+	return drafts
 }

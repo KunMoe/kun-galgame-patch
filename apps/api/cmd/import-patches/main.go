@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -96,7 +97,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imp := &Importer{db: db, repo: patchRepo.New(db), wiki: wiki, art: art, userID: *userID, dryRun: *dryRun}
+	imp := &Importer{db: db, repo: patchRepo.New(db), wiki: wiki, art: art, userID: *userID, dryRun: *dryRun, touched: map[int]struct{}{}}
 
 	ctx := context.Background()
 	counts := map[status]int{}
@@ -169,6 +170,23 @@ func main() {
 		}
 		processed++
 		tally("import", imp.processFile(ctx, path))
+	}
+
+	// Flag imported galgames still at wiki status=2 (unclaimed VNDB draft): their
+	// resources are invisible on moyu until published. We can't claim from the S2S
+	// importer, so report them + the exact remediation.
+	if drafts := imp.unpublishedDrafts(ctx); len(drafts) > 0 {
+		idList := make([]string, len(drafts))
+		for i, id := range drafts {
+			idList[i] = strconv.Itoa(id)
+		}
+		csv := strings.Join(idList, ",")
+		slog.Warn("UNPUBLISHED wiki drafts (status=2) — these galgames + their imported resources are INVISIBLE on moyu until published",
+			"count", len(drafts), "galgame_ids", csv)
+		slog.Warn("remediation 1/2 — on kun_galgame_wiki DB run:",
+			"sql", "UPDATE galgame SET status=0 WHERE id IN ("+csv+") AND status=2;")
+		slog.Warn("remediation 2/2 — rebuild search so they're findable:",
+			"cmd", "reindex-search --index=galgames")
 	}
 
 	slog.Info("summary",
