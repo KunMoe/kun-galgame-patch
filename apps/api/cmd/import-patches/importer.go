@@ -183,7 +183,7 @@ func (imp *Importer) createResource(galgameID int, p *parsedPatch, sanitized, uu
 		GalgameID:             galgameID,
 		Storage:               "s3", // artifact-backed; Content/S3Key stay empty
 		ArtifactUUID:          uuid,
-		Name:                  sanitized,
+		Name:                  buildResourceName(p.GroupName, p.GameName, sanitized),
 		LocalizationGroupName: p.GroupName,
 		Size:                  formatSize(size),
 		Note:                  renderNote(p, sanitized, imp.userID),

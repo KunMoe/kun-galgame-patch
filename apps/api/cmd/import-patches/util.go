@@ -67,6 +67,24 @@ func mimeForExt(fileName string) string {
 	}
 }
 
+// buildResourceName builds the resource display name in the site-wide 2310
+// convention: 【<汉化组名>】<游戏名> - 人工汉化补丁. Falls back to the sanitized
+// filename when no game title was parsed (a few archive files carry an empty
+// title). patch_resource.name is varchar(300); truncate defensively (real names
+// top out ~124 runes). Dedup no longer relies on name == sanitized — it matches
+// the sanitized filename inside `note` (strpos), so this format is safe.
+func buildResourceName(group, gameName, sanitized string) string {
+	g := strings.TrimSpace(gameName)
+	if g == "" {
+		return sanitized
+	}
+	name := "【" + strings.TrimSpace(group) + "】" + g + " - 人工汉化补丁"
+	if r := []rune(name); len(r) > 300 {
+		name = string(r[:300])
+	}
+	return name
+}
+
 // renderNote builds the resource note from the legacy vn-sync/note.md template,
 // with the archive account id parameterized (was 9147, now the importer's
 // --user-id). Kept inline (single small template) rather than reading a file so
