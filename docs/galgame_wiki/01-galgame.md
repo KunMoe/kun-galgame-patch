@@ -132,7 +132,11 @@
   "intro_ja_jp": "...",
   "intro_zh_cn": "...",
   "intro_zh_tw": "...",
-  "officials": ["Brand A", "Brand B"]
+  "officials": ["Brand A", "Brand B"],
+  "effective_portrait_hash": "1234...cd",
+  "effective_portrait_width": 780,
+  "effective_portrait_height": 1200,
+  "effective_portrait_thumbhash": "..."
 }
 ```
 
@@ -141,6 +145,10 @@
 | `release_date` | `""` 表示未知；`release_date_tba=true` 区分「已定档但无确切日期」与「完全未知」 |
 | `intro_*` | 四语言简介（markdown，单条可能 1–10 KB）；调用方按偏好语言取一个并自行截断 |
 | `officials` | 制作会社 / 品牌的**纯名称**数组（可能为空或多个）；调用方自行拼接（如用 `、`）展示「由 X 制作」 |
+| `effective_portrait_hash` | **只读派生字段（2026-07 新增，加性）**：钉住的**竖版**封面 image_service 哈希（= `covers` 里 `portrait_pinned=true` 的那张的 `image_hash`），横版 `effective_banner_hash` 的竖向伴侣。无竖版 pin 时省略——**没有横图兜底**（横图列表卡的竖框兜底归前端）。前端拼 CDN URL 的方式与 `effective_banner_hash` 一致（域无关，按 hash 拼） |
+| `effective_portrait_width` / `effective_portrait_height` / `effective_portrait_thumbhash` | 钉住竖图的内在 image_service 元信息，读取时按 hash 批量补全；竖向卡片据此预留比例 + 渲染 blur-up 占位（无布局抖动）。语义同 `effective_banner_*`；无竖图 pin 或未富化时省略 |
+
+> **单体详情 `GET /galgame/:gid`** 同样新增派生字段 `effective_portrait_hash`（语义同上）；其内在宽高不单独重复——`covers[]` 每条已带 `width`/`height`/`thumbhash`，取对应那条即可（与 `effective_banner_hash` 对称，单体详情不带 `effective_banner_width` 同理）。
 
 ---
 

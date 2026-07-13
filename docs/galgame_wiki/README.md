@@ -25,6 +25,7 @@
 | 07 | [submission.md](./07-submission.md) | 用户投稿与审核流程（submit / claim / patch-draft） |
 | 08 | [messages.md](./08-messages.md) | 消息系统（投稿事件流，wiki 单一来源） |
 | 09 | [openapi-specs.md](./09-openapi-specs.md) | **机器可读 OpenAPI 契约**（门户发布）+ 生成式客户端 + 消费方防漂移 |
+| 10 | [cross-source-scores-and-stats.md](./10-cross-source-scores-and-stats.md) | 跨源评分与统计读面（`catalog_work_id` 贯通 + `GET /galgame/:gid/scores` + `GET /galgame/stats`） |
 | 99 | [appendix.md](./99-appendix.md) | 错误码、端点总览、Meilisearch 运维 |
 
 > **强制范围变更**：galgame 的编辑面（PR、修订历史、关系、分类轴增删改）**不再是 wiki-only**——kungal 与 moyu **各自必须完整实现一份**（后端代理 + 前端 UI，与 wiki 对齐）。权威清单见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
@@ -44,6 +45,7 @@
 > - **K-PR（2026-06-12，bug fix）**：**`GET /galgame/:gid` 详情现对审核者开放待审 / 被拒草稿**。此前非 0 状态只对**提交者本人**可见，admin/moderator 点审核队列的「查看」打开他人的 `status=3` 待审稿会拿到 404 —— 与 [00-handbook §2 状态表](./00-handbook-for-downstream.md#2-status-状态机5-档)「admin + 提交者本人可见」的承诺不一致。现详情端点会解 JWT 里的 `roles`，**admin / moderator 可查看任意 `status=3/4` 提交**（并对草稿绕过其自身 `content_limit`，以便审核 NSFW 待审稿）；`status=1`（封禁）/ `status=2`（VNDB 草稿）仍不走此端点。**非破坏性**（仅放宽可见性，下游无需改动；审核队列现有的「查看」直接生效）。详见 [01-galgame.md GET /galgame/:gid 可见性](./01-galgame.md#get-galgamegid)。
 > - **K-PR（2026-06-12，非破坏性·新增）**：消息内嵌的 **`MessageGalgameBrief` 新增 `vndb_id`**。`name_*` 全空（VNDB 占位提交）时,消费端可兜底显示「VNDB v4136」而非裸 `#id`,**所有消息类型一致生效**（此前只有 `submitted` 的 `payload.vndb_id` 有,审核队列的 `edited_pending` 与通知中心其它类型拿不到）。口径与 `GalgameBrief.vndb_id` 一致。详见 [08-messages.md](./08-messages.md)。
 > - **K-PR（2026-06-12，bug fix）**：**`GET /galgame/user/:id/contributed` 现按「创建 ∪ 贡献」计**，不再只 JOIN `galgame_contributor`。约 35% 的已发布条目（早期迁移 / VNDB 同步）创建者只有 `galgame.user_id`、无对应 contributor 行，旧实现会把这些用户**自己创建的**条目漏掉——**只创建过、没编辑过别人条目的用户因此看到空列表**（有用户反馈）。改为 `galgame.user_id ∪ galgame_contributor`（`status=0`），排序退化为 `COALESCE(contributor.created, galgame.created)`；`/stats` 的 `galgame_contributed` 统计同口径修正（徽标数与列表一致）。**纯代码、无需迁移**（仅放宽查询，对 `galgame_contributor` 的历史空洞鲁棒）。详见 [01-galgame.md GET /galgame/user/:id/contributed](./01-galgame.md#get-galgameuseridcontributed)。
+> - **K-PR（2026-07-12，非破坏性·新增）**：**跨源评分与统计读面**。① `GET /galgame/:gid` 与 `GET /galgame/batch?view=detail` 详情响应新增可空 `catalog_work_id`（catalog 身份指针，认领+对账后回写）；② 新增 `GET /galgame/:gid/scores`——VNDB / Bangumi / EG 三源评分 + 归源链接（缺源=null、缺分值=分值字段 null）；③ 新增 `GET /galgame/stats`——六 key 跨源统计总览（载荷原样透传 + ETag/304 缓存）。全加性、下游无需改动。详见 [10-cross-source-scores-and-stats.md](./10-cross-source-scores-and-stats.md)。
 > - **K-PR（2026-06-12，bug fix）**：**撤回提交（`DELETE /galgame/:gid`）对带封面的草稿不再失败**。`DeleteDraft` 删 galgame 前要手动清各张外键子表(都是 `ON DELETE NO ACTION`),但清单**漏了 `galgame_cover` / `galgame_screenshot` / `galgame_history` / `galgame_pr`**;而绝大多数提交都传了封面,导致最后 `DELETE galgame` 撞 `fk_galgame_cover` → 事务回滚 → 前端"操作失败"(线上 8 个草稿里 7 个有封面,故几乎必现)。已把这四张表补进清理清单。**纯服务端修复,下游无需改动**;契约不变(撤回本就该能用)。
 
 ---

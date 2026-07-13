@@ -57,6 +57,18 @@
 
 **成功响应**：`{ "code": 0, "message": "...", "data": { "ids": [101, 102, ...] } }`（无匹配时 `ids: []`）。
 
+### GET /galgame/tags/{id}/galgames
+
+标签的**自述 + 该标签下 galgame 的分页列表**——实体页「这个标签还有哪些作品」反查面（step 20，用于 letmoe 等下游的实体页）。与 `GET /tag/:name` 的区别：**在 `/galgame` 读命名空间下（属 `read-openapi` 谱，openapi-typescript 生成类型）**，返回**轻量 `GalgameBrief` 列表**（含 `effective_banner_hash` 等封面富化）而非整行模型，且**页面直达即自足**（响应内含实体自身身份，无需二次查询）。`official` 同款：`GET /galgame/officials/{id}/galgames`。
+
+**路径参数**：`{id}`（tag id）
+
+**查询参数**：`page`（默认 1）、`limit`（1–50，默认 24）、`sort_field`（`created` | `resource_update_time` | `view`，默认 `resource_update_time`）、`sort_order`（`asc` | `desc`，默认 `desc`）、`content_limit`（`sfw` | `nsfw` | `all`，**安全默认 `sfw`**，见 [handbook §16](./00-handbook-for-downstream.md)）。
+
+**成功响应**：`{ "code": 0, "message": "...", "data": { "tag": { "id", "name", "category", "aliases": [...] }, "galgames": [GalgameBrief, ...], "total": N } }`。
+
+**缺失 id → `404`**（实体不存在）。
+
 ### GET /tag/:name
 
 标签详情 + 关联的 galgame 列表。
@@ -170,6 +182,14 @@
 ### GET /official/:id/galgame-ids
 
 返回某开发商下所有 galgame 的 id 列表（下游按开发商拉取 / 筛选用）。`:id` = official id。成功响应 `{ "code": 0, "message": "...", "data": { "ids": [...] } }`（无匹配时 `ids: []`）。
+
+### GET /galgame/officials/{id}/galgames
+
+开发商 / 会社的**自述 + 该会社作品的分页列表**——实体页「这个制作方还做了哪些」反查面（step 20）。形态与 [`GET /galgame/tags/{id}/galgames`](#get-galgametagsidgalgames) 完全同款:**在 `/galgame` 读命名空间下（属 `read-openapi` 谱）**、返回轻量 `GalgameBrief` 列表、页面直达即自足。
+
+**路径参数**：`{id}`（official id）。**查询参数**同 tags 反查面（`page` / `limit` 1–50 / `sort_field` / `sort_order` / `content_limit` 安全默认 `sfw`）。
+
+**成功响应**：`{ "code": 0, "message": "...", "data": { "official": { "id", "name", "category", "aliases": [...] }, "galgames": [GalgameBrief, ...], "total": N } }`。**缺失 id → `404`**。
 
 ### PUT /official
 
