@@ -107,6 +107,34 @@ func (s *Service) validatePreUpload(userID int, fileName string, declaredSize in
 	return nil
 }
 
+// dailyImageLimit is moyu's per-USER daily image-upload cap. image_service
+// enforces only a per-SITE quota, so moyu keeps this per-user fair-use limit
+// itself (aligned with kungal's image service). Reset nightly by the cron that
+// zeroes daily_image_count on the user table.
+const dailyImageLimit = 50
+
+// CheckDailyImageQuota returns an error if the user has already hit the per-user
+// daily image cap. Checked BEFORE hitting image_service so the user gets a
+// friendly message without spending a per-site quota unit.
+func (s *Service) CheckDailyImageQuota(userID int) error {
+	var user authModel.User
+	if err := s.db.Select("daily_image_count").First(&user, userID).Error; err != nil {
+		return fmt.Errorf("获取用户信息失败")
+	}
+	if user.DailyImageCount >= dailyImageLimit {
+		return fmt.Errorf("今日图片上传次数已达上限")
+	}
+	return nil
+}
+
+// IncrementDailyImageCount bumps the per-user counter after a SUCCESSFUL upload.
+// Best-effort: a counter miss must not fail an upload that already landed in
+// image_service.
+func (s *Service) IncrementDailyImageCount(userID int) {
+	s.db.Model(&authModel.User{}).Where("id = ?", userID).
+		Update("daily_image_count", gorm.Expr("daily_image_count + 1"))
+}
+
 // Init validates, then asks the artifact service to start an upload. Artifact
 // returns the presigned single-PUT URL or the multipart parts (server-driven).
 func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTier, req InitRequest) (*InitResponse, error) {

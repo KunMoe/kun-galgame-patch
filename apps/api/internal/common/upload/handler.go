@@ -117,7 +117,7 @@ func (h *Handler) Resume(c fiber.Ctx) error {
 // 10MB body cap is inherited from the Fiber app config; image_service itself
 // enforces per-preset size + per-client daily quota.
 func (h *Handler) UploadImageService(c fiber.Ctx) error {
-	_ = middleware.MustGetUser(c)
+	user := middleware.MustGetUser(c)
 
 	preset := c.FormValue("preset")
 	if preset == "" {
@@ -184,6 +184,15 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 	if h.img == nil {
 		return response.Error(c, errors.ErrInternal("image_service 客户端未配置"))
 	}
+
+	// Per-USER daily cap: image_service enforces only a per-SITE quota, so moyu
+	// applies its own per-user fair-use limit here (aligned with kungal). Only
+	// moyu-owned content images (this branch) count — the wiki-proxied galgame
+	// images above do not.
+	if qErr := h.svc.CheckDailyImageQuota(user.ID); qErr != nil {
+		return response.Error(c, errors.New(80008, qErr.Error(), fiber.StatusTooManyRequests))
+	}
+
 	result, err := h.img.Upload(c.Context(), io.Reader(f), fh.Filename, mime, preset)
 	if err != nil {
 		switch {
@@ -197,6 +206,8 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 			return response.Error(c, errors.ErrInternal("image_service 上传失败: "+err.Error()))
 		}
 	}
+
+	h.svc.IncrementDailyImageCount(user.ID)
 	return response.OK(c, result)
 }
 
