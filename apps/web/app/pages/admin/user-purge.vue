@@ -17,7 +17,6 @@ interface UserPurgePreview {
   user_exists: boolean
   comments: number
   resources: number
-  resource_s3_files: number
   comment_likes: number
   resource_likes: number
   favorites: number
@@ -30,15 +29,12 @@ interface UserPurgePreview {
   owned_patches: number
   owned_patch_resources: number
   owned_patch_comments: number
-  owned_patch_s3_files: number
   misc_traces: number
   can_delete_user_row: boolean
 }
 interface UserPurgeResult {
   user_id: number
   user_row_deleted: boolean
-  s3_deleted: number
-  s3_failed: number
   sessions_revoked: number
 }
 
@@ -99,7 +95,7 @@ const rows = computed<{ label: string; value: number; hint?: string }[]>(() => {
   if (!p) return []
   return [
     { label: '评论', value: p.comments },
-    { label: '补丁资源', value: p.resources, hint: `含 ${p.resource_s3_files} 个云端文件` },
+    { label: '补丁资源', value: p.resources },
     { label: '点赞 (评论 / 资源)', value: p.comment_likes + p.resource_likes },
     { label: '收藏', value: p.favorites },
     { label: '贡献', value: p.contributes },
@@ -130,7 +126,7 @@ const execute = async () => {
     type: 'danger',
     message:
       `将【不可恢复地】删除用户 #${uidNum.value} 的本地账号，及其全部评论 (${p.comments})、` +
-      `补丁资源 (${p.resources}，含 ${p.resource_s3_files} 个云端文件)、点赞 / 收藏 / 关注、` +
+      `补丁资源 (${p.resources})、点赞 / 收藏 / 关注、` +
       `聊天与站内私信。${collateral}\n\n` +
       `（OAuth 身份、Wiki、kungal、image_service 不受影响——如需封禁请另在 OAuth 后台操作。）\n\n确定继续？`
   })
@@ -144,9 +140,7 @@ const execute = async () => {
     if (res.code === 0) {
       const r = res.data
       useKunMessage(
-        `清除完成：账号已删除，云端文件删除 ${r.s3_deleted} 个` +
-          (r.s3_failed ? `（${r.s3_failed} 个删除失败，详见服务端日志）` : '') +
-          `，撤销登录会话 ${r.sessions_revoked} 个`,
+        `清除完成：账号已删除，撤销登录会话 ${r.sessions_revoked} 个`,
         'success'
       )
       preview.value = null
@@ -231,8 +225,7 @@ const execute = async () => {
             v-if="preview.owned_patches > 0 && forcePurgePatches"
             class="text-danger text-xs"
           >
-            将额外删除 {{ preview.owned_patch_resources }} 个资源 (含
-            {{ preview.owned_patch_s3_files }} 个云端文件) 与
+            将额外删除 {{ preview.owned_patch_resources }} 个资源与
             {{ preview.owned_patch_comments }} 条评论 —— 其中可能包含其他用户的内容。
           </p>
           <p

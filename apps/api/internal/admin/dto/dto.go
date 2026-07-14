@@ -66,15 +66,12 @@ type PurgeUserRequest struct {
 
 // UserPurgePreview is the dry-run breakdown for GET
 // /admin/user/:id/purge-preview. Counts reflect what an execute with the same
-// purge_owned_patches flag would remove. S3-file counts are upper bounds (live
-// objects + replaced-file history; the own/owned-patch buckets may overlap and
-// are deduped at deletion time).
+// purge_owned_patches flag would remove.
 type UserPurgePreview struct {
 	UserID          int   `json:"user_id"`
 	UserExists      bool  `json:"user_exists"`
 	Comments        int64 `json:"comments"`
 	Resources       int64 `json:"resources"`
-	ResourceS3Files int64 `json:"resource_s3_files"`
 	CommentLikes    int64 `json:"comment_likes"`
 	ResourceLikes   int64 `json:"resource_likes"`
 	Favorites       int64 `json:"favorites"`
@@ -91,7 +88,6 @@ type UserPurgePreview struct {
 	// purge_owned_patches=true.
 	OwnedPatchResources int64 `json:"owned_patch_resources"`
 	OwnedPatchComments  int64 `json:"owned_patch_comments"`
-	OwnedPatchS3Files   int64 `json:"owned_patch_s3_files"`
 
 	// MiscTraces: rows in FK-less per-user tables (wiki read-state + file-edit
 	// history authored by the user) that the user-row CASCADE can't reach and
@@ -107,7 +103,5 @@ type UserPurgePreview struct {
 type UserPurgeResult struct {
 	UserID          int  `json:"user_id"`
 	UserRowDeleted  bool `json:"user_row_deleted"`
-	S3Deleted       int  `json:"s3_deleted"`
-	S3Failed        int  `json:"s3_failed"`
 	SessionsRevoked int  `json:"sessions_revoked"`
 }

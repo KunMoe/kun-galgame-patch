@@ -91,49 +91,6 @@ func (r *PatchRepository) DeletePatch(id int) error {
 	})
 }
 
-// GetPatchResourceS3Keys returns every non-empty s3_key on patch_resource
-// rows owned by the patch. Used by DeletePatch right before the row goes
-// away — we need the keys in hand BEFORE the FK CASCADE wipes the rows,
-// because once the rows are gone we have no way to enumerate which B2
-// objects to clean up. storage='s3' guard skips user-link rows.
-func (r *PatchRepository) GetPatchResourceS3Keys(patchID int) ([]string, error) {
-	var keys []string
-	err := r.db.Model(&model.PatchResource{}).
-		Where("galgame_id = ? AND storage = ? AND s3_key <> ''", patchID, "s3").
-		Pluck("s3_key", &keys).Error
-	return keys, err
-}
-
-// GetPatchResourceFileHistoryS3Keys returns every non-empty old_s3_key on
-// patch_resource_file_history rows belonging to the patch's resources.
-// UpdateResource appends one history row per file substitution preserving
-// the *previous* s3_key; without snapshotting these before DeletePatch the
-// FK CASCADE wipes both patch_resource AND history rows, stranding the B2
-// objects pointed to by history.old_s3_key.
-//
-// Disjoint from GetPatchResourceS3Keys: history rows only record keys that
-// have *already been replaced* by a newer s3_key, so live patch_resource
-// rows and history rows never reference the same object.
-func (r *PatchRepository) GetPatchResourceFileHistoryS3Keys(patchID int) ([]string, error) {
-	var keys []string
-	err := r.db.Table("patch_resource_file_history AS h").
-		Joins("JOIN patch_resource AS r ON r.id = h.resource_id").
-		Where("r.galgame_id = ? AND h.old_storage = ? AND h.old_s3_key <> ''", patchID, "s3").
-		Pluck("h.old_s3_key", &keys).Error
-	return keys, err
-}
-
-// GetResourceFileHistoryS3Keys returns the history's old_s3_keys for a single
-// resource. Used by DeleteResource for the same reason as the patch-scoped
-// helper above.
-func (r *PatchRepository) GetResourceFileHistoryS3Keys(resourceID int) ([]string, error) {
-	var keys []string
-	err := r.db.Model(&model.PatchResourceFileHistory{}).
-		Where("resource_id = ? AND old_storage = ? AND old_s3_key <> ''", resourceID, "s3").
-		Pluck("old_s3_key", &keys).Error
-	return keys, err
-}
-
 func (r *PatchRepository) FindPatchByVndbID(vndbID string) (*model.Patch, error) {
 	var patch model.Patch
 	err := r.db.Where("vndb_id = ?", vndbID).First(&patch).Error

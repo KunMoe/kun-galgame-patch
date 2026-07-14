@@ -24,7 +24,6 @@ import (
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
 	"kun-galgame-patch-api/internal/infrastructure/database"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
-	"kun-galgame-patch-api/internal/infrastructure/storage"
 	messageHandler "kun-galgame-patch-api/internal/message/handler"
 	messageRepo "kun-galgame-patch-api/internal/message/repository"
 	messageService "kun-galgame-patch-api/internal/message/service"
@@ -77,7 +76,6 @@ func New(cfg *config.Config) *App {
 	// Infrastructure
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
-	s3 := storage.NewS3(cfg.S3)
 	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
 	// Wiki's /galgame/messages/feed uses OAuth Client Basic Auth (same
 	// client_id/secret as /users/batch). The wiki-sync cron is the sole
@@ -136,7 +134,7 @@ func New(cfg *config.Config) *App {
 
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, s3, artCli, wiki, usrCli, mpAwarder, adminRepository)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, wiki, usrCli, mpAwarder, adminRepository)
 	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
 
 	// User module
@@ -150,7 +148,7 @@ func New(cfg *config.Config) *App {
 	messageHdl := messageHandler.New(messageSvc, usrCli, wiki)
 
 	// Admin module (adminRepository built above — also patch-service's AuditLogger)
-	adminSvc := adminService.New(adminRepository, rdb, settingSvc, s3, patchSvc)
+	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
 
 	// Upload module: bytes live in the artifact service (artCli built above);

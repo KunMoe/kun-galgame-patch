@@ -7,7 +7,6 @@ type Config struct {
 	Database     DatabaseConfig
 	Redis        RedisConfig
 	OAuth        OAuthConfig
-	S3           S3Config
 	GalgameWiki  GalgameWikiConfig
 	ImageService ImageServiceConfig
 	Artifact     ArtifactConfig
@@ -41,26 +40,6 @@ type OAuthConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
-}
-
-// S3Config holds the patch-resource (Backblaze B2) bucket settings. Images
-// live in a separate R2 bucket served by image_service — that's
-// ImageServiceConfig, not this struct.
-//
-// Endpoint  : the S3-API origin used by minio-go to PUT/GET/multipart objects
-//             (e.g. https://s3.us-east-005.backblazeb2.com).
-// PublicURL : the user-facing download prefix that fronts the bucket
-//             (e.g. https://oss.moyu.moe). When empty NewS3 falls back to
-//             Endpoint + "/" + Bucket — fine for dev (direct B2 download),
-//             wrong for prod where B2's egress is metered and we want our
-//             own CDN/reverse-proxy domain serving the bytes.
-type S3Config struct {
-	Endpoint  string
-	PublicURL string
-	Region    string
-	Bucket    string
-	AccessKey string
-	SecretKey string
 }
 
 // GalgameWikiConfig points at the separately deployed Galgame Wiki Service (D11).
@@ -120,17 +99,6 @@ func Load() *Config {
 			ClientID:     getEnv("OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("OAUTH_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("OAUTH_REDIRECT_URI", ""),
-		},
-		S3: S3Config{
-			// _BUCKET_NAME (not _BUCKET) — keeps the var name in lockstep with
-			// legacy next-web and apps/web/.env.production so a single .env
-			// file works for both stacks during the migration window.
-			Endpoint:  getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_ENDPOINT", ""),
-			PublicURL: getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_URL", ""),
-			Region:    getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_REGION", ""),
-			Bucket:    getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_BUCKET_NAME", ""),
-			AccessKey: getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID", ""),
-			SecretKey: getEnv("KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY", ""),
 		},
 		GalgameWiki: GalgameWikiConfig{
 			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),

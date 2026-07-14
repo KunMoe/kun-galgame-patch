@@ -816,7 +816,7 @@ watch(histPage, loadHistory)
       <div class="space-y-4 py-2">
         <h3 class="text-lg font-bold">删除补丁资源？</h3>
         <p class="text-default-600 text-sm">
-          此操作不可撤销。资源记录会从数据库移除，对应的 S3 文件也会被删除。
+          此操作不可撤销。资源记录会从数据库移除，对应的下载文件也会一并删除。
         </p>
         <p
           v-if="pendingDelete?.name"

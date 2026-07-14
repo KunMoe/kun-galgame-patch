@@ -22,8 +22,10 @@
 //               integration-guide.md §6).
 //   - delete:   DELETE /patch/:id — wipes the moyu patch row plus all child
 //               tables (resources / comments / contributor / favorite / pr /
-//               link / resource_file_history via FK CASCADE) and best-effort
-//               purges the S3 objects snapshotted from patch_resource.s3_key.
+//               link / resource_file_history via FK CASCADE). File blobs are
+//               not reclaimed here: artifact blobs are GC'd by the artifact
+//               service, and legacy s3_key objects stay in the frozen backup
+//               bucket.
 //               Does NOT touch the wiki galgame entity — wiki considers
 //               status=0 published rows un-deletable (only admin can flip
 //               status to 1 via /admin/galgame/:gid/status). This button is
@@ -254,7 +256,7 @@ const onMenuSelect = (item: { key: string }) => {
     <div class="space-y-4 py-2">
       <h3 class="text-lg font-bold">删除该游戏？</h3>
       <p class="text-default-600 text-sm">
-        此操作不可撤销。本站会删除该游戏的所有补丁资源、评论、贡献者记录、收藏关系，对应的 S3 文件也会被清理。
+        此操作不可撤销。本站会删除该游戏的所有补丁资源、评论、贡献者记录、收藏关系。
       </p>
       <p class="text-default-500 text-xs">
         这只会删除本站记录，不会影响 Galgame Wiki 上的游戏条目。

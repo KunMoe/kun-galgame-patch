@@ -125,29 +125,6 @@ func (r *AdminRepository) DeleteResource(resourceID int) error {
 	})
 }
 
-// GetResourceByID exposes the resource row so the service layer can read
-// Storage / S3Key before DELETE (admin needs them to clean up the S3 object,
-// see AdminService.DeleteResource). Mirrors PatchRepository.GetResourceByID
-// rather than calling across modules so admin keeps its own narrow surface.
-func (r *AdminRepository) GetResourceByID(resourceID int) (*patchModel.PatchResource, error) {
-	var resource patchModel.PatchResource
-	err := r.db.First(&resource, resourceID).Error
-	return &resource, err
-}
-
-// GetResourceFileHistoryS3Keys mirrors PatchRepository's same-named helper
-// (kept here so admin doesn't reach across modules into the patch repo).
-// Needed for the same reason: patch_resource_file_history is CASCADE'd when
-// the resource is deleted, so the old_s3_key must be snapshotted first or
-// the corresponding B2 objects strand.
-func (r *AdminRepository) GetResourceFileHistoryS3Keys(resourceID int) ([]string, error) {
-	var keys []string
-	err := r.db.Model(&patchModel.PatchResourceFileHistory{}).
-		Where("resource_id = ? AND old_storage = ? AND old_s3_key <> ''", resourceID, "s3").
-		Pluck("old_s3_key", &keys).Error
-	return keys, err
-}
-
 // User management & creator-application repo methods are gone with the
 // migration: identity is owned by OAuth, and the creator role was retired.
 
@@ -323,7 +300,6 @@ type PurgePreviewCounts struct {
 	UserExists          bool
 	Comments            int64
 	Resources           int64
-	ResourceS3Files     int64 // own resources: live s3 objects + replaced-file history
 	CommentLikes        int64
 	ResourceLikes       int64
 	Favorites           int64
@@ -336,7 +312,6 @@ type PurgePreviewCounts struct {
 	OwnedPatches        int64
 	OwnedPatchResources int64
 	OwnedPatchComments  int64
-	OwnedPatchS3Files   int64
 	// MiscTraces: rows in tables that store a user id WITHOUT a FK to "user"
 	// (so the user-row CASCADE can't reach them) — wiki_message_read_state +
 	// patch_resource_file_history authored by the user. Purged explicitly.
@@ -389,24 +364,9 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 	count(&fileHistory, r.db.Table("patch_resource_file_history").Where("actor_id = ?", userID))
 	c.MiscTraces = readStates + fileHistory
 
-	// own-resource S3 objects = live (storage='s3') + replaced-file history.
-	var ownLiveS3, ownHistS3 int64
-	count(&ownLiveS3, r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND storage = ? AND s3_key <> ''", userID, "s3"))
-	count(&ownHistS3, r.db.Table("patch_resource_file_history AS h").
-		Joins("JOIN patch_resource AS r ON r.id = h.resource_id").
-		Where("r.user_id = ? AND h.old_storage = ? AND h.old_s3_key <> ''", userID, "s3"))
-	c.ResourceS3Files = ownLiveS3 + ownHistS3
-
 	if includeOwnedPatches {
 		count(&c.OwnedPatchResources, r.db.Model(&patchModel.PatchResource{}).Where("galgame_id IN (?)", r.ownedPatchIDsSubquery(userID)))
 		count(&c.OwnedPatchComments, r.db.Model(&patchModel.PatchComment{}).Where("galgame_id IN (?)", r.ownedPatchIDsSubquery(userID)))
-		var opLiveS3, opHistS3 int64
-		count(&opLiveS3, r.db.Model(&patchModel.PatchResource{}).
-			Where("galgame_id IN (?) AND storage = ? AND s3_key <> ''", r.ownedPatchIDsSubquery(userID), "s3"))
-		count(&opHistS3, r.db.Table("patch_resource_file_history AS h").
-			Joins("JOIN patch_resource AS r ON r.id = h.resource_id").
-			Where("r.galgame_id IN (?) AND h.old_storage = ? AND h.old_s3_key <> ''", r.ownedPatchIDsSubquery(userID), "s3"))
-		c.OwnedPatchS3Files = opLiveS3 + opHistS3
 	}
 
 	if firstErr != nil {
@@ -415,81 +375,7 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 	return &c, nil
 }
 
-// CollectUserS3Keys returns the deduped set of moyu-bucket S3 object keys that
-// the purge must delete (PG CASCADE removes the rows but never the objects):
-// the user's own resources' live s3_key + their replaced-file history, plus —
-// when force-deleting owned patches — every resource key (any author) under
-// those patches + their history. Mirrors PatchRepository's S3-key helpers.
-func (r *AdminRepository) CollectUserS3Keys(userID int, includeOwnedPatches bool) ([]string, error) {
-	seen := make(map[string]struct{})
-	add := func(keys []string) {
-		for _, k := range keys {
-			if k != "" {
-				seen[k] = struct{}{}
-			}
-		}
-	}
-
-	pluck := func(q *gorm.DB, col string) ([]string, error) {
-		var keys []string
-		err := q.Pluck(col, &keys).Error
-		return keys, err
-	}
-
-	// own resources — live
-	if keys, err := pluck(r.db.Model(&patchModel.PatchResource{}).
-		Where("user_id = ? AND storage = ? AND s3_key <> ''", userID, "s3"), "s3_key"); err != nil {
-		return nil, err
-	} else {
-		add(keys)
-	}
-	// own resources — replaced-file history
-	if keys, err := pluck(r.db.Table("patch_resource_file_history AS h").
-		Joins("JOIN patch_resource AS r ON r.id = h.resource_id").
-		Where("r.user_id = ? AND h.old_storage = ? AND h.old_s3_key <> ''", userID, "s3"), "h.old_s3_key"); err != nil {
-		return nil, err
-	} else {
-		add(keys)
-	}
-
-	// files this user replaced as actor (patch_resource_file_history.actor_id
-	// has no FK to "user"): covers their own resources AND — if they were ever
-	// privileged — replacements on OTHER users' resources whose history rows
-	// won't CASCADE with the user. Dedup-safe with the blocks above.
-	if keys, err := pluck(r.db.Table("patch_resource_file_history").
-		Where("actor_id = ? AND old_storage = ? AND old_s3_key <> ''", userID, "s3"), "old_s3_key"); err != nil {
-		return nil, err
-	} else {
-		add(keys)
-	}
-
-	if includeOwnedPatches {
-		// every resource under owned patches (any author) — live
-		if keys, err := pluck(r.db.Model(&patchModel.PatchResource{}).
-			Where("galgame_id IN (?) AND storage = ? AND s3_key <> ''", r.ownedPatchIDsSubquery(userID), "s3"), "s3_key"); err != nil {
-			return nil, err
-		} else {
-			add(keys)
-		}
-		// ...and their replaced-file history
-		if keys, err := pluck(r.db.Table("patch_resource_file_history AS h").
-			Joins("JOIN patch_resource AS r ON r.id = h.resource_id").
-			Where("r.galgame_id IN (?) AND h.old_storage = ? AND h.old_s3_key <> ''", r.ownedPatchIDsSubquery(userID), "s3"), "h.old_s3_key"); err != nil {
-			return nil, err
-		} else {
-			add(keys)
-		}
-	}
-
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
-	}
-	return out, nil
-}
-
-// PurgeUser wipes every moyu-side trace of a user in one transaction, then the
-// service does best-effort S3 cleanup with the keys from CollectUserS3Keys.
+// PurgeUser wipes every moyu-side trace of a user in one transaction.
 //
 // CASCADE from the user row removes all user_id=U rows automatically; this
 // method only does what CASCADE can't: clear the two RESTRICT FKs first

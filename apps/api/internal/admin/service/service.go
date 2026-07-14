@@ -10,7 +10,6 @@ import (
 	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/repository"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
-	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
@@ -24,17 +23,16 @@ type AdminService struct {
 	repo    *repository.AdminRepository
 	rdb     *redis.Client // sessions only (user-purge revocation); settings now live in `setting`
 	setting *settingService.Service
-	s3      *storage.S3Client
 	// patch is the canonical owner of resource/comment mutations (delete handles
-	// S3 cleanup + moemoepoint reconciliation + owner notification + count
-	// upkeep). The admin panel delegates the ACTION to it and only layers the
+	// moemoepoint reconciliation + owner notification + count upkeep). The admin
+	// panel delegates the ACTION to it and only layers the
 	// admin_log audit on top — so a delete via the admin panel behaves exactly
 	// like one via the public Option-B path (no divergent re-implementation).
 	patch *patchService.PatchService
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, s3 *storage.S3Client, patch *patchService.PatchService) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, setting: setting, s3: s3, patch: patch}
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch}
 }
 
 // ===== Comments =====
@@ -113,7 +111,6 @@ func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*
 		UserExists:          c.UserExists,
 		Comments:            c.Comments,
 		Resources:           c.Resources,
-		ResourceS3Files:     c.ResourceS3Files,
 		CommentLikes:        c.CommentLikes,
 		ResourceLikes:       c.ResourceLikes,
 		Favorites:           c.Favorites,
@@ -126,26 +123,16 @@ func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*
 		OwnedPatches:        c.OwnedPatches,
 		OwnedPatchResources: c.OwnedPatchResources,
 		OwnedPatchComments:  c.OwnedPatchComments,
-		OwnedPatchS3Files:   c.OwnedPatchS3Files,
 		MiscTraces:          c.MiscTraces,
 		CanDeleteUserRow:    c.OwnedPatches == 0 || includeOwnedPatches,
 	}, nil
 }
 
-// PurgeUser wipes every moyu-side trace of the user, then best-effort deletes
-// the orphaned S3 objects (same philosophy as DeleteResource / DeletePatch: the
-// DB transaction is the primary op; S3 cleanup only WARNs on failure). Returns
-// a 400 AppError when the user owns patches but the force flag is off.
+// PurgeUser wipes every moyu-side trace of the user (DB rows via CASCADE +
+// explicit FK-less tables) and revokes active sessions. Legacy s3_key objects
+// are left in the frozen backup bucket, not reclaimed. Returns a 400 AppError
+// when the user owns patches but the force flag is off.
 func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
-	// Snapshot S3 keys BEFORE the DB delete — the rows pointing at them are
-	// about to vanish. Enumeration failure isn't fatal (a periodic offline
-	// scrub can sweep stragglers); fall through and still purge the DB.
-	keys, kerr := s.repo.CollectUserS3Keys(userID, purgeOwnedPatches)
-	if kerr != nil {
-		slog.Warn("PurgeUser: failed to enumerate s3 keys for cleanup", "user_id", userID, "error", kerr)
-		keys = nil
-	}
-
 	if err := s.repo.PurgeUser(userID, purgeOwnedPatches); err != nil {
 		if stderrors.Is(err, repository.ErrUserOwnsPatches) {
 			return nil, errors.ErrBadRequest("该用户仍拥有补丁，必须勾选「强删该用户创建的补丁」才能删除其账号")
@@ -153,19 +140,9 @@ func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID in
 		return nil, errors.ErrInternal("")
 	}
 
+	// Legacy s3_key objects owned by the purged user are left in the frozen
+	// backup bucket (retired separately), not reclaimed here.
 	res := &dto.UserPurgeResult{UserID: userID, UserRowDeleted: true}
-	if s.s3 != nil && s.s3.Ready() && len(keys) > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		for _, k := range keys {
-			if err := s.s3.DeleteObject(ctx, k); err != nil {
-				slog.Warn("PurgeUser: 删除 S3 对象失败", "s3_key", k, "user_id", userID, "error", err)
-				res.S3Failed++
-			} else {
-				res.S3Deleted++
-			}
-		}
-	}
 
 	// Revoke active Redis sessions so the purged user's existing cookie can't
 	// keep authenticating (the request path reads identity from the session
@@ -181,8 +158,6 @@ func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID in
 	s.repo.CreateLog(adminUID, "purgeUser", map[string]any{
 		"target_user_id":      userID,
 		"purge_owned_patches": purgeOwnedPatches,
-		"s3_deleted":          res.S3Deleted,
-		"s3_failed":           res.S3Failed,
 		"sessions_revoked":    res.SessionsRevoked,
 	})
 	return res, nil

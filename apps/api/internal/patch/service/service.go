@@ -12,7 +12,6 @@ import (
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
-	"kun-galgame-patch-api/internal/infrastructure/storage"
 	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
@@ -47,7 +46,6 @@ type PatchService struct {
 	repo    *repository.PatchRepository
 	setting *settingService.Service
 	db      *gorm.DB
-	s3      *storage.S3Client
 	art     *artifactclient.Client
 	wiki    *galgameClient.Client
 	users   *userclient.Client
@@ -55,8 +53,8 @@ type PatchService struct {
 	audit   AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, s3 *storage.S3Client, art *artifactclient.Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, s3: s3, art: art, wiki: wiki, users: users, mp: mp, audit: audit}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, art: art, wiki: wiki, users: users, mp: mp, audit: audit}
 }
 
 // ===== Patch =====
@@ -442,51 +440,11 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 		return fmt.Errorf("no permission to delete this patch")
 	}
 
-	// Snapshot the patch's S3 keys BEFORE the row goes away. The DB-level
-	// FK CASCADE wipes all child patch_resource and history rows when we
-	// DELETE the patch — but PostgreSQL only deletes rows, it doesn't know
-	// about the B2 objects those s3_key columns point to. Without this step
-	// the bucket accumulates unreferenced files indefinitely.
-	//
-	// Two disjoint sources to drain:
-	//   1. patch_resource.s3_key                       — live objects
-	//   2. patch_resource_file_history.old_s3_key      — superseded objects
-	//      from prior UpdateResource file substitutions (also CASCADE'd via
-	//      patch_resource → history)
-	//
-	// Log+continue on enumeration error rather than abort: a stale enum
-	// shouldn't block deleting the patch, and a periodic offline scrub can
-	// always sweep stragglers later. Read failure here is exceedingly rare
-	// (each call is a SELECT on a single index).
-	liveKeys, kErr := s.repo.GetPatchResourceS3Keys(id)
-	if kErr != nil {
-		slog.Warn("DeletePatch: failed to enumerate live s3_keys for cleanup", "patch_id", id, "error", kErr)
-		liveKeys = nil
-	}
-	historyKeys, hErr := s.repo.GetPatchResourceFileHistoryS3Keys(id)
-	if hErr != nil {
-		slog.Warn("DeletePatch: failed to enumerate history old_s3_keys for cleanup", "patch_id", id, "error", hErr)
-		historyKeys = nil
-	}
-
+	// Legacy B2 objects (pre-artifact s3_key rows) are NOT reclaimed here: the
+	// old moyu bucket is a frozen backup (retired separately). Artifact-backed
+	// blobs are GC'd by the artifact service once their rows are gone.
 	if err := s.repo.DeletePatch(id); err != nil {
 		return err
-	}
-
-	// Best-effort B2 cleanup AFTER the DB delete. Same philosophy as
-	// DeleteResource: row already gone (no rollback path), S3 failures
-	// only WARN. The two key sets are disjoint by construction (history
-	// only records keys that have already been replaced by a newer one),
-	// so a plain loop suffices — no dedup needed.
-	allKeys := append(liveKeys, historyKeys...)
-	if s.s3.Ready() && len(allKeys) > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		for _, key := range allKeys {
-			if err := s.s3.DeleteObject(ctx, key); err != nil {
-				slog.Warn("DeletePatch: 删除 S3 对象失败", "s3_key", key, "patch_id", id, "error", err)
-			}
-		}
 	}
 	return nil
 }
@@ -1042,13 +1000,6 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	//   - artifact_uuid: soft-delete via the artifact service (its GC reclaims).
 	// Set only when the old pointer is NOT reused by the new state (covers
 	// "replaced file" and "switched away from s3").
-	var orphanS3Key string
-	if existing.Storage == "s3" && existing.S3Key != "" {
-		stillSameObject := update.Storage == "s3" && update.S3Key == existing.S3Key
-		if !stillSameObject {
-			orphanS3Key = existing.S3Key
-		}
-	}
 	var orphanArtifactUUID string
 	if existing.ArtifactUUID != "" && update.ArtifactUUID != existing.ArtifactUUID {
 		orphanArtifactUUID = existing.ArtifactUUID
@@ -1113,19 +1064,11 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		return nil, err
 	}
 
-	// Best-effort old-object cleanup, AFTER the txn so we don't hold a DB
-	// connection during an external IO call. Failure only warn — the row
-	// already points at the new file (no user-facing impact), and the
-	// patch_resource_file_history.old_s3_key audit trail still records the
-	// old key so support can recover the object out-of-band if needed.
-	// Mirrors DeleteResource's S3 cleanup so update + delete paths agree.
-	if orphanS3Key != "" && s.s3.Ready() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := s.s3.DeleteObject(cleanupCtx, orphanS3Key); err != nil {
-			slog.Warn("UpdateResource: 删除旧 S3 对象失败", "s3_key", orphanS3Key, "resource_id", resourceID, "error", err)
-		}
-	}
+	// Best-effort old-artifact soft-delete AFTER the txn so we don't hold a DB
+	// connection during the external IO call. Failure only warns — the row
+	// already points at the new blob (no user-facing impact); the artifact
+	// service's GC reclaims the old blob after its soft-delete TTL. (Legacy
+	// s3_key objects are left in the frozen backup bucket, not reclaimed.)
 	if orphanArtifactUUID != "" {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -1180,42 +1123,13 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 		return fmt.Errorf("can only delete your own resources")
 	}
 
-	// Snapshot history old_s3_keys BEFORE DELETE — patch_resource_file_history
-	// CASCADE's away with the resource row, taking its old_s3_key references
-	// with it. See DeletePatch's drain pattern for the rationale.
-	historyKeys, hErr := s.repo.GetResourceFileHistoryS3Keys(resourceID)
-	if hErr != nil {
-		slog.Warn("DeleteResource: failed to enumerate history old_s3_keys for cleanup", "resource_id", resourceID, "error", hErr)
-		historyKeys = nil
-	}
-
 	if err := s.repo.DeleteResource(resourceID); err != nil {
 		return err
 	}
 
-	// Best-effort S3 cleanup of LEGACY (pre-artifact) blobs. We deliberately do
-	// NOT fail the whole op if this errors — the DB row is already gone, the
-	// user-facing operation is "done", and a left-over object is recoverable
-	// later (manual sweep / B2 lifecycle rule).
+	// Legacy s3_key objects are left in the frozen backup bucket (retired
+	// separately), not reclaimed here.
 	//
-	// Drain both the current s3_key and the history's old_s3_keys (the two
-	// sets are disjoint by construction — history rows record only keys
-	// previously replaced by a newer one).
-	if s.s3.Ready() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if resource.Storage == "s3" && resource.S3Key != "" {
-			if err := s.s3.DeleteObject(ctx, resource.S3Key); err != nil {
-				slog.Warn("DeleteResource: 删除 S3 对象失败", "s3_key", resource.S3Key, "resource_id", resourceID, "error", err)
-			}
-		}
-		for _, key := range historyKeys {
-			if err := s.s3.DeleteObject(ctx, key); err != nil {
-				slog.Warn("DeleteResource: 删除 S3 历史对象失败", "s3_key", key, "resource_id", resourceID, "error", err)
-			}
-		}
-	}
-
 	// Soft-delete the artifact blob for artifact-backed rows (its GC reclaims it
 	// after the soft-delete TTL). History old_artifact_uuids were already
 	// soft-deleted at their replace time, so only the current one is handled here.
