@@ -114,16 +114,22 @@ func (s *Service) validatePreUpload(userID int, fileName string, declaredSize in
 // zeroes daily_image_count on the user table.
 const dailyImageLimit = 50
 
-// CheckDailyImageQuota returns an error if the user has already hit the per-user
-// daily image cap. Checked BEFORE hitting image_service so the user gets a
-// friendly message without spending a per-site quota unit.
+// errDailyImageLimit signals the user is at the per-user daily cap — a
+// client-visible 429. It is DISTINCT from a DB-read failure (which must surface
+// as a 500, not a bogus "rate limited"); the handler branches on it.
+var errDailyImageLimit = errors.New("今日图片上传次数已达上限")
+
+// CheckDailyImageQuota returns errDailyImageLimit if the user has hit the
+// per-user daily image cap, or a wrapped DB error otherwise. Checked BEFORE
+// hitting image_service so an over-limit user is rejected without spending a
+// per-site quota unit.
 func (s *Service) CheckDailyImageQuota(userID int) error {
 	var user authModel.User
 	if err := s.db.Select("daily_image_count").First(&user, userID).Error; err != nil {
-		return fmt.Errorf("获取用户信息失败")
+		return fmt.Errorf("查询上传配额失败: %w", err)
 	}
 	if user.DailyImageCount >= dailyImageLimit {
-		return fmt.Errorf("今日图片上传次数已达上限")
+		return errDailyImageLimit
 	}
 	return nil
 }

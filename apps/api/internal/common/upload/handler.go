@@ -190,7 +190,11 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 	// moyu-owned content images (this branch) count — the wiki-proxied galgame
 	// images above do not.
 	if qErr := h.svc.CheckDailyImageQuota(user.ID); qErr != nil {
-		return response.Error(c, errors.New(80008, qErr.Error(), fiber.StatusTooManyRequests))
+		if stderrors.Is(qErr, errDailyImageLimit) {
+			return response.Error(c, errors.New(80008, qErr.Error(), fiber.StatusTooManyRequests))
+		}
+		// A DB-read failure must not masquerade as a 429 rate-limit.
+		return response.Error(c, errors.ErrInternal("查询上传配额失败"))
 	}
 
 	result, err := h.img.Upload(c.Context(), io.Reader(f), fh.Filename, mime, preset)

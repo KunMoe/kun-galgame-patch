@@ -36,8 +36,8 @@ type GetPatchCommentRequest struct {
 type PatchCommentCreateRequest struct {
 	GalgameID int    `json:"galgame_id" validate:"omitempty,min=1"`
 	ParentID  *int   `json:"parent_id" validate:"omitempty,min=1"`
-	Content  string `json:"content" validate:"required,min=1,max=10007"`
-	Captcha  string `json:"captcha" validate:"max=10"`
+	Content   string `json:"content" validate:"required,min=1,max=10007"`
+	Captcha   string `json:"captcha" validate:"max=10"`
 }
 
 // PatchCommentUpdateRequest is the request body for updating a comment
@@ -52,32 +52,32 @@ type PatchCommentUpdateRequest struct {
 // and submits it here; the server verifies via HeadObject.
 //
 // Content semantics by storage type:
-//   - storage="s3"   : frontend may leave Content empty; the service overwrites
-//                      it with s3_key. Download is materialized at fetch time
-//                      by GetResourceDownloadInfo (S3Client.PublicURL + s3_key)
-//                      so the bucket's public domain can change without DB
-//                      backfill. validate has no required/min so the FE doesn't
-//                      have to send a placeholder string just to pass schema.
+//   - storage="s3"   : artifact-backed; the frontend leaves Content empty and
+//     the service clears s3_key/content. The download URL is
+//     resolved at fetch time by ResolveDownloadURL via the
+//     artifact service (imoe.uk), so the domain can change
+//     without DB backfill. validate has no required/min so the
+//     FE doesn't have to send a placeholder just to pass schema.
 //   - storage="user" : frontend supplies the user's own download links here,
-//                      comma-separated. min=1 is enforced at the service layer
-//                      below for this branch.
+//     comma-separated. min=1 is enforced at the service layer
+//     below for this branch.
 type PatchResourceCreateRequest struct {
-	GalgameID int      `json:"galgame_id" validate:"required,min=1"`
-	Storage   string   `json:"storage" validate:"required"`
-	Name      string   `json:"name" validate:"max=300"`
-	ModelName string   `json:"model_name" validate:"max=1007"`
+	GalgameID int    `json:"galgame_id" validate:"required,min=1"`
+	Storage   string `json:"storage" validate:"required"`
+	Name      string `json:"name" validate:"max=300"`
+	ModelName string `json:"model_name" validate:"max=1007"`
 	// ArtifactUUID identifies the uploaded blob in the artifact service (the
 	// current path for storage="s3"). S3Key is legacy (pre-artifact direct B2).
-	ArtifactUUID string `json:"artifact_uuid" validate:"max=64"`
-	S3Key        string `json:"s3_key" validate:"max=2048"`
-	Content   string   `json:"content" validate:"max=1007"`
-	Size      string   `json:"size" validate:"required"`
-	Code      string   `json:"code" validate:"max=1007"`
-	Password  string   `json:"password" validate:"max=1007"`
-	Note      string   `json:"note" validate:"max=10007"`
-	Type      []string `json:"type" validate:"required,min=1,max=10"`
-	Language  []string `json:"language" validate:"required,min=1,max=10"`
-	Platform  []string `json:"platform" validate:"required,min=1,max=10"`
+	ArtifactUUID string   `json:"artifact_uuid" validate:"max=64"`
+	S3Key        string   `json:"s3_key" validate:"max=2048"`
+	Content      string   `json:"content" validate:"max=1007"`
+	Size         string   `json:"size" validate:"required"`
+	Code         string   `json:"code" validate:"max=1007"`
+	Password     string   `json:"password" validate:"max=1007"`
+	Note         string   `json:"note" validate:"max=10007"`
+	Type         []string `json:"type" validate:"required,min=1,max=10"`
+	Language     []string `json:"language" validate:"required,min=1,max=10"`
+	Platform     []string `json:"platform" validate:"required,min=1,max=10"`
 }
 
 // PatchResourceUpdateRequest is the request body for updating a resource.

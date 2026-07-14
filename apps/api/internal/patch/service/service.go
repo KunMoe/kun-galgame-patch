@@ -457,8 +457,9 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 
 	// Best-effort artifact soft-delete AFTER the DB delete (rows already gone,
 	// no rollback path; failures only WARN and can be reclaimed out-of-band).
-	// History old_artifact_uuids were soft-deleted at their replace time, so
-	// only the live set is handled here.
+	// Only the live set is handled: history old_artifact_uuids were soft-deleted
+	// (best-effort) at replace time — re-draining them here would be redundant
+	// deletes for the common case, and a rare replace-time failure was logged then.
 	if len(uuids) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
