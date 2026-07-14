@@ -205,7 +205,6 @@ func (a *App) RegisterRoutes() {
 	// oauth.kungal.com/profile or proxies PATCH /auth/me to OAuth itself.
 	userRoutes := api.Group("/user")
 
-	userRoutes.Post("/image", auth, a.UserHandler.UploadImage)
 	userRoutes.Post("/check-in", auth, a.UserHandler.CheckIn)
 	userRoutes.Get("/search", auth, a.UserHandler.SearchUsers)
 	// Self-service moemoepoint ledger (own records only; id from session).

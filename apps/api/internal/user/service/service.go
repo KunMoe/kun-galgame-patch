@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -12,32 +11,26 @@ import (
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
-	"kun-galgame-patch-api/internal/infrastructure/storage"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
 	"kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/internal/user/repository"
-	"kun-galgame-patch-api/pkg/imageutil"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 
 	"gorm.io/gorm"
 )
 
-// Daily personal image upload limit, aligned with KUN_PATCH_USER_DAILY_UPLOAD_IMAGE_LIMIT in apps/next-web/config/user.ts.
-const DailyImageLimit = 20
-
 type UserService struct {
 	repo  *repository.UserRepository
-	s3    *storage.S3Client
 	users *userclient.Client
 	wiki  *galgameClient.Client
 	db    *gorm.DB
 	mp    *moemoepoint.Awarder
 }
 
-func New(repo *repository.UserRepository, s3 *storage.S3Client, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB, mp *moemoepoint.Awarder) *UserService {
-	return &UserService{repo: repo, s3: s3, users: users, wiki: wiki, db: db, mp: mp}
+func New(repo *repository.UserRepository, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB, mp *moemoepoint.Awarder) *UserService {
+	return &UserService{repo: repo, users: users, wiki: wiki, db: db, mp: mp}
 }
 
 // patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so we can
@@ -428,35 +421,4 @@ func (s *UserService) attachCommentUsers(ctx context.Context, cs []patchModel.Pa
 			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
-}
-
-// ─── User image uploads ──────────────────────────────
-
-// UploadUserImage uploads an image for the user's personal page (fit within 1920x1080, JPEG q=50).
-// Rate-limited by daily_image_count (aligned with the original project's DailyImageLimit).
-func (s *UserService) UploadUserImage(ctx context.Context, userID int, raw []byte) (string, error) {
-	user, err := s.repo.FindByID(userID)
-	if err != nil {
-		return "", fmt.Errorf("用户不存在")
-	}
-	if user.DailyImageCount >= DailyImageLimit {
-		return "", fmt.Errorf("今日上传图片数量已达 %d 张上限", DailyImageLimit)
-	}
-
-	jpg, err := imageutil.FitJPEG(raw, 1920, 1080, 50)
-	if err != nil {
-		return "", err
-	}
-
-	key := fmt.Sprintf("user_%d/image/%d-%d.jpg", userID, userID, time.Now().UnixMilli())
-	if err := s.s3.PutObject(ctx, key, bytes.NewReader(jpg), int64(len(jpg)), "image/jpeg"); err != nil {
-		return "", err
-	}
-
-	if err := s.repo.UpdateFields(userID, map[string]any{
-		"daily_image_count": gorm.Expr("daily_image_count + 1"),
-	}); err != nil {
-		return "", err
-	}
-	return s.s3.PublicURL(key), nil
 }

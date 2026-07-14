@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"io"
 	"strconv"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -17,23 +16,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
-
-// Read the bytes of a single image file from a form, with a 10 MB size cap.
-func readImageFormFile(c fiber.Ctx, field string) ([]byte, error) {
-	f, err := c.FormFile(field)
-	if err != nil || f == nil {
-		return nil, errors.ErrBadRequest("缺少图片文件")
-	}
-	if f.Size > 10*1024*1024 {
-		return nil, errors.ErrBadRequest("图片超过 10MB")
-	}
-	fh, err := f.Open()
-	if err != nil {
-		return nil, errors.ErrBadRequest("读取图片失败")
-	}
-	defer fh.Close()
-	return io.ReadAll(fh)
-}
 
 type UserHandler struct {
 	service *service.UserService
@@ -355,21 +337,4 @@ func (h *UserHandler) SearchUsers(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, users)
-}
-
-// UpdateAvatar was removed -- avatars are owned by OAuth/image_service.
-
-// UploadImage POST /api/user/image
-// Images used on the user's personal page. Rate-limited by daily_image_count.
-func (h *UserHandler) UploadImage(c fiber.Ctx) error {
-	user := middleware.MustGetUser(c)
-	raw, err := readImageFormFile(c, "image")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-	url, err := h.service.UploadUserImage(c.Context(), user.ID, raw)
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OK(c, map[string]string{"url": url})
 }
