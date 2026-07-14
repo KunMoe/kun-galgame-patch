@@ -375,6 +375,42 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 	return &c, nil
 }
 
+// CollectUserArtifactUUIDs returns the deduped live artifact_uuids a purge will
+// strand: the user's own resources + (when force-deleting owned patches) every
+// resource under those patches. Completed artifact blobs aren't auto-reclaimed,
+// so the service soft-deletes these after the DB purge.
+func (r *AdminRepository) CollectUserArtifactUUIDs(userID int, includeOwnedPatches bool) ([]string, error) {
+	seen := make(map[string]struct{})
+	add := func(uuids []string) {
+		for _, u := range uuids {
+			if u != "" {
+				seen[u] = struct{}{}
+			}
+		}
+	}
+	var own []string
+	if err := r.db.Model(&patchModel.PatchResource{}).
+		Where("user_id = ? AND artifact_uuid <> ''", userID).
+		Pluck("artifact_uuid", &own).Error; err != nil {
+		return nil, err
+	}
+	add(own)
+	if includeOwnedPatches {
+		var op []string
+		if err := r.db.Model(&patchModel.PatchResource{}).
+			Where("galgame_id IN (?) AND artifact_uuid <> ''", r.ownedPatchIDsSubquery(userID)).
+			Pluck("artifact_uuid", &op).Error; err != nil {
+			return nil, err
+		}
+		add(op)
+	}
+	out := make([]string, 0, len(seen))
+	for u := range seen {
+		out = append(out, u)
+	}
+	return out, nil
+}
+
 // PurgeUser wipes every moyu-side trace of a user in one transaction.
 //
 // CASCADE from the user row removes all user_id=U rows automatically; this

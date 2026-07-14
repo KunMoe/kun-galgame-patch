@@ -133,6 +133,16 @@ func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*
 // are left in the frozen backup bucket, not reclaimed. Returns a 400 AppError
 // when the user owns patches but the force flag is off.
 func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
+	// Snapshot the user's live artifact_uuids BEFORE the CASCADE removes the rows.
+	// Completed artifact blobs aren't auto-reclaimed, so they must be soft-deleted
+	// or they leak; enumeration failure isn't fatal (a straggler can be swept
+	// out-of-band). Legacy s3_key objects stay in the frozen backup bucket.
+	uuids, uErr := s.repo.CollectUserArtifactUUIDs(userID, purgeOwnedPatches)
+	if uErr != nil {
+		slog.Warn("PurgeUser: failed to enumerate artifact_uuids for cleanup", "user_id", userID, "error", uErr)
+		uuids = nil
+	}
+
 	if err := s.repo.PurgeUser(userID, purgeOwnedPatches); err != nil {
 		if stderrors.Is(err, repository.ErrUserOwnsPatches) {
 			return nil, errors.ErrBadRequest("该用户仍拥有补丁，必须勾选「强删该用户创建的补丁」才能删除其账号")
@@ -140,8 +150,14 @@ func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID in
 		return nil, errors.ErrInternal("")
 	}
 
-	// Legacy s3_key objects owned by the purged user are left in the frozen
-	// backup bucket (retired separately), not reclaimed here.
+	// Best-effort artifact soft-delete AFTER the DB purge (delegated to patch,
+	// which owns the artifact client).
+	if len(uuids) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		s.patch.SoftDeleteArtifacts(ctx, uuids)
+	}
+
 	res := &dto.UserPurgeResult{UserID: userID, UserRowDeleted: true}
 
 	// Revoke active Redis sessions so the purged user's existing cookie can't

@@ -91,6 +91,19 @@ func (r *PatchRepository) DeletePatch(id int) error {
 	})
 }
 
+// GetPatchLiveArtifactUUIDs returns the non-empty artifact_uuids of the patch's
+// resources, enumerated BEFORE DeletePatch so the blobs can be soft-deleted
+// after the FK CASCADE removes the rows. Completed artifact blobs are NOT
+// auto-reclaimed (the artifact GC only sweeps never-completed uploads), so
+// without this they leak permanently.
+func (r *PatchRepository) GetPatchLiveArtifactUUIDs(patchID int) ([]string, error) {
+	var uuids []string
+	err := r.db.Model(&model.PatchResource{}).
+		Where("galgame_id = ? AND artifact_uuid <> ''", patchID).
+		Pluck("artifact_uuid", &uuids).Error
+	return uuids, err
+}
+
 func (r *PatchRepository) FindPatchByVndbID(vndbID string) (*model.Patch, error) {
 	var patch model.Patch
 	err := r.db.Where("vndb_id = ?", vndbID).First(&patch).Error

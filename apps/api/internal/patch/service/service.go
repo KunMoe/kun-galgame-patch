@@ -440,13 +440,46 @@ func (s *PatchService) DeletePatch(id, userID int, isAdmin bool) error {
 		return fmt.Errorf("no permission to delete this patch")
 	}
 
-	// Legacy B2 objects (pre-artifact s3_key rows) are NOT reclaimed here: the
-	// old moyu bucket is a frozen backup (retired separately). Artifact-backed
-	// blobs are GC'd by the artifact service once their rows are gone.
+	// Snapshot the patch's live artifact_uuids BEFORE the FK CASCADE removes the
+	// resource rows. Completed artifact blobs are NOT auto-reclaimed (the artifact
+	// GC only sweeps never-completed uploads), so each must be explicitly
+	// soft-deleted or it leaks. (Legacy s3_key objects are intentionally left in
+	// the frozen backup bucket, not reclaimed.)
+	uuids, uErr := s.repo.GetPatchLiveArtifactUUIDs(id)
+	if uErr != nil {
+		slog.Warn("DeletePatch: failed to enumerate artifact_uuids for cleanup", "patch_id", id, "error", uErr)
+		uuids = nil
+	}
+
 	if err := s.repo.DeletePatch(id); err != nil {
 		return err
 	}
+
+	// Best-effort artifact soft-delete AFTER the DB delete (rows already gone,
+	// no rollback path; failures only WARN and can be reclaimed out-of-band).
+	// History old_artifact_uuids were soft-deleted at their replace time, so
+	// only the live set is handled here.
+	if len(uuids) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		s.SoftDeleteArtifacts(ctx, uuids)
+	}
 	return nil
+}
+
+// SoftDeleteArtifacts best-effort soft-deletes a batch of artifact blobs. Used by
+// bulk delete paths that CASCADE resource rows away (DeletePatch, admin
+// user-purge) where completed blobs would otherwise leak. Failures only WARN —
+// the DB rows are already gone; a straggler blob can be reclaimed out-of-band.
+func (s *PatchService) SoftDeleteArtifacts(ctx context.Context, uuids []string) {
+	for _, uuid := range uuids {
+		if uuid == "" {
+			continue
+		}
+		if err := s.art.Delete(ctx, uuid); err != nil {
+			slog.Warn("SoftDeleteArtifacts: 软删 artifact 失败", "artifact_uuid", uuid, "error", err)
+		}
+	}
 }
 
 func (s *PatchService) CheckDuplicate(vndbID string) (bool, error) {

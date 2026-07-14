@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -131,8 +132,10 @@ func (s *Service) CheckDailyImageQuota(userID int) error {
 // Best-effort: a counter miss must not fail an upload that already landed in
 // image_service.
 func (s *Service) IncrementDailyImageCount(userID int) {
-	s.db.Model(&authModel.User{}).Where("id = ?", userID).
-		Update("daily_image_count", gorm.Expr("daily_image_count + 1"))
+	if err := s.db.Model(&authModel.User{}).Where("id = ?", userID).
+		Update("daily_image_count", gorm.Expr("daily_image_count + 1")).Error; err != nil {
+		slog.Warn("IncrementDailyImageCount: bump failed", "user_id", userID, "error", err)
+	}
 }
 
 // Init validates, then asks the artifact service to start an upload. Artifact
