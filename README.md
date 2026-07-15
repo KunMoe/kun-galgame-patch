@@ -65,6 +65,18 @@
 - **Go 1.26+**
 - 可访问的 **PostgreSQL** 与 **Redis**，以及上述 OAuth / Wiki / Image 上游服务
 
+> **一条命令起本地平台。** 整套 nextmoe 平台（OAuth / image / galgame-wiki /
+> catalog / community / trust + MinIO / Mailpit / Meili / Redis）由
+> `kun-galgame-infra` 一键拉起,所以上手只需三步:
+>
+> 1. `cd ../kun-galgame-infra && docker compose -f docker-compose.dev.yml up -d`
+> 2. (可选) `./scripts/refresh-dev-db.sh` —— 真实形状的脱敏数据
+> 3. 回到本仓: `cp apps/api/.env.example apps/api/.env`(以及 web 那份),`pnpm dev`
+>
+> 仓库内的 `.env.example` 已对齐该 dev 栈(127.0.0.1 + 生产同款端口 + 公开 dev
+> OAuth 凭据)。详见
+> [`kun-galgame-infra/docs/dev-environment.md`](../kun-galgame-infra/docs/dev-environment.md)。
+
 ### 安装与启动
 
 ```bash
