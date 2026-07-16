@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"kun-galgame-patch-api/internal/admin/dto"
 	adminModel "kun-galgame-patch-api/internal/admin/model"
@@ -211,8 +212,19 @@ func (h *AdminHandler) DeleteResource(c fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
+	// Optional moderation reason (mirrors the game-detail delete): trimmed and
+	// rune-capped at 500 so it fits admin_log.content + the owner notification.
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind().Body(&body)
+	reason := strings.TrimSpace(body.Reason)
+	if rs := []rune(reason); len(rs) > 500 {
+		reason = string(rs[:500])
+	}
+
 	admin := middleware.MustGetUser(c)
-	if err := h.service.DeleteResource(id, admin.ID); err != nil {
+	if err := h.service.DeleteResource(id, admin.ID, reason); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Resource deleted")

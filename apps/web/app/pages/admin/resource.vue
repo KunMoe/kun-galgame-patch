@@ -25,19 +25,38 @@ watch(page, () => refresh())
 
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
 
-const handleDelete = async (id: number) => {
-  const ok = await useKunAlert({
-    title: '删除补丁资源',
-    type: 'danger',
-    message: '确定要删除这个补丁资源吗？此操作不可恢复。'
-  })
-  if (!ok) return
-  const res = await api.delete(`/admin/resource/${id}`)
-  if (res.code === 0) {
-    useKunMessage('已删除', 'success')
-    await refresh()
-  } else {
-    useKunMessage(res.message || '删除失败', 'error')
+const deleteOpen = ref(false)
+const deleting = ref(false)
+const pendingDelete = ref<AdminResourceItem | null>(null)
+const deleteReason = ref('')
+
+const askDelete = (r: AdminResourceItem) => {
+  pendingDelete.value = r
+  deleteReason.value = ''
+  deleteOpen.value = true
+}
+
+// Mirrors the game-detail resource delete: an admin records an optional reason
+// that the service forwards to the author's notification + the admin audit log
+// (the service only notifies when the author isn't the acting admin).
+const confirmDelete = async () => {
+  const r = pendingDelete.value
+  if (!r) return
+  deleting.value = true
+  try {
+    const res = await api.delete(`/admin/resource/${r.id}`, {
+      reason: deleteReason.value.trim()
+    })
+    if (res.code === 0) {
+      useKunMessage('已删除', 'success')
+      deleteOpen.value = false
+      pendingDelete.value = null
+      await refresh()
+    } else {
+      useKunMessage(res.message || '删除失败', 'error')
+    }
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -161,7 +180,7 @@ const histTotalPages = computed(() =>
                   size="sm"
                   variant="light"
                   color="danger"
-                  @click="handleDelete(r.id)"
+                  @click="askDelete(r)"
                 >
                   删除
                 </KunButton>
@@ -187,6 +206,50 @@ const histTotalPages = computed(() =>
     </div>
 
     <!-- MOYU-PR5 / M3 — File history modal -->
+    <KunModal v-model="deleteOpen" inner-class-name="max-w-md">
+      <div class="space-y-4 py-2">
+        <h3 class="text-lg font-bold">删除补丁资源？</h3>
+        <p class="text-default-600 text-sm">
+          此操作不可撤销。资源记录会从数据库移除，对应的下载文件也会一并删除。
+        </p>
+        <p
+          v-if="pendingDelete?.name"
+          class="text-default-500 text-sm"
+        >
+          <span class="text-default-400">资源名称：</span>
+          <strong class="text-foreground">{{ pendingDelete.name }}</strong>
+        </p>
+        <div class="space-y-1">
+          <label class="text-default-600 text-sm">
+            删除原因（可选，会通知作者并记入管理日志）
+          </label>
+          <KunInput
+            v-model="deleteReason"
+            placeholder="例如：转载自付费站 / 违规内容 / 重复发布"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <KunButton
+            variant="light"
+            color="default"
+            :disabled="deleting"
+            @click="deleteOpen = false"
+          >
+            取消
+          </KunButton>
+          <KunButton
+            color="danger"
+            :loading="deleting"
+            :disabled="deleting"
+            @click="confirmDelete"
+          >
+            <KunIcon v-if="!deleting" name="lucide:trash-2" class="size-4" />
+            确认删除
+          </KunButton>
+        </div>
+      </div>
+    </KunModal>
+
     <KunModal v-model="histOpen" size="xl" :is-show-close-button="true">
       <div class="max-h-[85vh] w-[92vw] max-w-2xl space-y-3 overflow-y-auto p-5">
         <h3 class="text-lg font-semibold">

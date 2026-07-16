@@ -81,12 +81,12 @@ func (s *AdminService) UpdateResource(resourceID int, note string, adminUID int)
 	return nil
 }
 
-func (s *AdminService) DeleteResource(resourceID, adminUID int) error {
-	// Pure delegate to the canonical privileged delete — it handles S3 + history
-	// cleanup, the owner's -3 moemoepoint reversal, the owner notification, AND
-	// the audit_log (via the AuditLogger). No reason is captured from the admin
-	// panel; the game-detail page is the path that collects one.
-	return s.patch.DeleteResource(resourceID, adminUID, true, "")
+func (s *AdminService) DeleteResource(resourceID, adminUID int, reason string) error {
+	// Pure delegate to the canonical privileged delete — it handles artifact +
+	// history cleanup, the owner's -3 moemoepoint reversal, the owner
+	// notification (carrying reason), AND the audit_log (via the AuditLogger).
+	// The admin panel now collects a reason too, mirroring the game-detail flow.
+	return s.patch.DeleteResource(resourceID, adminUID, true, reason)
 }
 
 // User management (GetUsers / UpdateUser / DeleteUser) was removed when
