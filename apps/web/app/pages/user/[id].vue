@@ -222,6 +222,11 @@ const toggleFollow = async () => {
                 <KunIcon name="lucide:message-circle" class="size-4" />
                 发消息
               </KunButton>
+              <ReportButton
+                subject-kind="user"
+                :subject-id="userId"
+                label="举报用户"
+              />
             </template>
           </div>
         </KunCard>

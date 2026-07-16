@@ -5,6 +5,7 @@ const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
+const { open: openReport } = useReportModal()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -279,7 +280,7 @@ const onResourceFavoriteChange = async (r: PatchResource, active: boolean) => {
 // 公共项:更改历史 / 分享(所有人,含未登录);作者 / 版主额外:编辑 / 删除 /
 // 禁用下载。KunDropdownItem 的形状(本地复刻,避免跨 layer 导入类型路径)。
 interface ResourceMenuItem {
-  key: 'edit' | 'delete' | 'disable' | 'history' | 'share'
+  key: 'edit' | 'delete' | 'disable' | 'history' | 'share' | 'report'
   label: string
   icon: string
   color?:
@@ -309,6 +310,7 @@ const menuItems = (r: PatchResource): ResourceMenuItem[] => {
   }
   items.push({ key: 'history', label: '更改历史', icon: 'lucide:history' })
   items.push({ key: 'share', label: '分享', icon: 'lucide:share-2' })
+  items.push({ key: 'report', label: '举报', icon: 'lucide:flag', color: 'danger' })
   if (canDelete(r)) {
     items.push({
       key: 'delete',
@@ -337,7 +339,22 @@ const onMenuSelect = (r: PatchResource, item: { key: string }) => {
     case 'share':
       shareResource(r)
       break
+    case 'report':
+      reportResource(r)
+      break
   }
+}
+
+// Report this resource → global report modal (patch_resource). Deep-link +
+// snapshot the resource name so the moderator console opens it in context.
+const reportResource = (r: PatchResource) => {
+  if (!requireLogin()) return
+  openReport({
+    subjectKind: 'patch_resource',
+    subjectId: r.id,
+    subjectUrl: `https://www.moyu.moe/resource/${r.id}`,
+    snapshot: r.name
+  })
 }
 
 // ─── 分享(复制链接到剪贴板)────────────────────────────

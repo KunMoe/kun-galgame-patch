@@ -58,6 +58,10 @@ onMounted(() => {
          these two providers (see @kungal/ui-nuxt README). -->
     <KunMessageProvider />
     <KunAlertProvider />
+    <!-- The single global report modal (useReportModal → open()). Mounted once
+         at this stable root so it isn't torn down when a triggering ⋯ popover
+         closes; Lazy so its chunk loads only when a report is first opened. -->
+    <LazyReportModal />
     <NuxtLayout>
       <NuxtPage :keepalive="kunKeepaliveConfig" />
     </NuxtLayout>

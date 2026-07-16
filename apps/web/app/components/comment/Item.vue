@@ -30,6 +30,7 @@ const emit = defineEmits<{
 const api = useApi()
 const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
+const { open: openReport } = useReportModal()
 
 const isAuthor = computed(() => userStore.user.id === props.comment.user_id)
 // Edit is author-only; delete is author OR moderator (mirrors the backend
@@ -195,7 +196,7 @@ const confirmDelete = async () => {
 // Edit + delete live in a top-right "⋮" dropdown (not inline buttons), keeping
 // the action row to 点赞 / 回复. Shape mirrors resource.vue's KunDropdown items.
 interface CommentMenuItem {
-  key: 'edit' | 'delete'
+  key: 'edit' | 'delete' | 'report'
   label: string
   icon: string
   color?:
@@ -215,11 +216,26 @@ const menuItems = computed<CommentMenuItem[]>(() => {
   if (canDelete.value) {
     items.push({ key: 'delete', label: '删除', icon: 'lucide:trash-2', color: 'danger' })
   }
+  // Report is offered to everyone EXCEPT the author (you don't report yourself).
+  if (!isAuthor.value) {
+    items.push({ key: 'report', label: '举报', icon: 'lucide:flag', color: 'danger' })
+  }
   return items
 })
 const onMenuSelect = (item: { key: string }) => {
   if (item.key === 'edit') startEdit()
   else if (item.key === 'delete') askDelete()
+  else if (item.key === 'report') reportComment()
+}
+// Report this comment → global report modal (patch_comment). Snapshot the
+// content as evidence; patch_comment has no standalone page, so no subject_url.
+const reportComment = () => {
+  if (!requireLogin()) return
+  openReport({
+    subjectKind: 'patch_comment',
+    subjectId: props.comment.id,
+    snapshot: props.comment.content
+  })
 }
 </script>
 
