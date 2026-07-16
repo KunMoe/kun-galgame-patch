@@ -8,8 +8,11 @@
 
 | 环境 | Base URL |
 |------|----------|
-| 开发 | `http://127.0.0.1:9280/api` |
+| 开发 | `http://127.0.0.1:9281/api` |
 | 生产 | `https://wiki.kungal.com/api` |
+
+> wiki 退役 W3(2026-07-16)起,galgame API 由 **catalog 服务(:9281)** 承载(容器内 s2s 地址
+> `http://catalog:9281/api`);独立 galgame 服务(:9280)已退休。路径与响应字节不变。
 
 ## 文档索引
 

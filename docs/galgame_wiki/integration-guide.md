@@ -15,8 +15,8 @@
     │     ├── 本地交互表 (like/comment/rating/resource/galgame_stats)
     │     └── GalgameClient → 调用 Galgame Wiki Service
     │
-    └── Galgame Wiki Service (独立端口 :9280)
-          ├── kun_galgame_wiki DB (元数据)
+    └── Galgame Wiki API(由 catalog 服务 :9281 承载;W3 前为独立 :9280 服务)
+          ├── galgame 内容库(生产 kun_catalog;W1 前为 kun_galgame_wiki)
           └── kun_galgame_infra DB (用户信息，只读)
 ```
 
@@ -30,7 +30,7 @@
 
 ```go
 type GalgameClient struct {
-    baseURL    string // e.g. "http://127.0.0.1:9280/api"
+    baseURL    string // e.g. "http://127.0.0.1:9281/api"(生产 s2s:http://catalog:9281/api)
     httpClient *http.Client
 }
 
@@ -214,7 +214,7 @@ CREATE TABLE galgame_stats (
 | KUN_GALGAME_PG_PORT | 同 KUN_PG_PORT | |
 | KUN_GALGAME_PG_USER | 同 KUN_PG_USER | |
 | KUN_GALGAME_PG_PASSWORD | 同 KUN_PG_PASSWORD | |
-| KUN_GALGAME_PORT | 9280 | Wiki Service 端口 |
+| KUN_CATALOG_PORT | 9281 | 承载 galgame 面的 catalog 服务端口(独立 Wiki Service/`KUN_GALGAME_PORT` 已随 W3/W5 退役) |
 
 ## 6. 前端直连 vs 后端转发
 

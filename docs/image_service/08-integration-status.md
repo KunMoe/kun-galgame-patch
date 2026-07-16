@@ -149,7 +149,7 @@ ImageHash string `json:"image_hash" validate:"required,len=64,hexadecimal"`
 - **multipart 路径**可信：hash 是 image_service 自己返回的
 - **JSON 路径**仍只校验格式
 
-已有的存在性探活 `ImageProbeFunc`（[`galgame_service.go:27`](../../apps/api/internal/platform/galgame/service/galgame_service.go#L27)，在 [`cmd/galgame/main.go:142`](../../apps/api/cmd/galgame/main.go#L142) 接线）**只用在 Revert / PR-merge 路径**（[`revision_service.go:268`](../../apps/api/internal/platform/galgame/service/revision_service.go#L268)），用来在回滚/合并时跳过已死图片，**不覆盖 create/update 的写入校验**。
+已有的存在性探活 `ImageProbeFunc`（[`galgame_service.go:27`](../../apps/api/internal/platform/galgame/service/galgame_service.go#L27)，在 [`internal/galgameapp/mount.go`](../../apps/api/internal/galgameapp/mount.go) 接线——W2 起 galgame 面由该装配挂进 `cmd/catalog`）**只用在 Revert / PR-merge 路径**（[`revision_service.go:268`](../../apps/api/internal/platform/galgame/service/revision_service.go#L268)），用来在回滚/合并时跳过已死图片，**不覆盖 create/update 的写入校验**。
 
 **修复路径**：在 `CreateGalgameRequest` / `UpdateGalgameRequest` 的 service 验证阶段，对 `Covers[].ImageHash` / `Screenshots[].ImageHash` 复用同一个 probe（或新增 batch endpoint `POST /image/exists` 一次性查多个 hash），失败 → reject 整个写入。
 

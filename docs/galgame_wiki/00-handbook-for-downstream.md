@@ -19,7 +19,7 @@
 
 | 角色 | 数据所有 | 接口角色 |
 |---|---|---|
-| **Wiki**（`:9280`） | galgame、tag、official、engine、series、revision、PR、**galgame_message** | 服务端 |
+| **Wiki**（galgame 面,由 catalog 服务 `:9281` 承载;W3 前为独立 `:9280`） | galgame、tag、official、engine、series、revision、PR、**galgame_message** | 服务端 |
 | **kungal / moyu**（各自后端） | 本地交互数据：`galgame_stats`、`galgame_like`、`galgame_comment`、`galgame_resource`、`galgame_rating` | 上游消费者 |
 | **OAuth**（`:9277`） | users、roles、oauth_client | 身份提供方 |
 
