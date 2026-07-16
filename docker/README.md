@@ -38,7 +38,7 @@ docker compose up -d api web
 
 Host ports use the **1xxxx** range to coexist with a running `air` dev server.
 Service-to-service traffic uses container ports via service names
-(`postgres:5432`, `http://oauth:9277`, `http://galgame:9280`, `http://image:9278`).
+(`postgres:5432`, `http://oauth:9277`, `http://catalog:9281`, `http://image:9278`).
 
 ### Prerequisite: the `kungalgame_patch` database
 

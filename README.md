@@ -53,7 +53,7 @@
 | 服务 | 默认端口 | 职责 |
 | --- | --- | --- |
 | KUN OAuth | `9277` | 身份认证唯一数据源（Authorization Code + PKCE） |
-| Galgame Wiki Service | `9280` | 全部 Galgame 元数据（名称/简介/标签/会社…）与搜索的唯一数据源 |
+| Galgame Wiki Surface(由 catalog 服务承载,infra W2/W5)| `9281` | 全部 Galgame 元数据（名称/简介/标签/会社…）与搜索的唯一数据源 |
 | Image Service | `9278` | 内容寻址图床（上传返回 hash，URL 由 hash 推导） |
 | PostgreSQL / Redis / S3(MinIO) | — | 数据库 / 会话缓存 / 对象存储 |
 

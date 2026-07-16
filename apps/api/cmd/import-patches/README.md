@@ -62,7 +62,7 @@ scp /tmp/import-patches kungal-neo:/srv/import/
 ## Run on kungal-neo (dokploy)
 
 moyu + infra run as dokploy containers on the **`dokploy-network`** overlay; the
-internal service DNS names (`artifact:9279`, `galgame:9280`, `postgres:5432`) only
+internal service DNS names (`artifact:9279`, `catalog:9281`, `postgres:5432`) only
 resolve **on that network**, and artifact's presigned PUTs go to **Backblaze B2
 over HTTPS** (egress + CA certs needed). So run the importer as a one-off
 container on `dokploy-network`, reusing the `moyu-api` image (has certs) with the

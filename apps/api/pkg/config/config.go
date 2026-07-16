@@ -45,7 +45,7 @@ type OAuthConfig struct {
 
 // GalgameWikiConfig points at the separately deployed Galgame Wiki Service (D11).
 type GalgameWikiConfig struct {
-	BaseURL string // e.g. http://127.0.0.1:9280/api
+	BaseURL string // e.g. http://127.0.0.1:9281/api
 }
 
 // ImageServiceConfig points at the centralized image_service (W2 / PR3b).
@@ -116,7 +116,7 @@ func Load() *Config {
 			RedirectURI:  getEnv("OAUTH_REDIRECT_URI", ""),
 		},
 		GalgameWiki: GalgameWikiConfig{
-			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9280/api"),
+			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9281/api"),
 		},
 		ImageService: ImageServiceConfig{
 			// Fail-fast in prod (audit GPT-L02): these default to localhost dev

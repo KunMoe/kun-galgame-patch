@@ -45,7 +45,7 @@ type Client struct {
 	basicAuthHeader string // set via SetBasicAuth; required by GetWikiMessageFeed
 }
 
-// New constructs a Client. baseURL looks like http://127.0.0.1:9280/api
+// New constructs a Client. baseURL looks like http://127.0.0.1:9281/api
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
