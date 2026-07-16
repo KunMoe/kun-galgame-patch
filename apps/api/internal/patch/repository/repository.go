@@ -264,7 +264,10 @@ func (r *PatchRepository) DeleteCommentLike(id int) error {
 
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
-	err := r.db.Where("galgame_id = ?", patchID).
+	// status <> 2 hides moderation-hidden resources (trust `hide`); disabled
+	// resources (status=1, the "pull a bad download" toggle) stay visible with
+	// their link withheld, so their card still shows they exist.
+	err := r.db.Where("galgame_id = ? AND status <> 2", patchID).
 		Order("created DESC, id DESC").
 		Find(&resources).Error
 	return resources, err
@@ -316,6 +319,22 @@ func (r *PatchRepository) IncrementResourceDownload(resourceID, patchID int) err
 func (r *PatchRepository) ToggleResourceStatus(resourceID int) error {
 	return r.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
 		UpdateColumn("status", gorm.Expr("CASE WHEN status = 0 THEN 1 ELSE 0 END")).Error
+}
+
+// SetResourceStatus forces a resource to a specific status. Used by trust
+// enforcement: status=2 = moderation-hidden (filtered from listings + download
+// withheld). Idempotent.
+func (r *PatchRepository) SetResourceStatus(id, status int) error {
+	return r.db.Model(&model.PatchResource{}).Where("id = ?", id).
+		Update("status", status).Error
+}
+
+// RestoreResourceFromModHide reverses a trust `hide` (status 2 → 0) on a
+// dismiss/release-hold callback. Scoped to status=2 so it can NEVER un-disable a
+// status=1 (author/admin-disabled) resource — only mod-hidden ones are restored.
+func (r *PatchRepository) RestoreResourceFromModHide(id int) error {
+	return r.db.Model(&model.PatchResource{}).Where("id = ? AND status = 2", id).
+		Update("status", 0).Error
 }
 
 // ===== Resource Likes =====

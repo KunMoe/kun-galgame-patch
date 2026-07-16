@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -32,6 +33,9 @@ import (
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
+	"kun-galgame-patch-api/internal/trust/enforce"
+	trustHandler "kun-galgame-patch-api/internal/trust/handler"
+	trustService "kun-galgame-patch-api/internal/trust/service"
 	userHandler "kun-galgame-patch-api/internal/user/handler"
 	userRepo "kun-galgame-patch-api/internal/user/repository"
 	userService "kun-galgame-patch-api/internal/user/service"
@@ -41,6 +45,7 @@ import (
 	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/trustclient"
 	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v3"
@@ -67,6 +72,7 @@ type App struct {
 	ChatHandler    *chatHandler.ChatHandler
 	SearchHandler  *searchPkg.Handler
 	DocHandler     *docHandler.DocHandler
+	TrustHandler   *trustHandler.TrustHandler
 
 	// CronStop is called during graceful shutdown to stop the cron jobs.
 	CronStop func()
@@ -150,6 +156,74 @@ func New(cfg *config.Config) *App {
 	// Admin module (adminRepository built above — also patch-service's AuditLogger)
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc)
 	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
+
+	// Trust & Safety integration — report intake (Phase 1) + enforcement callback
+	// (Phase 2) + moderator inbox proxy (Phase 3). S2S Basic auth reuses the OAuth
+	// client_id/secret; the trust service reads oauth_clients.catalog_site to
+	// derive moyu's site.
+	trustCli := trustclient.New(trustclient.Config{
+		BaseURL:      cfg.Trust.BaseURL,
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+	})
+	if trustCli.Configured() {
+		slog.Info("trust service client configured", "base_url", cfg.Trust.BaseURL)
+	} else {
+		slog.Warn("trust service client NOT configured; reporting returns 未启用 — set KUN_TRUST_BASE_URL + OAuth creds")
+	}
+	// Enforcement adapters — the "thin adapter" half: each subject_kind wires
+	// hide/remove/restore/author-lookup to existing patch services/repo. Remove
+	// DELEGATES to the canonical PatchService.Delete* so moemoepoint reversal,
+	// owner notification, artifact cleanup and counts are preserved (actor 0 =
+	// system). `user` is absent (bans are IdP-side) → its callbacks no-op.
+	trustRegistry := enforce.Registry{
+		"patch_comment": {
+			// Comment status=1 already hides from public reads (shared with
+			// verify-pending) → no Restore (a dismiss can't distinguish mod-hide
+			// from verify-pending, so it must not auto-un-hide).
+			Hide: func(_ context.Context, id int) error {
+				return patchRepository.UpdateCommentStatus(id, 1)
+			},
+			Remove: func(_ context.Context, id int) error {
+				return patchSvc.DeleteComment(id, 0, true, "内容违规（审核处置）")
+			},
+			AuthorID: func(_ context.Context, id int) (int, error) {
+				cmt, err := patchRepository.GetCommentByID(id)
+				if err != nil {
+					return 0, nil
+				}
+				return cmt.UserID, nil
+			},
+		},
+		"patch_resource": {
+			// Dedicated status=2 = moderation-hidden (distinct from status=1
+			// disabled), so Restore (2→0) is unambiguous.
+			Hide: func(_ context.Context, id int) error {
+				return patchRepository.SetResourceStatus(id, 2)
+			},
+			Remove: func(_ context.Context, id int) error {
+				return patchSvc.DeleteResource(id, 0, true, "内容违规（审核处置）")
+			},
+			Restore: func(_ context.Context, id int) error {
+				return patchRepository.RestoreResourceFromModHide(id)
+			},
+			AuthorID: func(_ context.Context, id int) (int, error) {
+				res, err := patchRepository.GetResourceByID(id)
+				if err != nil {
+					return 0, nil
+				}
+				return res.UserID, nil
+			},
+		},
+	}
+	// warn_user is record-only for now (no system-sender user for a targeted
+	// notice) — pass nil; the dispatcher no-ops warn gracefully.
+	trustEnforce := enforce.NewService(db, trustRegistry, nil)
+	trustHdl := trustHandler.NewTrustHandler(
+		trustService.NewTrustService(trustCli, cfg.Trust.Site),
+		trustEnforce,
+		cfg.Trust.CallbackSecret,
+	)
 
 	// Upload module: bytes live in the artifact service (artCli built above);
 	// rdb SETNX-dedupes Complete to prevent double-charging daily_upload_size.
@@ -258,6 +332,7 @@ func New(cfg *config.Config) *App {
 		ChatHandler:    chatHdl,
 		SearchHandler:  searchHdl,
 		DocHandler:     docHdl,
+		TrustHandler:   trustHdl,
 		CronStop:       cronStop,
 	}
 }

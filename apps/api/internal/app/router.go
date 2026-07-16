@@ -29,6 +29,16 @@ func (a *App) RegisterRoutes() {
 	moderatorAuth := middleware.RequireRole(middleware.ModeratorRoles...)
 	adminAuth := middleware.RequireRole(middleware.SuperAdminRoles...)
 
+	// Trust & Safety enforcement callback (PUBLIC — authenticated by the HMAC
+	// X-Trust-Signature over the raw body, not a session). Idempotent.
+	api.Post("/trust/callback", a.TrustHandler.Callback)
+
+	// Content reporting → infra Trust & Safety (Phase 1). Session-authed generic
+	// passthrough; the reporter is the session user, subject kind/id from the body.
+	reportRoutes := api.Group("/report", auth)
+	reportRoutes.Get("/reasons", a.TrustHandler.GetReasons)
+	reportRoutes.Post("/submit", a.TrustHandler.SubmitReport)
+
 	// NOTE: We do NOT rate-limit /user/check-in via Redis.
 	// "Once per day" is enforced by user.daily_check_in plus the daily cron
 	// reset at 00:00 (see internal/infrastructure/cron/cron.go). A separate
@@ -283,6 +293,14 @@ func (a *App) RegisterRoutes() {
 	// NOTE: the "禁止注册" (disable-register) setting was removed — registration
 	// is unified on the OAuth server (local register flow is gone), so the toggle
 	// belongs there, not here.
+
+	// Trust & Safety moderator inbox (Phase 3) — proxied to the trust admin API
+	// with the moderator's OAuth token; site is forced to moyu. moderator-gated
+	// by the adminRoutes group.
+	adminRoutes.Get("/trust/review-items", a.TrustHandler.ListReviewItems)
+	adminRoutes.Get("/trust/review-items/:id", a.TrustHandler.GetReviewItem)
+	adminRoutes.Post("/trust/review-items/:id/claim", a.TrustHandler.ClaimReviewItem)
+	adminRoutes.Post("/trust/review-items/:id/decide", a.TrustHandler.DecideReviewItem)
 
 	// Stats & Logs
 	adminRoutes.Get("/stats", a.AdminHandler.GetStats)

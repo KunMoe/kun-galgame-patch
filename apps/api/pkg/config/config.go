@@ -10,6 +10,7 @@ type Config struct {
 	GalgameWiki  GalgameWikiConfig
 	ImageService ImageServiceConfig
 	Artifact     ArtifactConfig
+	Trust        TrustConfig
 	CORS         CORSConfig
 }
 
@@ -71,6 +72,20 @@ type ArtifactConfig struct {
 	ClientSecret string // defaults to OAuth.ClientSecret
 }
 
+// TrustConfig holds what moyu needs to integrate the infra Trust & Safety
+// service (kun-galgame-infra :9283): the base URL for submitting reports S2S,
+// the site key (scopes the moderator inbox), and the HMAC secret for verifying
+// inbound enforcement callbacks. The S2S Basic-auth credentials reuse the OAuth
+// client_id/secret (wired in app.go) — the trust service reads
+// oauth_clients.catalog_site to derive moyu's site. Empty BaseURL /
+// CallbackSecret = the integration is inert (reports degrade, callbacks are
+// rejected) so a dev box without a trust service is harmless.
+type TrustConfig struct {
+	BaseURL        string // trust service base, e.g. http://127.0.0.1:9283
+	Site           string // moyu's catalog_site, to scope the moderator inbox
+	CallbackSecret string // HMAC secret shared with the trust subject-kind registry
+}
+
 type CORSConfig struct {
 	AllowOrigins string
 }
@@ -121,6 +136,14 @@ func Load() *Config {
 			// Empty fallback → app.go fills from OAuth credentials.
 			ClientID:     getEnv("KUN_ARTIFACT_OAUTH_CLIENT_ID", ""),
 			ClientSecret: getEnv("KUN_ARTIFACT_OAUTH_CLIENT_SECRET", ""),
+		},
+		Trust: TrustConfig{
+			// Fail-fast in prod: a localhost default in prod would silently
+			// misroute report/callback traffic. S2S Basic auth reuses the OAuth
+			// client_id/secret (filled in app.go).
+			BaseURL:        getEnvProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
+			Site:           getEnv("KUN_TRUST_SITE", "moyu"),
+			CallbackSecret: getEnv("KUN_TRUST_CALLBACK_SECRET", ""),
 		},
 		CORS: CORSConfig{
 			// Default covers both dev frontends: 5213 = legacy next-web
