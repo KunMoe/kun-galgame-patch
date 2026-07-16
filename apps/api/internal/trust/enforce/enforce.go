@@ -81,6 +81,12 @@ func (s *Service) Apply(ctx context.Context, cb dto.TrustCallback) error {
 	if err := s.dispatch(ctx, cb); err != nil {
 		return err // trust worker retries
 	}
+	// Server-log every applied disposition: system enforcement (actor 0) writes
+	// no admin_log row (its user_id FK needs a real user), so this line — plus
+	// the trust service's own disposition audit — is the local trace.
+	slog.Info("trust disposition applied",
+		"disposition_id", cb.DispositionID, "subject_kind", cb.SubjectKind,
+		"subject_id", cb.SubjectID, "action", cb.Action, "reason_code", cb.ReasonCode)
 
 	return s.db.WithContext(ctx).Exec(
 		"INSERT INTO trust_disposition_applied (disposition_id, action) VALUES (?, ?) ON CONFLICT DO NOTHING",

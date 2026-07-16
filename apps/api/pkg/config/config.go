@@ -138,10 +138,13 @@ func Load() *Config {
 			ClientSecret: getEnv("KUN_ARTIFACT_OAUTH_CLIENT_SECRET", ""),
 		},
 		Trust: TrustConfig{
-			// Fail-fast in prod: a localhost default in prod would silently
-			// misroute report/callback traffic. S2S Basic auth reuses the OAuth
-			// client_id/secret (filled in app.go).
-			BaseURL:        getEnvProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
+			// OPTIONAL in prod (unlike image/artifact, which getEnvProd-panic):
+			// the trust integration must stay deployable BEFORE infra onboarding
+			// — unset in prod means inert (reports degrade, callbacks rejected),
+			// never a boot panic on an auto-deploy. Dev still defaults to the
+			// local infra stack. S2S Basic auth reuses the OAuth client_id/secret
+			// (filled in app.go).
+			BaseURL:        getEnvOptionalProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
 			Site:           getEnv("KUN_TRUST_SITE", "moyu"),
 			CallbackSecret: getEnv("KUN_TRUST_CALLBACK_SECRET", ""),
 		},
@@ -184,6 +187,20 @@ func getEnvProd(key, devFallback, mode string) string {
 	}
 	if mode == "prod" {
 		panic("required environment variable not set in prod mode: " + key)
+	}
+	return devFallback
+}
+
+// getEnvOptionalProd is for integrations that are ALLOWED to be unconfigured
+// in production (the feature then disables itself): env var if set, devFallback
+// in dev, empty string in prod — never a panic, but also never a localhost
+// default silently misrouting prod traffic.
+func getEnvOptionalProd(key, devFallback, mode string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	if mode == "prod" {
+		return ""
 	}
 	return devFallback
 }

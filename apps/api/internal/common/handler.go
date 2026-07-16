@@ -411,6 +411,13 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	if dbErr := h.db.First(&resource, resourceID).Error; dbErr != nil {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
+	// status=2 = moderation-hidden (trust enforcement): the detail deep-link
+	// must not leak name/note either — a plain 404, indistinguishable from a
+	// nonexistent row. Disabled (status=1) stays visible below with the
+	// download payload withheld: the owner pulled the file, not the content.
+	if resource.Status == 2 {
+		return response.Error(c, errors.ErrNotFound("resource not found"))
+	}
 
 	// Fetch the owning patch and enrich it via Wiki so the frontend has
 	// name / banner / vndb_id without making a separate call.

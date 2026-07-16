@@ -665,7 +665,12 @@ func (h *PatchHandler) GetResourceDownloadInfo(c fiber.Ctx) error {
 	if !h.gatePatchByContentLimit(c, r.GalgameID) {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
-	// Disabled resources (status != 0) have their download link withheld — the
+	// Moderation-hidden (status=2, trust enforcement): 404, same as the detail
+	// endpoint — the resource must look nonexistent, not "disabled".
+	if r.Status == 2 {
+		return response.Error(c, errors.ErrNotFound("resource not found"))
+	}
+	// Disabled resources (status = 1) have their download link withheld — the
 	// owner/admin pulled it (e.g. virus). The row stays visible (marked 已禁用)
 	// but the link can't be fetched. Distinct 403 code so the frontend can show
 	// a clear "已禁用" message instead of a generic failure.

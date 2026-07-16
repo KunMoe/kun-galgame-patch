@@ -316,9 +316,14 @@ func (r *PatchRepository) IncrementResourceDownload(resourceID, patchID int) err
 	})
 }
 
+// ToggleResourceStatus flips enabled ↔ disabled (0 ↔ 1) ONLY. status=2
+// (moderation-hidden by trust enforcement) is left untouched — a bare
+// `ELSE 0` would let the resource owner un-hide a mod-hidden resource with a
+// single disable-toggle call. Exiting status=2 goes through
+// RestoreResourceFromModHide (trust dismiss callback) exclusively.
 func (r *PatchRepository) ToggleResourceStatus(resourceID int) error {
 	return r.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
-		UpdateColumn("status", gorm.Expr("CASE WHEN status = 0 THEN 1 ELSE 0 END")).Error
+		UpdateColumn("status", gorm.Expr("CASE WHEN status = 0 THEN 1 WHEN status = 1 THEN 0 ELSE status END")).Error
 }
 
 // SetResourceStatus forces a resource to a specific status. Used by trust

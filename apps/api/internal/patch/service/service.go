@@ -738,7 +738,10 @@ func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool, r
 			slog.Warn("DeleteComment: 写评论删除通知失败",
 				"comment_id", commentID, "owner", comment.UserID, "error", err)
 		}
-		if s.audit != nil {
+		// actor 0 = system (trust enforcement): admin_log.user_id has a NOT NULL
+		// FK to user(id), so a 0 insert can only fail — skip it; the trust service
+		// keeps its own disposition audit and enforce.Apply logs the action.
+		if s.audit != nil && userID != 0 {
 			_ = s.audit.CreateLog(userID, "deleteComment", map[string]any{
 				"comment_id": commentID,
 				"owner_id":   comment.UserID,
@@ -1228,8 +1231,12 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 		}
 
 		// Audit the moderation action (every privileged-foreign delete, from any
-		// entry point, lands here — see AuditLogger). Best-effort; nil sink in tests.
-		if s.audit != nil {
+		// entry point, lands here — see AuditLogger). Best-effort; nil sink in
+		// tests. actor 0 = system (trust enforcement): admin_log.user_id has a
+		// NOT NULL FK to user(id), so a 0 insert can only fail — skip it; the
+		// trust service keeps its own disposition audit and enforce.Apply logs
+		// the action.
+		if s.audit != nil && userID != 0 {
 			_ = s.audit.CreateLog(userID, "deleteResource", map[string]any{
 				"resource_id": resource.ID,
 				"owner_id":    resource.UserID,
@@ -1253,6 +1260,13 @@ func (s *PatchService) ToggleResourceDisable(resourceID, userID int, isPrivilege
 	}
 	if resource.UserID != userID && !isPrivileged {
 		return 0, fmt.Errorf("no permission to operate on this resource")
+	}
+	// status=2 = moderation-hidden (trust enforcement). Neither the owner nor a
+	// moderator may toggle out of it here — only the trust dismiss callback
+	// restores it (RestoreResourceFromModHide). The repo CASE also skips 2, but
+	// failing loudly beats silently reporting a status that didn't change.
+	if resource.Status == 2 {
+		return 0, fmt.Errorf("resource is hidden by moderation and cannot be toggled")
 	}
 	if err := s.repo.ToggleResourceStatus(resourceID); err != nil {
 		return 0, err

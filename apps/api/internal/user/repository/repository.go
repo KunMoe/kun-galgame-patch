@@ -46,12 +46,18 @@ func (r *UserRepository) CountUserPatches(userID int) int64 {
 	return countOrLog(r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID), "patches", userID)
 }
 
+// status <> 2 / status = 0: the profile is a PUBLIC read surface, so it must
+// honor the same moderation visibility as the content's home surface —
+// mod-hidden resources (status=2, trust `hide`) and non-approved comments
+// (status=1: verify-pending or mod-hidden) don't show and don't count.
+// Disabled resources (status=1) stay: their card is public, only the download
+// is withheld.
 func (r *UserRepository) CountUserResources(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID), "resources", userID)
+	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID), "resources", userID)
 }
 
 func (r *UserRepository) CountUserComments(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID), "comments", userID)
+	return countOrLog(r.db.Model(&patchModel.PatchComment{}).Where("user_id = ? AND status = 0", userID), "comments", userID)
 }
 
 func (r *UserRepository) CountUserFavorites(userID int) int64 {
@@ -85,7 +91,9 @@ func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty 
 func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchModel.PatchResource, int64, error) {
 	var resources []patchModel.PatchResource
 	var total int64
-	base := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID)
+	// status <> 2: mod-hidden resources are invisible on the public profile
+	// (matches CountUserResources; disabled status=1 cards stay visible).
+	base := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -111,7 +119,10 @@ func (r *UserRepository) GetUserFavorites(userID, offset, limit int, includeEmpt
 func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchModel.PatchComment, int64, error) {
 	var comments []patchModel.PatchComment
 	var total int64
-	base := r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID)
+	// status = 0: only approved comments are public — hidden ones (status=1,
+	// verify-pending or trust mod-hide) must not leak here when they're already
+	// hidden from the patch thread (matches CountUserComments).
+	base := r.db.Model(&patchModel.PatchComment{}).Where("user_id = ? AND status = 0", userID)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
