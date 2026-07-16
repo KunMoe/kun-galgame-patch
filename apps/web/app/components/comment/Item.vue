@@ -9,6 +9,8 @@
 // ROOT comment (parent_id = rootId), never to another reply, so nesting is at
 // most one level. Replying to a reply pre-fills an @mention of that reply's
 // author so the "回复 @某人" context survives without a deeper tree.
+import { kunMoyuMoe } from '~/config/moyu-moe'
+
 const props = withDefaults(
   defineProps<{
     comment: PatchPageComment
@@ -228,12 +230,15 @@ const onMenuSelect = (item: { key: string }) => {
   else if (item.key === 'report') reportComment()
 }
 // Report this comment → global report modal (patch_comment). Snapshot the
-// content as evidence; patch_comment has no standalone page, so no subject_url.
+// content as evidence; the deep-link uses the comment page's #comment-<id>
+// anchor (it locates the right page server-side), so the moderator console
+// opens the comment in context.
 const reportComment = () => {
   if (!requireLogin()) return
   openReport({
     subjectKind: 'patch_comment',
     subjectId: props.comment.id,
+    subjectUrl: `${kunMoyuMoe.domain.main}/patch/${props.comment.galgame_id}/comment#comment-${props.comment.id}`,
     snapshot: props.comment.content
   })
 }

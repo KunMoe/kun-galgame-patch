@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SUPPORTED_RESOURCE_LINK_MAP } from '~/constants/resource'
+import { kunMoyuMoe } from '~/config/moyu-moe'
 
 const route = useRoute()
 const api = useApi()
@@ -310,7 +311,10 @@ const menuItems = (r: PatchResource): ResourceMenuItem[] => {
   }
   items.push({ key: 'history', label: '更改历史', icon: 'lucide:history' })
   items.push({ key: 'share', label: '分享', icon: 'lucide:share-2' })
-  items.push({ key: 'report', label: '举报', icon: 'lucide:flag', color: 'danger' })
+  // Report is offered to everyone EXCEPT the author (mirrors comment items).
+  if (r.user_id !== userStore.user.id) {
+    items.push({ key: 'report', label: '举报', icon: 'lucide:flag', color: 'danger' })
+  }
   if (canDelete(r)) {
     items.push({
       key: 'delete',
@@ -352,7 +356,7 @@ const reportResource = (r: PatchResource) => {
   openReport({
     subjectKind: 'patch_resource',
     subjectId: r.id,
-    subjectUrl: `https://www.moyu.moe/resource/${r.id}`,
+    subjectUrl: `${kunMoyuMoe.domain.main}/resource/${r.id}`,
     snapshot: r.name
   })
 }
