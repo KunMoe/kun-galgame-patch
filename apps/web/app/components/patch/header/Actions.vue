@@ -36,6 +36,8 @@
 // (PatchService.DeletePatch). UI hides the button otherwise so it doesn't
 // look interactive to viewers who'd just get a 400.
 
+import { kunMoyuMoe } from '~/config/moyu-moe'
+
 interface Props {
   patch: PatchHeader
 }
@@ -48,10 +50,9 @@ const props = defineProps<Props>()
 // interaction-driven ingest), as do 编辑游戏信息 (wiki) and 分享.
 const isNoPatch = computed(() => props.patch.is_on_forum === false)
 
-const config = useRuntimeConfig()
-const wikiOrigin =
-  ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-  'https://wiki.kungal.com'
+// E3b: galgame metadata is maintained on kungal now (the wiki frontend is
+// retiring) — the attribution link points there.
+const kungalOrigin = kunMoyuMoe.domain.kungal
 
 const userStore = useUserStore()
 const api = useApi()
@@ -171,12 +172,12 @@ const onMenuSelect = (item: { key: string }) => {
       <p>
         游戏元数据由
         <a
-          :href="wikiOrigin"
+          :href="`${kungalOrigin}/galgame`"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"
         >
-          鲲 Galgame Wiki
+          鲲 Galgame
         </a>
         统一维护
       </p>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useContentBlurUp } from '@kungal/ui-vue'
+import { kunMoyuMoe } from '~/config/moyu-moe'
 
 const route = useRoute()
 const api = useApi()
@@ -130,11 +131,9 @@ const hiddenByFilterCount = computed(() => {
   return detail.value.tags.length - filteredTags.value.length
 })
 
-// Wiki frontend origin (used to link to the Wiki galgame detail page)
-const config = useRuntimeConfig()
-const wikiOrigin =
-  ((config.public as { wikiOrigin?: string }).wikiOrigin as string) ??
-  'https://wiki.kungal.com'
+// Galgame metadata home (E3b: the wiki frontend is retiring — the metadata
+// pages live on kungal now; deep links go to /galgame/:gid there).
+const kungalOrigin = kunMoyuMoe.domain.kungal
 </script>
 
 <template>
@@ -160,7 +159,7 @@ const wikiOrigin =
       />
       <KunNull
         v-else
-        description="此 Galgame 暂无简介，可到 Galgame Wiki 补充"
+        description="此 Galgame 暂无简介，可到 鲲 Galgame 补充"
       />
 
       <div class="text-default-500 mt-6 grid gap-4 sm:grid-cols-2">
@@ -193,14 +192,14 @@ const wikiOrigin =
         <div v-if="detail.galgame" class="flex items-center gap-2 text-sm">
           <KunIcon name="lucide:book-open" class="size-4" />
           <span>
-            Galgame Wiki:
+            鲲 Galgame:
             <a
-              :href="`${wikiOrigin}/galgame/${detail.galgame.id}`"
+              :href="`${kungalOrigin}/galgame/${detail.galgame.id}`"
               target="_blank"
               rel="noopener noreferrer"
               class="text-primary hover:underline"
             >
-              #{{ detail.galgame.id }}（完整角色 / 制作 / 发行信息）
+              #{{ detail.galgame.id }}（完整资料 / 修订历史）
             </a>
           </span>
         </div>
@@ -324,17 +323,17 @@ const wikiOrigin =
       <GalgameGallery :screenshots="detail.galgame.screenshots" />
     </section>
 
-    <!-- Wiki link footer for richer info (characters, staff, releases). -->
+    <!-- kungal link footer for richer info (metadata, revision history). -->
     <section v-if="detail.galgame">
       <p class="text-default-500 text-sm">
-        角色、制作人员、发行版本等更多信息请查看
+        游戏资料、修订历史等更多信息请查看
         <a
-          :href="`${wikiOrigin}/galgame/${detail.galgame.id}`"
+          :href="`${kungalOrigin}/galgame/${detail.galgame.id}`"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"
         >
-          Galgame Wiki
+          鲲 Galgame
         </a>
         。
       </p>
