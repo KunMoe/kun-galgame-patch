@@ -110,7 +110,7 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 ### 3.2 读取
 
 - `GET /users/:id/moemoepoint` → `{ "balance": 42 }`。
-- `GET /users/:id/moemoepoint/log?limit=20&before_id=&reason=` → 分页流水（`reason` 可选过滤）。**s2s 返回精简视图**：`{ id, delta, reason, source_app, ref, created_at }`，**不含** `note` / `actor_user_id`（这俩可能含管理处罚备注，下游可能渲染给终端用户，故不下发；管理端 `/admin/.../log` 返回完整视图）。
+- `GET /users/:id/moemoepoint/log?limit=20&before_id=&reason=` → 分页流水（`reason` 可选过滤）。**s2s 返回精简视图**：`{ id, delta, reason, source_app, source_name, ref, created_at }`，**不含** `note` / `actor_user_id`（这俩可能含管理处罚备注，下游可能渲染给终端用户，故不下发；管理端 `/admin/.../log` 返回完整视图，额外含 `note` / `actor_user_id`）。`source_name` = `source_app`（发放方 OAuth client id）经服务端 `LEFT JOIN oauth_clients` 解析出的该 client 展示名；`source_app="oauth"`（OAuth 内部发放）或未知 id 时为空串，由消费方回落到本地标签。
 - 也可在 `/auth/me` / userinfo 里直接返回 OAuth 的实时余额（替掉现在的冻结快照）。
 - **自助流水**：`GET /auth/me/moemoepoint/log?limit=&before_id=&reason=`（**用户 JWT**，`Auth` 鉴权，id 取自 token 非路径参——避免越权读他人）。返回与 s2s 同口径的**精简视图**（无 `note` / `actor_user_id`）。OAuth web 端 `/profile`「萌萌点记录」直接用它；下游站点若不想自己代理 s2s 端点，用户也可直连此端点查自己的流水。
 
