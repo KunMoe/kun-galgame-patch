@@ -169,27 +169,15 @@ func (h *GalgameHandler) ToggleLike(c *fiber.Ctx) error {
 }
 ```
 
-### 3.4 版本历史和 PR
+### 3.4 版本历史和 PR（⚠️ 已迁至统一编辑引擎）
 
-直接转发到 Wiki Service 或让前端直接调 Wiki Service：
-
-```go
-// 方案 A: 站点后端转发
-func (h *GalgameHandler) ListRevisions(c *fiber.Ctx) error {
-    gid := c.Params("gid")
-    result, err := h.galgameClient.ListRevisions(ctx, gid, page, limit)
-    return response.OK(c, result)
-}
-
-// 方案 B: 前端直接调 Wiki Service（推荐，减少一层转发）
-// 前端配置 WIKI_BASE_URL，直接请求 /api/galgame/:gid/revisions
-```
+> **⚠️ 2026-07-17（wiki 退役 E3b）**:galgame 的 per-gid 修订读面与 PR 编辑面已退役(旧 `/galgame/:gid/{revisions,prs,revert}*` 返 401/404),迁至 catalog 服务的**统一编辑引擎**(`/api/v1/catalog/edit/*`)。下游**不再各自代理编辑面**:kungal 拥有编辑器 UI(schema 驱动组件,经自身 BFF 调 catalog edit 面)、moyu 编辑入口跳转 kungal。若需展示全站编辑动态,消费存活的 S2S feed `GET /api/galgame/revisions/recent`(Basic Auth cron)。契约见 [02-revisions-and-prs](./02-revisions-and-prs.md) 与 [docs/catalog](../../catalog/README.md)。
 
 ## 4. 数据库拓扑
 
 | 数据库 | 表 | 所有者 |
 |--------|---|--------|
-| `kun_galgame_wiki` | galgame, galgame_series, galgame_alias, galgame_tag, galgame_tag_alias, galgame_tag_relation, galgame_official, galgame_official_alias, galgame_official_relation, galgame_engine, galgame_engine_relation, galgame_link, galgame_pr, galgame_revision, galgame_contributor | Wiki Service |
+| `kun_catalog`（原 `kun_galgame_wiki`，W1 2026-07-16 搬迁）| galgame, galgame_series, galgame_alias, galgame_tag*, galgame_official*, galgame_engine*, galgame_link, galgame_contributor（活）；~~galgame_pr, galgame_revision~~（**冻结**，编辑迁引擎后归 `edit_*` 表，旧表留期后 drop）；`edit_proposal / edit_proposal_amendment / edit_revision`（编辑引擎）| catalog 服务（原 Wiki Service，W3 退休）|
 | 站点主库 | galgame_like, galgame_favorite, galgame_comment, galgame_comment_like, galgame_rating, galgame_rating_like, galgame_rating_comment, galgame_resource, galgame_resource_provider, galgame_resource_link, galgame_resource_like, galgame_stats | 站点后端 |
 
 ### galgame_stats 表（站点本地维护）

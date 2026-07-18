@@ -278,7 +278,9 @@ admin 在 wiki 后台审核队列看到这条
 | `GetDetail(ctx, gid)` | GET `/galgame/:gid` | 详情页元数据 |
 | `MyNotifications(ctx, token, sinceID)` | GET `/galgame/messages/mine` | 消息中心 wiki 消息流 |
 
-### 5.1b galgame 编辑面方法（强制，kungal 与 moyu 各实现一份 — 见 §15）
+### 5.1b galgame 编辑面方法（⚠️ 已作废 — 见 §15，编辑迁至统一编辑引擎）
+
+> **⚠️ 2026-07-17 作废（wiki 退役 E3b）**:下表的 galgame 编辑/修订/PR 方法所对应的旧 wire 路由(`PUT /galgame/:gid`=孤儿、`/galgame/:gid/{revisions,prs,revert}*`=已删 401/404)**不再是下游必做项**;galgame 编辑现由 catalog 服务的**统一编辑引擎**(`/api/v1/catalog/edit/*`)承载,kungal 拥有编辑器 UI、moyu 跳转 kungal。**下表仅作历史索引**(见 §15 作废说明)。
 
 写操作一律透传用户 `access_token`；读操作公开端点可不带（鉴权语义以 wiki 为准）。
 
