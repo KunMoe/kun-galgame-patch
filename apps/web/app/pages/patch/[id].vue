@@ -258,22 +258,21 @@ const currentTab = computed({
   set: () => {}
 })
 
-// "编辑历史" / "编辑请求" tabs proxy the Wiki revision/PR surface that
-// handbook §15 makes mandatory for moyu (pages/patch/[id]/revisions.vue,
-// prs.vue).
+// Tabs: Galgame 信息 / 补丁资源下载 / 游戏评论. Galgame metadata editing (编辑历史 /
+// 编辑请求) moved to kungal — the "游戏元数据由 鲲 Galgame 统一维护" link in the
+// header (introduction.vue + header/Actions.vue) is the entry to view history
+// and edit metadata there.
 const tabs = computed(() => {
   const all = [
     { key: 'introduction', title: 'Galgame 信息', href: `/patch/${galgameId.value}/introduction` },
     { key: 'resource', title: '补丁资源下载', href: `/patch/${galgameId.value}/resource` },
-    { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` },
-    { key: 'revisions', title: '编辑历史', href: `/patch/${galgameId.value}/revisions` },
-    { key: 'prs', title: '编辑请求', href: `/patch/${galgameId.value}/prs` }
+    { key: 'comment', title: '游戏评论', href: `/patch/${galgameId.value}/comment` }
   ]
   // Not yet 收录 → drop only 补丁资源下载 (there's no patch to download; 发布补丁
   // is the CTA). 游戏评论 STAYS — commenting lazily records the game (kungal's
   // interaction-driven ingest), same as 收藏.
   return isNoPatch.value
-    ? all.filter((t) => ['introduction', 'comment', 'revisions', 'prs'].includes(t.key))
+    ? all.filter((t) => ['introduction', 'comment'].includes(t.key))
     : all
 })
 </script>
@@ -427,8 +426,8 @@ const tabs = computed(() => {
     </div>
 
     <!-- ── Tabs ───────────────────────────────────────── -->
-    <!-- scrollable: 5 个 Tab 在手机端会超出视口宽度;KunTab 的 scrollable
-         让 tablist 横向滚动(overflow-x-auto scrollbar-hide)而非撑破布局。 -->
+    <!-- scrollable: 保持 tablist 横向可滚动(overflow-x-auto scrollbar-hide),
+         窄屏下也不会撑破布局。 -->
     <KunTab
       v-model="currentTab"
       :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"

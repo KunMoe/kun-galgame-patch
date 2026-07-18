@@ -174,27 +174,18 @@ func (a *App) RegisterRoutes() {
 	api.Patch("/galgame/:gid", auth, a.PatchHandler.PatchGalgameDraft)
 	api.Delete("/galgame/:gid", auth, a.PatchHandler.DeleteGalgameDraft)
 
-	// ===== Galgame editing surface (handbook §15, MANDATORY full proxy) =====
+	// ===== Galgame relation editing surface (links / aliases proxy) =====
 	//
-	// docs/galgame_wiki/00-handbook-for-downstream.md §15 REVOKES the old
-	// "wiki-only, downstream doesn't implement editing" stance: moyu must now
-	// fully proxy Wiki's revision / PR / relation editing (back end + UI).
-	// Every route below is a verbatim pass-through (a.PatchHandler.WikiEditProxy
-	// / WikiPRSubmit) that mirrors the Wiki path 1:1. Reads use optionalAuth
-	// (token forwarded only if logged in); writes use auth so a Bearer exists.
-	// Wiki enforces creator/admin; we forward its code+message verbatim.
+	// Galgame metadata editing (revision history, edit-request PRs, direct
+	// edit) moved to kungal — moyu retired its revision/PR proxy + UI in the
+	// "编辑面归 kungal" wave. What remains here is the links / aliases relation
+	// proxy: verbatim pass-throughs (a.PatchHandler.WikiEditProxy) that mirror
+	// the Wiki path 1:1. Reads use optionalAuth (token forwarded only if logged
+	// in); writes use auth so a Bearer exists. Wiki enforces creator/admin; we
+	// forward its code+message verbatim.
 	//
 	// Registered AFTER the literal /galgame/{mine,submit,search,messages,:gid}
 	// routes above so Fiber's order-based matching keeps them intact.
-	api.Get("/galgame/:gid/revisions", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/revisions/:rev", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/revisions/:rev/diff", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Post("/galgame/:gid/revert", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/prs", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/prs/:prid", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Post("/galgame/:gid/prs", auth, a.PatchHandler.WikiPRSubmit)
-	api.Put("/galgame/:gid/prs/:prid/merge", auth, a.PatchHandler.WikiEditProxy)
-	api.Put("/galgame/:gid/prs/:prid/decline", auth, a.PatchHandler.WikiEditProxy)
 	api.Get("/galgame/:gid/links", optionalAuth, a.PatchHandler.WikiEditProxy)
 	api.Post("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)
 	api.Delete("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)

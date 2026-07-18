@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { KunUIColor } from '@kungal/ui-core'
+import { kunMoyuMoe } from '~/config/moyu-moe'
 // "My submissions" page — proxies GET /galgame/mine.
 //
 // Shows the caller's status ∈ {3, 4} drafts so they can:
@@ -84,12 +85,13 @@ const handleWithdraw = async (m: MineItem) => {
   }
 }
 
-// ─── Edit (navigate to a single-draft edit page) ──────
+// ─── Edit (open the draft on kungal) ──────────────────
 const handleEdit = async (m: MineItem) => {
-  // Re-use the publish wizard's submit form by passing the draft id in the
-  // query — but for now navigate to a dedicated edit route. The wizard does
-  // not yet support pre-loading a draft, so we use rewrite.vue with a flag.
-  await navigateTo(`/edit/draft?id=${m.id}`)
+  // Galgame metadata editing moved to kungal — open the game's kungal page,
+  // which carries the edit entry. External (cross-origin) navigation.
+  await navigateTo(`${kunMoyuMoe.domain.kungal}/galgame/${m.id}`, {
+    external: true
+  })
 }
 </script>
 

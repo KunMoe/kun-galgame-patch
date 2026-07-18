@@ -1,9 +1,10 @@
 package handler
 
-// Galgame editing surface mandated by docs/galgame_wiki/00-handbook-for-downstream.md
-// §15 for kungal AND moyu: revisions, PRs, links/aliases/contributors and the
-// tag/official/engine/series taxonomy CRUD. Every endpoint is a verbatim proxy
-// to the Wiki Service:
+// Galgame taxonomy + relation proxy surface. Galgame metadata editing
+// (revision history, edit-request PRs, direct edit) moved to kungal in the
+// "编辑面归 kungal" wave; what remains here is a verbatim proxy to the Wiki
+// Service for the links / aliases relations and the tag/official/engine/series
+// taxonomy CRUD. Every endpoint is a verbatim proxy to the Wiki Service:
 //
 //   - Route paths mirror Wiki 1:1 (sans the /api/v1 prefix), so the Wiki path
 //     is derived by stripping /api/v1 from the original URL — there are no
@@ -16,7 +17,6 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -42,7 +42,7 @@ func wikiPathFromRequest(c fiber.Ctx) string {
 }
 
 // WikiEditProxy is the generic GET / JSON-write pass-through used by every
-// §15 endpoint except the multipart-capable PR submit (see WikiPRSubmit).
+// remaining relation (links/aliases) and taxonomy proxy endpoint.
 func (h *PatchHandler) WikiEditProxy(c fiber.Ctx) error {
 	method := c.Method()
 	accessToken := middleware.GetAccessToken(c)
@@ -50,14 +50,13 @@ func (h *PatchHandler) WikiEditProxy(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
 
-	// NSFW gate for GET on :gid-scoped sub-resources (revisions / prs / links
-	// / aliases). Wiki's content_limit protocol (docs/galgame_wiki/00-handbook
-	// §16.2) only lists main list / search / taxonomy / batch / detail — these
-	// sub-resources fall outside the matrix, so wiki won't filter them. An
-	// anonymous caller hitting /galgame/<nsfw-gid>/revisions would otherwise
-	// receive a stream of diffs containing the NSFW name / banner / intro.
-	// Mutating GETs don't exist on these routes; mutating methods require
-	// auth above and are wiki-side authz'd, so they bypass the gate.
+	// NSFW gate for GET on :gid-scoped sub-resources (links / aliases). Wiki's
+	// content_limit protocol (docs/galgame_wiki/00-handbook §16.2) only lists
+	// main list / search / taxonomy / batch / detail — these sub-resources fall
+	// outside the matrix, so wiki won't filter them. An anonymous caller hitting
+	// /galgame/<nsfw-gid>/aliases would otherwise receive the aliases of an
+	// NSFW-gated entry. Mutating GETs don't exist on these routes; mutating
+	// methods require auth above and are wiki-side authz'd, so they bypass the gate.
 	if method == fiber.MethodGet {
 		if gidStr := c.Params("gid"); gidStr != "" {
 			if gid, err := strconv.Atoi(gidStr); err == nil && gid > 0 {
@@ -198,64 +197,4 @@ func (h *PatchHandler) WikiTaxonomyDetailProxy(c fiber.Ctx) error {
 		return c.JSON(response.Response{Code: 0, Message: "OK", Data: raw})
 	}
 	return c.JSON(response.Response{Code: 0, Message: "OK", Data: json.RawMessage(out)})
-}
-
-// WikiPRSubmit handles POST /api/v1/galgame/:gid/prs. Like Submit/Update it
-// accepts JSON or multipart/form-data (`data` JSON + optional `file` banner)
-// so a PR proposal can carry a new banner thumbnail for the reviewer
-// (docs/galgame_wiki/02-revisions-and-prs.md §PR).
-func (h *PatchHandler) WikiPRSubmit(c fiber.Ctx) error {
-	accessToken := middleware.GetAccessToken(c)
-	if accessToken == "" {
-		return response.Error(c, errors.ErrUnauthorized())
-	}
-	wikiPath := wikiPathFromRequest(c)
-	ctype := string(c.Request().Header.ContentType())
-
-	if !strings.HasPrefix(ctype, "multipart/form-data") {
-		data, err := h.wiki.Proxy(
-			c.Context(), fiber.MethodPost, wikiPath, accessToken, c.Body(), ctype,
-		)
-		return writeWikiResult(c, data, err)
-	}
-
-	form, err := c.MultipartForm()
-	if err != nil {
-		return response.Error(c, errors.ErrBadRequest("multipart 表单解析失败"))
-	}
-	dataStrs := form.Value["data"]
-	if len(dataStrs) == 0 {
-		return response.Error(c, errors.ErrBadRequest("缺少 data 字段"))
-	}
-	dataJSON := []byte(dataStrs[0])
-
-	var fileName, fileMime string
-	var fileBytes []byte
-	if fhs := form.File["file"]; len(fhs) > 0 {
-		fh := fhs[0]
-		if fh.Size > 10*1024*1024 {
-			return response.Error(c, errors.ErrBadRequest("banner 超过 10MB 上限"))
-		}
-		f, oerr := fh.Open()
-		if oerr != nil {
-			return response.Error(c, errors.ErrBadRequest("无法读取上传文件"))
-		}
-		defer f.Close()
-		b, rerr := io.ReadAll(f)
-		if rerr != nil {
-			return response.Error(c, errors.ErrBadRequest("读取上传文件失败"))
-		}
-		fileBytes = b
-		fileName = fh.Filename
-		fileMime = fh.Header.Get("Content-Type")
-		if fileMime == "" {
-			fileMime = "application/octet-stream"
-		}
-	}
-
-	data, callErr := h.wiki.ProxyMultipart(
-		c.Context(), fiber.MethodPost, wikiPath, accessToken,
-		dataJSON, fileName, fileBytes, fileMime,
-	)
-	return writeWikiResult(c, data, callErr)
 }

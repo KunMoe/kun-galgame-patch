@@ -193,13 +193,6 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL || 'http://127.0.0.1:9420',
       oauthClientId: process.env.NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID || '',
       oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || '',
-      // 鲲 Galgame Wiki 的公开 origin。E3b 后仅剩一个消费点：/edit/draft 直连
-      // wiki 读 API `${wikiOrigin}/api/galgame/:id`（wiki 对读端点开了 CORS）。
-      // 详情页跳转已改指 kungal（kunMoyuMoe.domain.kungal）；本配置连同该
-      // 读依赖归 07 号（apps/wiki 退役）一并清理。运行时可由
-      // NUXT_PUBLIC_WIKI_ORIGIN 覆盖（Nitro 自动映射 camelCase→SCREAMING_SNAKE）。
-      wikiOrigin:
-        process.env.NUXT_PUBLIC_WIKI_ORIGIN || 'https://wiki.kungal.com',
       // image_service CDN base (== backend KUN_IMAGE_CDN_BASE / config
       // moyu-moe.ts domain.imageBed — all three MUST agree). Used by the
       // /image/:hash 302 route to resolve domain-agnostic content tokens to

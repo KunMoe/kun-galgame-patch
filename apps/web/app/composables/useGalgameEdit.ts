@@ -1,35 +1,27 @@
-// useGalgameEdit — typed client for the galgame editing surface that
-// docs/galgame_wiki/00-handbook-for-downstream.md §15 makes MANDATORY for moyu:
-// revisions, PRs, links/aliases/contributors, and tag/official/engine/series
-// CRUD. Every call goes through OUR backend proxy (/api/v1/...), which forwards
-// the user's session/access_token to the Wiki Service and relays Wiki's
-// {code,message,data} verbatim (see internal/patch/handler/galgame_edit.go).
+// useGalgameEdit — typed client for the galgame taxonomy + relation surface
+// moyu still proxies to the Wiki Service: links/aliases relations and
+// tag/official/engine/series CRUD (incl. taxonomy revision history + revert).
+// Galgame metadata editing (revision history, edit-request PRs, direct edit)
+// moved to kungal in the "编辑面归 kungal" wave. Every call goes through OUR
+// backend proxy (/api/v1/...), which forwards the user's session/access_token
+// to the Wiki Service and relays Wiki's {code,message,data} verbatim (see
+// internal/patch/handler/galgame_edit.go).
 //
-// Wiki owns authorization (creator/admin for revert·merge·decline·PUT galgame;
-// admin/moderator for PUT·DELETE taxonomy; any logged-in user for POST
-// taxonomy). We do NOT re-check it client-side — on a permission failure the
-// backend forwards Wiki's code+message and the caller shows it.
+// Wiki owns authorization (admin/moderator for PUT·DELETE taxonomy + revert;
+// any logged-in user for POST taxonomy). We do NOT re-check it client-side — on
+// a permission failure the backend forwards Wiki's code+message and the caller
+// shows it.
 
 export interface WikiPage<T> {
   items: T[]
   total: number
 }
 
-// Wiki-proxied edit shapes are aliased to the generated OpenAPI schemas
+// Wiki-proxied relation shapes are aliased to the generated OpenAPI schemas
 // (shared/types/galgame-wiki.ts) so a backend wire change fails the drift gate
-// + tsc here instead of breaking at runtime. Re-exported so the edit surface
-// keeps importing them from this one composable.
-export type {
-  GalgameSnapshot,
-  GalgameRevision,
-  GalgameRevisionDetail,
-  GalgameDiff,
-  GalgameDiffNames,
-  GalgamePR,
-  GalgamePRDetail,
-  GalgameLink,
-  GalgameAlias
-} from '~/shared/types/galgame-wiki'
+// + tsc here instead of breaking at runtime. Re-exported so the relation
+// surface keeps importing them from this one composable.
+export type { GalgameLink, GalgameAlias } from '~/shared/types/galgame-wiki'
 
 // W3 / Wiki U3 — taxonomy revision (multi-polymorphic single-table on the
 // Wiki side; entity column distinguishes tag/official/engine/series). snapshot
@@ -84,51 +76,6 @@ export interface WikiSeries {
   description: string
 }
 
-// CoverInput / ScreenshotInput mirror docs/galgame_wiki/03-relations.md §封面 /
-// 截图 (W2 / Wiki PR5). Same shape used in both responses (PatchDetail.galgame
-// .covers / .screenshots) and request payloads — single round trip.
-export interface CoverInput {
-  image_hash: string
-  sort_order: number
-  sexual?: number
-  violence?: number
-  source?: string
-  source_key?: string
-}
-export interface ScreenshotInput extends CoverInput {
-  caption?: string
-}
-
-// PR / galgame field payload (all optional, replace-all semantics on arrays).
-// Presence semantics (docs/galgame_wiki/00-handbook §15 PR2-5): omit a field =
-// keep集合 unchanged; `[]` = clear all; non-empty array = authoritative full
-// replace — caller MUST resubmit the FULL current set, never deltas.
-export interface GalgameEditFields {
-  name_en_us?: string
-  name_ja_jp?: string
-  name_zh_cn?: string
-  name_zh_tw?: string
-  intro_en_us?: string
-  intro_ja_jp?: string
-  intro_zh_cn?: string
-  intro_zh_tw?: string
-  content_limit?: string
-  age_limit?: string
-  original_language?: string
-  release_date?: string | null
-  release_date_tba?: boolean
-  aliases?: string[]
-  tag_ids?: number[]
-  official_ids?: number[]
-  engine_ids?: number[]
-  covers?: CoverInput[]
-  screenshots?: ScreenshotInput[]
-  links?: { name: string; link: string }[]
-  series_id?: number
-  note?: string
-  is_minor?: boolean
-}
-
 type Q = Record<string, string | number | boolean | undefined>
 
 const qs = (q?: Q): string => {
@@ -143,110 +90,6 @@ const qs = (q?: Q): string => {
 
 export const useGalgameEdit = () => {
   const api = useApi()
-  const config = useRuntimeConfig()
-  const apiBase = (config.public.apiBase as string) || ''
-
-  // ─── Revisions ──────────────────────────────────────
-  const listRevisions = (
-    gid: number,
-    opts?: { page?: number; limit?: number; include_minor?: boolean }
-  ) =>
-    api.get<WikiPage<GalgameRevision>>(
-      `/galgame/${gid}/revisions${qs(opts as Q)}`
-    )
-
-  const getRevision = (gid: number, rev: number) =>
-    api.get<GalgameRevisionDetail>(`/galgame/${gid}/revisions/${rev}`)
-
-  const getRevisionDiff = (gid: number, rev: number) =>
-    api.get<GalgameDiff>(`/galgame/${gid}/revisions/${rev}/diff`)
-
-  const revert = (gid: number, revision: number) =>
-    api.post(`/galgame/${gid}/revert`, { revision })
-
-  // ─── PRs ────────────────────────────────────────────
-  const listPRs = (gid: number, opts?: { page?: number; limit?: number }) =>
-    api.get<WikiPage<GalgamePR>>(`/galgame/${gid}/prs${qs(opts as Q)}`)
-
-  const getPR = (gid: number, prid: number) =>
-    api.get<GalgamePRDetail>(`/galgame/${gid}/prs/${prid}`)
-
-  const submitPR = (gid: number, body: GalgameEditFields) =>
-    api.post<GalgamePR>(`/galgame/${gid}/prs`, body as Record<string, unknown>)
-
-  // multipart variant: PR proposal carrying a new banner thumbnail.
-  const submitPRMultipart = async (
-    gid: number,
-    body: GalgameEditFields,
-    file: File
-  ) => {
-    const fd = new FormData()
-    fd.append('data', JSON.stringify(body))
-    fd.append('file', file, file.name)
-    const r = await $fetch
-      .raw<{ code: number; message: string; data: unknown }>(
-        `${apiBase}/galgame/${gid}/prs`,
-        { method: 'POST', body: fd, credentials: 'include' }
-      )
-      .catch((e) => e?.response)
-    return (r?._data ?? {
-      code: -1,
-      message: '提交失败',
-      data: null
-    }) as { code: number; message: string; data: unknown }
-  }
-
-  // W2 / PR3b — upload a file to image_service via our backend proxy and
-  // return the content hash + URLs. Use for screenshots (Wiki accepts no
-  // multipart for them) and for any other place that needs a raw image hash.
-  // For galgame covers, prefer the PUT /galgame/:gid multipart flow which lets
-  // Wiki auto-promote the upload to covers[sort_order=0]; this composable
-  // method can still be used to add NON-pinned covers via the JSON path.
-  // preset must be allowlisted for our OAuth client on image_service — the
-  // GalgameImageUploadPreset union (types/patch.d.ts) is the source of truth:
-  //   - 'galgame_screenshot' → galgame screenshots (the only current caller)
-  //   - 'topic'              → free-form gallery image (the default; also used
-  //                            directly by the editor uploader + admin doc)
-  // (galgame_banner is wiki-side via the multipart PUT /galgame/:gid flow;
-  // avatars go through OAuth's /auth/me/avatar — neither hits this endpoint.)
-  interface ImageServiceUploadResult {
-    hash: string
-    url: string
-    variant_urls: Record<string, string>
-    width: number
-    height: number
-    size_bytes: number
-    deduplicated: boolean
-  }
-  const uploadImageService = async (
-    file: File,
-    preset: GalgameImageUploadPreset = 'topic'
-  ) => {
-    const fd = new FormData()
-    fd.append('preset', preset)
-    fd.append('file', file, file.name)
-    const r = await $fetch
-      .raw<{ code: number; message: string; data: ImageServiceUploadResult }>(
-        `${apiBase}/upload/image-service`,
-        { method: 'POST', body: fd, credentials: 'include' }
-      )
-      .catch((e) => e?.response)
-    return (r?._data ?? {
-      code: -1,
-      message: '上传失败',
-      data: null
-    }) as {
-      code: number
-      message: string
-      data: ImageServiceUploadResult | null
-    }
-  }
-
-  const mergePR = (gid: number, prid: number) =>
-    api.put(`/galgame/${gid}/prs/${prid}/merge`)
-
-  const declinePR = (gid: number, prid: number) =>
-    api.put(`/galgame/${gid}/prs/${prid}/decline`)
 
   // ─── Relations ──────────────────────────────────────
   const listLinks = (gid: number) =>
@@ -425,17 +268,6 @@ export const useGalgameEdit = () => {
     }>(`/official/_${qs({ official_id: id, ...(opts as Q) })}`)
 
   return {
-    listRevisions,
-    getRevision,
-    getRevisionDiff,
-    revert,
-    listPRs,
-    getPR,
-    submitPR,
-    submitPRMultipart,
-    uploadImageService,
-    mergePR,
-    declinePR,
     listLinks,
     createLink,
     deleteLink,

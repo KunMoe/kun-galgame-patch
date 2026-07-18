@@ -17,9 +17,8 @@
 // Endpoint contracts:
 //   - favorite: PUT /patch/:id/favorite — local-only state, optimistic UI
 //   - share:    copy direct URL to clipboard
-//   - edit:     navigates to /edit/rewrite?id=:id (in-site form, proxies to
-//               PUT /api/v1/galgame/:gid → Wiki Service per
-//               integration-guide.md §6).
+//   - edit:     opens the game's kungal page (galgame metadata editing moved
+//               to kungal in the "编辑面归 kungal" wave) — external navigation.
 //   - delete:   DELETE /patch/:id — wipes the moyu patch row plus all child
 //               tables (resources / comments / contributor / favorite / pr /
 //               link / resource_file_history via FK CASCADE). File blobs are
@@ -95,7 +94,9 @@ const handleShare = () => {
   useKunCopy(link)
 }
 
-const editHref = computed(() => `/edit/rewrite?id=${props.patch.id}`)
+// 编辑游戏信息 → the game's kungal page, which carries the metadata edit entry
+// (galgame editing moved to kungal). Cross-origin, so navigateTo needs external.
+const editHref = computed(() => `${kungalOrigin}/galgame/${props.patch.id}`)
 
 const canDelete = computed(() => {
   if (isNoPatch.value) return false
@@ -152,7 +153,7 @@ const menuItems = computed<ActionMenuItem[]>(() => {
 })
 
 const onMenuSelect = (item: { key: string }) => {
-  if (item.key === 'edit') navigateTo(editHref.value)
+  if (item.key === 'edit') navigateTo(editHref.value, { external: true })
   else if (item.key === 'share') handleShare()
   else if (item.key === 'delete') askDelete()
 }
