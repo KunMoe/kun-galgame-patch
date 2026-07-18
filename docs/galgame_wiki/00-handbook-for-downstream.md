@@ -25,7 +25,7 @@
 
 **三库 user_id 已全局对齐**（migrate-users 完成），不需要 ID 映射；移交过来的 user_id 直接是 OAuth 全局 user_id。
 
-> **接口角色补充（强制）**：kungal / moyu 不只是「投稿 + 渲染」的消费者，**还必须各自完整承载 galgame 的编辑面**（PR、修订历史、关系、分类轴的增删改），后端代理 + 前端 UI 一份不少。详见 [§15](#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。wiki 仍是数据 SoT 与服务端逻辑实现方，但「下游只读、编辑归 wiki」的旧定位已作废。
+> **⚠️ 2026-07-17 更新（wiki 退役 E3b）—— §15「下游各自实现编辑面」的强制要求已作废**：galgame 的编辑/提案/审核/修订全部迁至 catalog 服务的**统一编辑引擎**（`/api/v1/catalog/edit/*`）。现态:**kungal 拥有编辑器 UI（经自身 BFF 调 catalog edit 面）；moyu 的编辑入口直接跳转 kungal**——下游**不再各自实现一份 PR/修订机器**。§15 及其 §5.1b 编辑面方法保留作历史记录,但**不再是必做项**;新接入方只需消费数据读面 + （如需编辑 UI）复用引擎的 edit-schema 驱动组件。旧 wire `/galgame/:gid/{prs,revisions,revert}*` 已删除（401/404）。
 
 ---
 
@@ -625,9 +625,9 @@ const merged = [...localMsgs, ...wikiMsgs].sort(byCreatedAtDesc)
 
 ---
 
-## 15. kungal / moyu 必须各自完整实现的 galgame 编辑面（强制，全覆盖）
+## 15. galgame 编辑面（⚠️ 已作废 —— 编辑迁至统一编辑引擎，本节存作历史）
 
-> **方向变更（强制）**：galgame 的编辑类操作——PR 编辑、修订历史操作、关系（links/aliases/contributors）增删、分类轴（tag/official/engine/series）增删改——**不再是「wiki-only，下游不做」**。wiki 仍是数据唯一可信源（SoT）与服务端逻辑实现方，但**面向用户的完整功能必须在 kungal 和 moyu 各自落地一份**：每一站都要做后端代理（透传用户 access_token）+ 前端 UI，**功能与 wiki 端一一对齐，不得删减、不得只做子集**。kungal 一份、moyu 一份，二者覆盖范围相同。
+> **⚠️ 2026-07-17 作废（wiki 退役 E3b）**:本节「kungal 与 moyu 各自完整实现一份 galgame 编辑面」的强制要求**已整体作废**。galgame 的编辑/提案/审核/修订/回滚/关系与分类轴增删改,现由 catalog 服务的**统一编辑引擎**（`/api/v1/catalog/edit/*`）承载,产品经自身 BFF 消费:**kungal 拥有编辑器 UI(schema 驱动组件);moyu 编辑入口跳转 kungal**——不再各自实现 PR/修订机器。旧 wire `/galgame/:gid/{prs,revisions,revert}*` 及 links/aliases 写代理的「必做」定位随之取消(路由本身部分已删、部分成孤儿)。**下面的清单与方法名仅作历史索引**,新接入方无需实现;编辑契约见 [docs/catalog](../../catalog/README.md) 的 edit 面。taxonomy(tag/official/engine/series)的 CRUD 与修订仍在 galgame 面存活(见 [04-taxonomy](./04-taxonomy.md)),但编辑 UI 同样归 kungal(nextmoe 生态的 taxonomy 管理集中于 kungal admin)。
 
 ### 15.1 强制清单（每一项 kungal 与 moyu 都要各做一份）
 

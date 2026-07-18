@@ -574,7 +574,7 @@ return r2.data.galgame
 ### Banner 上传：通过 Create / Update / PR 端点的 multipart 模式
 
 **没有独立的"上传 banner"端点**。banner 文件作为可选 `file` 表单字段一并随
-`POST /galgame`、`PUT /galgame/:gid`、`POST /galgame/:gid/prs` 的 multipart 请求提交，
+`POST /galgame`、`PUT /galgame/:gid` 的 multipart 请求提交（编辑引擎的图片字段亦经 image_service 拿 hash 后入提案 patch，见 catalog edit 面），
 后端会先把文件转给 image_service 拿到 hash，再通过服务端瞬态字段 `PromoteCoverHash`
 把它合并进 `covers`（若同 hash 已存在则提升为 `sort_order=0`，否则插入为新的 pinned cover；
 原有的 `sort_order=0` 自动让位），跟其他字段一起进入同一次 revision / PR diff。
@@ -623,7 +623,7 @@ Content-Type: image/png
 
 **该 multipart 模式同样适用于：**
 - `POST /galgame`（创建时直接带 banner 文件，避免"先创建再编辑改 banner"两步）
-- `POST /galgame/:gid/prs`（PR 提案里直接附 banner 文件，reviewer 看 diff 时能看到新图缩略图）
+- 编辑经统一编辑引擎（catalog edit 面）时，图片同样先经 image_service 拿 hash 再入提案 patch，审核者看 diff 时能看到新图（旧 `POST /galgame/:gid/prs` multipart 模式随 PR 面退役）
 
 ---
 

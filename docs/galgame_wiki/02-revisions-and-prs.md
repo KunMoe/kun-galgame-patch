@@ -4,172 +4,19 @@
 
 > [文档索引](./README.md) · 上一节：[01 — Galgame 核心 CRUD](./01-galgame.md) · 下一节：[03 — 链接 / 别名 / 贡献者](./03-relations.md)
 
-> **下游强制范围**：本节的修订历史与 PR 编辑操作，**kungal 与 moyu 各自必须完整实现一份**（后端透传 Bearer 代理 + 前端 UI，功能与 wiki 对齐，不得只做子集）。已不再是「wiki-only，下游不做」。详见 [00-handbook §15](./00-handbook-for-downstream.md#15-kungal--moyu-必须各自完整实现的-galgame-编辑面强制全覆盖)。
-
-## 版本历史 (Wiki)
-
-每次编辑（创建、更新、PR 合并、回滚）都会创建一个 revision，存储 galgame 的完整状态快照。
-
-### GET /galgame/:gid/revisions
-
-版本列表。
-
-**查询参数**：
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| page | int | 1 | 页码 |
-| limit | int | 20 | 每页数量 |
-| include_minor | bool | false | 是否包含小修改 |
-
-**成功响应**：
-
-```json
-{
-  "code": 0,
-  "data": {
-    "items": [
-      {
-        "id": 3,
-        "galgame_id": 1,
-        "revision": 3,
-        "user_id": 2,
-        "action": "merged",
-        "note": "更新简介",
-        "is_minor": false,
-        "reverted_to": null,
-        "changed_fields": ["intro_zh_cn"],
-        "created": "2026-01-03T00:00:00Z"
-      },
-      {
-        "id": 2,
-        "revision": 2,
-        "action": "updated",
-        "note": "",
-        "is_minor": true
-      },
-      {
-        "id": 1,
-        "revision": 1,
-        "action": "created",
-        "note": ""
-      }
-    ],
-    "total": 3
-  }
-}
-```
-
-`action` 取值：`created`, `updated`, `merged`, `reverted`, `declined`
-
-> **2026-06-17 — `changed_fields`（本次修订实际改动的字段集）**：每条 revision 在**写入时**记录该次操作真正改动的 snapshot 字段名数组（来自 `ChangedKeys(改动前的实时状态, 改动后)`），对齐 taxonomy_revision 的同名字段。三态语义：
-> - 数组（如 `["intro_zh_cn"]`）：记录到的改动集；
-> - `[]`：已记录但没有可编辑字段变化（如 `claimed` / 状态变更——状态不是 snapshot 字段）；
-> - `null` / 字段缺失：本特性上线前的**历史 revision**，`/diff` 回退到整快照比对。
+> **⚠️ 退役告示（2026-07-17,wiki 退役 E3b）—— 本节的 per-gid 修订读面与 PR 编辑面已整体退役**：galgame 的编辑/提案/审核/修订/回滚/diff 现由**统一编辑引擎**承载(catalog 服务的 `/api/v1/catalog/edit/*` S2S 面,见 [docs/catalog](../../catalog/README.md))。旧 wire 路由 `GET|POST /galgame/:gid/{revisions,prs,revert}*`(及其 merge/decline)**已从代码删除,现返回 401/404**——下游**不得再代理或实现**它们。产品侧编辑消费方式:**kungal 拥有编辑器 UI(经自身 BFF 调 catalog edit 面);moyu 编辑入口直接跳转 kungal**——不再各自实现一份 PR 机器(旧的「下游强制全覆盖」要求随之作废,00-handbook §15 已改写)。
 >
-> 这是 `/diff` 的 `changed_keys` 的权威来源（见下），下游优先信任它，不要再自己拿相邻两个 snapshot 整体比对。
+> **本节现存活的只有两样**:①下面两个**全站 S2S feed**(`/galgame/revisions/recent`、`/galgame/taxonomy/recent`,下游 cron 拉取镜像动态时间线用)——线契约与游标**字节不变**(引擎迁移经 W4 验证);②文末的 **taxonomy 修订/回滚**(tag/official/engine/series 分类机器仍在 galgame 面)。
 
-> **PR3/PR5 注意 — revision.note 可能由系统追写**：当 `reverted` 或 `merged` 应用的旧快照里有引用已不存在的 image_hash（image_service 端 TTL 清理掉了），后端会自动把这些 hash 从 covers/screenshots 里剔除并在 `note` 后追加 `\n[系统] reverted 时检测到 N 张图片在 image_service 已不可用，已自动从快照中剔除` 之类的说明。下游展示 revision/PR 详情时直接渲染 `note` 即可，不需要额外解析。
+## 版本历史 —— per-gid 修订读面 + PR 编辑面(已退役)
 
----
+> 以下端点均**已退役**(2026-07-17),保留仅作历史索引。编辑/修订能力见统一编辑引擎(catalog `/api/v1/catalog/edit/*`)。
 
-### GET /galgame/:gid/revisions/:rev
+- ~~`GET /galgame/:gid/revisions`~~ · ~~`GET /galgame/:gid/revisions/:rev`~~ · ~~`GET /galgame/:gid/revisions/:rev/diff`~~ —— 修订历史/单版/diff → 改由 catalog edit 面的 `edit/revisions`、`edit/diff` 提供(经产品 BFF)。
+- ~~`POST /galgame/:gid/revert`~~ —— 回滚 → catalog edit 面的 `edit/revert`。
+- ~~`GET /galgame/:gid/prs`~~ · ~~`GET /galgame/:gid/prs/:id`~~ · ~~`POST /galgame/:gid/prs`~~ · ~~`PUT /galgame/:gid/prs/:id/merge`~~ · ~~`PUT /galgame/:gid/prs/:id/decline`~~ —— PR 提交/列表/详情/合并/拒绝 → catalog edit 面的 `edit/proposals`(+ `merge`/`decline`/`amendments` 审核者内联修正)。引擎的编辑模型是**字段级提案 + 审核者可修改后合并(amend)+ 字段级权限 + 双署名**,是旧 PR「全收全拒」的超集。
 
-查看特定版本的完整快照。
-
-**成功响应**：
-
-```json
-{
-  "code": 0,
-  "data": {
-    "id": 1,
-    "galgame_id": 1,
-    "revision": 1,
-    "user_id": 1,
-    "action": "created",
-    "snapshot": {
-      "vndb_id": "v12345",
-      "name_zh_cn": "标题",
-      "aliases": ["别名1"],
-      "tag_ids": [1, 2],
-      "official_ids": [1],
-      "engine_ids": [],
-      "links": [{"name": "VNDB", "link": "https://vndb.org/v12345"}],
-      "release_date": "2019-08-16",
-      "release_date_tba": false,
-      "covers": [
-        {"image_hash": "abcd1234...ef", "sort_order": 0, "sexual": 0, "violence": 0, "source": "user", "source_key": ""}
-      ],
-      "screenshots": [
-        {"image_hash": "fedcba98...12", "sort_order": 0, "caption": "CG 01", "sexual": 0, "violence": 0, "source": "", "source_key": ""}
-      ]
-    },
-    "changed_fields": ["name_zh_cn", "tag_ids"],
-    "created": "..."
-  }
-}
-```
-
----
-
-### GET /galgame/:gid/revisions/:rev/diff
-
-计算该版本与前一版本的差异。`changed_keys` **以该版本写入时记录的 `changed_fields` 为准**（编辑者真正改了哪些字段）；仅当该版本是历史 revision（`changed_fields` 为 `null`）时才回退到「相邻两个 snapshot 整体比对」。`old` / `new` 仍实时取自相邻两版快照，用于渲染字段值。
-
-**成功响应**：
-
-```json
-{
-  "code": 0,
-  "data": {
-    "changed_keys": {
-      "name_zh_cn": true,
-      "tag_ids": true
-    },
-    "old": {
-      "name_zh_cn": "旧标题",
-      "tag_ids": [1, 2]
-    },
-    "new": {
-      "name_zh_cn": "新标题",
-      "tag_ids": [1, 2, 3]
-    },
-    "names": {
-      "tags": { "1": "校园", "2": "治愈", "3": "RPG" },
-      "officials": {},
-      "engines": {},
-      "series": {}
-    }
-  }
-}
-```
-
-`old` 和 `new` 是完整的 snapshot 对象，前端可以只展示 `changed_keys` 中标记的字段。对于大文本字段（intro_*），前端可以用 diff 库展示行级差异。
-
-> **2026-06-17 — `changed_keys` 改用记录值，修复「改一个字段却显示全字段新增」**：历史上 VNDB 富化/批量回填直接写实时表、不落 revision，导致相邻 revision 的快照陈旧；旧的「整快照比对」会把 covers/screenshots/bid/release_date/aliases 全部误判为「新增」。现在 `changed_keys` 来自每条 revision 写入时记录的 `changed_fields`（基于改动前实时状态算出的真实改动集），因此与相邻快照是否陈旧**无关**——改一张截图就只显示 `screenshots`。历史 revision（`changed_fields=null`）仍回退整快照比对。下游照旧渲染 `changed_keys` 即可，**响应结构不变**。
-
-> **2026-05-22 (K-PR)**：响应新增 `names` 字段。包含本次 diff 涉及的所有 tag / official / engine / series ID 到**显示名称**的映射。让前端直接渲染"tag added: 校园, 治愈"而不是"tag added: 1, 2"，避免 N+1 后续请求。
->
-> **被删除的实体**：如果某个 ID 在 snapshot 里存在但 DB 里已被 soft-delete / 硬删，对应 key **不会出现在 names 里**。前端应该 fallback 渲染成 `已删除 #<id>`。
->
-> **性能**：union(old.ids + new.ids) 去重后做 4 次 `WHERE id IN (...)` PK 查询（每次 ~1ms）。典型 galgame ≤30 tags + ≤5 officials + ≤2 engines + ≤1 series，每次 diff 请求增加 ~5ms DB 时间 + ~5KB 响应体。可忽略。
-
----
-
-### POST /galgame/:gid/revert
-
-回滚到指定版本。**需要认证**。仅创建者或 admin 可操作。
-
-回滚会创建一个新 revision（action=reverted），不会删除历史记录。
-
-**请求体**：
-
-```json
-{
-  "revision": 1
-}
-```
+**修订记录形态**(引擎版,契约见 catalog edit 面):`action` 取值收敛为 `created` / `merged` / `direct` / `reverted`;每条 revision 写入时记 `changed_fields`(字段键数组,与旧 `changed_fields` 同义);迁移自旧库的历史 revision 带 `legacy_action`(原始动作,如 `updated`/`claimed`/`approved`)+ `legacy_id`(旧 `galgame_revision.id`,使 feed 游标与旧书签无缝续)。
 
 ---
 
@@ -212,10 +59,12 @@
 |------|------|
 | id | `galgame_revision.id`（全局行号），作游标 |
 | galgame_id | 被编辑的 galgame |
-| revision | 该 galgame 内的**第几版**（per-galgame 递增号）。与 `galgame_id` 一起即可直接拼 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff)（`:rev` = 这个 `revision`，**不是 `id`**），也是「第 N 版」展示标签。**注意**：diff 端点按 `revision` 而非 `id` 寻址——别拿 `id` 去拼 diff URL（会 404）。 |
-| user_id | **编辑者**(= 合并时的 `pr.user_id`),即正确的动态 actor |
+| revision | 该 galgame 内的**第几版**（per-galgame 递增号），即「第 N 版」展示标签。修订详情/diff 请走 catalog edit 面(经产品 BFF),按 `revision`(而非 `id`)寻址。 |
+| user_id | **编辑者**(合并落地时的提案人),即正确的动态 actor |
 | action | 目前恒为 `merged` |
 | created | 编辑落地时间 |
+
+> **2026-07-17 — 供给源迁移(线契约与游标字节不变)**:本 feed 现由**统一编辑引擎**的修订日志(`edit_revision`,`legacy_action='merged'` 或原生 `merged`)供给,游标 `id = COALESCE(legacy_id, id)`——迁移前保存的 `since_id` 无缝续拉,下游 cron **零改动**。
 
 只返回 `action='merged'`(PR 合并 = 一次编辑落地);**不做 status / NSFW 过滤**(和 `/messages/feed` 同契约)——消费方拿不到对应 galgame brief 时自行丢弃(banned / NSFW)。注意:**新建动态请用现有的 galgame 创建源,别拿这个 feed 重复计创建**。
 
@@ -277,150 +126,18 @@
 
 ---
 
-## PR (编辑请求)
+## PR (编辑请求) —— 已退役,迁至统一编辑引擎
 
-非创建者/非 admin 通过 PR 提交编辑。PR 支持字段级自动 rebase。
+> **2026-07-17 退役**:非创建者经 PR 提交编辑、创建者/admin 合并或拒绝的整套 PR 机器,已迁至 catalog 服务的**统一编辑引擎**(`/api/v1/catalog/edit/*`,见 [docs/catalog](../../catalog/README.md))。旧 wire `GET/POST /galgame/:gid/prs`、`PUT /galgame/:gid/prs/:id/{merge,decline}` **已删除,返回 401/404**。
 
-### GET /galgame/:gid/prs
+引擎的编辑模型是旧 PR 的**超集**,产品(kungal 编辑器 / moyu 跳转 kungal)经自身 BFF 调 catalog edit 面消费:
 
-PR 列表。
+- **提案**(旧 `POST /prs`)= `POST edit/proposals`:字段级 patch;直编(有权限者)= 提案 + automerge 语法糖,单次落地。
+- **审核者内联修正后合并**(旧模型没有的净增强)= `POST edit/proposals/:id/amendments` + `merge`:审核者可逐字段「原样接受 / 改值 / 删字段」再合并,产出**双署名**(提案人 + 修订人)revision。
+- **合并 / 拒绝**(旧 `PUT merge|decline`)= `POST edit/proposals/:id/{merge,decline}`;字段级 rebase 与冲突检测语义保留。
+- **字段级权限**:每字段可配 `{propose, review, automerge}` × 站点叠加(如 `vndb_id` locked、创建者对自有作品可直编)。
 
-**查询参数**：
-
-| 参数 | 类型 | 默认值 |
-|------|------|--------|
-| page | int | 1 |
-| limit | int | 20 |
-
----
-
-### GET /galgame/:gid/prs/:id
-
-PR 详情，包含与 base revision 的差异。
-
-**成功响应**：
-
-```json
-{
-  "code": 0,
-  "data": {
-    "pr": {
-      "id": 1,
-      "galgame_id": 1,
-      "user_id": 2,
-      "status": 0,
-      "title": "修改标题",
-      "message": "把中文标题改成正式译名",
-      "base_revision": 1,
-      "snapshot": { ... },
-      "completed_by": null,
-      "revision_id": null,
-      "created": "..."
-    },
-    "changed_keys": {
-      "name_zh_cn": true
-    },
-    "names": {
-      "tags": { "1": "校园", "3": "RPG" },
-      "officials": { "5": "Key" },
-      "engines": {},
-      "series": {}
-    }
-  }
-}
-```
-
-`status`：`0` = pending, `1` = merged, `2` = declined
-
-> **2026-05-22 (K-PR)**：响应同样新增 `names` 字段，覆盖 base + pr snapshot 涉及的 tag / official / engine / series ID。语义和性能详见 [GET /galgame/:gid/revisions/:rev/diff](#get-galgamegidrevisionsrevdiff) 末尾 callout。
-
----
-
-### POST /galgame/:gid/prs
-
-提交 PR。**需要认证**。
-
-提交时只需提供要修改的字段，未提供的字段保持当前值。
-
-**支持两种 Content-Type**：
-- `application/json` — 普通 PR
-- `multipart/form-data` — PR 提案里直接附 banner 文件，reviewer 看 diff 时可直接看到新图缩略图。详见
-  [Banner 上传](#banner-上传通过-create--update--pr-端点的-multipart-模式)
-
-**请求体**（JSON 模式）：
-
-```json
-{
-  "name_zh_cn": "新标题",
-  "tag_ids": [1, 2, 3],
-  "title": "修改标题和标签",
-  "message": "把中文标题改成正式译名，并补了 2 个标签"
-}
-```
-
-支持的字段与创建/更新 galgame 相同，另外支持：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| aliases | string[] | 别名数组（替换全部） |
-| tag_ids | int[] | 标签 ID 数组（替换全部**用户标签**）。`source="vndb"` 的标签由 sync 托管、恒被保留，PUT 无法增删改；回传它们也无妨（按 id 去重）。详见 01-galgame.md 链接/标签来源小节。 |
-| official_ids | int[] | 开发商 ID 数组（替换全部**用户开发商**）。同 tag_ids：`source="vndb"` 子集由 sync 托管、恒被保留。 |
-| engine_ids | int[] | 引擎 ID 数组（替换全部）。引擎不来自 VNDB（wiki 自管），无 sync 托管子集。 |
-| links | object[] | 链接数组 `[{name, link}]`（替换全部**用户链接**）。`source="vndb"` 的链接由 sync 托管、恒被保留，PUT 无法增删改；回传它们也无妨（按 host 去重）。详见 01-galgame.md 链接小节。 |
-| covers | CoverInput[] | image_service hash 数组（替换全部），`sort_order=0` = 钉住封面（同 01-galgame.md PUT 端点说明） |
-| screenshots | ScreenshotInput[] | image_service hash 数组（替换全部），无"钉住"约束 |
-| release_date | string | `YYYY-MM-DD` 字符串或 `""`（未知） |
-| release_date_tba | bool | 是否官方已宣布日期未定 |
-| title | string | PR 标题 |
-| message | string | PR 说明（改动的详细描述；旧版单 `note` 字段已废弃，PR 用 title + message，revision 才用 note） |
-
-**成功响应**：返回**新建的 PR 对象**（`status=0` pending），结构同 [GET /galgame/:gid/prs/:id](#get-galgamegidprsid) 的 `data.pr`（`completed_by` / `completed_time` / `revision_id` 在 pending 阶段为空，被 `omitempty` 省略）。
-
-```json
-{
-  "code": 0,
-  "message": "成功",
-  "data": {
-    "id": 42,
-    "galgame_id": 1,
-    "user_id": 2,
-    "status": 0,
-    "title": "修改标题",
-    "message": "把标题改成正式译名",
-    "base_revision": 7,
-    "snapshot": { ... },
-    "created": "2026-06-13T08:00:00Z",
-    "updated": "2026-06-13T08:00:00Z"
-  }
-}
-```
-
-> **下游依赖（动态时间线）**：kungal / moyu 在「提出更新请求」提交成功后，用本响应的 `data.id`（PR 主键）+ `data.galgame_id` + `data.user_id` + `data.created` 在各自的动态时间线（论坛 `galgame_activity`）记一条 PR 创建动态。**PR 创建（`status=0`）不进 [GET /galgame/revisions/recent](#get-galgamerevisionsrecent)**——那个全站 feed 只含 `action='merged'`（编辑落地），不含 pending PR；所以「提出更新请求」这条动态必须在此处同步落地，不能等 feed 拉取。
-
----
-
-### PUT /galgame/:gid/prs/:id/merge
-
-合并 PR。**需要认证**。仅 galgame 创建者或 admin 可操作。
-
-合并时如果 PR 的 base_revision 落后于最新版本，系统会自动检查字段冲突：
-- **无冲突**：自动 rebase（PR 的改动应用到最新版本上）
-- **有冲突**：返回错误，列出冲突字段名
-
-**冲突响应示例**：
-
-```json
-{
-  "code": 10,
-  "message": "字段冲突: name_zh_cn 已被其他编辑修改，请基于最新版本重新提交"
-}
-```
-
----
-
-### PUT /galgame/:gid/prs/:id/decline
-
-拒绝 PR。**需要认证**。仅 galgame 创建者或 admin 可操作。
+完整契约见 catalog edit 面(`docs/catalog` + `docs/catalog/openapi.yaml` 的 `/api/v1/catalog/edit/*`)。
 
 ---
 
