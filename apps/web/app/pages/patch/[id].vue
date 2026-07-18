@@ -426,15 +426,15 @@ const tabs = computed(() => {
     </div>
 
     <!-- ── Tabs ───────────────────────────────────────── -->
-    <!-- scrollable: 保持 tablist 横向可滚动(overflow-x-auto scrollbar-hide),
-         窄屏下也不会撑破布局。 -->
+    <!-- KunTab (≥2.16) auto-handles horizontal overflow (built-in overflow-x
+         scroll + edge fade + chevrons): on a narrow screen the tablist scrolls
+         instead of widening the layout, with no `scrollable` opt-in needed. -->
     <KunTab
       v-model="currentTab"
       :items="tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))"
       variant="underlined"
       color="primary"
       size="md"
-      scrollable
     />
 
     <div>

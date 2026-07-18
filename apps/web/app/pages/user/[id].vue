@@ -284,7 +284,9 @@ const toggleFollow = async () => {
       <!-- min-w-0: a grid item defaults to min-width:auto (= its content's
            intrinsic width), so without this the KunTab strip's full width grows
            this column past the viewport on mobile instead of letting KunTab's
-           own overflow-x-auto scroll. -->
+           own overflow-x scroll kick in. (KunTab ≥2.16 auto-handles the
+           horizontal overflow itself, so no `scrollable` opt-in is needed — but
+           this wrapper's min-w-0 is still required to clamp the grid column.) -->
       <div class="min-w-0 lg:col-span-2">
         <KunTab
           v-model="currentTab"
@@ -292,7 +294,6 @@ const toggleFollow = async () => {
           variant="underlined"
           color="primary"
           size="md"
-          scrollable
           class="mb-4"
         />
         <NuxtPage />
