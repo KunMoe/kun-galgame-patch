@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// Standalone moyu tag detail page (replaces the previous external-link to
-// wiki.kungal.com/tag/:id from the patch introduction).
+// Standalone moyu tag detail page (replaces the previous external-link to a
+// standalone wiki tag page from the patch introduction). Tag metadata now
+// comes from the NextMoe catalog service, proxied by the moyu backend.
 //
-// Reads Wiki's `GET /tag/_?tag_id=N&page&limit` which returns the tag entity
-// + the associated paginated galgame list. `:name` segment is cosmetic on
-// Wiki side; we always pass "_" via the composable to keep our internal URL
-// tidy (`/tag/:id`).
+// Reads `GET /tag/_?tag_id=N&page&limit` which returns the tag entity + the
+// associated paginated galgame list. The `:name` segment is cosmetic upstream;
+// we always pass "_" via the composable to keep our internal URL tidy
+// (`/tag/:id`).
 
 import type { KunUIColor } from '@kungal/ui-core'
 
