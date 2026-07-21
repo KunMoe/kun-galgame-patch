@@ -49,7 +49,7 @@ raw SQL skips the search write-through hook, hence the reindex.)
 Config is read from the environment (`godotenv.Load()` + `config.Load()`), same
 keys as `moyu-api`: `KUN_DATABASE_URL`, `KUN_ARTIFACT_SERVICE_BASE_URL`,
 `KUN_ARTIFACT_OAUTH_CLIENT_ID/_SECRET` (fall back to `OAUTH_CLIENT_ID/_SECRET`),
-`KUN_GALGAME_WIKI_BASE_URL`, `KUN_SERVER_MODE`.
+`KUN_NEXTMOE_API_BASE`, `KUN_SERVER_MODE`.
 
 ## Build (static, for scp to prod)
 

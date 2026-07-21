@@ -7,7 +7,7 @@ type Config struct {
 	Database     DatabaseConfig
 	Redis        RedisConfig
 	OAuth        OAuthConfig
-	GalgameWiki  GalgameWikiConfig
+	NextMoeAPI   NextMoeAPIConfig
 	ImageService ImageServiceConfig
 	Artifact     ArtifactConfig
 	Trust        TrustConfig
@@ -43,9 +43,18 @@ type OAuthConfig struct {
 	RedirectURI  string
 }
 
-// GalgameWikiConfig points at the separately deployed Galgame Wiki Service (D11).
-type GalgameWikiConfig struct {
-	BaseURL string // e.g. http://127.0.0.1:9281/api
+// NextMoeAPIConfig points at the NextMoe catalog service, which co-hosts the
+// galgame surface (infra W2/W5). BaseURL is the HOST base (no /api or /internal
+// suffix) — the galgame client derives {base}/internal (the internal-tier rich
+// READ face, gated by X-API-Key) and {base}/api (the legacy face: writes /
+// submissions / Basic-Auth cron feeds).
+//
+// APIKey is the internal-tier X-API-Key attached to read-set calls. Empty =
+// reads fall back to the legacy /api face — the rollback valve (clearing
+// KUN_NEXTMOE_API_KEY reverts every read to /api with zero code change).
+type NextMoeAPIConfig struct {
+	BaseURL string // host base, e.g. http://catalog:9281 (dev: http://127.0.0.1:19281)
+	APIKey  string // internal-tier X-API-Key; empty → reads use legacy /api
 }
 
 // ImageServiceConfig points at the centralized image_service (W2 / PR3b).
@@ -115,8 +124,13 @@ func Load() *Config {
 			ClientSecret: getEnv("OAUTH_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("OAUTH_REDIRECT_URI", ""),
 		},
-		GalgameWiki: GalgameWikiConfig{
-			BaseURL: getEnv("KUN_GALGAME_WIKI_BASE_URL", "http://127.0.0.1:9281/api"),
+		NextMoeAPI: NextMoeAPIConfig{
+			// Host base (no /api|/internal); the client derives both faces.
+			// dev default = the local phase2 catalog instance (:19281).
+			BaseURL: getEnv("KUN_NEXTMOE_API_BASE", "http://127.0.0.1:19281"),
+			// Internal-tier read-face key. Empty → reads fall back to legacy
+			// /api (rollback valve; a dev box without a key is harmless).
+			APIKey: getEnv("KUN_NEXTMOE_API_KEY", ""),
 		},
 		ImageService: ImageServiceConfig{
 			// Fail-fast in prod (audit GPT-L02): these default to localhost dev

@@ -38,16 +38,31 @@ func (c *Client) Proxy(
 	body []byte,
 	contentType string,
 ) (json.RawMessage, error) {
+	// Face selection by ROUTE membership, not HTTP method. Every GET proxied
+	// here is a member of the internal read face's 44-route read set — the
+	// taxonomy reads (tag/official/engine/series list, search, :name/:id detail,
+	// revisions) and the galgame links/aliases relation reads — so GETs route to
+	// the internal face + X-API-Key. Every non-GET (taxonomy + relation CRUD,
+	// taxonomy reverts) is a write and stays on the legacy /api face.
+	base := c.legacyBase
+	apiKey := ""
+	if method == http.MethodGet {
+		base, apiKey = c.readTarget(pathAndQuery)
+	}
+
 	var rdr io.Reader
 	if len(body) > 0 {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+pathAndQuery, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, base+pathAndQuery, rdr)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki %s %s: %w", method, pathAndQuery, err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 	if len(body) > 0 {
 		if contentType == "" {
@@ -60,9 +75,13 @@ func (c *Client) Proxy(
 }
 
 // ProxyMultipart relays a multipart write (a `data` JSON part + an optional
-// `file` part) — used by POST /galgame/:gid/prs so a PR proposal can carry a
-// new banner thumbnail for the reviewer (docs/galgame_wiki/02-revisions-and-prs.md
+// `file` part) — designed for POST /galgame/:gid/prs so a PR proposal can carry
+// a new banner thumbnail for the reviewer (docs/galgame_wiki/02-revisions-and-prs.md
 // §PR, same convention as Create/Update in 01-galgame.md §Banner 上传).
+//
+// NOTE (Phase 2 wave 03): this is a WRITE proxy → always the legacy /api face.
+// It currently has NO call site (moyu retired its revision/PR proxy + UI in the
+// "编辑面归 kungal" wave); left in place (not cleaned up) pending a wave-05 sweep.
 func (c *Client) ProxyMultipart(
 	ctx context.Context,
 	method, pathAndQuery, accessToken string,
@@ -95,7 +114,7 @@ func (c *Client) ProxyMultipart(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+pathAndQuery, &buf)
+	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+pathAndQuery, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki %s %s: %w", method, pathAndQuery, err)
 	}

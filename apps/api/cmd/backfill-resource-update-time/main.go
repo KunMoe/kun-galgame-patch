@@ -92,7 +92,7 @@ func main() {
 	cfg := config.Load()
 	logger.Init(cfg.Server.Mode)
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	wiki := galgameClient.New(cfg.NextMoeAPI.BaseURL)
 	ctx := context.Background()
 
 	// ── BUCKET 1: games WITH ≥1 visible resource (pure SQL) ──────────────

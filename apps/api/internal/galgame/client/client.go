@@ -38,19 +38,61 @@ func (e *WikiError) Error() string {
 	return fmt.Sprintf("wiki business error code=%d: %s", e.Code, e.Message)
 }
 
-// Client is a thin wrapper around calls to the Wiki Service.
+// Client is a thin wrapper around calls to the NextMoe catalog service (galgame
+// surface). It derives two faces from one host base:
+//   - internalBase = {base}/internal — the internal-tier rich READ face, gated
+//     by an X-API-Key; every read-set call (anonymous + Bearer-personalized)
+//     goes here.
+//   - legacyBase   = {base}/api      — the legacy face; writes / submissions,
+//     the image upload proxy, and the Basic-Auth cron feed stay here.
+//
+// With apiKey empty, read-face calls fall back to legacyBase — the rollback
+// valve: clearing KUN_NEXTMOE_API_KEY reverts every read to /api with zero code
+// change. Face selection is by ROUTE membership, not HTTP method (see readTarget).
 type Client struct {
-	baseURL         string
+	internalBase    string
+	legacyBase      string
+	apiKey          string
 	http            *http.Client
 	basicAuthHeader string // set via SetBasicAuth; required by GetWikiMessageFeed
 }
 
-// New constructs a Client. baseURL looks like http://127.0.0.1:9281/api
+// New constructs a Client with no internal-tier API key: read-face calls fall
+// back to the legacy /api face. Used by tests and the one-off backfill/import
+// tools. baseURL is the NextMoe host base (no /api or /internal suffix), e.g.
+// http://127.0.0.1:19281.
 func New(baseURL string) *Client {
+	return NewWithKey(baseURL, "")
+}
+
+// NewWithKey constructs a Client that routes read-set calls to the internal
+// rich read face ({base}/internal + X-API-Key) when apiKey is non-empty; an
+// empty apiKey routes reads to the legacy /api face (the rollback valve).
+// baseURL is the NextMoe host base (no /api or /internal suffix).
+func NewWithKey(baseURL, apiKey string) *Client {
+	base := strings.TrimRight(baseURL, "/")
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 10 * time.Second},
+		internalBase: base + "/internal",
+		legacyBase:   base + "/api",
+		apiKey:       apiKey,
+		http:         &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// readTarget picks the base URL + X-API-Key for a read by ROUTE membership,
+// not HTTP method:
+//   - with an internal-tier apiKey configured, every read-set path goes to the
+//     internal face with X-API-Key attached;
+//   - /admin/* reads never belong to the internal read face — they stay on the
+//     legacy /api face (moyu has no wiki-admin reads today, but the guard keeps
+//     parity with the shared design);
+//   - with apiKey empty (the rollback valve), reads fall back to legacy /api
+//     and no key header is sent.
+func (c *Client) readTarget(path string) (base, apiKey string) {
+	if c.apiKey == "" || strings.HasPrefix(path, "/admin/") {
+		return c.legacyBase, ""
+	}
+	return c.internalBase, c.apiKey
 }
 
 // wikiResponse is the common envelope for all Wiki JSON responses.
@@ -211,8 +253,12 @@ type ScreenshotInput struct {
 // ─── Generic GET ─────────────────────────────────────
 
 // get sends a GET request, parses the {code, message, data} envelope and unmarshals data into out.
+//
+// Reads route to the internal rich read face + X-API-Key (or fall back to the
+// legacy /api face when no key is configured); see readTarget.
 func (c *Client) get(ctx context.Context, path string, query url.Values, out any) error {
-	u := c.baseURL + path
+	base, apiKey := c.readTarget(path)
+	u := base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
@@ -220,6 +266,9 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return fmt.Errorf("构造请求失败: %w", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 
 	resp, err := c.http.Do(req)
@@ -645,7 +694,7 @@ func (c *Client) UpdateGalgame(ctx context.Context, accessToken string, gid int,
 	if err != nil {
 		return nil, fmt.Errorf("encode update body: %w", err)
 	}
-	u := fmt.Sprintf("%s/galgame/%d", c.baseURL, gid)
+	u := fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build wiki update request: %w", err)
@@ -726,7 +775,7 @@ func (c *Client) UpdateGalgameMultipart(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	u := fmt.Sprintf("%s/galgame/%d", c.baseURL, gid)
+	u := fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki update request: %w", err)
@@ -794,7 +843,7 @@ func (c *Client) UploadGalgameImage(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	u := c.baseURL + "/galgame/image"
+	u := c.legacyBase + "/galgame/image"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki upload request: %w", err)

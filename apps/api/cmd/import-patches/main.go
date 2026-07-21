@@ -75,7 +75,7 @@ func main() {
 	}
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	wiki := galgameClient.New(cfg.NextMoeAPI.BaseURL)
 	wiki.SetBasicAuth(cfg.OAuth.ClientID, cfg.OAuth.ClientSecret)
 
 	// artifact client: default creds to the project's OAuth client when the

@@ -82,7 +82,7 @@ func New(cfg *config.Config) *App {
 	// Infrastructure
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
-	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 	// Wiki's /galgame/messages/feed uses OAuth Client Basic Auth (same
 	// client_id/secret as /users/batch). The wiki-sync cron is the sole
 	// consumer; user-facing endpoints continue to use Bearer transparently.

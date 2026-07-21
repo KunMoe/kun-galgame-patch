@@ -183,7 +183,7 @@ func (c *Client) PatchGalgameDraftMultipart(
 // DeleteGalgameDraft proxies DELETE /galgame/:gid (hard delete, status ∈ {3,4}).
 func (c *Client) DeleteGalgameDraft(ctx context.Context, accessToken string, gid int) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		fmt.Sprintf("%s/galgame/%d", c.baseURL, gid), nil)
+		fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid), nil)
 	if err != nil {
 		return fmt.Errorf("build wiki delete: %w", err)
 	}
@@ -222,7 +222,8 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	u := c.baseURL + "/galgame/mine"
+	base, apiKey := c.readTarget("/galgame/mine")
+	u := base + "/galgame/mine"
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
@@ -230,7 +231,12 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 	if err != nil {
 		return nil, fmt.Errorf("build wiki /galgame/mine: %w", err)
 	}
+	// Dual credential: the user JWT rides Authorization; the service key (when
+	// configured) rides X-API-Key on the internal read face.
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -273,13 +279,19 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	params.Set("facets", "false")
 	params.Set("highlight", "false")
 
-	u := c.baseURL + "/galgame/search?" + params.Encode()
+	base, apiKey := c.readTarget("/galgame/search")
+	u := base + "/galgame/search?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki search: %w", err)
 	}
+	// Dual credential: the (optional) user JWT rides Authorization to surface
+	// the caller's own pending drafts; the service key rides X-API-Key.
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -318,7 +330,8 @@ func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinc
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	u := c.baseURL + "/galgame/messages/mine"
+	base, apiKey := c.readTarget("/galgame/messages/mine")
+	u := base + "/galgame/messages/mine"
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
@@ -326,7 +339,12 @@ func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinc
 	if err != nil {
 		return nil, fmt.Errorf("build wiki /messages/mine: %w", err)
 	}
+	// Dual credential: the user JWT rides Authorization; the service key (when
+	// configured) rides X-API-Key on the internal read face.
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -369,7 +387,7 @@ func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit in
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	u := c.baseURL + "/galgame/messages/feed"
+	u := c.legacyBase + "/galgame/messages/feed"
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
@@ -405,7 +423,7 @@ func (c *Client) writeUserJSON(ctx context.Context, method, path, accessToken st
 	if err != nil {
 		return nil, fmt.Errorf("encode body: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build wiki %s %s: %w", method, path, err)
 	}
@@ -468,7 +486,7 @@ func (c *Client) writeUserMultipart(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, &buf)
+	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build wiki %s %s: %w", method, path, err)
 	}

@@ -128,7 +128,7 @@ func main() {
 	logger.Init(cfg.Server.Mode)
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.New(cfg.GalgameWiki.BaseURL)
+	wiki := galgameClient.New(cfg.NextMoeAPI.BaseURL)
 	users := userclient.New(userclient.Config{
 		BaseURL:      cfg.OAuth.ServerURL,
 		ClientID:     cfg.OAuth.ClientID,
