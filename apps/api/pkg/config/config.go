@@ -46,15 +46,16 @@ type OAuthConfig struct {
 // NextMoeAPIConfig points at the NextMoe catalog service, which co-hosts the
 // galgame surface (infra W2/W5). BaseURL is the HOST base (no /api or /internal
 // suffix) — the galgame client derives {base}/internal (the internal-tier rich
-// READ face, gated by X-API-Key) and {base}/api (the legacy face: writes /
-// submissions / Basic-Auth cron feeds).
+// READ face + the S2S cron message feed, gated by X-API-Key) and {base}/api (the
+// legacy face: writes / submissions).
 //
-// APIKey is the internal-tier X-API-Key attached to read-set calls. Empty =
-// reads fall back to the legacy /api face — the rollback valve (clearing
-// KUN_NEXTMOE_API_KEY reverts every read to /api with zero code change).
+// APIKey is the internal-tier X-API-Key attached to every read-set call (and the
+// message feed). It is REQUIRED: the empty-key rollback to legacy /api was
+// retired in open-API phase 2 wave 05, so a configured base with an empty key is
+// a misconfiguration that fails fast at service startup (see app.New).
 type NextMoeAPIConfig struct {
 	BaseURL string // host base, e.g. http://catalog:9281 (dev: http://127.0.0.1:19281)
-	APIKey  string // internal-tier X-API-Key; empty → reads use legacy /api
+	APIKey  string // internal-tier X-API-Key; required (empty → app.New fails fast)
 }
 
 // ImageServiceConfig points at the centralized image_service (W2 / PR3b).
@@ -128,8 +129,9 @@ func Load() *Config {
 			// Host base (no /api|/internal); the client derives both faces.
 			// dev default = the local phase2 catalog instance (:19281).
 			BaseURL: getEnv("KUN_NEXTMOE_API_BASE", "http://127.0.0.1:19281"),
-			// Internal-tier read-face key. Empty → reads fall back to legacy
-			// /api (rollback valve; a dev box without a key is harmless).
+			// Internal-tier read-face key. REQUIRED: the legacy /api rollback
+			// valve was retired (open-API phase 2 wave 05), so app.New fails
+			// fast when the base is configured but this key is empty.
 			APIKey: getEnv("KUN_NEXTMOE_API_KEY", ""),
 		},
 		ImageService: ImageServiceConfig{

@@ -42,33 +42,28 @@ func (e *WikiError) Error() string {
 // surface). It derives two faces from one host base:
 //   - internalBase = {base}/internal — the internal-tier rich READ face, gated
 //     by an X-API-Key; every read-set call (anonymous + Bearer-personalized)
-//     goes here.
-//   - legacyBase   = {base}/api      — the legacy face; writes / submissions,
-//     the image upload proxy, and the Basic-Auth cron feed stay here.
+//     and the S2S cron message feed go here.
+//   - legacyBase   = {base}/api      — the legacy face; writes / submissions and
+//     the image upload proxy stay here (until the 06 write-face wave).
 //
-// With apiKey empty, read-face calls fall back to legacyBase — the rollback
-// valve: clearing KUN_NEXTMOE_API_KEY reverts every read to /api with zero code
-// change. Face selection is by ROUTE membership, not HTTP method (see readTarget).
+// The read face hard-depends on the internal-tier API key: there is no empty-key
+// fallback to /api. The rollback valve was retired in open-API phase 2 wave 05 —
+// a configured base with an empty key fails fast at startup (see app.New). Face
+// selection is by ROUTE membership, not HTTP method (see readTarget).
 type Client struct {
-	internalBase    string
-	legacyBase      string
-	apiKey          string
-	http            *http.Client
-	basicAuthHeader string // set via SetBasicAuth; required by GetWikiMessageFeed
+	internalBase string
+	legacyBase   string
+	apiKey       string
+	http         *http.Client
 }
 
-// New constructs a Client with no internal-tier API key: read-face calls fall
-// back to the legacy /api face. Used by tests and the one-off backfill/import
-// tools. baseURL is the NextMoe host base (no /api or /internal suffix), e.g.
-// http://127.0.0.1:19281.
-func New(baseURL string) *Client {
-	return NewWithKey(baseURL, "")
-}
-
-// NewWithKey constructs a Client that routes read-set calls to the internal
-// rich read face ({base}/internal + X-API-Key) when apiKey is non-empty; an
-// empty apiKey routes reads to the legacy /api face (the rollback valve).
-// baseURL is the NextMoe host base (no /api or /internal suffix).
+// NewWithKey constructs a Client that routes read-set calls (and the S2S cron
+// message feed) to the internal rich read face ({base}/internal + X-API-Key)
+// using apiKey; writes / submissions and the image upload proxy stay on the
+// legacy /api face. baseURL is the NextMoe host base (no /api or /internal
+// suffix), e.g. http://127.0.0.1:19281. apiKey is the internal-tier key and is
+// required for every read — there is no legacy fallback, so callers validate it
+// is non-empty at startup (app.New fails fast otherwise).
 func NewWithKey(baseURL, apiKey string) *Client {
 	base := strings.TrimRight(baseURL, "/")
 	return &Client{
@@ -81,15 +76,17 @@ func NewWithKey(baseURL, apiKey string) *Client {
 
 // readTarget picks the base URL + X-API-Key for a read by ROUTE membership,
 // not HTTP method:
-//   - with an internal-tier apiKey configured, every read-set path goes to the
-//     internal face with X-API-Key attached;
+//   - every read-set path goes to the internal face with the internal-tier
+//     X-API-Key attached;
 //   - /admin/* reads never belong to the internal read face — they stay on the
 //     legacy /api face (moyu has no wiki-admin reads today, but the guard keeps
-//     parity with the shared design);
-//   - with apiKey empty (the rollback valve), reads fall back to legacy /api
-//     and no key header is sent.
+//     parity with the shared design).
+//
+// There is no empty-key fallback to /api: the read face hard-depends on the key
+// (the rollback valve was retired in open-API phase 2 wave 05; app.New fails
+// fast when the base is configured but the key is empty).
 func (c *Client) readTarget(path string) (base, apiKey string) {
-	if c.apiKey == "" || strings.HasPrefix(path, "/admin/") {
+	if strings.HasPrefix(path, "/admin/") {
 		return c.legacyBase, ""
 	}
 	return c.internalBase, c.apiKey

@@ -2,8 +2,9 @@ package client
 
 // Face-selection tests: prove the galgame client routes each call to the right
 // face (internal rich read face + X-API-Key vs legacy /api) by ROUTE
-// membership, not HTTP method, and that an empty API key falls back to legacy
-// (the rollback valve). Deterministic — a fake service records the last request.
+// membership, not HTTP method. The read face hard-depends on the internal-tier
+// key — the empty-key rollback to legacy was retired in open-API phase 2 wave
+// 05. Deterministic — a fake service records the last request.
 
 import (
 	"context"
@@ -39,15 +40,14 @@ func (r *faceRecorder) server(t *testing.T) *httptest.Server {
 }
 
 // TestFaceSelection_WithKey proves that, with an internal-tier key configured,
-// reads hit {base}/internal + X-API-Key (personalized reads additionally carry
-// the user JWT on Authorization — dual credential), while writes / the image
-// upload proxy / the Basic-Auth feed / non-GET taxonomy proxies stay on
+// reads (and the S2S message feed) hit {base}/internal + X-API-Key (personalized
+// reads additionally carry the user JWT on Authorization — dual credential),
+// while writes / the image upload proxy / non-GET taxonomy proxies stay on
 // {base}/api with no key.
 func TestFaceSelection_WithKey(t *testing.T) {
 	rec := &faceRecorder{}
 	srv := rec.server(t)
 	c := NewWithKey(srv.URL, "nm_test_key")
-	c.SetBasicAuth("cid", "sec")
 	ctx := context.Background()
 
 	t.Run("anonymous read (get helper) → internal + key", func(t *testing.T) {
@@ -170,63 +170,32 @@ func TestFaceSelection_WithKey(t *testing.T) {
 		}
 	})
 
-	t.Run("basic-auth messages feed → legacy, no key", func(t *testing.T) {
+	t.Run("messages feed → internal + key (S2S cron)", func(t *testing.T) {
 		if _, err := c.GetWikiMessageFeed(ctx, 0, 10); err != nil {
 			t.Fatalf("GetWikiMessageFeed: %v", err)
 		}
-		if rec.path != "/api/galgame/messages/feed" {
-			t.Errorf("path = %q, want /api/galgame/messages/feed", rec.path)
+		if rec.path != "/internal/galgame/messages/feed" {
+			t.Errorf("path = %q, want /internal/galgame/messages/feed", rec.path)
 		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty on legacy feed face", rec.apiKey)
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key on internal feed face", rec.apiKey)
 		}
 	})
 }
 
-// TestFaceSelection_EmptyKey proves the rollback valve: with no API key, reads
-// fall back to the legacy /api face and never send X-API-Key.
-func TestFaceSelection_EmptyKey(t *testing.T) {
+// TestMessageFeedRequiresKey proves the S2S message feed hard-depends on the
+// internal-tier key: with no key configured it errors before dialing rather
+// than silently falling back (the rollback valve was retired in wave 05).
+func TestMessageFeedRequiresKey(t *testing.T) {
 	rec := &faceRecorder{}
 	srv := rec.server(t)
-	c := NewWithKey(srv.URL, "") // no API key → rollback valve
+	c := NewWithKey(srv.URL, "") // no API key
 	ctx := context.Background()
 
-	t.Run("anonymous read falls back to legacy", func(t *testing.T) {
-		if _, err := c.GetGalgame(ctx, 123, ""); err != nil {
-			t.Fatalf("GetGalgame: %v", err)
-		}
-		if rec.path != "/api/galgame/123" {
-			t.Errorf("path = %q, want /api/galgame/123 (legacy fallback)", rec.path)
-		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty when no key configured", rec.apiKey)
-		}
-	})
-
-	t.Run("token read falls back to legacy (JWT still forwarded)", func(t *testing.T) {
-		if _, err := c.ListMyGalgames(ctx, "user-jwt", "", 0, 0); err != nil {
-			t.Fatalf("ListMyGalgames: %v", err)
-		}
-		if rec.path != "/api/galgame/mine" {
-			t.Errorf("path = %q, want /api/galgame/mine (legacy fallback)", rec.path)
-		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty when no key configured", rec.apiKey)
-		}
-		if rec.auth != "Bearer user-jwt" {
-			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
-		}
-	})
-
-	t.Run("proxy GET falls back to legacy", func(t *testing.T) {
-		if _, err := c.Proxy(ctx, http.MethodGet, "/tag/search?q=x", "", nil, ""); err != nil {
-			t.Fatalf("Proxy GET: %v", err)
-		}
-		if rec.path != "/api/tag/search" {
-			t.Errorf("path = %q, want /api/tag/search (legacy fallback)", rec.path)
-		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty when no key configured", rec.apiKey)
-		}
-	})
+	if _, err := c.GetWikiMessageFeed(ctx, 0, 10); err == nil {
+		t.Fatal("GetWikiMessageFeed with empty key: want error, got nil")
+	}
+	if rec.path != "" {
+		t.Errorf("recorder path = %q, want empty (must not dial without a key)", rec.path)
+	}
 }

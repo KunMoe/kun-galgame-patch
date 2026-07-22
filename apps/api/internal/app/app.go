@@ -78,15 +78,29 @@ type App struct {
 	CronStop func()
 }
 
+// validateConfig fails fast on misconfigurations that must never boot silently.
+// The galgame read face (and the S2S message feed) hard-depend on the
+// internal-tier API key: a configured base with an empty key is a
+// misconfiguration, not a silent fallback to the retired legacy /api face (the
+// rollback valve was removed in open-API phase 2 wave 05). Panics naming both
+// env vars so the operator sees exactly what to set.
+func validateConfig(cfg *config.Config) {
+	if cfg.NextMoeAPI.BaseURL != "" && cfg.NextMoeAPI.APIKey == "" {
+		panic("KUN_NEXTMOE_API_BASE is set but KUN_NEXTMOE_API_KEY is empty: " +
+			"the galgame read face requires an internal-tier API key " +
+			"(the legacy /api rollback valve was retired in open-API phase 2 wave 05)")
+	}
+}
+
 func New(cfg *config.Config) *App {
+	// Validate misconfigurations that must never boot silently BEFORE opening any
+	// infrastructure connection.
+	validateConfig(cfg)
+
 	// Infrastructure
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
 	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
-	// Wiki's /galgame/messages/feed uses OAuth Client Basic Auth (same
-	// client_id/secret as /users/batch). The wiki-sync cron is the sole
-	// consumer; user-facing endpoints continue to use Bearer transparently.
-	wiki.SetBasicAuth(cfg.OAuth.ClientID, cfg.OAuth.ClientSecret)
 
 	// OAuth user-brief client (Phase 5-6 will inject this into renderers).
 	usrCli := userclient.New(userclient.Config{

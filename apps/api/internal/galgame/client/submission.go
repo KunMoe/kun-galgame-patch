@@ -9,13 +9,12 @@ package client
 //     SearchWithPending / MyMessages) transparently forward the user's OAuth
 //     access_token. Wiki decodes the JWT itself; this site never re-decides
 //     identity.
-//   - Server-to-server (MessageFeed) uses OAuth Client Basic Auth, sharing the
-//     same client_id/secret already configured for /users/batch.
+//   - Server-to-server (MessageFeed) uses the internal-tier X-API-Key on the
+//     internal read face — the same key every other read carries.
 
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,20 +24,6 @@ import (
 	"net/url"
 	"strconv"
 )
-
-// ─── Configuration ─────────────────────────────────────
-
-// SetBasicAuth registers the OAuth Client credentials used for service-to-service
-// endpoints (currently only GET /galgame/messages/feed). The cron job needs
-// this; user-facing methods are unaffected. Called once at app init.
-func (c *Client) SetBasicAuth(clientID, clientSecret string) {
-	if clientID == "" || clientSecret == "" {
-		c.basicAuthHeader = ""
-		return
-	}
-	creds := clientID + ":" + clientSecret
-	c.basicAuthHeader = "Basic " + base64.StdEncoding.EncodeToString([]byte(creds))
-}
 
 // ─── DTOs ──────────────────────────────────────────────
 
@@ -365,7 +350,7 @@ func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinc
 	return &env.Data, nil
 }
 
-// ─── Service-to-service (OAuth Client Basic Auth) ──────
+// ─── Service-to-service (internal-tier X-API-Key) ──────
 
 // WikiMessageFeedResult is the decoded `data` payload of /galgame/messages/feed.
 type WikiMessageFeedResult struct {
@@ -374,11 +359,12 @@ type WikiMessageFeedResult struct {
 }
 
 // GetWikiMessageFeed proxies GET /galgame/messages/feed for the cron job.
-// Authenticated via OAuth Client Basic Auth — the same client_id/secret used
-// by userclient. Caller must have called SetBasicAuth.
+// Authenticated via the internal-tier X-API-Key on the internal read face — the
+// same key every other read carries (the legacy /api Basic-Auth feed retired in
+// open-API phase 2 wave 05).
 func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit int) (*WikiMessageFeedResult, error) {
-	if c.basicAuthHeader == "" {
-		return nil, fmt.Errorf("wiki message feed: basic auth not configured")
+	if c.apiKey == "" {
+		return nil, fmt.Errorf("wiki message feed: internal-tier API key not configured (KUN_NEXTMOE_API_KEY)")
 	}
 	q := url.Values{}
 	if sinceID > 0 {
@@ -387,7 +373,7 @@ func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit in
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	u := c.legacyBase + "/galgame/messages/feed"
+	u := c.internalBase + "/galgame/messages/feed"
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
@@ -395,7 +381,7 @@ func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit in
 	if err != nil {
 		return nil, fmt.Errorf("build wiki /messages/feed: %w", err)
 	}
-	req.Header.Set("Authorization", c.basicAuthHeader)
+	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
