@@ -38,14 +38,24 @@ func (c *Client) Proxy(
 	body []byte,
 	contentType string,
 ) (json.RawMessage, error) {
-	// Face selection by ROUTE membership, not HTTP method (see readTarget /
-	// writeTarget). Every GET proxied here is a member of the internal face's
-	// read set — the taxonomy reads (tag/official/engine/series list, search,
-	// :name/:id detail, revisions) and the galgame links/aliases relation reads —
-	// so GETs route to the internal face + X-API-Key. Non-GETs split by
-	// membership: the galgame links/aliases relation writes are user-write-set
-	// members that moved to the internal face + X-API-Key in open-API phase 2
-	// wave 06a; the staff taxonomy CRUD + reverts stay on the legacy /api face.
+	// A-bucket taxonomy/relation READS moved to the /v1 public contract in
+	// open-API phase 2 wave 07 (route-B endgame): the taxonomy list/search/detail
+	// reads (tag/official/engine/series) and the galgame links/aliases
+	// edit-prefill reads are served from /v1 + reshaped back to the bridge `data`
+	// here. proxyReadV1 owns those paths; everything else falls through.
+	if method == http.MethodGet {
+		if data, handled, err := c.proxyReadV1(ctx, pathAndQuery); handled {
+			return data, err
+		}
+	}
+
+	// Fall-through face selection by ROUTE membership, not HTTP method (see
+	// readTarget / writeTarget). The GETs that reach here are the B-bucket
+	// taxonomy revision-history reads (…/:id/revisions[/:rev]) — still on the
+	// internal platform-workflow face + X-API-Key. Non-GETs split by membership:
+	// the galgame links/aliases relation writes are user-write-set members on the
+	// internal face + X-API-Key (wave 06a); the staff taxonomy CRUD + reverts
+	// stay on the legacy /api face.
 	var base, apiKey string
 	if method == http.MethodGet {
 		base, apiKey = c.readTarget(pathAndQuery)

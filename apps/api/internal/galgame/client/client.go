@@ -39,23 +39,34 @@ func (e *GalgameError) Error() string {
 }
 
 // Client is a thin wrapper around calls to the NextMoe catalog service (galgame
-// surface). It derives two faces from one host base:
-//   - internalBase = {base}/internal — the internal-tier face, gated by an
-//     X-API-Key; every read-set call (anonymous + Bearer-personalized), the S2S
-//     cron message feed, AND (since open-API phase 2 wave 06a) the user write
-//     set — galgame submit / draft update+delete / claim / image upload /
-//     links+aliases relation edits — go here. Personalized reads and every user
-//     write carry dual credentials (X-API-Key = client identity; Authorization:
-//     Bearer = user identity, which the catalog's jwtAuth validates itself).
+// surface). It derives three faces from one host base:
+//   - v1Base       = {base}/v1       — the FROZEN /v1 public data contract
+//     (curated shapes). Since open-API phase 2 wave 07 (route-B endgame) the
+//     galgame READ set consumes this face: search / batch / detail / calendar /
+//     vndb lookup, plus the taxonomy reads (tag/official/engine/series
+//     list/search/detail) and the galgame links/aliases edit-prefill reads. A
+//     BFF-side adaptation layer (public_dto.go + the taxonomy reshapers below)
+//     projects the curated /v1 records back onto this client's DTOs so moyu's
+//     own API output stays byte-stable. Gated by the internal-tier X-API-Key
+//     (galgame:read scope); personalized reads add the user JWT (dual cred).
+//   - internalBase = {base}/internal — the internal-tier platform-workflow face,
+//     gated by an X-API-Key. What STAYS here: the JWT personal reads (/galgame/
+//     mine, /galgame/messages/mine), the user-stats read, the S2S cron message
+//     feed, the taxonomy revision-history reads, AND (since wave 06a) the user
+//     write set — galgame submit / draft update+delete / claim / image upload /
+//     links+aliases relation edits. Personalized reads and user writes carry
+//     dual credentials (X-API-Key = client identity; Authorization: Bearer =
+//     user identity, which the catalog's jwtAuth validates itself).
 //   - legacyBase   = {base}/api      — the legacy face; only the staff taxonomy
 //     family (tag/official/engine/series CRUD + revert) and /admin/* stay here.
 //
-// The internal face hard-depends on the internal-tier API key: there is no
+// The internal + v1 faces hard-depend on the internal-tier API key: there is no
 // empty-key fallback to /api. The rollback valve was retired in open-API phase 2
 // wave 05 — a configured base with an empty key fails fast at startup (see
-// app.New). Face selection is by ROUTE membership, not HTTP method (see
-// readTarget / writeTarget).
+// app.New). Read/write face selection is by ROUTE membership, not HTTP method
+// (see readTarget / writeTarget); the /v1 reads route through dedicated methods.
 type Client struct {
+	v1Base       string
 	internalBase string
 	legacyBase   string
 	apiKey       string
@@ -72,6 +83,7 @@ type Client struct {
 func NewWithKey(baseURL, apiKey string) *Client {
 	base := strings.TrimRight(baseURL, "/")
 	return &Client{
+		v1Base:       base + "/v1",
 		internalBase: base + "/internal",
 		legacyBase:   base + "/api",
 		apiKey:       apiKey,
@@ -356,6 +368,64 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	return nil
 }
 
+// getV1Raw sends a GET to the /v1 public face ({base}/v1 + path), attaches the
+// internal-tier X-API-Key, parses the {code,message,data} envelope and returns
+// the raw `data` (so callers can reshape without an extra unmarshal). On a
+// non-zero envelope code it returns *GalgameError carrying the wire code+message
+// — so a downstream handler can forward the 404/business error verbatim, exactly
+// like the doEnvelope write/proxy path. The /v1 face hard-depends on the key
+// (galgame:read scope): an empty key yields a 401 the caller surfaces (same
+// fail-fast contract as the internal read face).
+func (c *Client) getV1Raw(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
+	u := c.v1Base + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %w", err)
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("调用 galgame 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取 galgame 响应失败: %w", err)
+	}
+
+	var wrapper galgameResponse[json.RawMessage]
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		return nil, fmt.Errorf("解析 galgame 响应失败: %w (body=%s)", err, truncate(string(body), 200))
+	}
+	if wrapper.Code != 0 {
+		return nil, &GalgameError{Code: wrapper.Code, Message: wrapper.Message}
+	}
+	return wrapper.Data, nil
+}
+
+// getV1 fetches the /v1 `data` (via getV1Raw) and unmarshals it into out.
+func (c *Client) getV1(ctx context.Context, path string, query url.Values, out any) error {
+	data, err := c.getV1Raw(ctx, path, query)
+	if err != nil {
+		return err
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("解析 galgame data 失败: %w", err)
+	}
+	return nil
+}
+
 // ─── High-level methods ──────────────────────────────
 
 // SearchGalgameParams are query parameters for /galgame/search.
@@ -426,12 +496,18 @@ func (c *Client) SearchGalgame(ctx context.Context, p SearchGalgameParams) (*Pag
 	if p.Limit > 0 {
 		q.Set("limit", strconv.Itoa(p.Limit))
 	}
-	q.Set("facets", "false")
-	q.Set("highlight", "false")
+	// include=meta carries the flat scalar block (vndb_id/status/content_limit/
+	// view/…) the thin item omits; facets/highlight are opt-in on /v1 (omitted =
+	// off), so the default response stays byte-frozen.
+	q.Set("include", "meta")
 
-	var out Paginated[GalgameHit]
-	if err := c.get(ctx, "/galgame/search", q, &out); err != nil {
+	var data v1SearchData
+	if err := c.getV1(ctx, "/galgame/search", q, &data); err != nil {
 		return nil, err
+	}
+	out := Paginated[GalgameHit]{Total: data.Total}
+	for i := range data.Items {
+		out.Items = append(out.Items, v1ItemToHit(&data.Items[i]))
 	}
 	return &out, nil
 }
@@ -508,32 +584,40 @@ type GalgameDetailEnvelope struct {
 // When the row exists but doesn't match the filter, galgame returns 404 (same
 // shape as a missing ID) — caller treats both as not-found.
 func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (*GalgameDetailEnvelope, error) {
-	var q url.Values
-	if contentLimit != "" {
-		q = url.Values{}
-		q.Set("content_limit", contentLimit)
-	}
-	var out GalgameDetailEnvelope
-	if err := c.get(ctx, fmt.Sprintf("/galgame/%d", gid), q, &out); err != nil {
+	q := url.Values{}
+	// The detail-level include tokens that reconstruct the fields the enricher
+	// reads off GalgameFull. tag_refs/official_refs/engine_refs require
+	// include=taxonomy alongside (W1a add-only sub-keys).
+	q.Set("include", "intro,taxonomy,tag_refs,official_refs,engine_refs,meta,covers,screenshots")
+	// "" = permissive/no-filter (the bridge single-detail default) → /v1 "all";
+	// sfw/nsfw/all pass through (see v1ContentLimit).
+	q.Set("content_limit", v1ContentLimit(contentLimit))
+	var g v1Galgame
+	if err := c.getV1(ctx, fmt.Sprintf("/galgame/%d", gid), q, &g); err != nil {
 		return nil, err
 	}
-	return &out, nil
+	// The /v1 detail is a flat aggregate (no nested users roster); moyu resolves
+	// the entry creator locally from galgame.user_id via its own user store, so
+	// the users map is intentionally left empty (W3 census: unconsumed).
+	return &GalgameDetailEnvelope{Galgame: v1GalgameToFull(&g)}, nil
 }
 
-// CheckGalgameByVndbID calls /galgame/check?vndb_id=xxx and returns (exists, galgame_id).
-// Used as a pre-check for POST /api/patch.
+// CheckGalgameByVndbID calls /v1/galgame/lookup?vndb_id=xxx and returns
+// (exists, galgame_id). Used as a pre-check for POST /api/patch. The /v1 lookup
+// mirrors the internal /galgame/check but keys the id as `id` (public DTO
+// convention), not `galgame_id`.
 func (c *Client) CheckGalgameByVndbID(ctx context.Context, vndbID string) (exists bool, galgameID int, err error) {
 	q := url.Values{}
 	q.Set("vndb_id", vndbID)
 
 	var out struct {
-		Exists    bool `json:"exists"`
-		GalgameID int  `json:"galgame_id"`
+		Exists bool `json:"exists"`
+		ID     int  `json:"id"`
 	}
-	if err := c.get(ctx, "/galgame/check", q, &out); err != nil {
+	if err := c.getV1(ctx, "/galgame/lookup", q, &out); err != nil {
 		return false, 0, err
 	}
-	return out.Exists, out.GalgameID, nil
+	return out.Exists, out.ID, nil
 }
 
 // GalgameBatch calls /galgame/batch?ids=1,2,3 to fetch lightweight galgame info in bulk.
@@ -552,13 +636,21 @@ func (c *Client) GalgameBatch(ctx context.Context, ids []int, contentLimit strin
 	}
 	q := url.Values{}
 	q.Set("ids", joinInts(ids))
-	if contentLimit != "" {
-		q.Set("content_limit", contentLimit)
-	}
+	// include=meta lifts the thin item to the full brief the callers consume
+	// (vndb_id/status/content_limit/user_id/…); view=detail is intentionally NOT
+	// used — it drops the meta block the brief needs.
+	q.Set("include", "meta")
+	// "" = permissive/no-filter → /v1 "all" (see v1ContentLimit); sfw/nsfw/all
+	// pass through. Always set so the /v1 sfw default never silently filters.
+	q.Set("content_limit", v1ContentLimit(contentLimit))
 
-	var out []GalgameBrief
-	if err := c.get(ctx, "/galgame/batch", q, &out); err != nil {
+	var data v1BatchData
+	if err := c.getV1(ctx, "/galgame/batch", q, &data); err != nil {
 		return nil, err
+	}
+	out := make([]GalgameBrief, 0, len(data.Items))
+	for i := range data.Items {
+		out = append(out, v1ItemToBrief(&data.Items[i]))
 	}
 	return out, nil
 }
@@ -611,7 +703,7 @@ func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit str
 		q.Set("content_limit", contentLimit)
 	}
 	var out GalgameCalendar
-	if err := c.get(ctx, "/galgame/calendar", q, &out); err != nil {
+	if err := c.getV1(ctx, "/galgame/calendar", q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -628,7 +720,7 @@ func (c *Client) GetGalgameCalendarPending(ctx context.Context, year, contentLim
 		q.Set("content_limit", contentLimit)
 	}
 	var out GalgameCalendarBucket
-	if err := c.get(ctx, "/galgame/calendar/pending", q, &out); err != nil {
+	if err := c.getV1(ctx, "/galgame/calendar/pending", q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -641,62 +733,7 @@ func (c *Client) GetGalgameCalendarTBA(ctx context.Context, contentLimit string)
 		q.Set("content_limit", contentLimit)
 	}
 	var out GalgameCalendarBucket
-	if err := c.get(ctx, "/galgame/calendar/tba", q, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// TagSearchResult is the response from /tag/search (note: it is not wrapped in Paginated; total is at the top level).
-type TagSearchResult struct {
-	Items            []Tag `json:"items"`
-	Total            int64 `json:"total"`
-	ProcessingTimeMs int64 `json:"processing_time_ms"`
-}
-
-// SearchTag calls /tag/search.
-func (c *Client) SearchTag(ctx context.Context, q, category string, limit int) (*TagSearchResult, error) {
-	params := url.Values{}
-	if q != "" {
-		params.Set("q", q)
-	}
-	if category != "" {
-		params.Set("category", category)
-	}
-	if limit > 0 {
-		params.Set("limit", strconv.Itoa(limit))
-	}
-	var out TagSearchResult
-	if err := c.get(ctx, "/tag/search", params, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// OfficialSearchResult is the response from /official/search.
-type OfficialSearchResult struct {
-	Items            []Official `json:"items"`
-	Total            int64      `json:"total"`
-	ProcessingTimeMs int64      `json:"processing_time_ms"`
-}
-
-// SearchOfficial calls /official/search.
-func (c *Client) SearchOfficial(ctx context.Context, q, category, lang string, limit int) (*OfficialSearchResult, error) {
-	params := url.Values{}
-	if q != "" {
-		params.Set("q", q)
-	}
-	if category != "" {
-		params.Set("category", category)
-	}
-	if lang != "" {
-		params.Set("lang", lang)
-	}
-	if limit > 0 {
-		params.Set("limit", strconv.Itoa(limit))
-	}
-	var out OfficialSearchResult
-	if err := c.get(ctx, "/official/search", params, &out); err != nil {
+	if err := c.getV1(ctx, "/galgame/calendar/tba", q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

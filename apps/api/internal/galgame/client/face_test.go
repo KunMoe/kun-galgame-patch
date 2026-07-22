@@ -1,13 +1,18 @@
 package client
 
 // Face-selection tests: prove the galgame client routes each call to the right
-// face (internal face + X-API-Key vs legacy /api) by ROUTE membership, not HTTP
-// method. Reads AND the user write set (submit / draft update+delete / claim /
-// image upload / links+aliases relation edits) hit the internal face + key
-// (writes since open-API phase 2 wave 06a); only the staff taxonomy family +
-// /admin/* stay on legacy /api. The internal face hard-depends on the
-// internal-tier key — the empty-key rollback to legacy was retired in wave 05.
-// Deterministic — a fake service records the last request.
+// face by ROUTE membership, not HTTP method. Since open-API phase 2 wave 07
+// (route-B endgame) the A-bucket READ set — search / batch / detail / calendar /
+// vndb lookup + the taxonomy reads (tag/official/engine/series list/search/
+// detail) + the galgame links/aliases edit-prefill reads — hits the {base}/v1
+// public face + X-API-Key. The B-bucket platform-workflow reads (/galgame/mine,
+// /galgame/messages/mine, taxonomy /:id/revisions), the S2S message feed, and
+// the user write set (submit / draft update+delete / claim / image upload /
+// links+aliases relation edits, wave 06a) stay on {base}/internal + key; only
+// the staff taxonomy CRUD/revert + /admin/* stay on legacy {base}/api. The
+// internal + v1 faces hard-depend on the internal-tier key — the empty-key
+// rollback to legacy was retired in wave 05. Deterministic — a fake service
+// records the last request.
 
 import (
 	"context"
@@ -55,12 +60,12 @@ func TestFaceSelection_WithKey(t *testing.T) {
 	c := NewWithKey(srv.URL, "nm_test_key")
 	ctx := context.Background()
 
-	t.Run("anonymous read (get helper) → internal + key", func(t *testing.T) {
+	t.Run("anonymous detail read → v1 + key", func(t *testing.T) {
 		if _, err := c.GetGalgame(ctx, 123, ""); err != nil {
 			t.Fatalf("GetGalgame: %v", err)
 		}
-		if rec.path != "/internal/galgame/123" {
-			t.Errorf("path = %q, want /internal/galgame/123", rec.path)
+		if rec.path != "/v1/galgame/123" {
+			t.Errorf("path = %q, want /v1/galgame/123", rec.path)
 		}
 		if rec.apiKey != "nm_test_key" {
 			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
@@ -100,12 +105,12 @@ func TestFaceSelection_WithKey(t *testing.T) {
 		}
 	})
 
-	t.Run("publish search (include_pending) → internal + key + user JWT", func(t *testing.T) {
+	t.Run("publish search (include_pending) → v1 + key + user JWT", func(t *testing.T) {
 		if _, err := c.SearchGalgameForPublish(ctx, "user-jwt", "q", 0); err != nil {
 			t.Fatalf("SearchGalgameForPublish: %v", err)
 		}
-		if rec.path != "/internal/galgame/search" {
-			t.Errorf("path = %q, want /internal/galgame/search", rec.path)
+		if rec.path != "/v1/galgame/search" {
+			t.Errorf("path = %q, want /v1/galgame/search", rec.path)
 		}
 		if rec.apiKey != "nm_test_key" {
 			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
@@ -115,12 +120,24 @@ func TestFaceSelection_WithKey(t *testing.T) {
 		}
 	})
 
-	t.Run("proxy GET (taxonomy read) → internal + key", func(t *testing.T) {
+	t.Run("proxy GET (taxonomy A-bucket read) → v1 + key", func(t *testing.T) {
 		if _, err := c.Proxy(ctx, http.MethodGet, "/tag/search?q=x", "", nil, ""); err != nil {
 			t.Fatalf("Proxy GET: %v", err)
 		}
-		if rec.path != "/internal/tag/search" {
-			t.Errorf("path = %q, want /internal/tag/search", rec.path)
+		if rec.path != "/v1/galgame/tags/search" {
+			t.Errorf("path = %q, want /v1/galgame/tags/search", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+	})
+
+	t.Run("proxy GET (taxonomy B-bucket revisions) → internal + key", func(t *testing.T) {
+		if _, err := c.Proxy(ctx, http.MethodGet, "/tag/5/revisions?page=1", "", nil, ""); err != nil {
+			t.Fatalf("Proxy GET revisions: %v", err)
+		}
+		if rec.path != "/internal/tag/5/revisions" {
+			t.Errorf("path = %q, want /internal/tag/5/revisions (B-bucket stays internal)", rec.path)
 		}
 		if rec.apiKey != "nm_test_key" {
 			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
@@ -294,6 +311,67 @@ func TestFaceSelection_WithKey(t *testing.T) {
 			t.Errorf("X-API-Key = %q, want nm_test_key on internal feed face", rec.apiKey)
 		}
 	})
+}
+
+// TestV1ReadRouting proves every A-bucket read routes to the {base}/v1 public
+// face with the internal-tier key (route-B endgame, wave 07). The composed
+// taxonomy detail reads make two /v1 calls; the recorder captures the last
+// (the reverse-lookup), which is sufficient to prove the face.
+func TestV1ReadRouting(t *testing.T) {
+	rec := &faceRecorder{}
+	srv := rec.server(t)
+	c := NewWithKey(srv.URL, "nm_test_key")
+	ctx := context.Background()
+
+	check := func(t *testing.T, wantPath string, call func() error) {
+		t.Helper()
+		if err := call(); err != nil {
+			t.Fatalf("call: %v", err)
+		}
+		if rec.path != wantPath {
+			t.Errorf("path = %q, want %q", rec.path, wantPath)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+	}
+
+	t.Run("batch → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/batch", func() error { _, e := c.GalgameBatch(ctx, []int{1}, ""); return e })
+	})
+	t.Run("search → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/search", func() error { _, e := c.SearchGalgame(ctx, SearchGalgameParams{Q: "x"}); return e })
+	})
+	t.Run("calendar → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/calendar", func() error { _, e := c.GetGalgameCalendar(ctx, "", ""); return e })
+	})
+	t.Run("calendar/pending → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/calendar/pending", func() error { _, e := c.GetGalgameCalendarPending(ctx, "", ""); return e })
+	})
+	t.Run("calendar/tba → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/calendar/tba", func() error { _, e := c.GetGalgameCalendarTBA(ctx, ""); return e })
+	})
+	t.Run("vndb lookup → v1", func(t *testing.T) {
+		check(t, "/v1/galgame/lookup", func() error { _, _, e := c.CheckGalgameByVndbID(ctx, "v1"); return e })
+	})
+
+	// Taxonomy A-bucket reads through the generic Proxy.
+	proxyGet := func(p string) func() error {
+		return func() error { _, e := c.Proxy(ctx, http.MethodGet, p, "", nil, ""); return e }
+	}
+	t.Run("tag list → v1", func(t *testing.T) { check(t, "/v1/galgame/tags", proxyGet("/tag?page=1")) })
+	t.Run("tag multi → v1", func(t *testing.T) { check(t, "/v1/galgame/tags/multi", proxyGet("/tag/multi?tag_ids=1,2")) })
+	t.Run("official search → v1", func(t *testing.T) { check(t, "/v1/galgame/officials/search", proxyGet("/official/search?q=x")) })
+	t.Run("engine list → v1", func(t *testing.T) { check(t, "/v1/galgame/engines", proxyGet("/engine")) })
+	t.Run("series list → v1", func(t *testing.T) { check(t, "/v1/galgame/series", proxyGet("/series?page=1")) })
+	t.Run("tag detail (composed) → v1 reverse-lookup", func(t *testing.T) {
+		check(t, "/v1/galgame/tags/5/galgames", proxyGet("/tag/_?tag_id=5&page=1&limit=24"))
+	})
+	t.Run("official detail (composed) → v1 reverse-lookup", func(t *testing.T) {
+		check(t, "/v1/galgame/officials/9/galgames", proxyGet("/official/_?official_id=9"))
+	})
+	t.Run("galgame links → v1 detail", func(t *testing.T) { check(t, "/v1/galgame/42", proxyGet("/galgame/42/links")) })
+	t.Run("galgame aliases → v1 detail", func(t *testing.T) { check(t, "/v1/galgame/42", proxyGet("/galgame/42/aliases")) })
 }
 
 // TestMessageFeedRequiresKey proves the S2S message feed hard-depends on the

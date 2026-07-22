@@ -264,26 +264,27 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	if limit > 0 {
 		params.Set("limit", strconv.Itoa(limit))
 	}
-	params.Set("include_pending", "true")
+	params.Set("include_pending", "1")
 	// Publish wizard surfaces published games (0) AND claimable VNDB drafts (2);
 	// without status=2 it can't find the bulk of the catalog (unclaimed drafts).
 	params.Set("status", "0,2")
-	params.Set("facets", "false")
-	params.Set("highlight", "false")
+	// include=meta lifts the thin item to the full hit shape; facets/highlight
+	// are opt-in on /v1 (omitted = off) so the default response stays frozen.
+	params.Set("include", "meta")
 
-	base, apiKey := c.readTarget("/galgame/search")
-	u := base + "/galgame/search?" + params.Encode()
+	u := c.v1Base + "/galgame/search?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build galgame search: %w", err)
 	}
 	// Dual credential: the (optional) user JWT rides Authorization to surface
-	// the caller's own pending drafts; the service key rides X-API-Key.
+	// the caller's own pending drafts (optionalJWT on /v1/galgame/search); the
+	// service key rides X-API-Key.
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
-	if apiKey != "" {
-		req.Header.Set("X-API-Key", apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -294,22 +295,29 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	if err != nil {
 		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env galgameResponse[SearchPending]
+	var env galgameResponse[v1SearchData]
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
 		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
-	// Normalize: a nil slice marshals back to JSON `null`, which crashes
-	// frontend code doing `results.pending.length`. Guarantee `[]`.
-	if env.Data.Items == nil {
-		env.Data.Items = []GalgameHit{}
+	// Project the /v1 curated items back onto the moyu GalgameHit shape.
+	// Normalize nil → [] so frontend code doing `results.pending.length` is safe.
+	out := SearchPending{
+		Items:   []GalgameHit{},
+		Pending: []GalgameHit{},
+		Total:   env.Data.Total,
 	}
-	if env.Data.Pending == nil {
-		env.Data.Pending = []GalgameHit{}
+	for i := range env.Data.Items {
+		out.Items = append(out.Items, v1ItemToHit(&env.Data.Items[i]))
 	}
-	return &env.Data, nil
+	if env.Data.Pending != nil {
+		for i := range *env.Data.Pending {
+			out.Pending = append(out.Pending, v1ItemToHit(&(*env.Data.Pending)[i]))
+		}
+	}
+	return &out, nil
 }
 
 // GetMyGalgameMessages proxies GET /galgame/messages/mine (Bearer). Used by the
