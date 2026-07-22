@@ -339,7 +339,7 @@ const doRevert = async (rev: TaxonomyRevision) => {
   const verb = rev.action === 'deleted' ? '恢复（撤销删除）' : '回滚'
   const ok = await useKunAlert({
     title: verb,
-    message: `${verb}到版本 #${rev.revision}？将在 Wiki 创建一条 reverted 行${
+    message: `${verb}到版本 #${rev.revision}？将在资料库创建一条 reverted 行${
       rev.action === 'deleted'
         ? '；恢复后该实体重新出现，但被引用的作品不会自动加回——需手动到对应 galgame 编辑里重新选上'
         : ''
@@ -386,7 +386,7 @@ const fmtSnapshotValue = (v: unknown): string => {
     <div class="container mx-auto my-4">
     <KunHeader
       name="Galgame 分类管理"
-      description="标签 / 开发商 / 引擎 / 系列的增删改 —— 元数据由 Galgame Wiki 统一维护"
+      description="标签 / 开发商 / 引擎 / 系列的增删改 —— 元数据由 Galgame 资料库统一维护"
     />
     <div class="mx-auto max-w-3xl">
 

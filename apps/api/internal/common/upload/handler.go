@@ -145,7 +145,7 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 	// images) keep using moyu's local image_service client.
 	if preset == "galgame_banner" || preset == "galgame_screenshot" {
 		if h.galgame == nil {
-			return response.Error(c, errors.ErrInternal("Wiki 客户端未配置"))
+			return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
 		}
 		fileBytes, rerr := io.ReadAll(f)
 		if rerr != nil {
@@ -168,14 +168,14 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 					return response.Error(c, errors.New(we.Code, we.Message, fiber.StatusBadRequest))
 				}
 			}
-			return response.Error(c, errors.ErrInternal("Wiki 图片上传失败: "+werr.Error()))
+			return response.Error(c, errors.ErrInternal("资料库图片上传失败: "+werr.Error()))
 		}
 		// galgame returns image_service's UploadResult, identical shape to moyu's
 		// imageclient.UploadResult — re-marshal into it so the FE sees the same
 		// response as the local path.
 		var result imageclient.UploadResult
 		if jerr := json.Unmarshal(data, &result); jerr != nil {
-			return response.Error(c, errors.ErrInternal("解析 Wiki 上传响应失败"))
+			return response.Error(c, errors.ErrInternal("解析资料库上传响应失败"))
 		}
 		return response.OK(c, result)
 	}

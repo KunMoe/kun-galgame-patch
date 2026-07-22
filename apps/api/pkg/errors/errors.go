@@ -66,7 +66,7 @@ func ErrBusiness(msg string) *AppError {
 // the frontend can render a "前往 Wiki 创建" CTA instead of a generic toast.
 func ErrGalgameNotFound(msg string) *AppError {
 	if msg == "" {
-		msg = "Galgame Wiki 中不存在该游戏，请先到 Wiki 创建"
+		msg = "游戏资料库中不存在该游戏，请先提交新作"
 	}
 	return New(44001, msg, fiber.StatusBadRequest)
 }

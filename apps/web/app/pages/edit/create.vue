@@ -110,7 +110,7 @@ const selectPublished = async (hit: GalgameHit) => {
     if (res.code === 44001) {
       // Shouldn't happen because we searched and got the hit, but guard anyway.
       useKunMessage(
-        'Wiki 中未找到此游戏，请刷新后重试',
+        '资料库中未找到此游戏，请刷新后重试',
         'warn'
       )
       return
@@ -304,7 +304,7 @@ const handleSubmit = async () => {
     <div class="container mx-auto my-4">
     <KunHeader
       name="发布 Galgame"
-      description="先搜索 Wiki，看看是否已有条目；若没有再提交新的元数据"
+      description="先搜索资料库，看看是否已有条目；若没有再提交新的元数据"
     />
     <div class="mx-auto max-w-3xl">
 
@@ -312,7 +312,7 @@ const handleSubmit = async () => {
     <div v-if="mode === 'search'" class="mt-6 space-y-4">
       <KunCard :bordered="true">
         <div class="space-y-3 p-4">
-          <h2 class="text-lg font-semibold">1. 搜索 Wiki</h2>
+          <h2 class="text-lg font-semibold">1. 搜索资料库</h2>
           <p class="text-default-500 text-sm">
             支持名字（中/英/日）或 VNDB ID 搜索。
           </p>
@@ -422,7 +422,7 @@ const handleSubmit = async () => {
         <div class="space-y-3 p-4 text-center">
           <p class="text-default-500">没有找到匹配的条目</p>
           <KunButton color="primary" @click="startSubmit">
-            提交新作到 Wiki
+            提交新作到资料库
           </KunButton>
         </div>
       </KunCard>
@@ -439,7 +439,7 @@ const handleSubmit = async () => {
     <KunCard v-else :bordered="true" class-name="mt-6">
       <div class="space-y-4 p-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">2. 提交新作到 Wiki</h2>
+          <h2 class="text-lg font-semibold">2. 提交新作到资料库</h2>
           <KunButton variant="light" size="sm" @click="mode = 'search'">
             ← 回到搜索
           </KunButton>
@@ -478,10 +478,10 @@ const handleSubmit = async () => {
           这个表单只用于 <strong>VNDB 还没有收录</strong> 的作品（原创、同人、冷门等），
           所以不需要填 VNDB ID。
           <br />
-          已经在 VNDB 有条目的游戏，一般已被 Wiki 自动同步，请优先回到上一步用
+          已经在 VNDB 有条目的游戏，一般已被资料库自动同步，请优先回到上一步用
           <strong>名字或 VNDB ID 搜索</strong>，搜到后点「认领并发布」即可。
           <br />
-          如果你确定它在 VNDB 有条目却怎么都搜不到，多半是刚收录、Wiki 还没同步过来，
+          如果你确定它在 VNDB 有条目却怎么都搜不到，多半是刚收录、资料库还没同步过来，
           可以先核对一下 ID、过一两天再来认领；不必在这里把 VNDB ID 当作名字填进去。
         </div>
 

@@ -425,7 +425,7 @@ func (s *PatchService) UpdatePatch(ctx context.Context, id, userID int, isPrivil
 		return fmt.Errorf("调用 galgame 校验 vndb_id 失败: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("Galgame Wiki 中不存在 vndb_id=%s 的游戏", vndbID)
+		return fmt.Errorf("Galgame 资料库中不存在 vndb_id=%s 的游戏", vndbID)
 	}
 	if galgameID != existing.ID {
 		return fmt.Errorf("不允许把 patch (id=%d) 重绑到不同的 galgame (id=%d) — 请运行 cmd/remap-patch-ids 完整迁移", existing.ID, galgameID)

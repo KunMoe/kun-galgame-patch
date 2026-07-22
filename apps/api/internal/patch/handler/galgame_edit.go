@@ -116,7 +116,7 @@ func (h *PatchHandler) GalgameTaxonomyDetailProxy(c fiber.Ctx) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 
 	// Parse the galgame `data` field into a generic map so we can swap out the

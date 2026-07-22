@@ -100,7 +100,7 @@ const handleEdit = async (m: MineItem) => {
     <div class="container mx-auto my-4">
     <KunHeader
       name="我的提交"
-      description="查看您提交到 Galgame Wiki 的作品的审核进度"
+      description="查看您提交到 Galgame 资料库的作品的审核进度"
     />
 
     <KunLoading v-if="pending" class-name="mt-6" description="加载中..." />

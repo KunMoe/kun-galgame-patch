@@ -414,7 +414,7 @@ const tabs = computed(() => {
         <div>
           <p class="font-semibold">本站尚未收录此游戏</p>
           <p class="text-default-500 text-sm">
-            当前页面的资料均来自 Galgame Wiki，本站还没有它的补丁或本地数据。收藏 / 评论
+            当前页面的资料均来自 Galgame 资料库，本站还没有它的补丁或本地数据。收藏 / 评论
             都会让它被本站收录（但您不会成为该游戏的创建者，也不会获得萌萌点奖励）；发布补丁同样会让它被收录，并照常获得发布补丁的萌萌点奖励。
           </p>
         </div>

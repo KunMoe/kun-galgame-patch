@@ -128,7 +128,7 @@ const execute = async () => {
       `将【不可恢复地】删除用户 #${uidNum.value} 的本地账号，及其全部评论 (${p.comments})、` +
       `补丁资源 (${p.resources})、点赞 / 收藏 / 关注、` +
       `聊天与站内私信。${collateral}\n\n` +
-      `（OAuth 身份、Wiki、kungal、image_service 不受影响——如需封禁请另在 OAuth 后台操作。）\n\n确定继续？`
+      `（OAuth 身份、资料库、kungal、image_service 不受影响——如需封禁请另在 OAuth 后台操作。）\n\n确定继续？`
   })
   if (!ok) return
 

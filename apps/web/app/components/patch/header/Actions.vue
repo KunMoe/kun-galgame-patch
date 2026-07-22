@@ -261,7 +261,7 @@ const onMenuSelect = (item: { key: string }) => {
         此操作不可撤销。本站会删除该游戏的所有补丁资源、评论、贡献者记录、收藏关系。
       </p>
       <p class="text-default-500 text-xs">
-        这只会删除本站记录，不会影响 Galgame Wiki 上的游戏条目。
+        这只会删除本站记录，不会影响 Galgame 资料库上的游戏条目。
       </p>
       <div class="flex justify-end gap-2">
         <KunButton

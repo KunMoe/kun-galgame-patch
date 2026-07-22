@@ -444,7 +444,7 @@ func (h *AdminHandler) GetOrphanPatches(c fiber.Ctx) error {
 		briefs, bErr := h.galgame.GalgameBatch(c.Context(), candidateIDs[start:end], "")
 		if bErr != nil {
 			// Never fabricate an orphan list on a Wiki hiccup (audit F075 spirit).
-			return response.Error(c, errors.ErrInternal("Wiki 校验失败"))
+			return response.Error(c, errors.ErrInternal("资料库校验失败"))
 		}
 		for _, b := range briefs {
 			existing = append(existing, b.ID)

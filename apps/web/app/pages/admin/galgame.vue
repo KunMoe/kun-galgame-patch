@@ -41,7 +41,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
   <div class="space-y-6">
     <h1 class="text-2xl font-bold">Galgame 列表</h1>
 
-    <KunInput v-model="searchQuery" placeholder="按 vndb_id 搜索（游戏名由 Wiki 维护）">
+    <KunInput v-model="searchQuery" placeholder="按 vndb_id 搜索（游戏名由资料库维护）">
       <template #prefix>
         <KunIcon name="lucide:search" class="text-default-400 size-4" />
       </template>

@@ -59,14 +59,14 @@ const handleRebind = async (galgameId: number) => {
   try {
     const res = await api.put(`/patch/${galgameId}`, { vndb_id: newID })
     if (res.code === 0) {
-      useKunMessage('已重新绑定，Wiki 校验通过', 'success')
+      useKunMessage('已重新绑定，资料库校验通过', 'success')
       // Clear this row's edit input after a successful rebind; `delete` on the
       // reactive record is intentional (the row's input field is keyed by id).
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete editVndbID[galgameId]
       await refresh()
     } else {
-      useKunMessage(res.message || '重绑失败（Wiki 里可能还没这个游戏）', 'error')
+      useKunMessage(res.message || '重绑失败（资料库里可能还没这个游戏）', 'error')
     }
   } finally {
     submitting[galgameId] = false
@@ -103,7 +103,7 @@ const vndbLink = (v: string) =>
     <div>
       <h1 class="text-2xl font-bold">孤儿补丁</h1>
       <p class="text-default-500 mt-1 text-sm">
-        这些补丁的 vndb_id 在 Galgame Wiki 里查不到对应游戏 —— 要么是 Moyu
+        这些补丁的 vndb_id 在 Galgame 资料库里查不到对应游戏 —— 要么是 Moyu
         作者发布时没填，要么是填错了。请逐条人工处理：输入正确的 vndb_id
         重绑，或直接删除。
       </p>

@@ -929,7 +929,7 @@ func writeGalgameResult(c fiber.Ctx, data json.RawMessage, err error) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 	return c.JSON(response.Response{Code: 0, Message: "OK", Data: data})
 }
@@ -1013,7 +1013,7 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 			// 认领 when the Meilisearch row was stale). HTTP 400.
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 
 	// galgame returned the published galgame (status=0). Pull the id/vndb_id so
@@ -1099,7 +1099,7 @@ func (h *PatchHandler) DeleteGalgameDraft(c fiber.Ctx) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 	return response.OKMessage(c, "OK")
 }
@@ -1124,7 +1124,7 @@ func (h *PatchHandler) ListMyGalgames(c fiber.Ctx) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 	return response.OK(c, out)
 }
@@ -1149,7 +1149,7 @@ func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 	return response.OK(c, out)
 }
@@ -1214,7 +1214,7 @@ func (h *PatchHandler) GetMyGalgameMessages(c fiber.Ctx) error {
 		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 	return response.OK(c, out)
 }

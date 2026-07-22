@@ -975,7 +975,7 @@ func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 
 	merged, err := h.fetchCalendarMonth(c.Context(), month, cl)
 	if err != nil || merged == nil {
-		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 	}
 
 	return response.OK(c, fiber.Map{
@@ -1021,7 +1021,7 @@ func (h *CommonHandler) GetGalgameCalendarPending(c fiber.Ctx) error {
 	for _, lim := range calendarContentLimits(cl) {
 		b, err := h.galgame.GetGalgameCalendarPending(c.Context(), year, lim)
 		if err != nil {
-			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+			return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 		}
 		briefs = append(briefs, b.Items...)
 		if b.Year != "" {
@@ -1042,7 +1042,7 @@ func (h *CommonHandler) GetGalgameCalendarTBA(c fiber.Ctx) error {
 	for _, lim := range calendarContentLimits(cl) {
 		b, err := h.galgame.GetGalgameCalendarTBA(c.Context(), lim)
 		if err != nil {
-			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
+			return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
 		}
 		briefs = append(briefs, b.Items...)
 	}
