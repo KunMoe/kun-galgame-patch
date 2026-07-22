@@ -40,16 +40,21 @@ func (e *GalgameError) Error() string {
 
 // Client is a thin wrapper around calls to the NextMoe catalog service (galgame
 // surface). It derives two faces from one host base:
-//   - internalBase = {base}/internal — the internal-tier rich READ face, gated
-//     by an X-API-Key; every read-set call (anonymous + Bearer-personalized)
-//     and the S2S cron message feed go here.
-//   - legacyBase   = {base}/api      — the legacy face; writes / submissions and
-//     the image upload proxy stay here (until the 06 write-face wave).
+//   - internalBase = {base}/internal — the internal-tier face, gated by an
+//     X-API-Key; every read-set call (anonymous + Bearer-personalized), the S2S
+//     cron message feed, AND (since open-API phase 2 wave 06a) the user write
+//     set — galgame submit / draft update+delete / claim / image upload /
+//     links+aliases relation edits — go here. Personalized reads and every user
+//     write carry dual credentials (X-API-Key = client identity; Authorization:
+//     Bearer = user identity, which the catalog's jwtAuth validates itself).
+//   - legacyBase   = {base}/api      — the legacy face; only the staff taxonomy
+//     family (tag/official/engine/series CRUD + revert) and /admin/* stay here.
 //
-// The read face hard-depends on the internal-tier API key: there is no empty-key
-// fallback to /api. The rollback valve was retired in open-API phase 2 wave 05 —
-// a configured base with an empty key fails fast at startup (see app.New). Face
-// selection is by ROUTE membership, not HTTP method (see readTarget).
+// The internal face hard-depends on the internal-tier API key: there is no
+// empty-key fallback to /api. The rollback valve was retired in open-API phase 2
+// wave 05 — a configured base with an empty key fails fast at startup (see
+// app.New). Face selection is by ROUTE membership, not HTTP method (see
+// readTarget / writeTarget).
 type Client struct {
 	internalBase string
 	legacyBase   string
@@ -58,12 +63,12 @@ type Client struct {
 }
 
 // NewWithKey constructs a Client that routes read-set calls (and the S2S cron
-// message feed) to the internal rich read face ({base}/internal + X-API-Key)
-// using apiKey; writes / submissions and the image upload proxy stay on the
+// message feed) AND the user write set to the internal face ({base}/internal +
+// X-API-Key) using apiKey; only the staff taxonomy family + /admin/* stay on the
 // legacy /api face. baseURL is the NextMoe host base (no /api or /internal
 // suffix), e.g. http://127.0.0.1:19281. apiKey is the internal-tier key and is
-// required for every read — there is no legacy fallback, so callers validate it
-// is non-empty at startup (app.New fails fast otherwise).
+// required for every read/write — there is no legacy fallback, so callers
+// validate it is non-empty at startup (app.New fails fast otherwise).
 func NewWithKey(baseURL, apiKey string) *Client {
 	base := strings.TrimRight(baseURL, "/")
 	return &Client{
@@ -90,6 +95,62 @@ func (c *Client) readTarget(path string) (base, apiKey string) {
 		return c.legacyBase, ""
 	}
 	return c.internalBase, c.apiKey
+}
+
+// writeTarget picks the base URL + X-API-Key for a WRITE by ROUTE membership,
+// mirroring readTarget:
+//   - user-write-set paths go to the internal face with the internal-tier
+//     X-API-Key attached (the user JWT rides Authorization separately — dual
+//     credential);
+//   - everything else (the staff taxonomy family CRUD+revert and /admin/*)
+//     stays on the legacy /api face with no key.
+//
+// The user write set was platformized onto the internal face in open-API phase 2
+// wave 06a (catalog W1 mounted these paths behind the devapi galgame:write
+// chain). There is no empty-key fallback: the internal write face hard-depends
+// on the key (app.New fails fast when the base is configured but the key is
+// empty — same fail-fast as the read face).
+func (c *Client) writeTarget(path string) (base, apiKey string) {
+	if isUserWritePath(path) {
+		return c.internalBase, c.apiKey
+	}
+	return c.legacyBase, ""
+}
+
+// isUserWritePath reports whether a galgame path (no face prefix; a trailing
+// query string is allowed) is a member of the user write set that moved to the
+// internal face in open-API phase 2 wave 06a: galgame submit, draft
+// update/patch/delete, claim, cover/screenshot image upload, and the
+// links/aliases relation edits. The staff taxonomy family
+// (tag/official/engine/series CRUD + revert) and /admin/* writes are NOT members
+// — they stay on the legacy /api face.
+func isUserWritePath(path string) bool {
+	// Membership is by path only; drop any query string.
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	switch path {
+	case "/galgame/submit", "/galgame/image":
+		return true
+	}
+	rest, ok := strings.CutPrefix(path, "/galgame/")
+	if !ok {
+		return false
+	}
+	// seg[0] must be a numeric galgame id — this excludes the read-only
+	// siblings (/galgame/mine, /galgame/search, /galgame/messages/*, …), none
+	// of which are writes anyway.
+	seg := strings.Split(rest, "/")
+	if _, err := strconv.Atoi(seg[0]); err != nil {
+		return false
+	}
+	switch len(seg) {
+	case 1: // PUT / PATCH / DELETE /galgame/:gid
+		return true
+	case 2: // POST /galgame/:gid/{claim,links,aliases}; DELETE links/aliases
+		return seg[1] == "claim" || seg[1] == "links" || seg[1] == "aliases"
+	}
+	return false
 }
 
 // galgameResponse is the common envelope for all galgame JSON responses.
@@ -691,13 +752,17 @@ func (c *Client) UpdateGalgame(ctx context.Context, accessToken string, gid int,
 	if err != nil {
 		return nil, fmt.Errorf("encode update body: %w", err)
 	}
-	u := fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(payload))
+	path := fmt.Sprintf("/galgame/%d", gid)
+	base, apiKey := c.writeTarget(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, base+path, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build galgame update request: %w", err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -772,13 +837,17 @@ func (c *Client) UpdateGalgameMultipart(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	u := fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, &buf)
+	path := fmt.Sprintf("/galgame/%d", gid)
+	base, apiKey := c.writeTarget(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, base+path, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build galgame update request: %w", err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
@@ -840,13 +909,16 @@ func (c *Client) UploadGalgameImage(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	u := c.legacyBase + "/galgame/image"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, &buf)
+	base, apiKey := c.writeTarget("/galgame/image")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/galgame/image", &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build galgame upload request: %w", err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("Accept", "application/json")

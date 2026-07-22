@@ -1,10 +1,13 @@
 package client
 
 // Face-selection tests: prove the galgame client routes each call to the right
-// face (internal rich read face + X-API-Key vs legacy /api) by ROUTE
-// membership, not HTTP method. The read face hard-depends on the internal-tier
-// key — the empty-key rollback to legacy was retired in open-API phase 2 wave
-// 05. Deterministic — a fake service records the last request.
+// face (internal face + X-API-Key vs legacy /api) by ROUTE membership, not HTTP
+// method. Reads AND the user write set (submit / draft update+delete / claim /
+// image upload / links+aliases relation edits) hit the internal face + key
+// (writes since open-API phase 2 wave 06a); only the staff taxonomy family +
+// /admin/* stay on legacy /api. The internal face hard-depends on the
+// internal-tier key — the empty-key rollback to legacy was retired in wave 05.
+// Deterministic — a fake service records the last request.
 
 import (
 	"context"
@@ -42,8 +45,10 @@ func (r *faceRecorder) server(t *testing.T) *httptest.Server {
 // TestFaceSelection_WithKey proves that, with an internal-tier key configured,
 // reads (and the S2S message feed) hit {base}/internal + X-API-Key (personalized
 // reads additionally carry the user JWT on Authorization — dual credential),
-// while writes / the image upload proxy / non-GET taxonomy proxies stay on
-// {base}/api with no key.
+// the user write set (submit / update / draft patch+delete / claim / image
+// upload / links+aliases relation edits) also hits {base}/internal with dual
+// credentials (X-API-Key + Bearer), and only the staff taxonomy CRUD/revert +
+// /admin/* proxies stay on {base}/api with no key.
 func TestFaceSelection_WithKey(t *testing.T) {
 	rec := &faceRecorder{}
 	srv := rec.server(t)
@@ -122,7 +127,7 @@ func TestFaceSelection_WithKey(t *testing.T) {
 		}
 	})
 
-	t.Run("proxy POST (taxonomy write) → legacy, no key", func(t *testing.T) {
+	t.Run("proxy POST (taxonomy tag write) → legacy, no key", func(t *testing.T) {
 		if _, err := c.Proxy(ctx, http.MethodPost, "/tag", "user-jwt", []byte(`{}`), "application/json"); err != nil {
 			t.Fatalf("Proxy POST: %v", err)
 		}
@@ -134,39 +139,147 @@ func TestFaceSelection_WithKey(t *testing.T) {
 		}
 	})
 
-	t.Run("submit write → legacy, no key", func(t *testing.T) {
+	t.Run("proxy POST (series write, staff) → legacy, no key", func(t *testing.T) {
+		if _, err := c.Proxy(ctx, http.MethodPost, "/series", "user-jwt", []byte(`{}`), "application/json"); err != nil {
+			t.Fatalf("Proxy POST /series: %v", err)
+		}
+		if rec.path != "/api/series" {
+			t.Errorf("path = %q, want /api/series (staff taxonomy stays legacy)", rec.path)
+		}
+		if rec.apiKey != "" {
+			t.Errorf("X-API-Key = %q, want empty on legacy write face", rec.apiKey)
+		}
+	})
+
+	t.Run("proxy PUT (series update, staff) → legacy, no key", func(t *testing.T) {
+		if _, err := c.Proxy(ctx, http.MethodPut, "/series/9", "user-jwt", []byte(`{}`), "application/json"); err != nil {
+			t.Fatalf("Proxy PUT /series/9: %v", err)
+		}
+		if rec.path != "/api/series/9" {
+			t.Errorf("path = %q, want /api/series/9 (staff taxonomy stays legacy)", rec.path)
+		}
+		if rec.apiKey != "" {
+			t.Errorf("X-API-Key = %q, want empty on legacy write face", rec.apiKey)
+		}
+	})
+
+	t.Run("proxy POST /galgame/:gid/links (relation write) → internal + key + JWT", func(t *testing.T) {
+		if _, err := c.Proxy(ctx, http.MethodPost, "/galgame/42/links", "user-jwt", []byte(`{}`), "application/json"); err != nil {
+			t.Fatalf("Proxy POST links: %v", err)
+		}
+		if rec.path != "/internal/galgame/42/links" {
+			t.Errorf("path = %q, want /internal/galgame/42/links", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
+		}
+	})
+
+	t.Run("proxy DELETE /galgame/:gid/aliases (relation write) → internal + key + JWT", func(t *testing.T) {
+		if _, err := c.Proxy(ctx, http.MethodDelete, "/galgame/42/aliases", "user-jwt", []byte(`{}`), "application/json"); err != nil {
+			t.Fatalf("Proxy DELETE aliases: %v", err)
+		}
+		if rec.path != "/internal/galgame/42/aliases" {
+			t.Errorf("path = %q, want /internal/galgame/42/aliases", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
+		}
+	})
+
+	t.Run("submit write → internal + key + JWT", func(t *testing.T) {
 		if _, err := c.SubmitGalgame(ctx, "user-jwt", map[string]any{"x": 1}); err != nil {
 			t.Fatalf("SubmitGalgame: %v", err)
 		}
-		if rec.path != "/api/galgame/submit" {
-			t.Errorf("path = %q, want /api/galgame/submit", rec.path)
+		if rec.path != "/internal/galgame/submit" {
+			t.Errorf("path = %q, want /internal/galgame/submit", rec.path)
 		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty on legacy write face", rec.apiKey)
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
 		}
 	})
 
-	t.Run("update write → legacy, no key", func(t *testing.T) {
+	t.Run("claim write → internal + key + JWT", func(t *testing.T) {
+		if _, err := c.ClaimGalgame(ctx, "user-jwt", 7); err != nil {
+			t.Fatalf("ClaimGalgame: %v", err)
+		}
+		if rec.path != "/internal/galgame/7/claim" {
+			t.Errorf("path = %q, want /internal/galgame/7/claim", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
+		}
+	})
+
+	t.Run("patch draft write → internal + key + JWT", func(t *testing.T) {
+		if _, err := c.PatchGalgameDraft(ctx, "user-jwt", 8, map[string]any{"x": 1}); err != nil {
+			t.Fatalf("PatchGalgameDraft: %v", err)
+		}
+		if rec.path != "/internal/galgame/8" {
+			t.Errorf("path = %q, want /internal/galgame/8", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
+		}
+	})
+
+	t.Run("delete draft write → internal + key + JWT", func(t *testing.T) {
+		if err := c.DeleteGalgameDraft(ctx, "user-jwt", 9); err != nil {
+			t.Fatalf("DeleteGalgameDraft: %v", err)
+		}
+		if rec.path != "/internal/galgame/9" {
+			t.Errorf("path = %q, want /internal/galgame/9", rec.path)
+		}
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
+		}
+	})
+
+	t.Run("update write → internal + key + JWT", func(t *testing.T) {
 		if _, err := c.UpdateGalgame(ctx, "user-jwt", 5, map[string]any{"x": 1}); err != nil {
 			t.Fatalf("UpdateGalgame: %v", err)
 		}
-		if rec.path != "/api/galgame/5" {
-			t.Errorf("path = %q, want /api/galgame/5", rec.path)
+		if rec.path != "/internal/galgame/5" {
+			t.Errorf("path = %q, want /internal/galgame/5", rec.path)
 		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty on legacy write face", rec.apiKey)
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
 		}
 	})
 
-	t.Run("image upload proxy → legacy, no key", func(t *testing.T) {
+	t.Run("image upload proxy → internal + key + JWT", func(t *testing.T) {
 		if _, err := c.UploadGalgameImage(ctx, "user-jwt", "galgame_cover", "f.png", []byte("x"), "image/png"); err != nil {
 			t.Fatalf("UploadGalgameImage: %v", err)
 		}
-		if rec.path != "/api/galgame/image" {
-			t.Errorf("path = %q, want /api/galgame/image", rec.path)
+		if rec.path != "/internal/galgame/image" {
+			t.Errorf("path = %q, want /internal/galgame/image", rec.path)
 		}
-		if rec.apiKey != "" {
-			t.Errorf("X-API-Key = %q, want empty on legacy write face", rec.apiKey)
+		if rec.apiKey != "nm_test_key" {
+			t.Errorf("X-API-Key = %q, want nm_test_key", rec.apiKey)
+		}
+		if rec.auth != "Bearer user-jwt" {
+			t.Errorf("Authorization = %q, want Bearer user-jwt", rec.auth)
 		}
 	})
 

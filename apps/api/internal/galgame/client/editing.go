@@ -38,16 +38,19 @@ func (c *Client) Proxy(
 	body []byte,
 	contentType string,
 ) (json.RawMessage, error) {
-	// Face selection by ROUTE membership, not HTTP method. Every GET proxied
-	// here is a member of the internal read face's 44-route read set — the
-	// taxonomy reads (tag/official/engine/series list, search, :name/:id detail,
-	// revisions) and the galgame links/aliases relation reads — so GETs route to
-	// the internal face + X-API-Key. Every non-GET (taxonomy + relation CRUD,
-	// taxonomy reverts) is a write and stays on the legacy /api face.
-	base := c.legacyBase
-	apiKey := ""
+	// Face selection by ROUTE membership, not HTTP method (see readTarget /
+	// writeTarget). Every GET proxied here is a member of the internal face's
+	// read set — the taxonomy reads (tag/official/engine/series list, search,
+	// :name/:id detail, revisions) and the galgame links/aliases relation reads —
+	// so GETs route to the internal face + X-API-Key. Non-GETs split by
+	// membership: the galgame links/aliases relation writes are user-write-set
+	// members that moved to the internal face + X-API-Key in open-API phase 2
+	// wave 06a; the staff taxonomy CRUD + reverts stay on the legacy /api face.
+	var base, apiKey string
 	if method == http.MethodGet {
 		base, apiKey = c.readTarget(pathAndQuery)
+	} else {
+		base, apiKey = c.writeTarget(pathAndQuery)
 	}
 
 	var rdr io.Reader

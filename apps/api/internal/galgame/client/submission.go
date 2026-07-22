@@ -8,9 +8,12 @@ package client
 //   - User-facing methods (Submit / Claim / PatchDraft / DeleteDraft / ListMine /
 //     SearchWithPending / MyMessages) transparently forward the user's OAuth
 //     access_token. galgame decodes the JWT itself; this site never re-decides
-//     identity.
+//     identity. Since open-API phase 2 wave 06a the write members (Submit /
+//     Claim / PatchDraft / DeleteDraft) also ride the internal face and so carry
+//     the internal-tier X-API-Key alongside the Bearer (dual credential) — see
+//     writeTarget in client.go.
 //   - Server-to-server (MessageFeed) uses the internal-tier X-API-Key on the
-//     internal read face — the same key every other read carries.
+//     internal face — the same key every other read carries.
 
 import (
 	"bytes"
@@ -167,12 +170,16 @@ func (c *Client) PatchGalgameDraftMultipart(
 
 // DeleteGalgameDraft proxies DELETE /galgame/:gid (hard delete, status ∈ {3,4}).
 func (c *Client) DeleteGalgameDraft(ctx context.Context, accessToken string, gid int) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid), nil)
+	path := fmt.Sprintf("/galgame/%d", gid)
+	base, apiKey := c.writeTarget(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, base+path, nil)
 	if err != nil {
 		return fmt.Errorf("build galgame delete: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
@@ -409,11 +416,15 @@ func (c *Client) writeUserJSON(ctx context.Context, method, path, accessToken st
 	if err != nil {
 		return nil, fmt.Errorf("encode body: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, bytes.NewReader(payload))
+	base, apiKey := c.writeTarget(path)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build galgame %s %s: %w", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
@@ -472,11 +483,15 @@ func (c *Client) writeUserMultipart(
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, &buf)
+	base, apiKey := c.writeTarget(path)
+	req, err := http.NewRequestWithContext(ctx, method, base+path, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("build galgame %s %s: %w", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
 
