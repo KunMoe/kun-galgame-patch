@@ -42,18 +42,14 @@ x-moyu-api-env: &moyu-api-env
   OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in Dokploy (补丁 client 注册时的明文)}
   OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
   # NextMoe catalog API (galgame reads via the internal tier). BASE is the HOST
-  # base (no /api|/internal); the client derives {base}/internal (read face,
-  # X-API-Key) and {base}/api (legacy: writes / feeds). Empty KEY = reads fall
-  # back to legacy /api (rollback valve). KEY is a secret → set in the Dokploy
-  # Environment (kungal-neo /root/phase2-internal-keys.env line moyu-patch-internal-s2s).
+  # base (no /api|/internal); the client derives {base}/internal (the rich read
+  # face + the S2S message feed, X-API-Key) and {base}/api (writes / submissions
+  # / image upload). The read face hard-depends on the key — an empty KEY fails
+  # fast at startup (the legacy /api rollback valve was retired in wave 05). KEY
+  # is a secret → set in the Dokploy Environment (kungal-neo
+  # /root/phase2-internal-keys.env line moyu-patch-internal-s2s).
   KUN_NEXTMOE_API_BASE: http://catalog:9281
   KUN_NEXTMOE_API_KEY: ${KUN_NEXTMOE_API_KEY:-}
-  # TRANSITION (Phase 2 wave 03 → removed in wave 05): the OLD var stays so that
-  # a webhook redeploy running the PREVIOUS image against this NEW compose still
-  # finds its base URL (the old binary reads this name) — avoiding the 4-5 min
-  # outage wave 02 hit when the rename raced image readiness. The new binary
-  # ignores this line entirely.
-  KUN_GALGAME_WIKI_BASE_URL: http://catalog:9281/api
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
@@ -111,7 +107,6 @@ services:
       NUXT_PUBLIC_OAUTH_WEB_URL: https://oauth.kungal.com
       NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
-      NUXT_PUBLIC_WIKI_ORIGIN: https://wiki.kungal.com         # 鲲 Galgame Wiki(不是 galgame.kungal.com)
     expose: ["3000"]
     depends_on:
       moyu-api: { condition: service_healthy }
