@@ -96,7 +96,7 @@ const chooseLocal = async () => {
               <span class="bg-primary-100 text-primary-700 rounded px-1.5 py-0.5 text-xs">推荐</span>
             </div>
             <p class="text-default-500 text-xs leading-relaxed">
-              退出本站，同时退出你的账号。其它用同一个账号登录的网站（论坛、Wiki 等）稍后也会一起退出。下次进入需要重新登录。和别人共用的电脑建议选这个。
+              退出本站，同时退出你的账号。其它用同一个账号登录的网站（论坛等）稍后也会一起退出。下次进入需要重新登录。和别人共用的电脑建议选这个。
             </p>
           </div>
         </div>
