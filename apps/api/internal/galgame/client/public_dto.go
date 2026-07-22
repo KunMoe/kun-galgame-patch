@@ -36,13 +36,21 @@ type v1Intro struct {
 }
 
 // v1Image is one rendered /v1 image: a COMPLETE CDN URL (never a bare hash) +
-// intrinsic dims + ThumbHash. Kind is only meaningful on covers[].
+// intrinsic dims + ThumbHash. Kind is only meaningful on covers[]. Sexual /
+// Violence are the per-image content-rating levels (W1c) — present on
+// covers[]/screenshots[] entries only when the key is nsfw-capable (moyu's
+// internal key carries galgame:nsfw since W1a P5). Caption is the per-screenshot
+// gallery text (W1c, screenshots-only). sort_order is NOT on the /v1 wire — the
+// arrays are server-ordered, so the moyu adapter synthesizes it from the index.
 type v1Image struct {
 	URL       string `json:"url"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
 	Thumbhash string `json:"thumbhash"`
 	Kind      string `json:"kind,omitempty"`
+	Sexual    *int   `json:"sexual"`
+	Violence  *int   `json:"violence"`
+	Caption   string `json:"caption"`
 }
 
 // v1Images is the /v1 images block. covers/screenshots present only under their
@@ -268,10 +276,22 @@ func v1ItemToHit(it *v1Item) GalgameHit {
 	return h
 }
 
+// derefInt returns *p, or 0 when p is nil — the /v1 rating levels are pointer
+// ints (absent when the key is not nsfw-capable); moyu's row fields are plain
+// ints, so a missing level collapses to 0.
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 // v1CoversToInputs maps /v1 images.covers → the moyu CoverInput slice. image_hash
-// is derived from the sharded URL; kind + dims + thumbhash carry over. The /v1
-// curation drops per-cover sort_order/sexual/violence/source/source_key — these
-// have no /v1 source and stay zero (unconsumed by the moyu FE; W3 census).
+// is derived from the sharded URL; kind + dims + thumbhash carry over; sexual /
+// violence come from the W1c scope-gated levels; sort_order is synthesized from
+// the (server-ordered) array index. The /v1 curation still drops per-cover
+// source/source_key — these have no /v1 source and stay "" (unconsumed by the
+// moyu FE; W3 census).
 func v1CoversToInputs(covers []v1Image) []CoverInput {
 	if len(covers) == 0 {
 		return nil
@@ -280,6 +300,9 @@ func v1CoversToInputs(covers []v1Image) []CoverInput {
 	for i := range covers {
 		out = append(out, CoverInput{
 			ImageHash: hashFromURL(covers[i].URL),
+			SortOrder: i,
+			Sexual:    derefInt(covers[i].Sexual),
+			Violence:  derefInt(covers[i].Violence),
 			Kind:      covers[i].Kind,
 			Width:     covers[i].Width,
 			Height:    covers[i].Height,
@@ -290,8 +313,9 @@ func v1CoversToInputs(covers []v1Image) []CoverInput {
 }
 
 // v1ScreenshotsToInputs maps /v1 images.screenshots → the moyu ScreenshotInput
-// slice. Same curation caveat as v1CoversToInputs (caption/sexual/violence/
-// source drop to zero).
+// slice, incl. the W1c scope-gated sexual/violence levels + ungated caption +
+// index-synthesized sort_order (drives the FE gallery filter/sort/labels). Only
+// source/source_key stay "" (no /v1 source; FE-unconsumed).
 func v1ScreenshotsToInputs(shots []v1Image) []ScreenshotInput {
 	if len(shots) == 0 {
 		return nil
@@ -300,6 +324,10 @@ func v1ScreenshotsToInputs(shots []v1Image) []ScreenshotInput {
 	for i := range shots {
 		out = append(out, ScreenshotInput{
 			ImageHash: hashFromURL(shots[i].URL),
+			SortOrder: i,
+			Caption:   shots[i].Caption,
+			Sexual:    derefInt(shots[i].Sexual),
+			Violence:  derefInt(shots[i].Violence),
 			Width:     shots[i].Width,
 			Height:    shots[i].Height,
 			Thumbhash: shots[i].Thumbhash,
