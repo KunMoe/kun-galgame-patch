@@ -74,7 +74,7 @@ GET https://oauth.kungal.com/api/v1/oauth/authorize
 ### 3.3 会话袋 API（**仅同站 app**，如账号中心 `oauth.kungal.com/profile`）
 
 > 这些 JSON 端点读 OP 域上的 Lax 锚点 cookie，因此**只对与 OP 同站（`kungal.com` 家族：
-> `oauth.kungal.com` 自身、`wiki.kungal.com`、`www.kungal.com`）的前端可用**——同站下游若要
+> `oauth.kungal.com` 自身、`www.kungal.com`）的前端可用**——同站下游若要
 > 跨子域调用，还需 OP 为该 origin 放行 **CORS（`credentials`）**。跨 TLD 的 `moyu.moe`
 > **用不了**（`SameSite` cookie 不跨站 `fetch` 发送）→ 一律走 §3.1 重定向 + §3.6 本地缓存。
 >
