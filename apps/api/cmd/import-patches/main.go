@@ -75,7 +75,7 @@ func main() {
 	}
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
+	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 
 	// artifact client: default creds to the project's OAuth client when the
 	// KUN_ARTIFACT_OAUTH_* vars are unset (mirrors internal/app/app.go).
@@ -96,7 +96,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imp := &Importer{db: db, repo: patchRepo.New(db), wiki: wiki, art: art, userID: *userID, dryRun: *dryRun, touched: map[int]struct{}{}}
+	imp := &Importer{db: db, repo: patchRepo.New(db), galgame: galgame, art: art, userID: *userID, dryRun: *dryRun, touched: map[int]struct{}{}}
 
 	ctx := context.Background()
 	counts := map[status]int{}

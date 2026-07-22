@@ -3,21 +3,21 @@
 // tag/official/engine/series CRUD UI — create / edit / delete — not a subset).
 //
 // Delete follows the doc's mandated two-step UX (04-taxonomy.md, 00 §15.1):
-// try a plain DELETE first; if Wiki rejects with code:7 (still referenced by
-// N galgames) confirm again and retry with ?force=true. Wiki owns auth
+// try a plain DELETE first; if galgame rejects with code:7 (still referenced by
+// N galgames) confirm again and retry with ?force=true. galgame owns auth
 // (create = any logged-in user; PUT/DELETE = admin/moderator, role>1) — we
-// forward its code+message; non-privileged users just see Wiki's 403.
+// forward its code+message; non-privileged users just see galgame's 403.
 
 import type {
-  WikiTag,
-  WikiOfficial,
-  WikiEngine,
-  WikiSeries,
+  GalgameTag,
+  GalgameOfficial,
+  GalgameEngine,
+  GalgameSeries,
   TaxonomyRevision
 } from '~/composables/useGalgameEdit'
 import type { KunUIColor } from '@kungal/ui-core'
 
-// Admin/editor-only write surface (wiki §15.1: PUT/DELETE require
+// Admin/editor-only write surface (galgame §15.1: PUT/DELETE require
 // role > 1). No public content — disable SEO.
 useKunDisableSeo('Galgame 分类管理')
 
@@ -49,7 +49,7 @@ const loadList = async () => {
       const r = await ge.tagSearch(keyword.value, undefined, 50)
       rows.value =
         r.code === 0
-          ? (r.data?.items ?? []).map((t: WikiTag) => ({
+          ? (r.data?.items ?? []).map((t: GalgameTag) => ({
               id: t.id,
               name: t.name,
               category: t.category
@@ -59,7 +59,7 @@ const loadList = async () => {
       const r = await ge.officialSearch(keyword.value, undefined, undefined, 50)
       rows.value =
         r.code === 0
-          ? (r.data?.items ?? []).map((o: WikiOfficial) => ({
+          ? (r.data?.items ?? []).map((o: GalgameOfficial) => ({
               id: o.id,
               name: o.name,
               category: o.category
@@ -69,7 +69,7 @@ const loadList = async () => {
       const r = await ge.engineList()
       const all =
         r.code === 0
-          ? (r.data ?? []).map((e: WikiEngine) => ({
+          ? (r.data ?? []).map((e: GalgameEngine) => ({
               id: e.id,
               name: e.name,
               description: e.description
@@ -83,7 +83,7 @@ const loadList = async () => {
       const r = await ge.seriesList({ limit: 50 })
       rows.value =
         r.code === 0
-          ? (r.data?.items ?? []).map((s: WikiSeries) => ({
+          ? (r.data?.items ?? []).map((s: GalgameSeries) => ({
               id: s.id,
               name: s.name,
               description: s.description
@@ -275,10 +275,10 @@ const del = async (row: Row) => {
 }
 
 // ─── W3 / PR4 — Revision history modal ──────────────────────────────────
-// Wiki single-table `taxonomy_revision` (entity column distinguishes the 4
+// galgame single-table `taxonomy_revision` (entity column distinguishes the 4
 // entity types). Snapshot shape varies per entity; we render generically as
 // key/value pairs. Revert calls POST /<entity>/:id/revert with {revision: N};
-// for deleted rows revert = resurrect (Wiki INSERTs main row + rebuilds
+// for deleted rows revert = resurrect (galgame INSERTs main row + rebuilds
 // aliases) — UI surfaces `affected_galgame_ids` so admin can manually re-link
 // references via standard galgame edit. See 04-taxonomy.md §修订与回滚.
 const ACTION_LABEL: Record<string, { text: string; color: KunUIColor }> = {

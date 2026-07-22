@@ -100,7 +100,7 @@ func New(cfg *config.Config) *App {
 	// Infrastructure
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
-	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
+	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 
 	// OAuth user-brief client (Phase 5-6 will inject this into renderers).
 	usrCli := userclient.New(userclient.Config{
@@ -154,22 +154,22 @@ func New(cfg *config.Config) *App {
 
 	// Patch module
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, wiki, usrCli, mpAwarder, adminRepository)
-	patchHdl := patchHandler.New(patchSvc, wiki, usrCli)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, galgame, usrCli, mpAwarder, adminRepository)
+	patchHdl := patchHandler.New(patchSvc, galgame, usrCli)
 
 	// User module
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, usrCli, wiki, db, mpAwarder)
-	userHdl := userHandler.New(userSvc, wiki, usrCli)
+	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder)
+	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
 	// Message module
 	messageRepository := messageRepo.New(db)
 	messageSvc := messageService.New(messageRepository)
-	messageHdl := messageHandler.New(messageSvc, usrCli, wiki)
+	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
 
 	// Admin module (adminRepository built above — also patch-service's AuditLogger)
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc)
-	adminHdl := adminHandler.New(adminSvc, wiki, usrCli)
+	adminHdl := adminHandler.New(adminSvc, galgame, usrCli)
 
 	// Trust & Safety integration — report intake (Phase 1) + enforcement callback
 	// (Phase 2) + moderator inbox proxy (Phase 3). S2S Basic auth reuses the OAuth
@@ -264,8 +264,8 @@ func New(cfg *config.Config) *App {
 	// Common handler (direct DB access for simple aggregation endpoints). Built
 	// after imgCli so the Hikari partner API can resolve avatar hashes to
 	// absolute CDN URLs for third-party consumers.
-	commonHdl := common.NewHandler(db, wiki, usrCli, artCli, imgCli)
-	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli, wiki)
+	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, imgCli)
+	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli, galgame)
 
 	// Resolve domain-agnostic content image tokens (/image/<hash>) embedded in
 	// user markdown to image_service CDN URLs at render time — the "fast path"
@@ -294,8 +294,8 @@ func New(cfg *config.Config) *App {
 	chatSvc := chatService.New(chatRepository)
 	chatHdl := chatHandler.New(chatSvc, usrCli)
 
-	// Search module (D11: delegate to Galgame Wiki Service)
-	searchHdl := searchPkg.New(db, wiki)
+	// Search module (D11: delegate to NextMoe catalog service)
+	searchHdl := searchPkg.New(db, galgame)
 
 	// Doc module (migration 016; unifies the former /about + /blog into one
 	// "doc" feature): category-tree + slug docs with admin CRUD; banners and
@@ -324,9 +324,9 @@ func New(cfg *config.Config) *App {
 	app.Use(recover.New())
 	app.Use(middleware.CORS(cfg.CORS))
 
-	// Start cron jobs (wiki-sync registered only when wiki client is available;
+	// Start cron jobs (galgame-sync registered only when galgame client is available;
 	// image ref-ping only when image_service is configured)
-	cronStop := cronJobs.Start(db, wiki, mpClient, imgCli)
+	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli)
 
 	slog.Info("Application initialized")
 

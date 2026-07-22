@@ -7,21 +7,21 @@
 //
 // Two disjoint buckets (partitioned by "has ≥1 visible resource"):
 //
-//   BUCKET 1 — games WITH a status=0 resource. Local truth exists:
-//     resource_update_time = MAX over the game's visible resources of
-//     GREATEST(created, update_time) — i.e. the latest publish OR edit.
-//     (update_time is the canonical edit time; download/like live on `updated`
-//     and must NOT count.) Pure SQL, no Wiki. Recomputed from current rows, so
-//     a deleted newest resource correctly pulls the time DOWN to the latest
-//     remaining one.
+//	BUCKET 1 — games WITH a status=0 resource. Local truth exists:
+//	  resource_update_time = MAX over the game's visible resources of
+//	  GREATEST(created, update_time) — i.e. the latest publish OR edit.
+//	  (update_time is the canonical edit time; download/like live on `updated`
+//	  and must NOT count.) Pure SQL, no Wiki. Recomputed from current rows, so
+//	  a deleted newest resource correctly pulls the time DOWN to the latest
+//	  remaining one.
 //
-//   BUCKET 2 — games with ZERO visible resource (the main "浏览即顶" pollution:
-//     a galgame merely opened on moyu got a lazy patch row). These have NO
-//     local truth — created == resource_update_time == 被点开那一刻, and
-//     release_date is NULL. Pull the real time from Wiki, exactly like the
-//     fixed ensureLocalPatch does for new lazy rows (GalgameBatch →
-//     brief.resource_update_time, RFC3339). Rows Wiki can't resolve are left
-//     untouched.
+//	BUCKET 2 — games with ZERO visible resource (the main "浏览即顶" pollution:
+//	  a galgame merely opened on moyu got a lazy patch row). These have NO
+//	  local truth — created == resource_update_time == 被点开那一刻, and
+//	  release_date is NULL. Pull the real time from Wiki, exactly like the
+//	  fixed ensureLocalPatch does for new lazy rows (GalgameBatch →
+//	  brief.resource_update_time, RFC3339). Rows Wiki can't resolve are left
+//	  untouched.
 //
 // Writes touch ONLY resource_update_time (raw UPDATE / UpdateColumn) — never
 // `updated` — so the backfill doesn't make every row look freshly updated.
@@ -92,7 +92,7 @@ func main() {
 	cfg := config.Load()
 	logger.Init(cfg.Server.Mode)
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
+	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 	ctx := context.Background()
 
 	// ── BUCKET 1: games WITH ≥1 visible resource (pure SQL) ──────────────
@@ -140,7 +140,7 @@ func main() {
 
 			// content_limit="" → include NSFW; resource_update_time is neutral
 			// metadata, same call ensureLocalPatch makes.
-			briefs, err := wiki.GalgameBatch(ctx, chunk, "")
+			briefs, err := galgame.GalgameBatch(ctx, chunk, "")
 			if err != nil {
 				failed.Add(int64(len(chunk)))
 				slog.Warn("GalgameBatch 失败", "ids", len(chunk), "error", err)

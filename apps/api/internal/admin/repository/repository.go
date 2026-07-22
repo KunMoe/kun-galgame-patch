@@ -235,7 +235,7 @@ func (r *AdminRepository) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, err
 // orphanCond is the cheap LOCAL pre-filter for "candidate" orphans: a patch
 // whose vndb_id is not a well-formed VNDB id (`vN`) — `pending-N` placeholders
 // and malformed ids (release `rN`, stray slashes). It is ONLY a candidate
-// filter: moyu enriches by id (patch.id == galgame_id, via wiki.GalgameBatch),
+// filter: moyu enriches by id (patch.id == galgame_id, via galgame.GalgameBatch),
 // so a vndb-less game whose galgame exists by id renders fine and is NOT a real
 // orphan. The handler verifies each candidate against Wiki BY ID and passes the
 // confirmed-existing ones back here as excludeIDs.

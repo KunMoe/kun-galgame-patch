@@ -1,6 +1,6 @@
 package cron
 
-// Wiki messages → local notifications + moemoepoint sync.
+// Galgame messages → local notifications + moemoepoint sync.
 //
 // Pulls /galgame/messages/feed every ~10 minutes (decision per
 // docs/galgame_wiki/00-handbook-for-downstream.md §7) and applies the four
@@ -11,15 +11,15 @@ package cron
 //   banned     → write local "banned" notification (no moemoepoint reversal)
 //   unbanned   → write local "unbanned" notification
 //
-// Idempotency: each Wiki message_id is inserted into wiki_message_processed
+// Idempotency: each galgame message_id is inserted into wiki_message_processed
 // inside the same tx as its side effects. A re-run sees the row already
 // present and skips, so a crash mid-batch can safely be retried.
 //
 // Per-MESSAGE transaction model (changed 2026-05-30, audit F025):
 //   - One tx wraps a SINGLE message's idempotency insert + side effects +
 //     cron_state cursor advance. They still commit atomically (exactly-once
-//     preserved), but the synchronous OAuth award HTTP inside applyWikiMessage
-//     is now bounded to ONE call per open tx instead of up to `wikiBatchLimit`
+//     preserved), but the synchronous OAuth award HTTP inside applyGalgameMessage
+//     is now bounded to ONE call per open tx instead of up to `galgameBatchLimit`
 //     (1000). A slow/erroring OAuth can no longer pin one DB connection or hold
 //     row locks across a whole feed page, and a poison message stops the run
 //     without re-rolling-back (and re-awarding) the messages committed before
@@ -42,18 +42,20 @@ import (
 )
 
 const (
-	wikiSyncCronName = "wiki_msg_sync"
-	wikiSyncSchedule = "*/10 * * * *" // every 10 minutes
-	wikiBatchLimit   = 1000           // wiki caps at 5000; 1000 keeps a single tx small
+	// galgameSyncCronName is the cron_state.name cursor key. The literal is a
+	// persisted identity (a cursor row in cron_state) — never rename the value.
+	galgameSyncCronName = "wiki_msg_sync"
+	galgameSyncSchedule = "*/10 * * * *" // every 10 minutes
+	galgameBatchLimit   = 1000           // upstream caps at 5000; 1000 keeps a single tx small
 )
 
-// RunWikiMessageSync is exported so it can be called manually (e.g. for tests
-// or one-off backfills). The cron path is the StartWikiSync wrapper below.
+// RunGalgameMessageSync is exported so it can be called manually (e.g. for tests
+// or one-off backfills). The cron path is the wrapper registered in Start.
 //
 // Returns the number of messages applied + the new cursor value.
-func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Client, mp *moemoepoint.Client) (int, int64, error) {
-	if wiki == nil || db == nil {
-		return 0, 0, fmt.Errorf("wiki sync: missing wiki client or db")
+func RunGalgameMessageSync(ctx context.Context, db *gorm.DB, galgame *galgameClient.Client, mp *moemoepoint.Client) (int, int64, error) {
+	if galgame == nil || db == nil {
+		return 0, 0, fmt.Errorf("galgame sync: missing galgame client or db")
 	}
 
 	var sinceID int64
@@ -61,11 +63,11 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 	if err := db.Exec(`
 		INSERT INTO cron_state(name, last_id) VALUES (?, 0)
 		ON CONFLICT(name) DO NOTHING
-	`, wikiSyncCronName).Error; err != nil {
+	`, galgameSyncCronName).Error; err != nil {
 		return 0, 0, fmt.Errorf("seed cron_state: %w", err)
 	}
 	if err := db.Raw(
-		`SELECT last_id FROM cron_state WHERE name = ?`, wikiSyncCronName,
+		`SELECT last_id FROM cron_state WHERE name = ?`, galgameSyncCronName,
 	).Scan(&sinceID).Error; err != nil {
 		return 0, 0, fmt.Errorf("read cron cursor: %w", err)
 	}
@@ -73,7 +75,7 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 	applied := 0
 	cursor := sinceID
 	for {
-		feed, err := wiki.GetWikiMessageFeed(ctx, cursor, wikiBatchLimit)
+		feed, err := galgame.GetGalgameMessageFeed(ctx, cursor, galgameBatchLimit)
 		if err != nil {
 			return applied, cursor, fmt.Errorf("fetch feed: %w", err)
 		}
@@ -91,7 +93,7 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 			// cursor advance commit together (exactly-once), but the OAuth award
 			// HTTP is bounded to a single in-tx call. See the file header (F025).
 			txErr := db.Transaction(func(tx *gorm.DB) error {
-				if err := applyWikiMessage(ctx, tx, mp, m); err != nil {
+				if err := applyGalgameMessage(ctx, tx, mp, m); err != nil {
 					return err
 				}
 				return tx.Exec(`
@@ -99,7 +101,7 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 					VALUES (?, ?, NOW())
 					ON CONFLICT(name) DO UPDATE
 					SET last_id = EXCLUDED.last_id, updated_at = EXCLUDED.updated_at
-				`, wikiSyncCronName, next).Error
+				`, galgameSyncCronName, next).Error
 			})
 			if txErr != nil {
 				return applied, cursor, txErr
@@ -115,13 +117,14 @@ func RunWikiMessageSync(ctx context.Context, db *gorm.DB, wiki *galgameClient.Cl
 	return applied, cursor, nil
 }
 
-// applyWikiMessage handles a single Wiki message inside an open tx. It is the
-// idempotency boundary: a non-zero RowsAffected on the INSERT means this is
+// applyGalgameMessage handles a single galgame message inside an open tx. It is
+// the idempotency boundary: a non-zero RowsAffected on the INSERT means this is
 // the first time we're seeing this message — only then do we run the side
 // effects. Repeats short-circuit.
-func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, m *galgameClient.WikiMessage) error {
+func applyGalgameMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, m *galgameClient.GalgameMessage) error {
 	// Idempotency gate. ON CONFLICT DO NOTHING; if RowsAffected==0 we already
 	// applied this message in a prior run (or a prior tx in this batch).
+	// wiki_message_processed is a persisted table name — do not rename.
 	res := tx.Exec(`
 		INSERT INTO wiki_message_processed(message_id) VALUES (?)
 		ON CONFLICT(message_id) DO NOTHING
@@ -146,7 +149,7 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 	if m.TargetUserID == nil {
 		switch m.Type {
 		case "approved", "declined", "banned", "unbanned":
-			slog.Warn("wiki actionable message has nil target_user_id; consumed with no effect",
+			slog.Warn("galgame actionable message has nil target_user_id; consumed with no effect",
 				"message_id", m.ID, "type", m.Type)
 		}
 		return nil
@@ -154,11 +157,11 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 
 	// Ensure the target has a LOCAL user anchor before any user-FK'd write
 	// below (the user_message notification insert, and the approved-path
-	// moemoepoint cache UPDATE). A wiki message can target someone who exists
-	// in OAuth (they submitted to the wiki) but has NEVER logged into moyu, so
-	// no local `user` row exists yet → user_message_recipient_id_fkey (23503)
-	// rolls the whole per-message tx back, the feed cursor never advances, and
-	// the sync wedges permanently — starving every later message of its
+	// moemoepoint cache UPDATE). A galgame message can target someone who exists
+	// in OAuth (they submitted to the galgame service) but has NEVER logged into
+	// moyu, so no local `user` row exists yet → user_message_recipient_id_fkey
+	// (23503) rolls the whole per-message tx back, the feed cursor never advances,
+	// and the sync wedges permanently — starving every later message of its
 	// notification + moemoepoint award (observed in prod: ~90 failures/72h,
 	// stuck at cursor 98). Provision a stub {ID} row (all other columns default;
 	// enriched on the user's next moyu login) — the same FK-anchor pattern patch
@@ -182,9 +185,11 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 			// that would desync from the unified balance.
 			if mp != nil {
 				res, err := mp.Adjust(ctx, *m.TargetUserID, moemoepoint.AdjustRequest{
-					Delta:          3,
-					Reason:         "content_approved",
-					Ref:            fmt.Sprintf("galgame:%d", m.Galgame.ID),
+					Delta:  3,
+					Reason: "content_approved",
+					Ref:    fmt.Sprintf("galgame:%d", m.Galgame.ID),
+					// Persisted idempotency key across the OAuth boundary — never
+					// change the format (a new key would re-award processed messages).
 					IdempotencyKey: fmt.Sprintf("moyu:wiki_approved:%d", m.ID),
 				})
 				if err != nil {
@@ -197,7 +202,7 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 					return fmt.Errorf("sync moemoepoint cache: %w", err)
 				}
 			}
-			if err := writeWikiNotification(tx, m, displayGalgameName(m.Galgame),
+			if err := writeGalgameNotification(tx, m, displayGalgameName(m.Galgame),
 				"您提交的《%s》已通过审核，奖励 +3 萌萌点"); err != nil {
 				return err
 			}
@@ -210,7 +215,7 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 			if reason != "" {
 				text += "：" + reason
 			}
-			if err := writeWikiNotificationRaw(tx, m, text); err != nil {
+			if err := writeGalgameNotificationRaw(tx, m, text); err != nil {
 				return err
 			}
 		}
@@ -222,13 +227,13 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 			if reason != "" {
 				text += "：" + reason
 			}
-			if err := writeWikiNotificationRaw(tx, m, text); err != nil {
+			if err := writeGalgameNotificationRaw(tx, m, text); err != nil {
 				return err
 			}
 		}
 	case "unbanned":
 		if m.TargetUserID != nil {
-			if err := writeWikiNotification(tx, m, displayGalgameName(m.Galgame),
+			if err := writeGalgameNotification(tx, m, displayGalgameName(m.Galgame),
 				"您的作品《%s》已解除封禁"); err != nil {
 				return err
 			}
@@ -237,13 +242,13 @@ func applyWikiMessage(ctx context.Context, tx *gorm.DB, mp *moemoepoint.Client, 
 	return nil
 }
 
-// writeWikiNotification inserts a local user_message row pointing at the
+// writeGalgameNotification inserts a local user_message row pointing at the
 // patch page of the galgame so the user can jump in one click.
-func writeWikiNotification(tx *gorm.DB, m *galgameClient.WikiMessage, name, format string) error {
-	return writeWikiNotificationRaw(tx, m, fmt.Sprintf(format, name))
+func writeGalgameNotification(tx *gorm.DB, m *galgameClient.GalgameMessage, name, format string) error {
+	return writeGalgameNotificationRaw(tx, m, fmt.Sprintf(format, name))
 }
 
-func writeWikiNotificationRaw(tx *gorm.DB, m *galgameClient.WikiMessage, text string) error {
+func writeGalgameNotificationRaw(tx *gorm.DB, m *galgameClient.GalgameMessage, text string) error {
 	// Use GORM Create so the model's autoCreateTime / autoUpdateTime tags
 	// populate `created` / `updated`. Raw tx.Exec bypasses those hooks and
 	// the DB rejects the insert (both columns are NOT NULL without DEFAULT).
@@ -258,7 +263,7 @@ func writeWikiNotificationRaw(tx *gorm.DB, m *galgameClient.WikiMessage, text st
 	}).Error
 }
 
-// payloadString pulls a scalar string field out of the Wiki message payload
+// payloadString pulls a scalar string field out of the galgame message payload
 // JSON. Returns "" when missing or wrong-typed (no error — payload fields are
 // best-effort enrichment, not contract).
 func payloadString(raw json.RawMessage, key string) string {
@@ -278,7 +283,7 @@ func payloadString(raw json.RawMessage, key string) string {
 // displayGalgameName picks the first non-empty translation for the local
 // notification body. Falls back to the integer id so the message never reads
 // "您提交的《》已通过审核".
-func displayGalgameName(g *galgameClient.WikiMessageGalgame) string {
+func displayGalgameName(g *galgameClient.MessageGalgame) string {
 	if g == nil {
 		return ""
 	}

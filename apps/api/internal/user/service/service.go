@@ -22,15 +22,15 @@ import (
 )
 
 type UserService struct {
-	repo  *repository.UserRepository
-	users *userclient.Client
-	wiki  *galgameClient.Client
-	db    *gorm.DB
-	mp    *moemoepoint.Awarder
+	repo    *repository.UserRepository
+	users   *userclient.Client
+	galgame *galgameClient.Client
+	db      *gorm.DB
+	mp      *moemoepoint.Awarder
 }
 
-func New(repo *repository.UserRepository, users *userclient.Client, wiki *galgameClient.Client, db *gorm.DB, mp *moemoepoint.Awarder) *UserService {
-	return &UserService{repo: repo, users: users, wiki: wiki, db: db, mp: mp}
+func New(repo *repository.UserRepository, users *userclient.Client, galgame *galgameClient.Client, db *gorm.DB, mp *moemoepoint.Awarder) *UserService {
+	return &UserService{repo: repo, users: users, galgame: galgame, db: db, mp: mp}
 }
 
 // patchSummaryFinder adapts *gorm.DB to enricher.patchSummaryDB so we can
@@ -68,7 +68,7 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patch
 		ids = append(ids, id)
 	}
 
-	summaries := enricher.BuildPatchSummaryMap(ctx, s.wiki, patchSummaryFinder{db: s.db}, ids)
+	summaries := enricher.BuildPatchSummaryMap(ctx, s.galgame, patchSummaryFinder{db: s.db}, ids)
 	for i := range comments {
 		if sum, ok := summaries[comments[i].GalgameID]; ok {
 			cp := sum

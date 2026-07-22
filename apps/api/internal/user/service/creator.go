@@ -32,7 +32,7 @@ type CreatorEligibility struct {
 }
 
 func (s *UserService) creatorEligibility(ctx context.Context, userID int) (*CreatorEligibility, *errors.AppError) {
-	stats, err := s.wiki.GetUserStats(ctx, userID)
+	stats, err := s.galgame.GetUserStats(ctx, userID)
 	if err != nil {
 		return nil, errors.ErrInternal("获取贡献统计失败")
 	}

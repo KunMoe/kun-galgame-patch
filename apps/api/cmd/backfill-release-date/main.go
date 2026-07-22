@@ -58,7 +58,7 @@ func main() {
 	logger.Init(cfg.Server.Mode)
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
+	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 	ctx := context.Background()
 
 	var ids []int
@@ -91,7 +91,7 @@ func main() {
 
 			// GetGalgame returns release_date; batch does not. content_limit=""
 			// so NSFW games are included.
-			env, err := wiki.GetGalgame(ctx, id, "")
+			env, err := galgame.GetGalgame(ctx, id, "")
 			if err != nil || env == nil {
 				failed.Add(1)
 				return
@@ -100,7 +100,7 @@ func main() {
 				noDate.Add(1)
 				return
 			}
-			d := utils.ParseWikiReleaseDate(*env.Galgame.ReleaseDate)
+			d := utils.ParseGalgameReleaseDate(*env.Galgame.ReleaseDate)
 			if d == nil {
 				noDate.Add(1)
 				return

@@ -25,11 +25,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// ErrWikiGalgameMissing is returned by CreatePatch when the supplied
-// vndb_id has no corresponding row on the Galgame Wiki yet. The handler
+// ErrGalgameMissing is returned by CreatePatch when the supplied
+// vndb_id has no corresponding row on the NextMoe catalog yet. The handler
 // translates this into the typed AppError so the frontend can pick it up
 // via code = 44001 and render a "前往 Wiki 创建" CTA.
-var ErrWikiGalgameMissing = errors.New("wiki galgame missing for vndb_id")
+var ErrGalgameMissing = errors.New("galgame missing for vndb_id")
 
 // AuditLogger records privileged moderation actions to the admin audit log.
 // It's defined HERE — in the canonical owner of resource/comment deletes — so
@@ -47,58 +47,58 @@ type PatchService struct {
 	setting *settingService.Service
 	db      *gorm.DB
 	art     *artifactclient.Client
-	wiki    *galgameClient.Client
+	galgame *galgameClient.Client
 	users   *userclient.Client
 	mp      *moemoepoint.Awarder
 	audit   AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, wiki *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, art: art, wiki: wiki, users: users, mp: mp, audit: audit}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, galgame *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, art: art, galgame: galgame, users: users, mp: mp, audit: audit}
 }
 
 // ===== Patch =====
 
 // CreatePatch handles POST /api/patch (D12, 2026-04-21).
 //
-// Strict policy: vndb_id MUST already exist on the Galgame Wiki. We do not
+// Strict policy: vndb_id MUST already exist on the NextMoe catalog. We do not
 // POST /galgame on behalf of the user -- galgame metadata curation is
-// pushed to the Wiki frontend (which has the search-and-pick UI for
+// pushed to the galgame frontend (which has the search-and-pick UI for
 // tag/official/engine that we don't want to re-implement here).
 //
-// When Wiki returns "not found" we surface ErrWikiGalgameMissing so the
+// When galgame returns "not found" we surface ErrGalgameMissing so the
 // handler can map to AppError 44001 and the frontend renders a "前往 Wiki
 // 创建" CTA with the vndb_id pre-filled.
 //
 // Steps:
-//  1. Wiki /galgame/check?vndb_id=... -> exists + galgame_id (or 44001)
+//  1. galgame /galgame/check?vndb_id=... -> exists + galgame_id (or 44001)
 //  2. Local dedup on vndb_id
 //  3. One transaction: insert patch with id=galgame_id, +3 moemoepoint,
 //     register contributor.
 func (s *PatchService) CreatePatch(ctx context.Context, userID int, vndbID string) (int, error) {
-	// Legacy vndb_id path: map vndb_id → galgame_id via Wiki, then register by id.
+	// Legacy vndb_id path: map vndb_id → galgame_id via galgame, then register by id.
 	// The FE now prefers CreatePatchByGalgameID (it also handles 原创 works that
 	// have no vndb_id, which this path cannot).
-	exists, galgameID, err := s.wiki.CheckGalgameByVndbID(ctx, vndbID)
+	exists, galgameID, err := s.galgame.CheckGalgameByVndbID(ctx, vndbID)
 	if err != nil {
-		return 0, fmt.Errorf("调用 Wiki 校验 vndb_id 失败: %w", err)
+		return 0, fmt.Errorf("调用 galgame 校验 vndb_id 失败: %w", err)
 	}
 	if !exists {
 		// Sentinel error so the handler can map this to 44001 (typed AppError).
-		return 0, ErrWikiGalgameMissing
+		return 0, ErrGalgameMissing
 	}
 	return s.createPatchRow(ctx, userID, galgameID, vndbID)
 }
 
-// CreatePatchByGalgameID registers a local patch carrier directly by Wiki
+// CreatePatchByGalgameID registers a local patch carrier directly by galgame
 // galgame_id — the path the publish wizard ("选择此条目") uses. Unlike the vndb_id
 // path it works for 原创/同人 works with NO vndb_id (their row stores a
 // deterministic `wiki-<id>` placeholder, the same one ensureLocalPatch uses).
 // Verifies the galgame is publicly published (anonymous batch → status=0 only).
 func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galgameID int) (int, error) {
-	briefs, err := s.wiki.GalgameBatch(ctx, []int{galgameID}, "")
+	briefs, err := s.galgame.GalgameBatch(ctx, []int{galgameID}, "")
 	if err != nil {
-		return 0, fmt.Errorf("调用 Wiki 校验失败: %w", err)
+		return 0, fmt.Errorf("调用 galgame 校验失败: %w", err)
 	}
 	var brief *galgameClient.GalgameBrief
 	for i := range briefs {
@@ -109,22 +109,25 @@ func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galga
 	}
 	if brief == nil {
 		// Not publicly visible (doesn't exist / banned / someone's private draft).
-		return 0, ErrWikiGalgameMissing
+		return 0, ErrGalgameMissing
 	}
 	vndb := brief.VndbID
 	if vndb == "" {
+		// Persisted synthetic vndb_id for 原创/同人 works with no VNDB entry. The
+		// "wiki-%d" prefix is a stored data value (patch.vndb_id) — DO NOT rename
+		// it (existing prod rows use it; changing the format splits identity).
 		vndb = fmt.Sprintf("wiki-%d", galgameID)
 	}
 	return s.createPatchRow(ctx, userID, galgameID, vndb)
 }
 
 // createPatchRow is the shared register-a-carrier body for both entrypoints:
-// idempotent dedup by id (= galgame_id), mirror the Wiki release_date, then one
+// idempotent dedup by id (= galgame_id), mirror the galgame release_date, then one
 // transaction (insert patch + register the publisher as contributor + bump
 // contribute_count) and the post-commit +3 moemoepoint.
 func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int, vndbID string) (int, error) {
 	// "选择此条目" on an existing row. Two cases:
-	//   - is_stub row (a prior favorite/comment lazily recorded it with the wiki
+	//   - is_stub row (a prior favorite/comment lazily recorded it with the galgame
 	//     creator as placeholder owner): this IS the first real publish → ADOPT it
 	//     (transfer ownership, clear the flag, register the contributor, grant +3).
 	//   - real registration: idempotent return — re-selecting neither
@@ -136,15 +139,15 @@ func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int
 		return existing.ID, nil
 	}
 
-	// Mirror Wiki's release_date locally so /api/galgame can sort/filter by
-	// 发售日期 (best-effort; a wiki blip just leaves it NULL). MUST use GetGalgame
+	// Mirror galgame's release_date locally so /api/galgame can sort/filter by
+	// 发售日期 (best-effort; a galgame blip just leaves it NULL). MUST use GetGalgame
 	// — GalgameBatch does not include release_date.
 	var releaseDate *time.Time
-	if env, gErr := s.wiki.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
-		releaseDate = utils.ParseWikiReleaseDate(*env.Galgame.ReleaseDate)
+	if env, gErr := s.galgame.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
+		releaseDate = utils.ParseGalgameReleaseDate(*env.Galgame.ReleaseDate)
 	}
 
-	// D13: patch.id IS the Wiki galgame_id (assigned explicitly). A concurrent
+	// D13: patch.id IS the galgame_id (assigned explicitly). A concurrent
 	// first-publish that passed the dedup above hits the pkey on id as a safety net.
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
@@ -180,7 +183,7 @@ func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int
 }
 
 // adoptStub upgrades an interaction-stub (a favorite/comment lazily recorded the
-// galgame with the wiki creator as placeholder owner) into a real registration
+// galgame with the galgame creator as placeholder owner) into a real registration
 // owned by the publisher: transfer user_id, clear is_stub, register the
 // contributor, grant +3. The `is_stub = true` guard on the UPDATE makes
 // concurrent first-publishes race-safe — only the winner flips the flag and is
@@ -228,19 +231,19 @@ func (s *PatchService) adoptStub(ctx context.Context, userID, galgameID int) (in
 }
 
 // GetPatch returns the local patch row, or gorm.ErrRecordNotFound when moyu has
-// none. It does NOT materialize: a galgame that only exists on the wiki ("本站
+// none. It does NOT materialize: a galgame that only exists on the galgame ("本站
 // 尚未收录") must NOT silently get a stub row on mere view. The row is created only
 // on a real publish/claim (CreatePatch / RegisterClaimedGalgame), per
 // docs/galgame_wiki/00-handbook-for-downstream.md §7.1.4a ("INSERT on select").
-// The handler turns ErrRecordNotFound into a read-only wiki-only card.
+// The handler turns ErrRecordNotFound into a read-only galgame-only card.
 func (s *PatchService) GetPatch(ctx context.Context, id int) (*model.Patch, error) {
 	return s.repo.GetPatchDetail(id)
 }
 
 // GetPatchesByIDs returns existing patches for the given ids in the caller-
 // supplied order — no lazy materialization. Used by handlers that enrich a
-// list of Wiki galgame ids with moyu-side stats; ids that have no local row
-// are simply absent from the result so the caller can degrade to a Wiki-
+// list of galgame ids with moyu-side stats; ids that have no local row
+// are simply absent from the result so the caller can degrade to a galgame-
 // only card (banner + name + content_limit, zero stats) for those entries.
 func (s *PatchService) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
 	return s.repo.GetPatchesByIDs(ids)
@@ -248,7 +251,7 @@ func (s *PatchService) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
 
 // GetPatchDetail returns the local patch row, or gorm.ErrRecordNotFound when moyu
 // has none. Like GetPatch it does NOT materialize on view (see GetPatch) — the
-// handler renders wiki-only metadata for a not-yet-收录 galgame. Materialization
+// handler renders galgame-only metadata for a not-yet-收录 galgame. Materialization
 // happens only on a real publish/claim per handbook §7.1.4a ("INSERT on select").
 func (s *PatchService) GetPatchDetail(ctx context.Context, id int) (*model.Patch, error) {
 	return s.repo.GetPatchDetail(id)
@@ -256,15 +259,15 @@ func (s *PatchService) GetPatchDetail(ctx context.Context, id int) (*model.Patch
 
 // ensureLocalPatch reads the local patch row, lazily INSERTing a zero-stat stub
 // when it's missing. It is called from the INTERACTION paths (ToggleFavorite /
-// CreateComment / CreateResource) to record a wiki-catalogue galgame the moment a
+// CreateComment / CreateResource) to record a galgame-catalogue galgame the moment a
 // user first interacts with it — matching kungal's EnsureLocalStub-on-interaction
 // model. It is deliberately NOT called on view: opening a galgame must not
 // silently 收录 it (GetPatch/GetPatchDetail read directly and the handler renders
-// a wiki-only card instead).
+// a galgame-only card instead).
 //
 // Returns gorm.ErrRecordNotFound when the galgame is not a publicly-published
-// wiki entry, so the caller can reject the interaction. The stub is a PURE STATS
-// row: user_id = the wiki entry creator (placeholder owner), no +3 moemoepoint,
+// galgame entry, so the caller can reject the interaction. The stub is a PURE STATS
+// row: user_id = the galgame entry creator (placeholder owner), no +3 moemoepoint,
 // no contributor — the publish reward is granted only on a real resource publish.
 func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Patch, error) {
 	patch, err := s.repo.GetPatchDetail(id)
@@ -275,11 +278,11 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 		return nil, err
 	}
 
-	// No local row. Ask Wiki (anonymously → status=0 only) whether this is a
+	// No local row. Ask galgame (anonymously → status=0 only) whether this is a
 	// publicly published galgame and grab its vndb_id + creator.
-	briefs, bErr := s.wiki.GalgameBatch(ctx, []int{id}, "")
+	briefs, bErr := s.galgame.GalgameBatch(ctx, []int{id}, "")
 	if bErr != nil {
-		return nil, err // surface as not-found; Wiki transient failure
+		return nil, err // surface as not-found; galgame transient failure
 	}
 	var brief *galgameClient.GalgameBrief
 	for i := range briefs {
@@ -296,20 +299,21 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 	if vndb == "" {
 		// vndb_id is uniqueIndex/NOT NULL; original works have none. id is
 		// already unique, so a deterministic placeholder keeps the index sane.
+		// "wiki-%d" is a persisted data value — DO NOT rename (see CreatePatchByGalgameID).
 		vndb = fmt.Sprintf("wiki-%d", id)
 	}
 
-	// Pure stats STUB row (is_stub=true): user_id is the wiki entry creator as a
+	// Pure stats STUB row (is_stub=true): user_id is the galgame entry creator as a
 	// placeholder owner, to be adopted by the first real publish (createPatchRow).
 	// ON CONFLICT DO NOTHING makes concurrent first-interactions idempotent; we
 	// always re-read the canonical row afterwards.
 	row := &model.Patch{ID: id, VndbID: vndb, UserID: brief.UserID, IsStub: true}
 	// Don't let a freshly-recorded row (no resources yet) jump to the top of the
-	// "最近更新" sort — inherit the galgame's real resource_update_time from Wiki.
+	// "最近更新" sort — inherit the galgame's real resource_update_time from galgame.
 	if t, pErr := time.Parse(time.RFC3339, brief.ResourceUpdateTime); pErr == nil {
 		row.ResourceUpdateTime = t
 	}
-	// The galgame's owner (Wiki user id) may never have logged into moyu, so there
+	// The galgame's owner (galgame user id) may never have logged into moyu, so there
 	// may be no local user anchor row — without one this insert fails
 	// patch_user_id_fkey (23503). Provision a stub anchor first (id only; profile
 	// fields live on OAuth), the same shape AuthService.FindOrCreateUserByID writes.
@@ -329,12 +333,12 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id int) (*model.Pat
 }
 
 // RegisterClaimedGalgame creates the local patch row for a galgame the user
-// just claimed on Wiki (status 2 → 0), awarding +3 moemoepoint and
+// just claimed on galgame (status 2 → 0), awarding +3 moemoepoint and
 // registering the contributor — all in one transaction.
 //
 // Per docs/galgame_wiki/00-handbook-for-downstream.md §9 the local
 // side-effects for "Claim" are exactly: INSERT patch(zeros) + moemoepoint+=3.
-// We deliberately do NOT call Wiki /galgame/check here (the caller just
+// We deliberately do NOT call galgame /galgame/check here (the caller just
 // claimed it, so it exists and is published).
 //
 // Idempotent: if the patch row already exists (the galgame was interacted
@@ -384,13 +388,13 @@ func (s *PatchService) RegisterClaimedGalgame(userID, galgameID int, vndbID stri
 }
 
 // DB exposes the underlying *gorm.DB so a few thin "no-business-logic" handler
-// endpoints (the wiki messages read-state shims) can do single-table reads /
+// endpoints (the galgame messages read-state shims) can do single-table reads /
 // upserts without round-tripping through a dedicated repo + service layer.
 // Anything with real business logic should still live in a service method.
 func (s *PatchService) DB() *gorm.DB { return s.db }
 
 // TouchResourceUpdateTime bumps a galgame's patch.resource_update_time to now —
-// the moyu "最近更新" sort key. Called after a successful Wiki galgame-info edit
+// the moyu "最近更新" sort key. Called after a successful galgame-info edit
 // so editing metadata also surfaces the galgame (publish/claim already stamp it
 // on their own paths). No-op if the galgame has no local patch row yet — it'll
 // get a correct time when the row is first materialized.
@@ -399,13 +403,13 @@ func (s *PatchService) TouchResourceUpdateTime(gid int) {
 		Update("resource_update_time", time.Now())
 }
 
-// UpdatePatch: after D13, patch.id IS the Wiki galgame_id, so changing vndb_id
+// UpdatePatch: after D13, patch.id IS the galgame_id, so changing vndb_id
 // to one that resolves to a different galgame_id would require remapping
 // patch.id (and every FK in child tables) — that is the job of the
 // cmd/remap-patch-ids migration script, not a per-request handler.
 //
 // Here we accept rebinding only when the new vndb_id resolves to the same
-// galgame_id we already have (i.e. Wiki updated the metadata for an existing
+// galgame_id we already have (i.e. galgame updated the metadata for an existing
 // galgame). Anything else is rejected with a clear hint.
 func (s *PatchService) UpdatePatch(ctx context.Context, id, userID int, isPrivileged bool, vndbID string) error {
 	existing, err := s.repo.GetPatchByID(id)
@@ -416,9 +420,9 @@ func (s *PatchService) UpdatePatch(ctx context.Context, id, userID int, isPrivil
 		return fmt.Errorf("no permission to modify this patch")
 	}
 
-	exists, galgameID, err := s.wiki.CheckGalgameByVndbID(ctx, vndbID)
+	exists, galgameID, err := s.galgame.CheckGalgameByVndbID(ctx, vndbID)
 	if err != nil {
-		return fmt.Errorf("调用 Wiki 校验 vndb_id 失败: %w", err)
+		return fmt.Errorf("调用 galgame 校验 vndb_id 失败: %w", err)
 	}
 	if !exists {
 		return fmt.Errorf("Galgame Wiki 中不存在 vndb_id=%s 的游戏", vndbID)
@@ -502,7 +506,7 @@ func (s *PatchService) IncrementView(id int) error {
 // caller's content_limit. The single-row RANDOM() path can land on a NSFW
 // patch, which is fine for cl == "" but a SEO leak the moment the random
 // landing page renders. With a non-empty cl we sample a batch of candidates,
-// ask wiki to filter them, and pick from the survivors. Returns gorm's
+// ask galgame to filter them, and pick from the survivors. Returns gorm's
 // ErrRecordNotFound (mapped to ErrInternal by the handler) when no candidate
 // passes the filter — extremely rare in practice (would need the entire
 // 60-row random sample to be NSFW).
@@ -515,15 +519,15 @@ func (s *PatchService) GetRandomPatchID(ctx context.Context, contentLimit string
 	if err != nil || len(ids) == 0 {
 		return 0, err
 	}
-	briefs, bErr := s.wiki.GalgameBatch(ctx, ids, contentLimit)
+	briefs, bErr := s.galgame.GalgameBatch(ctx, ids, contentLimit)
 	if bErr != nil {
-		// Fail closed so we don't ship a NSFW landing page on wiki blip.
+		// Fail closed so we don't ship a NSFW landing page on galgame blip.
 		return 0, bErr
 	}
 	if len(briefs) == 0 {
 		return 0, gorm.ErrRecordNotFound
 	}
-	// Wiki returns matching briefs but in arbitrary order; pick a uniform
+	// galgame returns matching briefs but in arbitrary order; pick a uniform
 	// random element of the filtered set. Don't reuse ids' order — that
 	// would bias toward the original RANDOM() pick when only one survives.
 	return briefs[rand.Intn(len(briefs))].ID, nil
@@ -607,7 +611,7 @@ func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
 func (s *PatchService) CreateComment(patchID, userID int, content string, parentID *int) (*model.PatchComment, error) {
 	// Commenting on a not-yet-收录 galgame lazily records it (the patch_comment FK
 	// to patch(id) would 23503 otherwise). No-op when the row exists; errors when
-	// the galgame isn't a public wiki entry.
+	// the galgame isn't a public galgame entry.
 	if _, err := s.ensureLocalPatch(context.Background(), patchID); err != nil {
 		return nil, fmt.Errorf("patch not found")
 	}
@@ -1191,7 +1195,7 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 	// not the owner). Without this the uploader's resource + its +3 just vanish
 	// with no explanation — the exact "资源没了、消息里也没有删除通知" user report.
 	// Self-deletes (owner == caller) need no notice. A "system" message renders
-	// in the notification center (same type the wiki-sync uses) and links to the
+	// in the notification center (same type the galgame-sync uses) and links to the
 	// galgame's resource tab for context. Direct insert, not createDedupMessage:
 	// each deletion is a distinct event (dedup keys on type+sender+recipient+link
 	// and every delete shares the same /patch/:id/resource link, so it would
@@ -1202,7 +1206,7 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 	// delete. The owner usually exists (they uploaded while logged in), but may
 	// SINCE have been deleted (admin user-removal) → recipient_id FK fails; we
 	// then just skip. We deliberately do NOT anchor/recreate the user here to
-	// force the notice through (that's right for the wiki-sync cron, whose
+	// force the notice through (that's right for the galgame-sync cron, whose
 	// targets are legit never-logged-in submitters — but here a missing owner is
 	// a *deleted* account and must not be resurrected).
 	if resource.UserID != userID {
@@ -1288,7 +1292,7 @@ func (s *PatchService) IncrementResourceDownload(resourceID int) error {
 }
 
 // GetResourceDownloadInfo backs the lightweight GET /patch/resource/:id/link.
-// The /resource/:id detail endpoint additionally Wiki-enriches the owning
+// The /resource/:id detail endpoint additionally galgame-enriches the owning
 // patch and fetches 5 recommendations, which is wasteful when the caller
 // only wants the download links. This returns the bare resource row.
 func (s *PatchService) GetResourceDownloadInfo(resourceID int) (*model.PatchResource, error) {
@@ -1393,7 +1397,7 @@ func (s *PatchService) IsResourceFavorited(userID, resourceID int) bool {
 func (s *PatchService) ToggleFavorite(patchID, userID int) (bool, error) {
 	// Favoriting a not-yet-收录 galgame lazily records it (creates the local row),
 	// matching kungal's interaction-driven ingest. No-op when the row already
-	// exists; ErrRecordNotFound when the galgame isn't a public wiki entry.
+	// exists; ErrRecordNotFound when the galgame isn't a public galgame entry.
 	patch, err := s.ensureLocalPatch(context.Background(), patchID)
 	if err != nil {
 		return false, fmt.Errorf("patch not found")
@@ -1606,7 +1610,7 @@ func (s *PatchService) CreateLikeCommentNotification(senderID int, comment *mode
 	}
 }
 
-// galgameDisplayName picks a human-readable name from a wiki brief, preferring
+// galgameDisplayName picks a human-readable name from a galgame brief, preferring
 // zh-CN, then ja-JP, en-US, zh-TW, falling back to the VNDB id.
 func galgameDisplayName(b *galgameClient.GalgameBrief) string {
 	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw} {
@@ -1618,10 +1622,10 @@ func galgameDisplayName(b *galgameClient.GalgameBrief) string {
 }
 
 // resolveGalgameName fetches a patch's galgame display name. patch.id IS the
-// wiki galgame id (D13: patch.id == galgame_id), so a single batch lookup suffices.
+// galgame id (D13: patch.id == galgame_id), so a single batch lookup suffices.
 // Best-effort: "" on any miss/error so the caller falls back to a name-less line.
 func (s *PatchService) resolveGalgameName(patchID int) string {
-	briefs, err := s.wiki.GalgameBatch(context.Background(), []int{patchID}, "")
+	briefs, err := s.galgame.GalgameBatch(context.Background(), []int{patchID}, "")
 	if err != nil {
 		return ""
 	}

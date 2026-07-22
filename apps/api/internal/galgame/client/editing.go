@@ -7,11 +7,11 @@ package client
 //
 // Unlike Submit/Claim (which have local side effects — galgame_stats /
 // moemoepoint), every §15 endpoint is a pure relay: forward the request
-// verbatim, return Wiki's `data` unchanged, and surface Wiki's business
-// code+message via *WikiError so the handler can forward it to the frontend.
-// Wiki itself validates the JWT and enforces creator/admin/role rules — the
+// verbatim, return galgame's `data` unchanged, and surface galgame's business
+// code+message via *GalgameError so the handler can forward it to the frontend.
+// galgame itself validates the JWT and enforces creator/admin/role rules — the
 // site backend never re-implements authorization (it would drift; see §15
-// "鉴权语义以 wiki 端为准，下游不得放宽或收紧").
+// "鉴权语义以 galgame 端为准，下游不得放宽或收紧").
 
 import (
 	"bytes"
@@ -24,9 +24,9 @@ import (
 	"net/textproto"
 )
 
-// Proxy relays a GET / JSON-write to the Wiki Service.
+// Proxy relays a GET / JSON-write to the galgame service.
 //
-// pathAndQuery is the Wiki path WITH its leading slash and any query string,
+// pathAndQuery is the galgame path WITH its leading slash and any query string,
 // e.g. "/galgame/8329/revisions?page=2" or "/tag/%E6%A0%A1%E5%9B%AD?tag_id=42"
 // (already URL-encoded — pass it through untouched). accessToken is forwarded
 // as a Bearer header when non-empty (public GETs may pass ""). body is the raw
@@ -56,7 +56,7 @@ func (c *Client) Proxy(
 	}
 	req, err := http.NewRequestWithContext(ctx, method, base+pathAndQuery, rdr)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki %s %s: %w", method, pathAndQuery, err)
+		return nil, fmt.Errorf("build galgame %s %s: %w", method, pathAndQuery, err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
@@ -116,7 +116,7 @@ func (c *Client) ProxyMultipart(
 
 	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+pathAndQuery, &buf)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki %s %s: %w", method, pathAndQuery, err)
+		return nil, fmt.Errorf("build galgame %s %s: %w", method, pathAndQuery, err)
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
@@ -128,24 +128,24 @@ func (c *Client) ProxyMultipart(
 
 // doEnvelope executes req, decodes the standard {code,message,data} envelope
 // and returns the raw `data` (so the handler can re-wrap without an extra
-// unmarshal) or *WikiError on a non-zero envelope code.
+// unmarshal) or *GalgameError on a non-zero envelope code.
 func (c *Client) doEnvelope(req *http.Request, method, pathAndQuery string) (json.RawMessage, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki %s %s: %w", method, pathAndQuery, err)
+		return nil, fmt.Errorf("galgame %s %s: %w", method, pathAndQuery, err)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[json.RawMessage]
+	var env galgameResponse[json.RawMessage]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return env.Data, nil
 }

@@ -21,14 +21,14 @@ type Handler struct {
 	svc *Service
 	// img uploads moyu's OWN content images (preset=topic) under site=moyu.
 	img *imageclient.Client // image_service SDK (W2 / PR3b)
-	// wiki proxies galgame cover/screenshot uploads to the wiki's
+	// galgame proxies galgame cover/screenshot uploads to the galgame's
 	// POST /galgame/image so they're owned by site=galgame_wiki, not site=moyu.
-	wiki *galgameclient.Client
+	galgame *galgameclient.Client
 }
 
-// NewHandler constructs a Handler. img/wiki may be nil in tests.
-func NewHandler(svc *Service, img *imageclient.Client, wiki *galgameclient.Client) *Handler {
-	return &Handler{svc: svc, img: img, wiki: wiki}
+// NewHandler constructs a Handler. img/galgame may be nil in tests.
+func NewHandler(svc *Service, img *imageclient.Client, galgame *galgameclient.Client) *Handler {
+	return &Handler{svc: svc, img: img, galgame: galgame}
 }
 
 // uploadTier resolves the caller's per-role upload allowance from the OAuth
@@ -100,18 +100,18 @@ func (h *Handler) Resume(c fiber.Ctx) error {
 //
 // Proxies a multipart image upload to the centralized image_service
 // (kun-galgame-infra :9278) and returns the content hash + variant URLs. Used
-// by the galgame screenshot editor (Wiki PR5: screenshots must reference
-// image_service by hash, and Wiki itself accepts no multipart for them).
+// by the galgame screenshot editor (galgame PR5: screenshots must reference
+// image_service by hash, and galgame itself accepts no multipart for them).
 // Covers can also flow through this if the client wants to add a non-pinned
 // cover; pinned-banner uploads still go through PUT /galgame/:gid multipart
-// where Wiki auto-promotes the hash to covers[sort_order=0].
+// where galgame auto-promotes the hash to covers[sort_order=0].
 //
 // Body: multipart/form-data with required `file` (image binary) and `preset`
 // form field. moyu forwards the preset VERBATIM — image_service owns the
 // allowlist (`image_allowed_presets` per OAuth client) and rejects anything not
 // enabled, so there is intentionally no preset allowlist here. moyu's callers
 // send `galgame_screenshot` (galgame screenshots) and `topic` (editor-inline /
-// admin doc images). (Banners use the multipart PUT /galgame/:gid Wiki flow;
+// admin doc images). (Banners use the multipart PUT /galgame/:gid galgame flow;
 // avatars use OAuth's /auth/me/avatar — neither hits this endpoint.)
 //
 // 10MB body cap is inherited from the Fiber app config; image_service itself
@@ -139,25 +139,25 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 	mime := fh.Header.Get("Content-Type")
 
 	// Galgame images (covers/screenshots) are WIKI-owned: proxy them to the
-	// wiki's canonical POST /galgame/image (uploaded under site=galgame_wiki),
+	// galgame's canonical POST /galgame/image (uploaded under site=galgame_wiki),
 	// forwarding the user's Bearer — moyu no longer uploads galgame images
 	// under its own site=moyu. Other presets (topic = moyu's own content
 	// images) keep using moyu's local image_service client.
 	if preset == "galgame_banner" || preset == "galgame_screenshot" {
-		if h.wiki == nil {
+		if h.galgame == nil {
 			return response.Error(c, errors.ErrInternal("Wiki 客户端未配置"))
 		}
 		fileBytes, rerr := io.ReadAll(f)
 		if rerr != nil {
 			return response.Error(c, errors.ErrBadRequest("读取上传文件失败"))
 		}
-		data, werr := h.wiki.UploadGalgameImage(
+		data, werr := h.galgame.UploadGalgameImage(
 			c.Context(), middleware.GetAccessToken(c), preset, fh.Filename, fileBytes, mime,
 		)
 		if werr != nil {
-			// Forward the wiki/image_service business code + message; map the
+			// Forward the galgame/image_service business code + message; map the
 			// common ones to sensible HTTP statuses (matches the local path).
-			var we *galgameclient.WikiError
+			var we *galgameclient.GalgameError
 			if stderrors.As(werr, &we) {
 				switch we.Code {
 				case 80008:
@@ -170,7 +170,7 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 			}
 			return response.Error(c, errors.ErrInternal("Wiki 图片上传失败: "+werr.Error()))
 		}
-		// Wiki returns image_service's UploadResult, identical shape to moyu's
+		// galgame returns image_service's UploadResult, identical shape to moyu's
 		// imageclient.UploadResult — re-marshal into it so the FE sees the same
 		// response as the local path.
 		var result imageclient.UploadResult
@@ -187,7 +187,7 @@ func (h *Handler) UploadImageService(c fiber.Ctx) error {
 
 	// Per-USER daily cap: image_service enforces only a per-SITE quota, so moyu
 	// applies its own per-user fair-use limit here (aligned with kungal). Only
-	// moyu-owned content images (this branch) count — the wiki-proxied galgame
+	// moyu-owned content images (this branch) count — the galgame-proxied galgame
 	// images above do not.
 	if qErr := h.svc.CheckDailyImageQuota(user.ID); qErr != nil {
 		if stderrors.Is(qErr, errDailyImageLimit) {

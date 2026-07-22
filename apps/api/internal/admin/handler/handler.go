@@ -23,12 +23,12 @@ import (
 
 type AdminHandler struct {
 	service *service.AdminService
-	wiki    *galgameClient.Client
+	galgame *galgameClient.Client
 	users   *userclient.Client
 }
 
-func New(svc *service.AdminService, wiki *galgameClient.Client, users *userclient.Client) *AdminHandler {
-	return &AdminHandler{service: svc, wiki: wiki, users: users}
+func New(svc *service.AdminService, galgame *galgameClient.Client, users *userclient.Client) *AdminHandler {
+	return &AdminHandler{service: svc, galgame: galgame, users: users}
 }
 
 // attachUserBriefs is a tiny helper used by every admin list endpoint that
@@ -81,7 +81,7 @@ func (h *AdminHandler) attachPatchSummaries(ctx context.Context, comments []patc
 	for id := range idSet {
 		ids = append(ids, id)
 	}
-	summaries := enricher.BuildPatchSummaryMap(ctx, h.wiki, h.service, ids)
+	summaries := enricher.BuildPatchSummaryMap(ctx, h.galgame, h.service, ids)
 	for i := range comments {
 		if s, ok := summaries[comments[i].GalgameID]; ok {
 			summary := s
@@ -300,7 +300,7 @@ func (h *AdminHandler) GetGalgame(c fiber.Ctx) error {
 	// admin's browser session happened to carry over from another page. The
 	// admin console is the canonical "manage every row" surface; filtering
 	// here would hide rows admins need to moderate.
-	cards := enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, "all")
+	cards := enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, "all")
 	return response.Paginated(c, cards, total)
 }
 
@@ -441,7 +441,7 @@ func (h *AdminHandler) GetOrphanPatches(c fiber.Ctx) error {
 	existing := make([]int, 0, len(candidateIDs))
 	for start := 0; start < len(candidateIDs); start += 500 {
 		end := min(start+500, len(candidateIDs))
-		briefs, bErr := h.wiki.GalgameBatch(c.Context(), candidateIDs[start:end], "")
+		briefs, bErr := h.galgame.GalgameBatch(c.Context(), candidateIDs[start:end], "")
 		if bErr != nil {
 			// Never fabricate an orphan list on a Wiki hiccup (audit F075 spirit).
 			return response.Error(c, errors.ErrInternal("Wiki 校验失败"))

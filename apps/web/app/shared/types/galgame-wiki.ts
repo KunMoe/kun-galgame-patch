@@ -10,28 +10,28 @@
 // from the spec but override `snapshot` to the flexible bag.
 import type { components } from './generated/galgame-read-api'
 
-type WikiSchemas = components['schemas']
+type GalgameSchemas = components['schemas']
 
 // A revision / PR snapshot: an open shape rendered generically by DiffView.
 export type GalgameSnapshot = Record<string, unknown>
 
-export type GalgameRevision = Omit<WikiSchemas['RevisionResponse'], 'snapshot'>
+export type GalgameRevision = Omit<GalgameSchemas['RevisionResponse'], 'snapshot'>
 export type GalgameRevisionDetail = GalgameRevision & {
   snapshot: GalgameSnapshot
 }
 
-export type GalgamePR = Omit<WikiSchemas['PRResponse'], 'snapshot'> & {
+export type GalgamePR = Omit<GalgameSchemas['PRResponse'], 'snapshot'> & {
   snapshot: GalgameSnapshot
 }
-export type GalgamePRDetail = Omit<WikiSchemas['PRDetailData'], 'pr'> & {
+export type GalgamePRDetail = Omit<GalgameSchemas['PRDetailData'], 'pr'> & {
   pr: GalgamePR
 }
 
-export type GalgameDiff = Omit<WikiSchemas['RevisionDiffData'], 'old' | 'new'> & {
+export type GalgameDiff = Omit<GalgameSchemas['RevisionDiffData'], 'old' | 'new'> & {
   old: GalgameSnapshot
   new: GalgameSnapshot
 }
-export type GalgameDiffNames = WikiSchemas['SnapshotEntityNames']
+export type GalgameDiffNames = GalgameSchemas['SnapshotEntityNames']
 
-export type GalgameLink = WikiSchemas['DetailLink']
-export type GalgameAlias = WikiSchemas['DetailAlias']
+export type GalgameLink = GalgameSchemas['DetailLink']
+export type GalgameAlias = GalgameSchemas['DetailAlias']

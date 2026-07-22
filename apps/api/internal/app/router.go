@@ -141,23 +141,23 @@ func (a *App) RegisterRoutes() {
 	)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 
-	// Galgame metadata edit (proxy to Galgame Wiki PUT /galgame/:gid).
-	// Lives on /galgame/:gid to match the Wiki path verbatim, even though the
-	// patch.id and galgame.id are aligned. The Wiki Service enforces creator/
+	// Galgame metadata edit (proxy to NextMoe catalog PUT /galgame/:gid).
+	// Lives on /galgame/:gid to match the galgame path verbatim, even though the
+	// patch.id and galgame.id are aligned. The galgame service enforces creator/
 	// admin authorization itself — we just forward the user's access_token.
 	api.Put("/galgame/:gid", auth, a.PatchHandler.UpdateGalgame)
 
-	// ===== Wiki submission proxies (docs/galgame_wiki/07-submission.md) =====
+	// ===== galgame submission proxies (docs/galgame_wiki/07-submission.md) =====
 	//
 	// User-facing endpoints for the new publish-galgame flow. Each one
-	// forwards the user's OAuth access_token to Wiki and surfaces Wiki's
+	// forwards the user's OAuth access_token to galgame and surfaces galgame's
 	// business errors (20003 / 20004 / 20006 / 20007 / 20008 / 20009) verbatim.
 	//
 	// IMPORTANT: order matters here. /galgame/mine, /galgame/submit,
 	// /galgame/search/publish, /galgame/messages/* must be registered BEFORE
 	// the parameterized /galgame/:gid routes below so Fiber doesn't match
 	// "mine"/"submit"/etc. as a :gid value.
-	// Release calendar (发售月表) — public reads, delegated to the wiki and
+	// Release calendar (发售月表) — public reads, delegated to the galgame and
 	// stamped with has_patch. Literal paths, so they also sit above /galgame/:gid.
 	// optionalAuth so each card can be stamped is_favorite for the logged-in
 	// viewer (inline 收藏 state) without requiring login to browse.
@@ -166,9 +166,9 @@ func (a *App) RegisterRoutes() {
 	api.Get("/galgame/calendar/tba", optionalAuth, a.CommonHandler.GetGalgameCalendarTBA)
 	api.Get("/galgame/mine", auth, a.PatchHandler.ListMyGalgames)
 	api.Get("/galgame/search/publish", auth, a.PatchHandler.SearchGalgameForPublish)
-	api.Get("/galgame/messages/mine", auth, a.PatchHandler.GetMyWikiMessages)
-	api.Get("/galgame/messages/read-state", auth, a.PatchHandler.GetWikiMessagesReadState)
-	api.Put("/galgame/messages/read-state", auth, a.PatchHandler.UpdateWikiMessagesReadState)
+	api.Get("/galgame/messages/mine", auth, a.PatchHandler.GetMyGalgameMessages)
+	api.Get("/galgame/messages/read-state", auth, a.PatchHandler.GetGalgameMessagesReadState)
+	api.Put("/galgame/messages/read-state", auth, a.PatchHandler.UpdateGalgameMessagesReadState)
 	api.Post("/galgame/submit", auth, a.PatchHandler.SubmitGalgame)
 	api.Post("/galgame/:gid/claim", auth, a.PatchHandler.ClaimGalgame)
 	api.Patch("/galgame/:gid", auth, a.PatchHandler.PatchGalgameDraft)
@@ -179,22 +179,22 @@ func (a *App) RegisterRoutes() {
 	// Galgame metadata editing (revision history, edit-request PRs, direct
 	// edit) moved to kungal — moyu retired its revision/PR proxy + UI in the
 	// "编辑面归 kungal" wave. What remains here is the links / aliases relation
-	// proxy: verbatim pass-throughs (a.PatchHandler.WikiEditProxy) that mirror
-	// the Wiki path 1:1. Reads use optionalAuth (token forwarded only if logged
-	// in); writes use auth so a Bearer exists. Wiki enforces creator/admin; we
+	// proxy: verbatim pass-throughs (a.PatchHandler.GalgameEditProxy) that mirror
+	// the galgame path 1:1. Reads use optionalAuth (token forwarded only if logged
+	// in); writes use auth so a Bearer exists. galgame enforces creator/admin; we
 	// forward its code+message verbatim.
 	//
 	// Registered AFTER the literal /galgame/{mine,submit,search,messages,:gid}
 	// routes above so Fiber's order-based matching keeps them intact.
-	api.Get("/galgame/:gid/links", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Post("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/galgame/:gid/links", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/galgame/:gid/aliases", optionalAuth, a.PatchHandler.WikiEditProxy)
-	api.Post("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/galgame/:gid/aliases", auth, a.PatchHandler.WikiEditProxy)
-	// Wiki contributor list / removal is no longer surfaced. moyu only
+	api.Get("/galgame/:gid/links", optionalAuth, a.PatchHandler.GalgameEditProxy)
+	api.Post("/galgame/:gid/links", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/galgame/:gid/links", auth, a.PatchHandler.GalgameEditProxy)
+	api.Get("/galgame/:gid/aliases", optionalAuth, a.PatchHandler.GalgameEditProxy)
+	api.Post("/galgame/:gid/aliases", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/galgame/:gid/aliases", auth, a.PatchHandler.GalgameEditProxy)
+	// galgame contributor list / removal is no longer surfaced. moyu only
 	// edits the galgame's metadata (creator can update / admins can
-	// moderate); contributors are an attribution attribute owned by Wiki
+	// moderate); contributors are an attribution attribute owned by galgame
 	// and not editable from the moyu side. The local /patch/:id/contributor
 	// route above is a different concept (people who uploaded patch
 	// resources on moyu) — that one stays.
@@ -212,7 +212,7 @@ func (a *App) RegisterRoutes() {
 	// Registered BEFORE /:id so Fiber doesn't match "moemoepoint" as a :id.
 	userRoutes.Get("/moemoepoint/log", auth, a.UserHandler.GetMoemoepointLog)
 
-	// Creator-role application: moyu checks its eligibility (wiki PR stats +
+	// Creator-role application: moyu checks its eligibility (galgame PR stats +
 	// own published patch resources), then files on the central OAuth queue.
 	// Fixed paths, registered BEFORE /:id. See docs/auth/01-creator-role-design.md.
 	userRoutes.Get("/creator/status", auth, a.UserHandler.CreatorStatus)
@@ -301,7 +301,7 @@ func (a *App) RegisterRoutes() {
 	// All patches (admin browse, paginated, optional vndb_id search)
 	adminRoutes.Get("/galgame", a.AdminHandler.GetGalgame)
 
-	// D12: "orphan patches" whose galgame is missing in Wiki, for admin manual handling
+	// D12: "orphan patches" whose galgame is missing in galgame, for admin manual handling
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
 
 	// Doc management (migration 016; unified about+blog). Create/edit/delete
@@ -315,58 +315,58 @@ func (a *App) RegisterRoutes() {
 
 	// ===== Galgame taxonomy proxy (handbook §15, MANDATORY full proxy) =====
 	//
-	// SUPERSEDES the old D11 note ("frontend calls Wiki /tag /official directly,
+	// SUPERSEDES the old D11 note ("frontend calls galgame /tag /official directly,
 	// downstream skips tag/company"): handbook §15 now REQUIRES moyu to fully
 	// proxy + build UI for tag / official / engine / series CRUD — including the
 	// new POST creators (any logged-in user may add a tag/official/engine for an
 	// original/doujin work VNDB lacks; same permission model as POST /series).
-	// Pure pass-through; Wiki enforces role (GET public; POST any logged-in
+	// Pure pass-through; galgame enforces role (GET public; POST any logged-in
 	// user; PUT/DELETE admin/moderator) and we forward its code+message.
 	// Literal sub-paths are registered before :name/:id params so Fiber's
 	// order-based matcher resolves /tag/search before /tag/:name, etc.
-	api.Get("/tag", a.PatchHandler.WikiEditProxy)
-	api.Get("/tag/search", a.PatchHandler.WikiEditProxy)
-	api.Get("/tag/multi", a.PatchHandler.WikiEditProxy)
-	api.Post("/tag", auth, a.PatchHandler.WikiEditProxy)
-	api.Put("/tag", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/tag/:id", auth, a.PatchHandler.WikiEditProxy)
+	api.Get("/tag", a.PatchHandler.GalgameEditProxy)
+	api.Get("/tag/search", a.PatchHandler.GalgameEditProxy)
+	api.Get("/tag/multi", a.PatchHandler.GalgameEditProxy)
+	api.Post("/tag", auth, a.PatchHandler.GalgameEditProxy)
+	api.Put("/tag", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/tag/:id", auth, a.PatchHandler.GalgameEditProxy)
 	// /tag/:name and /official/:name carry an associated `galgame` list —
-	// we rewrite the response in WikiTaxonomyDetailProxy so each entry
+	// we rewrite the response in GalgameTaxonomyDetailProxy so each entry
 	// has moyu's enriched GalgameCard shape (per-patch counts, KunLanguage
 	// name etc.), letting the FE render the same <GalgameCard> as home /
 	// galgame index. Other tag/official endpoints stay generic passthrough.
-	api.Get("/tag/:name", a.PatchHandler.WikiTaxonomyDetailProxy)
+	api.Get("/tag/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
 
-	api.Get("/official", a.PatchHandler.WikiEditProxy)
-	api.Get("/official/search", a.PatchHandler.WikiEditProxy)
-	api.Post("/official", auth, a.PatchHandler.WikiEditProxy)
-	api.Put("/official", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/official/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/official/:name", a.PatchHandler.WikiTaxonomyDetailProxy)
+	api.Get("/official", a.PatchHandler.GalgameEditProxy)
+	api.Get("/official/search", a.PatchHandler.GalgameEditProxy)
+	api.Post("/official", auth, a.PatchHandler.GalgameEditProxy)
+	api.Put("/official", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/official/:id", auth, a.PatchHandler.GalgameEditProxy)
+	api.Get("/official/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
 
-	api.Get("/engine", a.PatchHandler.WikiEditProxy)
-	api.Post("/engine", auth, a.PatchHandler.WikiEditProxy)
-	api.Put("/engine", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/engine/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/engine/:name", a.PatchHandler.WikiEditProxy)
+	api.Get("/engine", a.PatchHandler.GalgameEditProxy)
+	api.Post("/engine", auth, a.PatchHandler.GalgameEditProxy)
+	api.Put("/engine", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/engine/:id", auth, a.PatchHandler.GalgameEditProxy)
+	api.Get("/engine/:name", a.PatchHandler.GalgameEditProxy)
 
-	api.Get("/series", a.PatchHandler.WikiEditProxy)
-	api.Get("/series/search", a.PatchHandler.WikiEditProxy)
-	api.Post("/series/modal", auth, a.PatchHandler.WikiEditProxy)
-	api.Post("/series", auth, a.PatchHandler.WikiEditProxy)
-	api.Put("/series/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Delete("/series/:id", auth, a.PatchHandler.WikiEditProxy)
-	api.Get("/series/:id", a.PatchHandler.WikiEditProxy)
+	api.Get("/series", a.PatchHandler.GalgameEditProxy)
+	api.Get("/series/search", a.PatchHandler.GalgameEditProxy)
+	api.Post("/series/modal", auth, a.PatchHandler.GalgameEditProxy)
+	api.Post("/series", auth, a.PatchHandler.GalgameEditProxy)
+	api.Put("/series/:id", auth, a.PatchHandler.GalgameEditProxy)
+	api.Delete("/series/:id", auth, a.PatchHandler.GalgameEditProxy)
+	api.Get("/series/:id", a.PatchHandler.GalgameEditProxy)
 
-	// ===== Taxonomy 修订历史 / 回滚（W3 / Wiki U3 PR4，12 条）=====
-	// 4 实体 × 3 端点；都是纯透传到 Wiki，鉴权 Wiki 自己强制
+	// ===== Taxonomy 修订历史 / 回滚（W3 / galgame U3 PR4，12 条）=====
+	// 4 实体 × 3 端点；都是纯透传到 galgame，鉴权 galgame 自己强制
 	// （GET 公开，revert 需 admin/moderator —— 我们只挂 auth 拿 Bearer）。
 	// Fiber 按段数匹配，/<entity>/:name (2段) 与 /<entity>/:id/revisions (3段)
 	// 不冲突，顺序无关；放在 taxonomy 块尾保持归类清晰。
 	for _, e := range []string{"tag", "official", "engine", "series"} {
-		api.Get("/"+e+"/:id/revisions", a.PatchHandler.WikiEditProxy)
-		api.Get("/"+e+"/:id/revisions/:rev", a.PatchHandler.WikiEditProxy)
-		api.Post("/"+e+"/:id/revert", auth, a.PatchHandler.WikiEditProxy)
+		api.Get("/"+e+"/:id/revisions", a.PatchHandler.GalgameEditProxy)
+		api.Get("/"+e+"/:id/revisions/:rev", a.PatchHandler.GalgameEditProxy)
+		api.Post("/"+e+"/:id/revert", auth, a.PatchHandler.GalgameEditProxy)
 	}
 
 	// ===== Common Routes =====
@@ -413,7 +413,7 @@ func (a *App) RegisterRoutes() {
 	uploadRoutes.Post("/resume", a.UploadHandler.Resume)
 	uploadRoutes.Post("/abort", a.UploadHandler.Abort)
 	// W2 / PR3b: multipart file → image_service → hash + variant URLs.
-	// Used by the screenshot editor (Wiki accepts no multipart for those).
+	// Used by the screenshot editor (galgame accepts no multipart for those).
 	uploadRoutes.Post("/image-service", a.UploadHandler.UploadImageService)
 
 	// Full-text search (Meilisearch)

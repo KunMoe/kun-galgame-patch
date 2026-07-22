@@ -1,8 +1,8 @@
 // Package search implements POST /api/search: delegate full-text search to the
-// Galgame Wiki, then look up which patches exist locally for the returned vndb_ids.
+// NextMoe catalog, then look up which patches exist locally for the returned vndb_ids.
 //
 // Design (D11, 2026-04-21):
-//   - Search/retrieval is fully delegated to Wiki (60k galgame + Meilisearch + CJK tokenization)
+//   - Search/retrieval is fully delegated to galgame (60k galgame + Meilisearch + CJK tokenization)
 //   - This service only answers "do these galgames have patches here"
 //   - No local index, no local sync
 package search
@@ -22,17 +22,17 @@ import (
 
 // Handler handles /api/search requests.
 type Handler struct {
-	db   *gorm.DB
-	wiki *galgameClient.Client
+	db      *gorm.DB
+	galgame *galgameClient.Client
 }
 
 // New constructs a Handler.
-func New(db *gorm.DB, wiki *galgameClient.Client) *Handler {
-	return &Handler{db: db, wiki: wiki}
+func New(db *gorm.DB, galgame *galgameClient.Client) *Handler {
+	return &Handler{db: db, galgame: galgame}
 }
 
 // SearchRequest is the search request body.
-// It supports most of Wiki's filter parameters, passed through directly.
+// It supports most of galgame's filter parameters, passed through directly.
 type SearchRequest struct {
 	Q            string `json:"q" validate:"max=200"`
 	TagIDs       []int  `json:"tag_ids" validate:"omitempty,max=20,dive,min=1"`
@@ -48,11 +48,11 @@ type SearchRequest struct {
 	Limit        int    `json:"limit" validate:"required,min=1,max=50"`
 }
 
-// SearchHit is a single result returned to the frontend: Wiki galgame info plus whether this service has a patch.
+// SearchHit is a single result returned to the frontend: galgame info plus whether this service has a patch.
 type SearchHit struct {
 	galgameClient.GalgameHit
-	HasPatch bool                   `json:"has_patch"`
-	Patch    *patchModel.Patch      `json:"patch,omitempty"`
+	HasPatch bool              `json:"has_patch"`
+	Patch    *patchModel.Patch `json:"patch,omitempty"`
 }
 
 // Search POST /api/search
@@ -73,36 +73,36 @@ func (h *Handler) Search(c fiber.Ctx) error {
 	// the confirm-to-view flow for anonymous-and-not-acked callers.
 	contentLimit := utils.ContentLimitAll
 
-	// Call Wiki search
+	// Call galgame search
 	params := galgameClient.SearchGalgameParams{
 		Q: req.Q,
 		// Public search only surfaces published galgames. Unpublished states
 		// (1 banned / 2 VNDB draft / 3 pending / 4 declined) are excluded.
 		// The publish wizard uses a separate SearchGalgameForPublish call
 		// that intentionally includes the caller's own pending drafts.
-		Status:        "0",
-		ContentLimit:  contentLimit,
-		AgeLimit:      req.AgeLimit,
-		OriginalLang:  req.OriginalLang,
-		TagIDs:        req.TagIDs,
-		OfficialIDs:   req.OfficialIDs,
-		EngineIDs:     req.EngineIDs,
-		ReleasedFrom:  req.ReleasedFrom,
-		ReleasedTo:    req.ReleasedTo,
-		IncludeIntro:  req.IncludeIntro,
-		Sort:          req.Sort,
-		Page:          req.Page,
-		Limit:         req.Limit,
+		Status:       "0",
+		ContentLimit: contentLimit,
+		AgeLimit:     req.AgeLimit,
+		OriginalLang: req.OriginalLang,
+		TagIDs:       req.TagIDs,
+		OfficialIDs:  req.OfficialIDs,
+		EngineIDs:    req.EngineIDs,
+		ReleasedFrom: req.ReleasedFrom,
+		ReleasedTo:   req.ReleasedTo,
+		IncludeIntro: req.IncludeIntro,
+		Sort:         req.Sort,
+		Page:         req.Page,
+		Limit:        req.Limit,
 	}
-	wikiResult, err := h.wiki.SearchGalgame(c.Context(), params)
+	galgameResult, err := h.galgame.SearchGalgame(c.Context(), params)
 	if err != nil {
-		slog.Error("Wiki 搜索失败", "error", err)
+		slog.Error("galgame 搜索失败", "error", err)
 		return response.Error(c, errors.ErrInternal("搜索服务暂不可用"))
 	}
 
 	// Extract vndb_ids and look up the local patch table
-	vndbIDs := make([]string, 0, len(wikiResult.Items))
-	for _, item := range wikiResult.Items {
+	vndbIDs := make([]string, 0, len(galgameResult.Items))
+	for _, item := range galgameResult.Items {
 		if item.VndbID != "" {
 			vndbIDs = append(vndbIDs, item.VndbID)
 		}
@@ -122,9 +122,9 @@ func (h *Handler) Search(c fiber.Ctx) error {
 		}
 	}
 
-	// Merge: preserve Wiki's relevance order; stamp each hit with has_patch + patch details
-	hits := make([]SearchHit, 0, len(wikiResult.Items))
-	for _, item := range wikiResult.Items {
+	// Merge: preserve galgame's relevance order; stamp each hit with has_patch + patch details
+	hits := make([]SearchHit, 0, len(galgameResult.Items))
+	for _, item := range galgameResult.Items {
 		h := SearchHit{GalgameHit: item}
 		if p, ok := patchMap[item.VndbID]; ok {
 			h.HasPatch = true
@@ -133,6 +133,5 @@ func (h *Handler) Search(c fiber.Ctx) error {
 		hits = append(hits, h)
 	}
 
-	return response.Paginated(c, hits, wikiResult.Total)
+	return response.Paginated(c, hits, galgameResult.Total)
 }
-

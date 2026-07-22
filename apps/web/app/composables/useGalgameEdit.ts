@@ -1,30 +1,30 @@
 // useGalgameEdit — typed client for the galgame taxonomy + relation surface
-// moyu still proxies to the Wiki Service: links/aliases relations and
+// moyu still proxies to the galgame service: links/aliases relations and
 // tag/official/engine/series CRUD (incl. taxonomy revision history + revert).
 // Galgame metadata editing (revision history, edit-request PRs, direct edit)
 // moved to kungal in the "编辑面归 kungal" wave. Every call goes through OUR
 // backend proxy (/api/v1/...), which forwards the user's session/access_token
-// to the Wiki Service and relays Wiki's {code,message,data} verbatim (see
+// to the galgame service and relays galgame's {code,message,data} verbatim (see
 // internal/patch/handler/galgame_edit.go).
 //
-// Wiki owns authorization (admin/moderator for PUT·DELETE taxonomy + revert;
+// galgame owns authorization (admin/moderator for PUT·DELETE taxonomy + revert;
 // any logged-in user for POST taxonomy). We do NOT re-check it client-side — on
-// a permission failure the backend forwards Wiki's code+message and the caller
+// a permission failure the backend forwards galgame's code+message and the caller
 // shows it.
 
-export interface WikiPage<T> {
+export interface GalgamePage<T> {
   items: T[]
   total: number
 }
 
-// Wiki-proxied relation shapes are aliased to the generated OpenAPI schemas
+// galgame-proxied relation shapes are aliased to the generated OpenAPI schemas
 // (shared/types/galgame-wiki.ts) so a backend wire change fails the drift gate
 // + tsc here instead of breaking at runtime. Re-exported so the relation
 // surface keeps importing them from this one composable.
 export type { GalgameLink, GalgameAlias } from '~/shared/types/galgame-wiki'
 
-// W3 / Wiki U3 — taxonomy revision (multi-polymorphic single-table on the
-// Wiki side; entity column distinguishes tag/official/engine/series). snapshot
+// W3 / galgame U3 — taxonomy revision (multi-polymorphic single-table on the
+// galgame side; entity column distinguishes tag/official/engine/series). snapshot
 // shape varies per entity; we render it generically as Record<string, unknown>.
 // See docs/galgame_wiki/04-taxonomy.md §修订与回滚.
 export interface TaxonomyRevision {
@@ -44,7 +44,7 @@ export interface TaxonomyRevision {
   created: string
 }
 
-export interface WikiTag {
+export interface GalgameTag {
   id: number
   name: string
   aliases: string[]
@@ -52,7 +52,7 @@ export interface WikiTag {
   galgame_count: number
 }
 
-export interface WikiOfficial {
+export interface GalgameOfficial {
   id: number
   name: string
   aliases: string[]
@@ -63,14 +63,14 @@ export interface WikiOfficial {
   galgame_count: number
 }
 
-export interface WikiEngine {
+export interface GalgameEngine {
   id: number
   name: string
   description: string
   alias: string[]
 }
 
-export interface WikiSeries {
+export interface GalgameSeries {
   id: number
   name: string
   description: string
@@ -108,7 +108,7 @@ export const useGalgameEdit = () => {
 
   // ─── Taxonomy: tag ──────────────────────────────────
   const tagSearch = (q: string, category?: string, limit = 30) =>
-    api.get<{ items: WikiTag[]; total: number }>(
+    api.get<{ items: GalgameTag[]; total: number }>(
       `/tag/search${qs({ q, category, limit })}`
     )
   const createTag = (body: {
@@ -116,16 +116,16 @@ export const useGalgameEdit = () => {
     category: string
     description?: string
     alias?: string[]
-  }) => api.post<WikiTag>('/tag', body)
+  }) => api.post<GalgameTag>('/tag', body)
   const updateTag = (body: {
     tag_id: number
     name: string
     category: string
     description?: string
     alias?: string[]
-  }) => api.put<WikiTag>('/tag', body)
+  }) => api.put<GalgameTag>('/tag', body)
   // Two-stage safe delete (docs/galgame_wiki/04-taxonomy.md, 00 §15.1):
-  // without force, Wiki rejects with code:7 + reference count if the tag is
+  // without force, galgame rejects with code:7 + reference count if the tag is
   // still used; force=true cascades. Same for official/engine.
   const deleteTag = (id: number, force = false) =>
     api.delete<{
@@ -142,7 +142,7 @@ export const useGalgameEdit = () => {
     lang?: string,
     limit = 30
   ) =>
-    api.get<{ items: WikiOfficial[]; total: number }>(
+    api.get<{ items: GalgameOfficial[]; total: number }>(
       `/official/search${qs({ q, category, lang, limit })}`
     )
   const createOfficial = (body: {
@@ -153,7 +153,7 @@ export const useGalgameEdit = () => {
     lang?: string
     description?: string
     alias?: string[]
-  }) => api.post<WikiOfficial>('/official', body)
+  }) => api.post<GalgameOfficial>('/official', body)
   const updateOfficial = (body: {
     official_id: number
     name: string
@@ -162,7 +162,7 @@ export const useGalgameEdit = () => {
     lang?: string
     description?: string
     alias?: string[]
-  }) => api.put<WikiOfficial>('/official', body)
+  }) => api.put<GalgameOfficial>('/official', body)
   const deleteOfficial = (id: number, force = false) =>
     api.delete<{
       deleted: boolean
@@ -172,18 +172,18 @@ export const useGalgameEdit = () => {
     }>(`/official/${id}${force ? '?force=true' : ''}`)
 
   // ─── Taxonomy: engine ───────────────────────────────
-  const engineList = () => api.get<WikiEngine[]>('/engine')
+  const engineList = () => api.get<GalgameEngine[]>('/engine')
   const createEngine = (body: {
     name: string
     description?: string
     alias?: string[]
-  }) => api.post<WikiEngine>('/engine', body)
+  }) => api.post<GalgameEngine>('/engine', body)
   const updateEngine = (body: {
     engine_id: number
     name: string
     description?: string
     alias?: string[]
-  }) => api.put<WikiEngine>('/engine', body)
+  }) => api.put<GalgameEngine>('/engine', body)
   // engine has no alias table → response has no purged_aliases.
   const deleteEngine = (id: number, force = false) =>
     api.delete<{
@@ -194,15 +194,15 @@ export const useGalgameEdit = () => {
 
   // ─── Taxonomy: series ───────────────────────────────
   const seriesList = (opts?: { page?: number; limit?: number }) =>
-    api.get<WikiPage<WikiSeries>>(`/series${qs(opts as Q)}`)
+    api.get<GalgamePage<GalgameSeries>>(`/series${qs(opts as Q)}`)
   const seriesSearch = (keywords: string) =>
     api.get<unknown[]>(`/series/search${qs({ keywords })}`)
-  const seriesDetail = (id: number) => api.get<WikiSeries>(`/series/${id}`)
+  const seriesDetail = (id: number) => api.get<GalgameSeries>(`/series/${id}`)
   const createSeries = (body: {
     name: string
     description?: string
     galgame_ids: number[]
-  }) => api.post<WikiSeries>('/series', body)
+  }) => api.post<GalgameSeries>('/series', body)
   const seriesModal = (ids: number[]) =>
     api.post<unknown[]>('/series/modal', { ids })
   const updateSeries = (
@@ -212,7 +212,7 @@ export const useGalgameEdit = () => {
   const deleteSeries = (id: number) => api.delete(`/series/${id}`)
 
   // ─── W3 / PR4 — Taxonomy 修订历史 + 回滚（4 实体 × 3 端点 = 12 个方法）─
-  // 全部由通用 WikiEditProxy 代理；Wiki 端鉴权（GET 公开、revert 需 admin/
+  // 全部由通用 GalgameEditProxy 代理；galgame 端鉴权（GET 公开、revert 需 admin/
   // moderator）；snapshot 形态因 entity 而异（TagSnapshot / OfficialSnapshot /
   // EngineSnapshot / SeriesSnapshot），UI 层用泛型 Record 展示，无需逐型建模。
   // docs/galgame_wiki/04-taxonomy.md §修订与回滚 + 00-handbook §15.
@@ -223,7 +223,7 @@ export const useGalgameEdit = () => {
     id: number,
     opts?: { page?: number; limit?: number }
   ) =>
-    api.get<WikiPage<TaxonomyRevision>>(
+    api.get<GalgamePage<TaxonomyRevision>>(
       `/${kind}/${id}/revisions${qs(opts as Q)}`
     )
 
@@ -234,9 +234,9 @@ export const useGalgameEdit = () => {
     api.post<{ reverted_to: number }>(`/${kind}/${id}/revert`, { revision })
 
   // ─── Taxonomy detail pages (tag / official "view-by-id" pages) ─────────
-  // Wiki's `GET /<entity>/:name?<entity>_id=X` returns the entity itself +
+  // galgame's `GET /<entity>/:name?<entity>_id=X` returns the entity itself +
   // the associated galgame list (paginated, with optional sort + NSFW filter).
-  // `:name` is cosmetic per Wiki convention (Wikipedia-style URL beauty);
+  // `:name` is cosmetic per galgame convention (Wikipedia-style URL beauty);
   // the real filter is the *_id query param. We always pass "_" as the path
   // segment to keep the URL short — moyu's standalone detail pages already
   // own the human-readable URL on their side.
@@ -248,21 +248,21 @@ export const useGalgameEdit = () => {
     sort_order?: 'asc' | 'desc'
     content_limit?: 'sfw' | 'nsfw'
   }
-  // Backend (WikiTaxonomyDetailProxy) rewrites Wiki's flat `galgame` brief
+  // Backend (GalgameTaxonomyDetailProxy) rewrites galgame's flat `galgame` brief
   // array into moyu's enriched `GalgameCard` shape so tag/official detail
   // pages can render the same <GalgameCard> as the home / galgame index —
   // the FE no longer has to map between two shapes. Wire field is
   // standardized on `galgames` here.
   const tagDetail = (id: number, opts?: TaxonomyListOpts) =>
     api.get<{
-      tag?: WikiTag & { description?: string }
+      tag?: GalgameTag & { description?: string }
       galgames?: GalgameCard[]
       total?: number
     }>(`/tag/_${qs({ tag_id: id, ...(opts as Q) })}`)
 
   const officialDetail = (id: number, opts?: TaxonomyListOpts) =>
     api.get<{
-      official?: WikiOfficial & { description?: string }
+      official?: GalgameOfficial & { description?: string }
       galgames?: GalgameCard[]
       total?: number
     }>(`/official/_${qs({ official_id: id, ...(opts as Q) })}`)

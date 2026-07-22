@@ -13,17 +13,17 @@
 //
 // What
 // ----
-// 1. Read every patch row.
-// 2. For each, call Wiki /galgame/check?vndb_id=... to get the target id.
-//    Rows with vndb_id="pending-N" or whose vndb_id Wiki doesn't recognize
-//    are orphans — they're left untouched and the script aborts if any of
-//    their current ids collide with a target id (use --allow-orphan-collision
-//    only if you understand what that does).
-// 3. In a single transaction, two-pass remap (offset → final) for patch.id
-//    and the 5 child FK columns. Triggers are temporarily disabled so FK
-//    constraints don't reject mid-pass states.
-// 4. Drop patch.galgame_id, rename child patch_id columns to galgame_id,
-//    reset patch_id_seq.
+//  1. Read every patch row.
+//  2. For each, call Wiki /galgame/check?vndb_id=... to get the target id.
+//     Rows with vndb_id="pending-N" or whose vndb_id Wiki doesn't recognize
+//     are orphans — they're left untouched and the script aborts if any of
+//     their current ids collide with a target id (use --allow-orphan-collision
+//     only if you understand what that does).
+//  3. In a single transaction, two-pass remap (offset → final) for patch.id
+//     and the 5 child FK columns. Triggers are temporarily disabled so FK
+//     constraints don't reject mid-pass states.
+//  4. Drop patch.galgame_id, rename child patch_id columns to galgame_id,
+//     reset patch_id_seq.
 //
 // Usage
 // -----
@@ -68,8 +68,8 @@ import (
 )
 
 // Tables that hold a `patch_id` FK and need both:
-//   1. Two-pass remap of values (so FKs follow patch.id)
-//   2. Post-remap rename of the column to `galgame_id`
+//  1. Two-pass remap of values (so FKs follow patch.id)
+//  2. Post-remap rename of the column to `galgame_id`
 var childTables = []string{
 	"patch_resource",
 	"patch_comment",
@@ -128,7 +128,7 @@ func main() {
 	logger.Init(cfg.Server.Mode)
 
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
-	wiki := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
+	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey)
 	users := userclient.New(userclient.Config{
 		BaseURL:      cfg.OAuth.ServerURL,
 		ClientID:     cfg.OAuth.ClientID,
@@ -179,7 +179,7 @@ func main() {
 	slog.Info("读取 patch 完成", "total", len(rows))
 
 	// ── Step 2: parallel Wiki lookup, partition into mappings vs skipped ────
-	mappings, skipped := resolveMappings(ctx, wiki, rows, *concurrency)
+	mappings, skipped := resolveMappings(ctx, galgame, rows, *concurrency)
 
 	// ── Step 3: validate ──────────────────────────────────────
 	// 3a. Two patches mapping to the same galgame_id (would only happen if the
@@ -260,7 +260,7 @@ func main() {
 // resolveMappings hits Wiki concurrently and returns the partition.
 func resolveMappings(
 	ctx context.Context,
-	wiki *galgameClient.Client,
+	galgame *galgameClient.Client,
 	rows []patchRow,
 	concurrency int,
 ) ([]mapping, []skip) {
@@ -285,7 +285,7 @@ func resolveMappings(
 					results <- result{row: r, reason: "pending_or_empty_vndb"}
 					continue
 				}
-				exists, gid, err := wiki.CheckGalgameByVndbID(ctx, r.VndbID)
+				exists, gid, err := galgame.CheckGalgameByVndbID(ctx, r.VndbID)
 				if err != nil {
 					results <- result{row: r, reason: "wiki_error: " + err.Error()}
 					continue

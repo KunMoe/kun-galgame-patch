@@ -7,7 +7,7 @@ package client
 // Two auth modes are at play:
 //   - User-facing methods (Submit / Claim / PatchDraft / DeleteDraft / ListMine /
 //     SearchWithPending / MyMessages) transparently forward the user's OAuth
-//     access_token. Wiki decodes the JWT itself; this site never re-decides
+//     access_token. galgame decodes the JWT itself; this site never re-decides
 //     identity.
 //   - Server-to-server (MessageFeed) uses the internal-tier X-API-Key on the
 //     internal read face — the same key every other read carries.
@@ -28,10 +28,10 @@ import (
 // ─── DTOs ──────────────────────────────────────────────
 
 // SubmitGalgameRequest is the JSON body of POST /galgame/submit. All fields
-// are pointers so callers can omit them (Wiki applies its own defaults).
+// are pointers so callers can omit them (galgame applies its own defaults).
 //
 // U1: ReleaseDate / ReleaseDateTBA replace the old `released string`.
-// W2 / Wiki PR5: BannerImageHash dropped — banner via multipart `file` (auto
+// W2 / galgame PR5: BannerImageHash dropped — banner via multipart `file` (auto
 // promoted to covers[sort_order=0]) or explicit covers array.
 // Covers / Screenshots presence-replace semantics (see UpdateGalgameRequest
 // comment).
@@ -64,54 +64,54 @@ type SubmitGalgameRequest struct {
 // columns relevant to the "my submissions" page are typed; decline_reason is
 // present only on status=4 rows.
 type MineItem struct {
-	ID              int    `json:"id"`
-	Status          int    `json:"status"`
-	VndbID          string `json:"vndb_id"`
-	NameEnUs        string `json:"name_en_us"`
-	NameJaJp        string `json:"name_ja_jp"`
-	NameZhCn        string `json:"name_zh_cn"`
-	NameZhTw        string `json:"name_zh_tw"`
-	Banner          string `json:"banner"`
+	ID                  int    `json:"id"`
+	Status              int    `json:"status"`
+	VndbID              string `json:"vndb_id"`
+	NameEnUs            string `json:"name_en_us"`
+	NameJaJp            string `json:"name_ja_jp"`
+	NameZhCn            string `json:"name_zh_cn"`
+	NameZhTw            string `json:"name_zh_tw"`
+	Banner              string `json:"banner"`
 	EffectiveBannerHash string `json:"effective_banner_hash"`
-	ContentLimit    string `json:"content_limit"`
-	Created         string `json:"created"`
-	Updated         string `json:"updated"`
-	DeclineReason   string `json:"decline_reason,omitempty"`
+	ContentLimit        string `json:"content_limit"`
+	Created             string `json:"created"`
+	Updated             string `json:"updated"`
+	DeclineReason       string `json:"decline_reason,omitempty"`
 }
 
-// WikiMessageGalgame is the embedded galgame brief on a wiki message. It may
+// MessageGalgame is the embedded galgame brief on a galgame message. It may
 // be nil if the galgame was hard-deleted between event emission and read.
-type WikiMessageGalgame struct {
-	ID              int    `json:"id"`
-	NameEnUs        string `json:"name_en_us"`
-	NameJaJp        string `json:"name_ja_jp"`
-	NameZhCn        string `json:"name_zh_cn"`
-	NameZhTw        string `json:"name_zh_tw"`
-	Banner          string `json:"banner"`
+type MessageGalgame struct {
+	ID                  int    `json:"id"`
+	NameEnUs            string `json:"name_en_us"`
+	NameJaJp            string `json:"name_ja_jp"`
+	NameZhCn            string `json:"name_zh_cn"`
+	NameZhTw            string `json:"name_zh_tw"`
+	Banner              string `json:"banner"`
 	EffectiveBannerHash string `json:"effective_banner_hash"`
-	Status          int    `json:"status"`
-	UserID          int    `json:"user_id"`
+	Status              int    `json:"status"`
+	UserID              int    `json:"user_id"`
 }
 
-// WikiMessage is one entry from /galgame/messages/mine or /galgame/messages/feed.
-type WikiMessage struct {
-	ID            int64               `json:"id"`
-	Type          string              `json:"type"`
-	GalgameID     int                 `json:"galgame_id"`
-	Galgame       *WikiMessageGalgame `json:"galgame,omitempty"`
-	ActorUserID   *int                `json:"actor_user_id,omitempty"`
-	TargetUserID  *int                `json:"target_user_id,omitempty"`
-	Payload       json.RawMessage     `json:"payload,omitempty"`
-	CreatedAt     string              `json:"created_at"`
+// GalgameMessage is one entry from /galgame/messages/mine or /galgame/messages/feed.
+type GalgameMessage struct {
+	ID           int64           `json:"id"`
+	Type         string          `json:"type"`
+	GalgameID    int             `json:"galgame_id"`
+	Galgame      *MessageGalgame `json:"galgame,omitempty"`
+	ActorUserID  *int            `json:"actor_user_id,omitempty"`
+	TargetUserID *int            `json:"target_user_id,omitempty"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
+	CreatedAt    string          `json:"created_at"`
 }
 
 // SearchPending is the additional `pending` array surfaced by
 // /galgame/search?include_pending=true (only when the caller is the owner of
 // the matching status ∈ {3,4} entries).
 type SearchPending struct {
-	Items   []GalgameHit  `json:"items"`
-	Pending []GalgameHit  `json:"pending"`
-	Total   int64         `json:"total"`
+	Items   []GalgameHit `json:"items"`
+	Pending []GalgameHit `json:"pending"`
+	Total   int64        `json:"total"`
 }
 
 // ─── User-facing methods (transparent JWT forwarding) ──
@@ -170,26 +170,26 @@ func (c *Client) DeleteGalgameDraft(ctx context.Context, accessToken string, gid
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
 		fmt.Sprintf("%s/galgame/%d", c.legacyBase, gid), nil)
 	if err != nil {
-		return fmt.Errorf("build wiki delete: %w", err)
+		return fmt.Errorf("build galgame delete: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("wiki DELETE draft: %w", err)
+		return fmt.Errorf("galgame DELETE draft: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read wiki delete response: %w", err)
+		return fmt.Errorf("read galgame delete response: %w", err)
 	}
-	var env wikiResponse[json.RawMessage]
+	var env galgameResponse[json.RawMessage]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return &WikiError{Code: env.Code, Message: env.Message}
+		return &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return nil
 }
@@ -214,7 +214,7 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki /galgame/mine: %w", err)
+		return nil, fmt.Errorf("build galgame /galgame/mine: %w", err)
 	}
 	// Dual credential: the user JWT rides Authorization; the service key (when
 	// configured) rides X-API-Key on the internal read face.
@@ -225,19 +225,19 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki /galgame/mine: %w", err)
+		return nil, fmt.Errorf("galgame /galgame/mine: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[Paginated[MineItem]]
+	var env galgameResponse[Paginated[MineItem]]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	if env.Data.Items == nil {
 		env.Data.Items = []MineItem{}
@@ -246,7 +246,7 @@ func (c *Client) ListMyGalgames(ctx context.Context, accessToken string, status 
 }
 
 // SearchGalgameForPublish wraps /galgame/search?include_pending=true. With a
-// non-empty access token, wiki decodes the JWT and additionally surfaces the
+// non-empty access token, galgame decodes the JWT and additionally surfaces the
 // caller's own status ∈ {3,4} matches in `pending`. Anonymous calls behave
 // like the regular search.
 func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q string, limit int) (*SearchPending, error) {
@@ -268,7 +268,7 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	u := base + "/galgame/search?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki search: %w", err)
+		return nil, fmt.Errorf("build galgame search: %w", err)
 	}
 	// Dual credential: the (optional) user JWT rides Authorization to surface
 	// the caller's own pending drafts; the service key rides X-API-Key.
@@ -280,19 +280,19 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki search: %w", err)
+		return nil, fmt.Errorf("galgame search: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[SearchPending]
+	var env galgameResponse[SearchPending]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	// Normalize: a nil slice marshals back to JSON `null`, which crashes
 	// frontend code doing `results.pending.length`. Guarantee `[]`.
@@ -305,9 +305,9 @@ func (c *Client) SearchGalgameForPublish(ctx context.Context, accessToken, q str
 	return &env.Data, nil
 }
 
-// GetMyWikiMessages proxies GET /galgame/messages/mine (Bearer). Used by the
-// notification center to merge wiki notifications with local ones.
-func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinceID int64, limit int) (*Paginated[WikiMessage], error) {
+// GetMyGalgameMessages proxies GET /galgame/messages/mine (Bearer). Used by the
+// notification center to merge galgame notifications with local ones.
+func (c *Client) GetMyGalgameMessages(ctx context.Context, accessToken string, sinceID int64, limit int) (*Paginated[GalgameMessage], error) {
 	q := url.Values{}
 	if sinceID > 0 {
 		q.Set("since_id", strconv.FormatInt(sinceID, 10))
@@ -322,7 +322,7 @@ func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinc
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki /messages/mine: %w", err)
+		return nil, fmt.Errorf("build galgame /messages/mine: %w", err)
 	}
 	// Dual credential: the user JWT rides Authorization; the service key (when
 	// configured) rides X-API-Key on the internal read face.
@@ -333,38 +333,38 @@ func (c *Client) GetMyWikiMessages(ctx context.Context, accessToken string, sinc
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki /messages/mine: %w", err)
+		return nil, fmt.Errorf("galgame /messages/mine: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[Paginated[WikiMessage]]
+	var env galgameResponse[Paginated[GalgameMessage]]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return &env.Data, nil
 }
 
 // ─── Service-to-service (internal-tier X-API-Key) ──────
 
-// WikiMessageFeedResult is the decoded `data` payload of /galgame/messages/feed.
-type WikiMessageFeedResult struct {
-	Items   []WikiMessage `json:"items"`
-	HasMore bool          `json:"has_more"`
+// GalgameMessageFeedResult is the decoded `data` payload of /galgame/messages/feed.
+type GalgameMessageFeedResult struct {
+	Items   []GalgameMessage `json:"items"`
+	HasMore bool             `json:"has_more"`
 }
 
-// GetWikiMessageFeed proxies GET /galgame/messages/feed for the cron job.
+// GetGalgameMessageFeed proxies GET /galgame/messages/feed for the cron job.
 // Authenticated via the internal-tier X-API-Key on the internal read face — the
 // same key every other read carries (the legacy /api Basic-Auth feed retired in
 // open-API phase 2 wave 05).
-func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit int) (*WikiMessageFeedResult, error) {
+func (c *Client) GetGalgameMessageFeed(ctx context.Context, sinceID int64, limit int) (*GalgameMessageFeedResult, error) {
 	if c.apiKey == "" {
-		return nil, fmt.Errorf("wiki message feed: internal-tier API key not configured (KUN_NEXTMOE_API_KEY)")
+		return nil, fmt.Errorf("galgame message feed: internal-tier API key not configured (KUN_NEXTMOE_API_KEY)")
 	}
 	q := url.Values{}
 	if sinceID > 0 {
@@ -379,25 +379,25 @@ func (c *Client) GetWikiMessageFeed(ctx context.Context, sinceID int64, limit in
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki /messages/feed: %w", err)
+		return nil, fmt.Errorf("build galgame /messages/feed: %w", err)
 	}
 	req.Header.Set("X-API-Key", c.apiKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki /messages/feed: %w", err)
+		return nil, fmt.Errorf("galgame /messages/feed: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[WikiMessageFeedResult]
+	var env galgameResponse[GalgameMessageFeedResult]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return &env.Data, nil
 }
@@ -411,7 +411,7 @@ func (c *Client) writeUserJSON(ctx context.Context, method, path, accessToken st
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("build wiki %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("build galgame %s %s: %w", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -419,19 +419,19 @@ func (c *Client) writeUserJSON(ctx context.Context, method, path, accessToken st
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("galgame %s %s: %w", method, path, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[json.RawMessage]
+	var env galgameResponse[json.RawMessage]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return env.Data, nil
 }
@@ -474,7 +474,7 @@ func (c *Client) writeUserMultipart(
 
 	req, err := http.NewRequestWithContext(ctx, method, c.legacyBase+path, &buf)
 	if err != nil {
-		return nil, fmt.Errorf("build wiki %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("build galgame %s %s: %w", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", w.FormDataContentType())
@@ -482,19 +482,19 @@ func (c *Client) writeUserMultipart(
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("wiki %s %s (multipart): %w", method, path, err)
+		return nil, fmt.Errorf("galgame %s %s (multipart): %w", method, path, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("read wiki response: %w", err)
+		return nil, fmt.Errorf("read galgame response: %w", err)
 	}
-	var env wikiResponse[json.RawMessage]
+	var env galgameResponse[json.RawMessage]
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode wiki envelope: %w (body=%s)", err, truncate(string(raw), 200))
+		return nil, fmt.Errorf("decode galgame envelope: %w (body=%s)", err, truncate(string(raw), 200))
 	}
 	if env.Code != 0 {
-		return nil, &WikiError{Code: env.Code, Message: env.Message}
+		return nil, &GalgameError{Code: env.Code, Message: env.Message}
 	}
 	return env.Data, nil
 }

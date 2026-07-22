@@ -25,18 +25,18 @@ import (
 )
 
 // CreatePatch (register-by-VNDB) and UpdatePatch always need a well-formed
-// vndb_id — they look the galgame up on Wiki by VNDB. VNDB-less publishing is a
-// separate path (SubmitGalgame → Wiki, which gates it on the creator role).
+// vndb_id — they look the galgame up on galgame by VNDB. VNDB-less publishing is a
+// separate path (SubmitGalgame → galgame, which gates it on the creator role).
 var vndbIDRegex = regexp.MustCompile(`^v\d+$`)
 
 type PatchHandler struct {
 	service *service.PatchService
-	wiki    *galgameClient.Client
+	galgame *galgameClient.Client
 	users   *userclient.Client
 }
 
-func New(svc *service.PatchService, wiki *galgameClient.Client, users *userclient.Client) *PatchHandler {
-	return &PatchHandler{service: svc, wiki: wiki, users: users}
+func New(svc *service.PatchService, galgame *galgameClient.Client, users *userclient.Client) *PatchHandler {
+	return &PatchHandler{service: svc, galgame: galgame, users: users}
 }
 
 func getIDParam(c fiber.Ctx, name string) (int, error) {
@@ -59,14 +59,14 @@ func getIDParam(c fiber.Ctx, name string) (int, error) {
 // callers, even though the parent detail endpoint already 404s for them.
 //
 // Defaults to sfw via ContentLimitForListBrowse: an anonymous crawler with no
-// content_limit query gets the SEO-safe path. Wiki transient failure fails
+// content_limit query gets the SEO-safe path. galgame transient failure fails
 // closed (return false) — same SEO-safety reasoning as enricher / FilterBy.
 func (h *PatchHandler) gatePatchByContentLimit(c fiber.Ctx, patchID int) bool {
 	cl := utils.ContentLimitForListBrowse(c)
-	if cl == "" || h.wiki == nil {
+	if cl == "" || h.galgame == nil {
 		return true
 	}
-	briefs, err := h.wiki.GalgameBatch(c.Context(), []int{patchID}, cl)
+	briefs, err := h.galgame.GalgameBatch(c.Context(), []int{patchID}, cl)
 	if err != nil {
 		return false
 	}
@@ -91,7 +91,7 @@ func (h *PatchHandler) ensureCanPublishGalgame(c fiber.Ctx) *errors.AppError {
 // CreatePatch POST /api/patch
 //
 // D12 (2026-04-21): the request body is simplified to JSON { "vndb_id": "vXXX" }.
-// The server calls Wiki /galgame/check to verify and fetch the galgame_id to persist locally.
+// The server calls galgame /galgame/check to verify and fetch the galgame_id to persist locally.
 //
 // Publish gate: by default any logged-in user may create a patch. The admin
 // "creator_only" toggle narrows publishing to the trusted-publisher set
@@ -111,7 +111,7 @@ func (h *PatchHandler) CreatePatch(c fiber.Ctx) error {
 	var id int
 	var err error
 	if req.GalgameID > 0 {
-		// Preferred path: register by Wiki galgame_id (handles 原创 works with no
+		// Preferred path: register by galgame_id (handles 原创 works with no
 		// vndb_id, which the legacy vndb path 400s on with "VndbID is required").
 		id, err = h.service.CreatePatchByGalgameID(c.Context(), user.ID, req.GalgameID)
 	} else {
@@ -122,10 +122,10 @@ func (h *PatchHandler) CreatePatch(c fiber.Ctx) error {
 	}
 	if err != nil {
 		// Distinct error code so the frontend can render a "前往 Wiki 创建"
-		// CTA when the vndb_id is missing on Wiki, vs the generic toast for
+		// CTA when the vndb_id is missing on galgame, vs the generic toast for
 		// any other failure (e.g. duplicate vndb_id locally).
-		if stderrors.Is(err, service.ErrWikiGalgameMissing) {
-			return response.Error(c, errors.ErrWikiGalgameNotFound(""))
+		if stderrors.Is(err, service.ErrGalgameMissing) {
+			return response.Error(c, errors.ErrGalgameNotFound(""))
 		}
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -143,9 +143,9 @@ type headerCard struct {
 // D12: return the flat GalgameCard structure directly (no longer wrapped in patch / is_favorite layers).
 // Frontend PatchHeader = GalgameCard + isFavorite.
 //
-// NSFW: forwards content_limit to wiki (default sfw — moyu is stricter than
-// wiki's "detail default = no filter" because *moyu's* detail surface is what
-// the search engine indexes). When wiki filters this id out, the enricher
+// NSFW: forwards content_limit to galgame (default sfw — moyu is stricter than
+// galgame's "detail default = no filter" because *moyu's* detail surface is what
+// the search engine indexes). When galgame filters this id out, the enricher
 // returns nil and we 404 — the same shape as a missing patch.
 func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
@@ -156,19 +156,19 @@ func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	patch, err := h.service.GetPatch(c.Context(), id)
 	if err != nil {
-		// No local row → render the wiki galgame as a read-only "本站尚未收录"
+		// No local row → render the galgame as a read-only "本站尚未收录"
 		// header (is_on_forum=false) instead of 404'ing. moyu materializes a row
-		// only on a real publish/claim, not on view. nil = not on wiki / filtered
+		// only on a real publish/claim, not on view. nil = not on galgame / filtered
 		// by content_limit (preserves the NSFW gate) → genuine 404.
 		if stderrors.Is(err, gorm.ErrRecordNotFound) {
-			if card := enricher.GalgameOnlyCard(c.Context(), h.wiki, h.users, id, cl); card != nil {
+			if card := enricher.GalgameOnlyCard(c.Context(), h.galgame, h.users, id, cl); card != nil {
 				return response.OK(c, headerCard{GalgameCard: *card})
 			}
 		}
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
 
-	enriched := enricher.EnrichPatch(c.Context(), h.wiki, h.users, patch, cl)
+	enriched := enricher.EnrichPatch(c.Context(), h.galgame, h.users, patch, cl)
 	if enriched == nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
@@ -182,9 +182,9 @@ func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 
 // GetPatchDetail GET /api/patch/:id/detail
 //
-// D12: detail enrichment goes through Wiki /galgame/:gid to additionally fetch intro / tag_ids / official_ids.
+// D12: detail enrichment goes through galgame /galgame/:gid to additionally fetch intro / tag_ids / official_ids.
 //
-// NSFW: same gating as GetPatch — content_limit forwarded to wiki, default
+// NSFW: same gating as GetPatch — content_limit forwarded to galgame, default
 // sfw, nil from enricher → 404. The introduction_html / tags / officials this
 // endpoint emits are the biggest single NSFW surface in moyu's SSR output
 // (Google indexes the full intro text), so 404'ing on a filter miss matters
@@ -198,15 +198,15 @@ func (h *PatchHandler) GetPatchDetail(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	patch, err := h.service.GetPatchDetail(c.Context(), id)
 	if err != nil {
-		// No local row → wiki-only detail (is_on_forum=false); see GetPatch.
+		// No local row → galgame-only detail (is_on_forum=false); see GetPatch.
 		if stderrors.Is(err, gorm.ErrRecordNotFound) {
-			if detail := enricher.GalgameOnlyDetail(c.Context(), h.wiki, h.users, id, cl); detail != nil {
+			if detail := enricher.GalgameOnlyDetail(c.Context(), h.galgame, h.users, id, cl); detail != nil {
 				return response.OK(c, detail)
 			}
 		}
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
-	enriched := enricher.EnrichPatchDetail(c.Context(), h.wiki, h.users, patch, cl)
+	enriched := enricher.EnrichPatchDetail(c.Context(), h.galgame, h.users, patch, cl)
 	if enriched == nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
@@ -217,7 +217,7 @@ func (h *PatchHandler) GetPatchDetail(c fiber.Ctx) error {
 //
 // After D12 this only permits "rebinding vndb_id": the owner may rebind their
 // own patch; rebinding someone else's requires moderator/admin (isPrivileged).
-// Game name/introduction/banner etc. all live in Wiki; this endpoint no longer accepts them.
+// Game name/introduction/banner etc. all live in galgame; this endpoint no longer accepts them.
 func (h *PatchHandler) UpdatePatch(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
@@ -500,7 +500,7 @@ func (h *PatchHandler) LocateComment(c fiber.Ctx) error {
 // NSFW gate: same as GetComments. Resource notes / titles may describe NSFW
 // content explicitly, so listing them under a NSFW patch must 404 for sfw
 // callers — even though the resource rows themselves don't carry
-// content_limit (the field lives on the owning patch via wiki).
+// content_limit (the field lives on the owning patch via galgame).
 func (h *PatchHandler) GetResources(c fiber.Ctx) error {
 	id, err := getIDParam(c, "id")
 	if err != nil {
@@ -586,7 +586,7 @@ func (h *PatchHandler) UpdateResource(c fiber.Ctx) error {
 	}
 
 	// Snapshot the actor's privilege so the file-history row records who+role
-	// at time of edit (MOYU-PR5 / M3). Mirrors the Wiki revision convention
+	// at time of edit (MOYU-PR5 / M3). Mirrors the galgame revision convention
 	// (3=admin / 2=mod / 1=user / 0=unknown).
 	actorRole := 1
 	if middleware.IsAdmin(c) {
@@ -647,7 +647,7 @@ func (h *PatchHandler) ToggleResourceDisable(c fiber.Ctx) error {
 // GetResourceDownloadInfo GET /api/patch/resource/:resourceId/link
 //
 // Minimal payload for the "获取资源链接" reveal on the patch resource list:
-// only the storage type + download links + secrets. No Wiki enrichment, no
+// only the storage type + download links + secrets. No galgame enrichment, no
 // recommendations, no blake3 (the card already shows the hash).
 func (h *PatchHandler) GetResourceDownloadInfo(c fiber.Ctx) error {
 	resourceID, err := getIDParam(c, "resourceId")
@@ -801,7 +801,7 @@ func (h *PatchHandler) GetContributors(c fiber.Ctx) error {
 //
 // NSFW: forwards content_limit so the random landing page can't dump a NSFW
 // patch into an anonymous (sfw-default) browser session. Service drains a
-// 60-row random sample through wiki batch and picks from the survivors.
+// 60-row random sample through galgame batch and picks from the survivors.
 func (h *PatchHandler) GetRandomPatch(c fiber.Ctx) error {
 	id, err := h.service.GetRandomPatchID(c.Context(), utils.ContentLimitForListBrowse(c), utils.IncludeEmptyGalgames(c))
 	if err != nil {
@@ -818,17 +818,17 @@ func (h *PatchHandler) GetRandomPatch(c fiber.Ctx) error {
 
 // UpdateGalgame PUT /api/v1/galgame/:gid
 //
-// Thin proxy over the Wiki Service's PUT /galgame/:gid. Two modes:
+// Thin proxy over the galgame service's PUT /galgame/:gid. Two modes:
 //
 //   - application/json  -> forwards the JSON body unchanged.
 //   - multipart/form-data with `data` (JSON) and optional `file` (banner)
-//     -> forwards as multipart so Wiki/image_service can attach the banner
+//     -> forwards as multipart so galgame/image_service can attach the banner
 //     in the same revision (no orphan files; see docs/galgame_wiki/01-galgame.md
 //     §Banner 上传).
 //
-// We do not enforce authorization locally: Wiki itself permits only the
+// We do not enforce authorization locally: galgame itself permits only the
 // creator or an admin. The user's OAuth access_token is forwarded verbatim
-// (carries the JWT roles claim Wiki validates).
+// (carries the JWT roles claim galgame validates).
 func (h *PatchHandler) UpdateGalgame(c fiber.Ctx) error {
 	gid, err := getIDParam(c, "gid")
 	if err != nil {
@@ -848,22 +848,22 @@ func (h *PatchHandler) UpdateGalgame(c fiber.Ctx) error {
 
 // updateGalgameJSON is the plain JSON path. Decoding into the client's
 // pointer-fielded shape filters out unsupported keys (e.g. vndb_id, which
-// Wiki rejects on update anyway).
+// galgame rejects on update anyway).
 func (h *PatchHandler) updateGalgameJSON(c fiber.Ctx, gid int, accessToken string) error {
 	var req galgameClient.UpdateGalgameRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
-	data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+	data, err := h.galgame.UpdateGalgame(c.Context(), accessToken, gid, &req)
 	if err == nil {
 		// Editing galgame info is a content update → bump moyu's 最近更新 sort key.
 		h.service.TouchResourceUpdateTime(gid)
 	}
-	return writeWikiResult(c, data, err)
+	return writeGalgameResult(c, data, err)
 }
 
 // updateGalgameMultipart reads `data` + optional `file` from the incoming
-// multipart body and forwards them through the wiki client. Size cap is
+// multipart body and forwards them through the galgame client. Size cap is
 // 10 MB (consistent with other image-upload paths in this project).
 func (h *PatchHandler) updateGalgameMultipart(c fiber.Ctx, gid int, accessToken string) error {
 	form, err := c.MultipartForm()
@@ -883,14 +883,14 @@ func (h *PatchHandler) updateGalgameMultipart(c fiber.Ctx, gid int, accessToken 
 	}
 
 	// file field is optional -- if absent, fall back to JSON mode so we don't
-	// invent an empty multipart that Wiki could misinterpret.
+	// invent an empty multipart that galgame could misinterpret.
 	fileHeaders, _ := form.File["file"]
 	if len(fileHeaders) == 0 {
-		data, err := h.wiki.UpdateGalgame(c.Context(), accessToken, gid, &req)
+		data, err := h.galgame.UpdateGalgame(c.Context(), accessToken, gid, &req)
 		if err == nil {
 			h.service.TouchResourceUpdateTime(gid)
 		}
-		return writeWikiResult(c, data, err)
+		return writeGalgameResult(c, data, err)
 	}
 
 	fh := fileHeaders[0]
@@ -911,22 +911,22 @@ func (h *PatchHandler) updateGalgameMultipart(c fiber.Ctx, gid int, accessToken 
 		mime = "application/octet-stream"
 	}
 
-	data, err := h.wiki.UpdateGalgameMultipart(
+	data, err := h.galgame.UpdateGalgameMultipart(
 		c.Context(), accessToken, gid, &req, fh.Filename, raw, mime,
 	)
 	if err == nil {
 		h.service.TouchResourceUpdateTime(gid)
 	}
-	return writeWikiResult(c, data, err)
+	return writeGalgameResult(c, data, err)
 }
 
-// writeWikiResult is the shared result -> response mapping for both modes.
-// Wiki business errors (e.g. 80008 image quota, 60002 review rejected,
-// 40300 forbidden) flow through as-is via WikiError so the frontend can
+// writeGalgameResult is the shared result -> response mapping for both modes.
+// galgame business errors (e.g. 80008 image quota, 60002 review rejected,
+// 40300 forbidden) flow through as-is via GalgameError so the frontend can
 // render specific messages.
-func writeWikiResult(c fiber.Ctx, data json.RawMessage, err error) error {
+func writeGalgameResult(c fiber.Ctx, data json.RawMessage, err error) error {
 	if err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
@@ -934,12 +934,12 @@ func writeWikiResult(c fiber.Ctx, data json.RawMessage, err error) error {
 	return c.JSON(response.Response{Code: 0, Message: "OK", Data: data})
 }
 
-// ===== Wiki submission proxies (docs/galgame_wiki/07-submission.md) =====
+// ===== galgame submission proxies (docs/galgame_wiki/07-submission.md) =====
 //
-// Each endpoint is a thin pass-through to Wiki: extract the user's
-// access_token from the session, forward verbatim, surface Wiki's business
+// Each endpoint is a thin pass-through to galgame: extract the user's
+// access_token from the session, forward verbatim, surface galgame's business
 // errors as-is. The site backend does not re-implement authorization —
-// Wiki decodes the JWT and enforces submitter / status rules itself.
+// galgame decodes the JWT and enforces submitter / status rules itself.
 
 // SubmitGalgame POST /api/v1/galgame/submit
 //
@@ -966,8 +966,8 @@ func (h *PatchHandler) submitGalgameJSON(c fiber.Ctx, accessToken string) error 
 	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
-	data, err := h.wiki.SubmitGalgame(c.Context(), accessToken, &req)
-	return writeWikiResult(c, data, err)
+	data, err := h.galgame.SubmitGalgame(c.Context(), accessToken, &req)
+	return writeGalgameResult(c, data, err)
 }
 
 func (h *PatchHandler) submitGalgameMultipart(c fiber.Ctx, accessToken string) error {
@@ -976,18 +976,18 @@ func (h *PatchHandler) submitGalgameMultipart(c fiber.Ctx, accessToken string) e
 		return response.Error(c, err.(*errors.AppError))
 	}
 	if len(fileBytes) == 0 {
-		data, callErr := h.wiki.SubmitGalgame(c.Context(), accessToken, &req)
-		return writeWikiResult(c, data, callErr)
+		data, callErr := h.galgame.SubmitGalgame(c.Context(), accessToken, &req)
+		return writeGalgameResult(c, data, callErr)
 	}
-	data, callErr := h.wiki.SubmitGalgameMultipart(
+	data, callErr := h.galgame.SubmitGalgameMultipart(
 		c.Context(), accessToken, &req, fileName, fileBytes, fileMime,
 	)
-	return writeWikiResult(c, data, callErr)
+	return writeGalgameResult(c, data, callErr)
 }
 
 // ClaimGalgame POST /api/v1/galgame/:gid/claim
 //
-// Flip a VNDB draft (status=2) to published (status=0) on Wiki, then register
+// Flip a VNDB draft (status=2) to published (status=0) on galgame, then register
 // the local patch row + award +3 moemoepoint atomically (handbook §9). The
 // frontend must NOT additionally POST /patch — that produced a double +3.
 //
@@ -1006,31 +1006,31 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
 
-	data, err := h.wiki.ClaimGalgame(c.Context(), accessToken, gid)
+	data, err := h.galgame.ClaimGalgame(c.Context(), accessToken, gid)
 	if err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
-			// Forward Wiki business code/message verbatim (e.g. 20006 草稿不可
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
+			// Forward galgame business code/message verbatim (e.g. 20006 草稿不可
 			// 认领 when the Meilisearch row was stale). HTTP 400.
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 	}
 
-	// Wiki returned the published galgame (status=0). Pull the id/vndb_id so
+	// galgame returned the published galgame (status=0). Pull the id/vndb_id so
 	// we can create the local patch row keyed by galgame_id (== patch.id, D13).
 	var claimed struct {
 		ID     int    `json:"id"`
 		VndbID string `json:"vndb_id"`
 	}
 	if jerr := json.Unmarshal(data, &claimed); jerr != nil || claimed.ID == 0 {
-		// Wiki succeeded but we couldn't parse — fall back to the path param.
+		// galgame succeeded but we couldn't parse — fall back to the path param.
 		claimed.ID = gid
 	}
 
 	userID := middleware.MustGetUser(c).ID
 	patchID, regErr := h.service.RegisterClaimedGalgame(userID, claimed.ID, claimed.VndbID)
 	if regErr != nil {
-		// The Wiki-side claim already succeeded and cannot be rolled back; the
+		// The galgame-side claim already succeeded and cannot be rolled back; the
 		// galgame is published and owned by the user. Surface a soft error so
 		// the user can retry the (idempotent) local registration via the
 		// detail page's first interaction, but don't pretend it failed wholesale.
@@ -1046,7 +1046,7 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 
 // PatchGalgameDraft PATCH /api/v1/galgame/:gid
 //
-// Edit one's own pending/declined draft. Wiki auto-flips status=4 back to 3.
+// Edit one's own pending/declined draft. galgame auto-flips status=4 back to 3.
 // Same dual-content-type as Submit/Update.
 func (h *PatchHandler) PatchGalgameDraft(c fiber.Ctx) error {
 	gid, idErr := getIDParam(c, "gid")
@@ -1064,28 +1064,28 @@ func (h *PatchHandler) PatchGalgameDraft(c fiber.Ctx) error {
 			return response.Error(c, err.(*errors.AppError))
 		}
 		if len(fileBytes) == 0 {
-			data, callErr := h.wiki.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
-			return writeWikiResult(c, data, callErr)
+			data, callErr := h.galgame.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
+			return writeGalgameResult(c, data, callErr)
 		}
-		data, callErr := h.wiki.PatchGalgameDraftMultipart(
+		data, callErr := h.galgame.PatchGalgameDraftMultipart(
 			c.Context(), accessToken, gid, &req, fileName, fileBytes, fileMime,
 		)
-		return writeWikiResult(c, data, callErr)
+		return writeGalgameResult(c, data, callErr)
 	}
 	var req galgameClient.SubmitGalgameRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
-	data, err := h.wiki.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
-	return writeWikiResult(c, data, err)
+	data, err := h.galgame.PatchGalgameDraft(c.Context(), accessToken, gid, &req)
+	return writeGalgameResult(c, data, err)
 }
 
 // DeleteGalgameDraft DELETE /api/v1/galgame/:gid (draft)
 //
-// Hard-delete one's own pending/declined draft (Wiki enforces status ∈ {3,4}
+// Hard-delete one's own pending/declined draft (galgame enforces status ∈ {3,4}
 // + submitter check). NOTE: this conflicts at the path level with the local
 // patch DELETE /api/v1/patch/:id; we expose it under /galgame/:gid which is
-// what Wiki uses, so the verb is unambiguous.
+// what galgame uses, so the verb is unambiguous.
 func (h *PatchHandler) DeleteGalgameDraft(c fiber.Ctx) error {
 	gid, idErr := getIDParam(c, "gid")
 	if idErr != nil {
@@ -1095,8 +1095,8 @@ func (h *PatchHandler) DeleteGalgameDraft(c fiber.Ctx) error {
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
 	}
-	if err := h.wiki.DeleteGalgameDraft(c.Context(), accessToken, gid); err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
+	if err := h.galgame.DeleteGalgameDraft(c.Context(), accessToken, gid); err != nil {
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
@@ -1119,9 +1119,9 @@ func (h *PatchHandler) ListMyGalgames(c fiber.Ctx) error {
 	if page < 1 {
 		page = 1
 	}
-	out, err := h.wiki.ListMyGalgames(c.Context(), accessToken, status, page, limit)
+	out, err := h.galgame.ListMyGalgames(c.Context(), accessToken, status, page, limit)
 	if err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
@@ -1144,9 +1144,9 @@ func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
 	if limit < 1 || limit > 24 {
 		limit = 10
 	}
-	out, err := h.wiki.SearchGalgameForPublish(c.Context(), accessToken, q, limit)
+	out, err := h.galgame.SearchGalgameForPublish(c.Context(), accessToken, q, limit)
 	if err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
@@ -1154,13 +1154,13 @@ func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
 	return response.OK(c, out)
 }
 
-// GetWikiMessagesReadState GET /api/v1/galgame/messages/read-state
+// GetGalgameMessagesReadState GET /api/v1/galgame/messages/read-state
 //
-// Returns the caller's last-read marker for wiki notifications. Used by the
-// notification-center to compute the unread badge (count of wiki messages
-// with id > last_read_message_id). State lives locally — wiki doesn't
+// Returns the caller's last-read marker for galgame notifications. Used by the
+// notification-center to compute the unread badge (count of galgame messages
+// with id > last_read_message_id). State lives locally — galgame doesn't
 // maintain per-user read flags (see docs/galgame_wiki/08-messages.md §已读状态).
-func (h *PatchHandler) GetWikiMessagesReadState(c fiber.Ctx) error {
+func (h *PatchHandler) GetGalgameMessagesReadState(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var lastRead int64
 	row := h.service.DB().Raw(
@@ -1171,11 +1171,11 @@ func (h *PatchHandler) GetWikiMessagesReadState(c fiber.Ctx) error {
 	return response.OK(c, map[string]any{"last_read_message_id": lastRead})
 }
 
-// UpdateWikiMessagesReadState PUT /api/v1/galgame/messages/read-state
+// UpdateGalgameMessagesReadState PUT /api/v1/galgame/messages/read-state
 //
 // Body: { "last_read_message_id": int64 }. We only move forward — submitting
 // a smaller id is a no-op.
-func (h *PatchHandler) UpdateWikiMessagesReadState(c fiber.Ctx) error {
+func (h *PatchHandler) UpdateGalgameMessagesReadState(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	var body struct {
 		LastReadMessageID int64 `json:"last_read_message_id"`
@@ -1198,8 +1198,8 @@ func (h *PatchHandler) UpdateWikiMessagesReadState(c fiber.Ctx) error {
 	return response.OKMessage(c, "OK")
 }
 
-// GetMyWikiMessages GET /api/v1/galgame/messages/mine
-func (h *PatchHandler) GetMyWikiMessages(c fiber.Ctx) error {
+// GetMyGalgameMessages GET /api/v1/galgame/messages/mine
+func (h *PatchHandler) GetMyGalgameMessages(c fiber.Ctx) error {
 	accessToken := middleware.GetAccessToken(c)
 	if accessToken == "" {
 		return response.Error(c, errors.ErrUnauthorized())
@@ -1209,9 +1209,9 @@ func (h *PatchHandler) GetMyWikiMessages(c fiber.Ctx) error {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
-	out, err := h.wiki.GetMyWikiMessages(c.Context(), accessToken, sinceID, limit)
+	out, err := h.galgame.GetMyGalgameMessages(c.Context(), accessToken, sinceID, limit)
 	if err != nil {
-		if werr, ok := err.(*galgameClient.WikiError); ok {
+		if werr, ok := err.(*galgameClient.GalgameError); ok {
 			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
 		}
 		return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))

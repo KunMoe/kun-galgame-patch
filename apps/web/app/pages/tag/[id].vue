@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Standalone moyu tag detail page (replaces the previous external-link to a
-// standalone wiki tag page from the patch introduction). Tag metadata now
+// standalone galgame tag page from the patch introduction). Tag metadata now
 // comes from the NextMoe catalog service, proxied by the moyu backend.
 //
 // Reads `GET /tag/_?tag_id=N&page&limit` which returns the tag entity + the
@@ -57,7 +57,7 @@ const { data, pending } = await useAsyncData(
   { watch: [page, tagID] }
 )
 
-// Wiki shapes the response with `tag` for the entity + `items`/`galgames` +
+// galgame shapes the response with `tag` for the entity + `items`/`galgames` +
 // `total` for the paginated galgame list. Be defensive about which key it
 // uses since the doc shows the request but not the exact response.
 const tag = computed(() => data.value?.tag ?? null)
@@ -67,14 +67,14 @@ const galgames = computed<GalgameCard[]>(
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
-// Wiki end already applies sfw default at /tag/:name (see
+// galgame end already applies sfw default at /tag/:name (see
 // docs/galgame_wiki/00-handbook §16.2), so by construction the tag
 // detail's galgame list never leaks NSFW entries to the SSR HTML. SEO is
 // safe to enable on a loaded SFW tag. Disable when:
 //   - the tag is a sexual (NSFW) category — the tag name/description itself is
 //     a NSFW signal, so don't let search engines index it (mirrors the NSFW
 //     SEO gate on patch/[id].vue), or
-//   - the tag is missing / the wiki call failed (avoid indexing a 404 stub).
+//   - the tag is missing / the galgame call failed (avoid indexing a 404 stub).
 if (tag.value && tag.value.category !== 'sexual') {
   useKunSeoMeta({
     title: `标签 · ${tag.value.name}`,
@@ -142,7 +142,7 @@ if (tag.value && tag.value.category !== 'sexual') {
           class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         >
           <!-- Backend now serves moyu-enriched GalgameCard shape for tag
-               detail (WikiTaxonomyDetailProxy joins each Wiki galgame with
+               detail (GalgameTaxonomyDetailProxy joins each galgame galgame with
                its local patch row for stats), so no client-side adapter
                is needed — render the same component as home / galgame
                index does for full visual + data parity. -->

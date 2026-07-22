@@ -42,12 +42,12 @@ type fileResult struct {
 // notifications per the internal-account requirement), the Wiki client (vndb_id
 // -> galgame_id), and the artifact client (large-file upload).
 type Importer struct {
-	db     *gorm.DB
-	repo   *patchRepo.PatchRepository
-	wiki   *galgameClient.Client
-	art    *artifactclient.Client
-	userID int
-	dryRun bool
+	db      *gorm.DB
+	repo    *patchRepo.PatchRepository
+	galgame *galgameClient.Client
+	art     *artifactclient.Client
+	userID  int
+	dryRun  bool
 	// touched collects every galgame_id we resolved (published or draft) so the
 	// run can flag the ones still at wiki status=2 afterwards. CheckGalgameByVndbID
 	// returns exists=true even for unclaimed VNDB drafts, so a naive import creates
@@ -65,7 +65,7 @@ func (imp *Importer) processFile(ctx context.Context, path string) fileResult {
 		return fileResult{name, statusUnrecognized, "unrecognized filename"}
 	}
 
-	exists, galgameID, err := imp.wiki.CheckGalgameByVndbID(ctx, p.VndbID)
+	exists, galgameID, err := imp.galgame.CheckGalgameByVndbID(ctx, p.VndbID)
 	if err != nil {
 		return fileResult{name, statusFailed, "wiki check: " + err.Error()}
 	}
@@ -132,8 +132,8 @@ func (imp *Importer) ensurePatch(ctx context.Context, galgameID int, vndbID stri
 
 	// Mirror the Wiki release_date locally (best-effort; a wiki blip leaves NULL).
 	var releaseDate *time.Time
-	if env, gErr := imp.wiki.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
-		releaseDate = utils.ParseWikiReleaseDate(*env.Galgame.ReleaseDate)
+	if env, gErr := imp.galgame.GetGalgame(ctx, galgameID, ""); gErr == nil && env != nil && env.Galgame.ReleaseDate != nil {
+		releaseDate = utils.ParseGalgameReleaseDate(*env.Galgame.ReleaseDate)
 	}
 
 	err := imp.db.Transaction(func(tx *gorm.DB) error {
@@ -231,7 +231,7 @@ func (imp *Importer) processDelete(ctx context.Context, rawLine string) fileResu
 	if p == nil {
 		return fileResult{name, statusUnrecognized, "unrecognized filename"}
 	}
-	exists, galgameID, err := imp.wiki.CheckGalgameByVndbID(ctx, p.VndbID)
+	exists, galgameID, err := imp.galgame.CheckGalgameByVndbID(ctx, p.VndbID)
 	if err != nil {
 		return fileResult{name, statusFailed, "wiki check: " + err.Error()}
 	}
@@ -290,7 +290,7 @@ func (imp *Importer) unpublishedDrafts(ctx context.Context) []int {
 		if end > len(ids) {
 			end = len(ids)
 		}
-		briefs, err := imp.wiki.GalgameBatch(ctx, ids[i:end], "all")
+		briefs, err := imp.galgame.GalgameBatch(ctx, ids[i:end], "all")
 		if err != nil {
 			slog.Warn("draft check: wiki batch failed (skipping this chunk)", "err", err)
 			continue

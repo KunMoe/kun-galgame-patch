@@ -24,18 +24,18 @@ import (
 )
 
 type CommonHandler struct {
-	db    *gorm.DB
-	wiki  *galgameClient.Client
-	users *userclient.Client
-	art   *artifactclient.Client
+	db      *gorm.DB
+	galgame *galgameClient.Client
+	users   *userclient.Client
+	art     *artifactclient.Client
 	// img resolves image_service hashes to absolute CDN URLs. Used by the Hikari
 	// partner API to hand third parties complete avatar links (the rest of the
 	// site resolves hashes client-side via resolveAvatarUrl).
 	img *imageclient.Client
 }
 
-func NewHandler(db *gorm.DB, wiki *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client) *CommonHandler {
-	return &CommonHandler{db: db, wiki: wiki, users: users, art: art, img: img}
+func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client) *CommonHandler {
+	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, img: img}
 }
 
 // attachResourceUsers / attachCommentUsers do the same id-collect → batch →
@@ -83,7 +83,7 @@ func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, e
 		return nil, nil
 	}
 	var rows []patchModel.Patch
-	// D13: patch.id is the Wiki galgame_id, no separate column.
+	// D13: patch.id is the galgame_id, no separate column.
 	err := p.db.Select("id", "vndb_id").
 		Where("id IN ?", ids).Find(&rows).Error
 	return rows, err
@@ -100,9 +100,9 @@ type homeResponse struct {
 // GetHome GET /api/home
 //
 // Returns "recent activity on this service" (latest 12 patches + 6 resources
-// + 6 comments). NSFW filtering follows the wiki content_limit protocol
+// + 6 comments). NSFW filtering follows the galgame content_limit protocol
 // (docs/galgame_wiki/00-handbook §16): the `content_limit` query parameter
-// is forwarded to wiki via the enricher; missing / invalid query falls back
+// is forwarded to galgame via the enricher; missing / invalid query falls back
 // to "sfw" — the home page is the single biggest SEO surface and must be
 // safe-by-default for anonymous crawlers.
 func (h *CommonHandler) GetHome(c fiber.Ctx) error {
@@ -128,8 +128,8 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	// no point rendering a resource note whose owning patch is about to be
 	// hidden, and the attach step would otherwise leak the NSFW patch's name
 	// into the response payload via comment.Patch / resource.Patch summaries.
-	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
-	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
+	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
+	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
 
 	patchModel.RenderResourceNotes(resources)
 	for i := range comments {
@@ -144,7 +144,7 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	patchModel.StripResourceSecrets(resources)
 
 	return response.OK(c, homeResponse{
-		Galgames:  enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl),
+		Galgames:  enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, cl),
 		Resources: resources,
 		Comments:  comments,
 	})
@@ -160,11 +160,11 @@ type galgameListRequest struct {
 	Limit        int    `query:"limit" validate:"required,min=1,max=24"`
 	// 发售日期筛选 (YYYY / YYYY-MM)。格式不在 validator 里校验（YYYY vs
 	// YYYY-MM 二选一不好用 oneof 表达）——交给 utils.ParseRelease*Bound，
-	// 非法输入在 handler 里返回 400（对齐 wiki §17.1 的 loud-reject）。
+	// 非法输入在 handler 里返回 400（对齐 galgame §17.1 的 loud-reject）。
 	ReleasedFrom string `query:"released_from"`
 	ReleasedTo   string `query:"released_to"`
 	// 不连续月份集合 (CSV 1-12，如 "3,7,12")，叠加在年份区间上的 AND 过滤
-	// (wiki §17.10)。本地 SQL: EXTRACT(MONTH FROM release_date) IN (...)。
+	// (galgame §17.10)。本地 SQL: EXTRACT(MONTH FROM release_date) IN (...)。
 	ReleasedMonths string `query:"released_months"`
 	// 注: include_empty（是否显示无补丁资源的游戏）不在此 struct 解析，统一走
 	// utils.IncludeEmptyGalgames(c)，与 home / ranking / user 列表共用一套逻辑。
@@ -172,9 +172,9 @@ type galgameListRequest struct {
 
 // GetGalgameList GET /api/galgame
 //
-// Local-side filters: translation type + sort. NSFW filter follows the wiki
+// Local-side filters: translation type + sort. NSFW filter follows the galgame
 // content_limit protocol (docs/galgame_wiki/00-handbook §16): forwarded to
-// wiki during enrichment, default "sfw" when unspecified (safe-by-default
+// galgame during enrichment, default "sfw" when unspecified (safe-by-default
 // for anonymous browse). The reported `total` is the pre-filter local row
 // count — filtering happens after the page slice is drawn, so the trailing
 // pages can return a short slice when many rows in that range are NSFW.
@@ -186,7 +186,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	}
 	cl := utils.ContentLimitForListBrowse(c)
 
-	// 发售日期边界 (YYYY / YYYY-MM → date)。malformed → 400 per wiki §17.1.
+	// 发售日期边界 (YYYY / YYYY-MM → date)。malformed → 400 per galgame §17.1.
 	lower, err := utils.ParseReleaseLowerBound(req.ReleasedFrom)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -195,7 +195,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	// 不连续月份集合 (CSV 1-12)。malformed → 400 per wiki §17.10.
+	// 不连续月份集合 (CSV 1-12)。malformed → 400 per galgame §17.10.
 	months, err := utils.ParseMonthSet(req.ReleasedMonths)
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
@@ -242,7 +242,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, map[string]any{
-		"galgames": enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl),
+		"galgames": enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, cl),
 		"total":    total,
 	})
 }
@@ -282,7 +282,7 @@ func (h *CommonHandler) GetGlobalComments(c fiber.Ctx) error {
 	// Drop comments whose owning patch is NSFW (under the caller's
 	// content_limit). attachPatchSummaries would otherwise leak the NSFW
 	// patch's name/banner via the comment.Patch summary field.
-	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
+	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
 
 	for i := range comments {
 		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
@@ -293,7 +293,7 @@ func (h *CommonHandler) GetGlobalComments(c fiber.Ctx) error {
 }
 
 // attachPatchSummaries fills the `Patch` field on every comment / resource row
-// in one Wiki batch call, avoiding an N+1 over the page. Either slice may be
+// in one galgame batch call, avoiding an N+1 over the page. Either slice may be
 // nil when the corresponding endpoint does not need it.
 func (h *CommonHandler) attachPatchSummaries(c fiber.Ctx, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
 	if len(comments) == 0 && len(resources) == 0 {
@@ -315,7 +315,7 @@ func (h *CommonHandler) attachPatchSummaries(c fiber.Ctx, comments []patchModel.
 		ids = append(ids, id)
 	}
 
-	summaries := enricher.BuildPatchSummaryMap(c.Context(), h.wiki, patchSummaryFinder{db: h.db}, ids)
+	summaries := enricher.BuildPatchSummaryMap(c.Context(), h.galgame, patchSummaryFinder{db: h.db}, ids)
 	for i := range comments {
 		if s, ok := summaries[comments[i].GalgameID]; ok {
 			summary := s
@@ -344,10 +344,10 @@ type resourceListRequest struct {
 
 // GetGlobalResources GET /api/resource
 //
-// NSFW filter follows the wiki content_limit protocol (default sfw). Filtered
+// NSFW filter follows the galgame content_limit protocol (default sfw). Filtered
 // AFTER the page slice is drawn: `total` is the unfiltered local count, so a
 // page can return fewer rows than the limit when many in that range belong to
-// NSFW patches. Acceptable trade-off — alternative would be a per-page wiki
+// NSFW patches. Acceptable trade-off — alternative would be a per-page galgame
 // pre-pass that doesn't scale.
 func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	var req resourceListRequest
@@ -381,7 +381,7 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
+	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 	patchModel.RenderResourceNotes(resources)
 	h.attachResourceUsers(c.Context(), resources)
 	h.attachPatchSummaries(c, nil, resources)
@@ -395,14 +395,14 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 
 // GetResourceDetail GET /api/resource/:id
 //
-// Returns the resource with its owning patch enriched via Wiki, plus up to 5
+// Returns the resource with its owning patch enriched via galgame, plus up to 5
 // recommended resources from the same patch. The frontend renders the patch
 // header (name / banner / vndb_id) from the `patch` field.
 //
-// NSFW: forwards content_limit to wiki for the owning patch (default sfw).
+// NSFW: forwards content_limit to galgame for the owning patch (default sfw).
 // If the owning patch is filtered out → 404, so a NSFW resource never leaks
 // out via this detail surface. Recommendations are filtered the same way:
-// any rec whose galgame_id wiki doesn't return is dropped.
+// any rec whose galgame_id galgame doesn't return is dropped.
 func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 
@@ -419,18 +419,18 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
 
-	// Fetch the owning patch and enrich it via Wiki so the frontend has
+	// Fetch the owning patch and enrich it via galgame so the frontend has
 	// name / banner / vndb_id without making a separate call.
 	var patch patchModel.Patch
 	var patchCard *enricher.GalgameCard
 	if err := h.db.First(&patch, resource.GalgameID).Error; err == nil {
-		patchCard = enricher.EnrichPatch(c.Context(), h.wiki, h.users, &patch, cl)
+		patchCard = enricher.EnrichPatch(c.Context(), h.galgame, h.users, &patch, cl)
 	}
 	if patchCard == nil {
 		// Owning patch is missing / filtered (NSFW under a sfw caller). Don't
 		// surface the resource on its own — it would mean "here's a NSFW
 		// patch's resource link minus the cover image", which is still data
-		// exfiltration. 404 mirrors what wiki itself does for a filtered :gid.
+		// exfiltration. 404 mirrors what galgame itself does for a filtered :gid.
 		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
 
@@ -472,7 +472,7 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	// NSFW-filter the recommendations: the cross-patch top-up bucket can
 	// include NSFW games unrelated to the resource's own patch. Same-patch
 	// recs share resource.GalgameID which already passed the patchCard check.
-	recs = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, recs, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
+	recs = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, recs, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 	patchModel.RenderResourceNotes(recs)
@@ -571,7 +571,7 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 // reveal flow.
 //
 // Legacy patch fields that no longer exist locally (name / banner /
-// introduction / engine — now wiki-sourced) are omitted; a partner that queries
+// introduction / engine — now galgame-sourced) are omitted; a partner that queries
 // by vndb_id already holds those from VNDB.
 type hikariEnvelope struct {
 	Success bool   `json:"success"`
@@ -658,7 +658,7 @@ func (h *CommonHandler) hikariAvatarURL(b *userclient.Brief) string {
 // regardless of the galgame's NSFW rating — partner sites (touchgal, shionlib,
 // hikarinagi, …) are galgame sites themselves and need the full catalog. The
 // content_limit / SEO gate that protects the public browse endpoints does NOT
-// apply here, so this handler never calls the wiki.
+// apply here, so this handler never calls the galgame.
 func (h *CommonHandler) GetHikari(c fiber.Ctx) error {
 	vndbID := c.Query("vndb_id")
 	if vndbID == "" {
@@ -841,7 +841,7 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 //
 // Top 60 patches sorted by view / download / favorite. Results are passed
 // through the enricher so each row carries the same shape the frontend uses
-// elsewhere on the site. NSFW filter follows the wiki content_limit protocol
+// elsewhere on the site. NSFW filter follows the galgame content_limit protocol
 // (default sfw for SEO safety); the returned slice may have fewer than 60
 // rows when NSFW games dominate the top of the ranking.
 func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
@@ -871,7 +871,7 @@ func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.OK(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, cl))
+	return response.OK(c, enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, cl))
 }
 
 // GetMoyuHasPatch GET /api/moyu/patch/has-patch
@@ -887,15 +887,15 @@ func (h *CommonHandler) GetMoyuHasPatch(c fiber.Ctx) error {
 }
 
 // ─── Galgame release calendar (发售月表) ───────────────
-// Thin moyu-side wrapper over the wiki calendar endpoints
-// (docs/galgame_wiki/01-galgame.md §发售月历). The wiki owns the data; moyu only
+// Thin moyu-side wrapper over the galgame calendar endpoints
+// (docs/galgame_wiki/01-galgame.md §发售月历). The galgame owns the data; moyu only
 // stamps each entry with has_patch (does moyu hold a local patch row → the card
-// links to /patch/:id, otherwise to the wiki entry) so the FE renders a
-// "智能跳转" calendar. content_limit is EXACT-match on the wiki side (sfw / nsfw),
+// links to /patch/:id, otherwise to the galgame entry) so the FE renders a
+// "智能跳转" calendar. content_limit is EXACT-match on the galgame side (sfw / nsfw),
 // so an "all" (R18) viewer fans out to both and we merge.
 
-// calendarContentLimits maps moyu's content_limit (sfw/nsfw/all/"") to the wiki
-// calendar's exact-match values. "all" needs both (the wiki has no combined mode).
+// calendarContentLimits maps moyu's content_limit (sfw/nsfw/all/"") to the galgame
+// calendar's exact-match values. "all" needs both (the galgame has no combined mode).
 func calendarContentLimits(cl string) []string {
 	switch cl {
 	case "nsfw":
@@ -930,7 +930,7 @@ func (h *CommonHandler) calendarHasPatchSet(ids []int) map[int]bool {
 // enrichCalendarItems collects ids → looks up which moyu has a patch for → builds
 // the has_patch-stamped cards, then stamps is_favorite for the logged-in viewer
 // (optionalAuth) so the FE can render an inline 收藏 toggle in the right state.
-// No wiki re-fetch (briefs carry release fields).
+// No galgame re-fetch (briefs carry release fields).
 func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.GalgameBrief) []enricher.CalendarCard {
 	ids := make([]int, 0, len(briefs))
 	for i := range briefs {
@@ -991,7 +991,7 @@ func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string) (*galgameClient.GalgameCalendar, error) {
 	var merged *galgameClient.GalgameCalendar
 	for _, lim := range calendarContentLimits(cl) {
-		cal, err := h.wiki.GetGalgameCalendar(ctx, month, lim)
+		cal, err := h.galgame.GetGalgameCalendar(ctx, month, lim)
 		if err != nil {
 			return nil, err
 		}
@@ -1019,7 +1019,7 @@ func (h *CommonHandler) GetGalgameCalendarPending(c fiber.Ctx) error {
 	var briefs []galgameClient.GalgameBrief
 	outYear := year
 	for _, lim := range calendarContentLimits(cl) {
-		b, err := h.wiki.GetGalgameCalendarPending(c.Context(), year, lim)
+		b, err := h.galgame.GetGalgameCalendarPending(c.Context(), year, lim)
 		if err != nil {
 			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 		}
@@ -1040,7 +1040,7 @@ func (h *CommonHandler) GetGalgameCalendarTBA(c fiber.Ctx) error {
 
 	var briefs []galgameClient.GalgameBrief
 	for _, lim := range calendarContentLimits(cl) {
-		b, err := h.wiki.GetGalgameCalendarTBA(c.Context(), lim)
+		b, err := h.galgame.GetGalgameCalendarTBA(c.Context(), lim)
 		if err != nil {
 			return response.Error(c, errors.ErrInternal("调用 Galgame Wiki 失败"))
 		}

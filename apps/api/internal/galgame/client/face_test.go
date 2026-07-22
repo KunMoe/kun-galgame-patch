@@ -81,8 +81,8 @@ func TestFaceSelection_WithKey(t *testing.T) {
 	})
 
 	t.Run("token read /galgame/messages/mine → internal + key + user JWT", func(t *testing.T) {
-		if _, err := c.GetMyWikiMessages(ctx, "user-jwt", 0, 0); err != nil {
-			t.Fatalf("GetMyWikiMessages: %v", err)
+		if _, err := c.GetMyGalgameMessages(ctx, "user-jwt", 0, 0); err != nil {
+			t.Fatalf("GetMyGalgameMessages: %v", err)
 		}
 		if rec.path != "/internal/galgame/messages/mine" {
 			t.Errorf("path = %q, want /internal/galgame/messages/mine", rec.path)
@@ -171,8 +171,8 @@ func TestFaceSelection_WithKey(t *testing.T) {
 	})
 
 	t.Run("messages feed → internal + key (S2S cron)", func(t *testing.T) {
-		if _, err := c.GetWikiMessageFeed(ctx, 0, 10); err != nil {
-			t.Fatalf("GetWikiMessageFeed: %v", err)
+		if _, err := c.GetGalgameMessageFeed(ctx, 0, 10); err != nil {
+			t.Fatalf("GetGalgameMessageFeed: %v", err)
 		}
 		if rec.path != "/internal/galgame/messages/feed" {
 			t.Errorf("path = %q, want /internal/galgame/messages/feed", rec.path)
@@ -192,8 +192,8 @@ func TestMessageFeedRequiresKey(t *testing.T) {
 	c := NewWithKey(srv.URL, "") // no API key
 	ctx := context.Background()
 
-	if _, err := c.GetWikiMessageFeed(ctx, 0, 10); err == nil {
-		t.Fatal("GetWikiMessageFeed with empty key: want error, got nil")
+	if _, err := c.GetGalgameMessageFeed(ctx, 0, 10); err == nil {
+		t.Fatal("GetGalgameMessageFeed with empty key: want error, got nil")
 	}
 	if rec.path != "" {
 		t.Errorf("recorder path = %q, want empty (must not dial without a key)", rec.path)

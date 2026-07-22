@@ -19,12 +19,12 @@ import (
 
 type UserHandler struct {
 	service *service.UserService
-	wiki    *galgameClient.Client
+	galgame *galgameClient.Client
 	users   *userclient.Client
 }
 
-func New(svc *service.UserService, wiki *galgameClient.Client, users *userclient.Client) *UserHandler {
-	return &UserHandler{service: svc, wiki: wiki, users: users}
+func New(svc *service.UserService, galgame *galgameClient.Client, users *userclient.Client) *UserHandler {
+	return &UserHandler{service: svc, galgame: galgame, users: users}
 }
 
 func getUID(c fiber.Ctx) (int, error) {
@@ -88,7 +88,7 @@ func (h *UserHandler) GetUserPatches(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // GetUserResources GET /api/user/:id/resource
@@ -116,7 +116,7 @@ func (h *UserHandler) GetUserResources(c fiber.Ctx) error {
 	// NSFW filter: each resource carries the owning patch summary via the
 	// service's attachPatchSummaries — drop rows whose owning patch wiki
 	// excludes under content_limit before they reach the response.
-	data = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, data, func(r patchModel.PatchResource) int { return r.GalgameID }, utils.ContentLimitForListBrowse(c))
+	data = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, data, func(r patchModel.PatchResource) int { return r.GalgameID }, utils.ContentLimitForListBrowse(c))
 	// The user-profile resource tab renders summary cards only (no download
 	// links/secrets), so strip the download payload — same anti-scraping
 	// rationale as the home / global resource feeds.
@@ -152,7 +152,7 @@ func (h *UserHandler) GetUserFavorites(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // GetUserComments GET /api/user/:id/comment
@@ -177,7 +177,7 @@ func (h *UserHandler) GetUserComments(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	data = enricher.FilterByGalgameContentLimit(c.Context(), h.wiki, data, func(m patchModel.PatchComment) int { return m.GalgameID }, utils.ContentLimitForListBrowse(c))
+	data = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, data, func(m patchModel.PatchComment) int { return m.GalgameID }, utils.ContentLimitForListBrowse(c))
 	return response.Paginated(c, data, total)
 }
 
@@ -203,7 +203,7 @@ func (h *UserHandler) GetUserContributions(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
-	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.wiki, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
+	return response.Paginated(c, enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, utils.ContentLimitForListBrowse(c)), total)
 }
 
 // Profile mutations (username / bio / password / email / avatar) live on

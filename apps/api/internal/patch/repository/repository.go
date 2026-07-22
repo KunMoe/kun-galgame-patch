@@ -34,8 +34,8 @@ func (r *PatchRepository) GetPatchByID(id int) (*model.Patch, error) {
 // caller-supplied id order so the enricher's downstream join keeps galgame
 // ordering intact. Empty id slice returns nil without hitting the DB.
 //
-// Used by WikiTaxonomyDetailProxy to attach moyu-side counts/dates to Wiki's
-// tag/official galgame listings — Wiki only knows metadata (name / banner /
+// Used by GalgameTaxonomyDetailProxy to attach moyu-side counts/dates to galgame's
+// tag/official galgame listings — galgame only knows metadata (name / banner /
 // content_limit), the per-patch stats live here.
 func (r *PatchRepository) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
 	if len(ids) == 0 {
@@ -45,8 +45,8 @@ func (r *PatchRepository) GetPatchesByIDs(ids []int) ([]model.Patch, error) {
 	if err := r.db.Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	// Reorder to match `ids` so the response preserves Wiki's intended order
-	// (Wiki may sort by relevance / popularity / chronology — we don't want
+	// Reorder to match `ids` so the response preserves galgame's intended order
+	// (galgame may sort by relevance / popularity / chronology — we don't want
 	// to scramble that during enrichment).
 	byID := make(map[int]model.Patch, len(rows))
 	for _, p := range rows {
@@ -128,7 +128,7 @@ func (r *PatchRepository) GetRandomPatchID(includeEmpty bool) (int, error) {
 }
 
 // GetRandomPatchIDs returns up to n random patch ids. Used by the random-patch
-// endpoint so the service layer can ask wiki to filter the candidate set by
+// endpoint so the service layer can ask galgame to filter the candidate set by
 // content_limit before picking one — a single RANDOM() pick has no way to
 // "retry" if it lands on a NSFW row under a sfw caller. includeEmpty=false also
 // drops patch-less games up front (see GetRandomPatchID).
@@ -145,7 +145,7 @@ func (r *PatchRepository) GetRandomPatchIDs(n int, includeEmpty bool) ([]int, er
 	return ids, err
 }
 
-// NOTE: ReplaceAliases is deprecated per D12 (2026-04-21). Aliases are owned by Wiki /galgame/:gid/aliases.
+// NOTE: ReplaceAliases is deprecated per D12 (2026-04-21). Aliases are owned by galgame /galgame/:gid/aliases.
 
 // ===== Comments =====
 

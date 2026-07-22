@@ -18,11 +18,11 @@ import (
 //
 // Job list:
 //  1. Daily 00:00: reset daily_image_count / daily_check_in / daily_upload_size on the user table
-//  2. Every 10 minutes: pull Wiki message feed, apply approved/declined/banned/unbanned events
+//  2. Every 10 minutes: pull the galgame message feed, apply approved/declined/banned/unbanned events
 //     (idempotent via wiki_message_processed; awards +3 moemoepoint on approved)
 //  3. Daily 04:00: ref-ping image_service for every hash moyu still references
 //     (doc banners + content /image/<hash> tokens) so its GC doesn't reclaim them
-func Start(db *gorm.DB, wiki *galgameClient.Client, mp *moemoepoint.Client, img *imageclient.Client) func() {
+func Start(db *gorm.DB, galgame *galgameClient.Client, mp *moemoepoint.Client, img *imageclient.Client) func() {
 	// Pin the schedule to Asia/Shanghai so the daily 00:00 reset fires at the
 	// intended civil midnight regardless of host TZ (audit F085). The check-in
 	// idempotency key's date (user/service) is pinned to the same zone so the
@@ -52,23 +52,23 @@ func Start(db *gorm.DB, wiki *galgameClient.Client, mp *moemoepoint.Client, img 
 		slog.Error("注册每日重置任务失败", "error", err)
 	}
 
-	// ── Every 10 minutes: sync Wiki message feed ─────────
-	// Only registered when wiki is configured; tests / cmd helpers that build
-	// the app without a wiki client (e.g. cmd/remap-patch-ids) won't run this.
-	if wiki != nil {
-		if _, err := c.AddFunc(wikiSyncSchedule, func() {
+	// ── Every 10 minutes: sync the galgame message feed ─────────
+	// Only registered when the galgame client is configured; tests / cmd helpers
+	// that build the app without one (e.g. cmd/remap-patch-ids) won't run this.
+	if galgame != nil {
+		if _, err := c.AddFunc(galgameSyncSchedule, func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			applied, cursor, err := RunWikiMessageSync(ctx, db, wiki, mp)
+			applied, cursor, err := RunGalgameMessageSync(ctx, db, galgame, mp)
 			if err != nil {
-				slog.Error("Wiki 消息同步失败", "error", err, "applied", applied, "cursor", cursor)
+				slog.Error("galgame 消息同步失败", "error", err, "applied", applied, "cursor", cursor)
 				return
 			}
 			if applied > 0 {
-				slog.Info("Wiki 消息同步完成", "applied", applied, "cursor", cursor)
+				slog.Info("galgame 消息同步完成", "applied", applied, "cursor", cursor)
 			}
 		}); err != nil {
-			slog.Error("注册 Wiki 消息同步任务失败", "error", err)
+			slog.Error("注册 galgame 消息同步任务失败", "error", err)
 		}
 	}
 

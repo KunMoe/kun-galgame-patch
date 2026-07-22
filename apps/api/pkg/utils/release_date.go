@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-// Release-date filter parsing for GET /api/galgame, mirroring the Wiki
-// protocol in docs/galgame_wiki/00-handbook §17. moyu can't import Wiki's
+// Release-date filter parsing for GET /api/galgame, mirroring the galgame
+// protocol in docs/galgame_wiki/00-handbook §17. moyu can't import galgame's
 // pkg/utils helpers (separate repo), so this reimplements the same YYYY /
 // YYYY-MM → date-boundary contract against the local patch.release_date
 // column (PG `date`, no time component — so boundaries are plain dates, not
-// the 00:00:00 / 23:59:59 timestamps Wiki uses).
+// the 00:00:00 / 23:59:59 timestamps galgame uses).
 
 // ErrInvalidReleaseBound is returned for malformed released_from/to input
 // (e.g. "24", "2024-3" missing zero-pad, "2024-13", "garbage"). The handler
@@ -108,17 +108,17 @@ func ParseReleaseUpperBound(s string) (*time.Time, error) {
 	return nil, ErrInvalidReleaseBound
 }
 
-// ParseWikiReleaseDate turns Wiki's release_date string into a date-only
+// ParseGalgameReleaseDate turns galgame's release_date string into a date-only
 // *time.Time for storage in patch.release_date. "" / nil / unparseable → nil
 // (best-effort: skip rather than abort).
 //
-// Format: canonical wiki now returns a bare `YYYY-MM-DD` string (per
+// Format: canonical galgame now returns a bare `YYYY-MM-DD` string (per
 // docs/galgame_wiki/00-handbook §17.7 — a custom Date type fixed the earlier
 // bug where the PG `date` column was serialized as RFC3339 "2016-11-25T00:00:00Z").
 // We try the bare-date layout first (the current canonical shape), then fall
 // back to RFC3339 (± fractional seconds) to stay robust against older cached
 // payloads / pre-fix data — §17.7 explicitly endorses this dual-tolerance.
-func ParseWikiReleaseDate(s string) *time.Time {
+func ParseGalgameReleaseDate(s string) *time.Time {
 	if s == "" {
 		return nil
 	}

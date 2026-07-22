@@ -7,13 +7,13 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 )
 
-// FilterByGalgameContentLimit drops items whose owning galgame_id wiki excludes
+// FilterByGalgameContentLimit drops items whose owning galgame_id galgame excludes
 // under the given content_limit. Used by list endpoints whose primary rows are
 // PatchResource / PatchComment (i.e. don't go through EnrichPatches, but still
 // need NSFW gating because they expose the owning patch via attach helpers).
 //
-// Returns the input unchanged when cl == "" (no filter requested) or wiki is
-// nil. On wiki error we fail closed — returning nil — for the same reason
+// Returns the input unchanged when cl == "" (no filter requested) or galgame is
+// nil. On galgame error we fail closed — returning nil — for the same reason
 // EnrichPatches does: an unfiltered fallback would defeat the safe-by-default
 // guarantee, and an empty list is the right answer for the SEO case.
 //
@@ -22,12 +22,12 @@ import (
 // concrete element type at call sites.
 func FilterByGalgameContentLimit[T any](
 	ctx context.Context,
-	wiki *galgameClient.Client,
+	galgame *galgameClient.Client,
 	items []T,
 	gidOf func(T) int,
 	cl string,
 ) []T {
-	if cl == "" || len(items) == 0 || wiki == nil {
+	if cl == "" || len(items) == 0 || galgame == nil {
 		return items
 	}
 	seen := make(map[int]struct{}, len(items))
@@ -47,9 +47,9 @@ func FilterByGalgameContentLimit[T any](
 		return items
 	}
 
-	briefs, err := wiki.GalgameBatch(ctx, gids, cl)
+	briefs, err := galgame.GalgameBatch(ctx, gids, cl)
 	if err != nil {
-		slog.Warn("NSFW filter: wiki batch 失败，返回空 slice 兜底以防泄漏", "error", err, "content_limit", cl, "count", len(items))
+		slog.Warn("NSFW filter: galgame batch 失败，返回空 slice 兜底以防泄漏", "error", err, "content_limit", cl, "count", len(items))
 		return nil
 	}
 	allowed := make(map[int]struct{}, len(briefs))

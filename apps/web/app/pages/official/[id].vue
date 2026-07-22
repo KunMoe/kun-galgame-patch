@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Standalone moyu official (developer/publisher) detail page. Mirrors the
-// tag/[id].vue layout — Wiki's `GET /official/_?official_id=N` returns the
+// tag/[id].vue layout — galgame's `GET /official/_?official_id=N` returns the
 // official + paginated associated galgames.
 
 // keepalive: returning from a galgame restores this official's page + scroll.
@@ -49,7 +49,7 @@ const galgames = computed<GalgameCard[]>(
 const total = computed(() => data.value?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
-// Same gate shape as tag/[id].vue — wiki /official/:name end has sfw
+// Same gate shape as tag/[id].vue — galgame /official/:name end has sfw
 // default by §16.2 protocol, so the loaded path is SEO-safe; null path
 // disables to avoid indexing a missing-entity stub.
 if (official.value) {
@@ -130,7 +130,7 @@ watch(official, () => refresh(), { flush: 'post' })
           class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
         >
           <!-- Backend now serves moyu-enriched GalgameCard shape for
-               official detail (WikiTaxonomyDetailProxy) — same shape as
+               official detail (GalgameTaxonomyDetailProxy) — same shape as
                home / galgame index, render the same component. -->
           <GalgameCard v-for="g in galgames" :key="g.id" :patch="g" />
         </div>
