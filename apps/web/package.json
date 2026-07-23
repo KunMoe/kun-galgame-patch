@@ -10,8 +10,6 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "icons": "node scripts/generate-icon-list.mjs",
-    "gen:types:galgame-read": "pnpm dlx openapi-typescript@7.13.0 https://docs-kungal.nextmoe.dev/specs/galgame-wiki.openapi.yaml -o app/shared/types/generated/galgame-read-api.ts",
-    "gen:types:galgame-calendar": "pnpm dlx openapi-typescript@7.13.0 https://docs-kungal.nextmoe.dev/specs/galgame-wiki-calendar.openapi.yaml -o app/shared/types/generated/galgame-calendar-api.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "nuxt typecheck"

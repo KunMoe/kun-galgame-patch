@@ -37,6 +37,3 @@ migrate/*.json
 # docs
 docs
 
-# generated from the published galgame-wiki OpenAPI spec (openapi-typescript);
-# never hand-edit — regenerate via `pnpm run gen:types:galgame-*`
-app/shared/types/generated

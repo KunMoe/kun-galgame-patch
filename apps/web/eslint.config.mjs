@@ -1,9 +1,6 @@
 import withNuxt from './.nuxt/eslint.config.mjs'
 
 export default withNuxt(
-  // Generated from the published galgame-wiki OpenAPI spec (openapi-typescript);
-  // never hand-edit — the openapi-types.yml drift gate regenerates it.
-  { ignores: ['app/shared/types/generated/**'] },
   {
     rules: {
       'no-console': 'off',
