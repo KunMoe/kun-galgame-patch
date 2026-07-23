@@ -260,6 +260,11 @@ func BuildPatchSummaryMap(ctx context.Context, galgame *galgameClient.Client, db
 		s := patchModel.PatchSummary{ID: r.ID, VndbID: r.VndbID}
 		if g, ok := briefByGID[r.ID]; ok {
 			s.Banner = g.Banner
+			// The catalog /v1 contract expresses the banner as covers[sort_order=0]
+			// → effective_banner_hash; the legacy Banner URL above is now empty, so
+			// carry the hash the frontend actually resolves the cover from. Without
+			// this the user-profile resource cards fell back to the placeholder.
+			s.EffectiveBannerHash = g.EffectiveBannerHash
 			s.Name = patchModel.PatchSummaryName{
 				EnUs: g.NameEnUs,
 				JaJp: g.NameJaJp,

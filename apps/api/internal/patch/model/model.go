@@ -14,10 +14,18 @@ import (
 // fetching the full patch). The Name field is filled by the enricher from
 // Wiki, leaving this package free of Wiki/HTTP concerns.
 type PatchSummary struct {
-	ID     int              `json:"id"`
-	VndbID string           `json:"vndb_id"`
-	Banner string           `json:"banner"`
-	Name   PatchSummaryName `json:"name"`
+	ID     int    `json:"id"`
+	VndbID string `json:"vndb_id"`
+	// Banner is the LEGACY absolute banner URL. Post wiki→catalog migration the
+	// /v1 contract no longer populates it (banner lives in covers[sort_order=0]),
+	// so it is effectively always "" now; kept only as a resolver fallback.
+	Banner string `json:"banner"`
+	// EffectiveBannerHash is the image_service hash of the pinned cover — the
+	// CURRENT way a banner is expressed. The frontend's resolveBannerUrl prefers
+	// it over the legacy Banner URL to build the CDN thumbnail. Without this the
+	// user-profile resource cards resolved to the placeholder (covers "missing").
+	EffectiveBannerHash string           `json:"effective_banner_hash"`
+	Name                PatchSummaryName `json:"name"`
 }
 
 // PatchSummaryName mirrors the four-language KunLanguage shape but is defined

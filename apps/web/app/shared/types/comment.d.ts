@@ -4,7 +4,11 @@
 interface PatchSummary {
   id: number
   vndb_id: string
+  // Legacy absolute banner URL — empty post wiki→catalog migration; kept as a
+  // resolveBannerUrl fallback. effective_banner_hash is the current cover source
+  // (image_service hash of the pinned cover) the resolver prefers.
   banner: string
+  effective_banner_hash?: string
   name: KunLanguage
 }
 
