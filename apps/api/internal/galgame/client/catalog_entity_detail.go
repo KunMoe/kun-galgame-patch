@@ -352,3 +352,35 @@ func linkHost(rawURL string) string {
 	}
 	return strings.TrimPrefix(u.Hostname(), "www.")
 }
+
+type catalogSeriesDetail struct {
+	ID          int64             `json:"id"`
+	DisplayName string            `json:"display_name"`
+	Intros      []catalogIntroRow `json:"intros"`
+	HasNSFW     bool              `json:"has_nsfw"`
+}
+
+type GalgameSeriesDetail struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	HasNSFW     bool   `json:"has_nsfw"`
+}
+
+func (c *Client) GetSeries(ctx context.Context, id int) (*GalgameSeriesDetail, error) {
+	q := url.Values{}
+	applyNSFW(q)
+
+	var s catalogSeriesDetail
+	if err := c.getV1(ctx, "/catalog/series/"+strconv.Itoa(id), q, &s); err != nil {
+		return nil, err
+	}
+	out := &GalgameSeriesDetail{ID: int(s.ID), Name: s.DisplayName, HasNSFW: s.HasNSFW}
+	for _, in := range s.Intros {
+		if in.Intro != "" {
+			out.Description = in.Intro
+			break
+		}
+	}
+	return out, nil
+}

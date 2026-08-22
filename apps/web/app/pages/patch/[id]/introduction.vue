@@ -300,6 +300,8 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
 
     <GalgameStaff :staff="staffGroups" />
 
+    <GalgameSeries :series="detail.series ?? []" />
+
     <section v-if="detail.galgame?.screenshots?.length">
       <GalgameGallery :screenshots="detail.galgame.screenshots" />
     </section>

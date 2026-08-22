@@ -354,6 +354,11 @@ type GalgameFullOfficial struct {
 	Official   Official `json:"official"`
 }
 
+type GalgameSeries struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 type GalgameFull struct {
 	ID               int     `json:"id"`
 	CatalogWorkID    int64   `json:"catalog_work_id,omitempty"`
@@ -378,6 +383,7 @@ type GalgameFull struct {
 	Characters []GalgameCharacter    `json:"characters"`
 	Staff      []GalgameStaffGroup   `json:"staff"`
 	Ratings    []GalgameRating       `json:"ratings"`
+	Series     []GalgameSeries       `json:"series"`
 
 	EffectiveBannerHash        string            `json:"effective_banner_hash"`
 	EffectiveBannerWidth       int               `json:"effective_banner_width,omitempty"`

@@ -36,6 +36,17 @@ const sorted = computed(() =>
 
 const hiddenCount = computed(() => allShots.value.length - sorted.value.length)
 
+const PREVIEW = 12
+const isExpanded = ref(false)
+const visible = computed(() =>
+  isExpanded.value ? sorted.value : sorted.value.slice(0, PREVIEW)
+)
+const folded = computed(() => sorted.value.length - visible.value.length)
+const foldIndex = computed(() => (folded.value > 0 ? visible.value.length - 1 : -1))
+const expand = () => {
+  isExpanded.value = true
+}
+
 const hasRated = computed(() =>
   allShots.value.some((s) => s.sexual >= 1 || s.violence >= 1)
 )
@@ -89,34 +100,50 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
         class="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
       >
         <KunLightboxGalleryItem
-          v-for="s in sorted"
+          v-for="(s, i) in visible"
           :key="s.image_hash"
           :src="imgSrc(s)"
           :alt="s.caption || s.image_hash.slice(0, 8)"
-          as="figure"
-          class="border-default/20 block overflow-hidden rounded-lg border"
+          :wrap="false"
+          v-slot="{ open }"
         >
-          <div class="relative">
-            <KunImage
-              :src="imgSrc(s)"
-              :alt="s.caption || s.image_hash.slice(0, 8)"
-              loading="lazy"
-              :aspect-ratio="imageAspectRatio(s.width, s.height)"
-              :thumbhash="s.thumbhash"
-              class-name="bg-default-100"
-            />
-            <div
-              v-if="s.sexual >= 1 || s.violence >= 1"
-              class="pointer-events-none absolute inset-0"
-              :style="ratingRing(s)"
-            />
-          </div>
-          <figcaption
-            v-if="s.caption"
-            class="text-default-500 px-2 py-1 text-xs"
+          <button
+            type="button"
+            class="group relative block w-full overflow-hidden rounded-lg text-left"
+            :aria-label="
+              i === foldIndex ? '显示全部截图' : (s.caption || '查看截图')
+            "
+            @click="i === foldIndex ? expand() : open()"
           >
-            {{ s.caption }}
-          </figcaption>
+            <div class="relative">
+              <KunImage
+                :src="imgSrc(s)"
+                :alt="s.caption || s.image_hash.slice(0, 8)"
+                loading="lazy"
+                :aspect-ratio="imageAspectRatio(s.width, s.height)"
+                :thumbhash="s.thumbhash"
+                class-name="bg-default-100"
+              />
+              <div
+                v-if="s.sexual >= 1 || s.violence >= 1"
+                class="pointer-events-none absolute inset-0"
+                :style="ratingRing(s)"
+              />
+            </div>
+            <figcaption
+              v-if="s.caption"
+              class="text-default-500 px-2 py-1 text-xs"
+            >
+              {{ s.caption }}
+            </figcaption>
+            <div
+              v-if="i === foldIndex"
+              class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/60 text-white"
+            >
+              <span class="text-lg font-medium">+{{ folded }}</span>
+              <span class="text-xs">显示全部</span>
+            </div>
+          </button>
         </KunLightboxGalleryItem>
       </div>
     </KunLightboxGallery>

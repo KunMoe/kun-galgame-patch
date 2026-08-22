@@ -15,13 +15,6 @@ const visible = computed(() =>
 
 const playedText = (characters?: KunLanguage[]) =>
   (characters ?? []).map((c) => getPreferredLanguageText(c)).join(' / ')
-
-const activePerson = ref<PatchDetailPerson | null>(null)
-const isPersonOpen = ref(false)
-const openPerson = (person: PatchDetailPerson) => {
-  activePerson.value = person
-  isPersonOpen.value = true
-}
 </script>
 
 <template>
@@ -43,13 +36,12 @@ const openPerson = (person: PatchDetailPerson) => {
         </dt>
         <dd class="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
           <span v-for="person in group.people" :key="person.id" class="text-sm">
-            <button
-              type="button"
-              class="text-default-800 hover:text-primary cursor-pointer"
-              @click="openPerson(person)"
+            <NuxtLink
+              :to="`/galgame/staff/${person.id}`"
+              class="text-default-800 hover:text-primary"
             >
               {{ getPreferredLanguageText(person.name) }}
-            </button>
+            </NuxtLink>
             <span v-if="person.characters?.length" class="text-default-400">
               （{{ playedText(person.characters) }}）
             </span>
@@ -74,7 +66,5 @@ const openPerson = (person: PatchDetailPerson) => {
           : `展开其余 ${staff.length - COLLAPSED} 项职位`
       }}
     </KunButton>
-
-    <GalgameStaffModal v-model="isPersonOpen" :person="activePerson" />
   </section>
 </template>

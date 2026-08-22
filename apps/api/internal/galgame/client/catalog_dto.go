@@ -175,6 +175,11 @@ type catalogWorkLink struct {
 	URL    string `json:"url"`
 }
 
+type catalogWorkSeries struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type catalogWork struct {
 	ID            int64             `json:"id"`
 	Medium        string            `json:"medium"`
@@ -201,6 +206,7 @@ type catalogWork struct {
 	Labels      []catalogWorkLabel   `json:"labels"`
 	Engines     []catalogWorkEngine  `json:"engines"`
 	Links       []catalogWorkLink    `json:"links"`
+	Series      []catalogWorkSeries  `json:"series"`
 
 	// credits arrives only when the request asks for include=credits; the other
 	// two are always on the detail face.

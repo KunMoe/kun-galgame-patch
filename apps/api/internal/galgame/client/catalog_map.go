@@ -357,6 +357,7 @@ func catalogWorkToFull(w *catalogWork) GalgameFull {
 		Characters:       catalogCharacters(w.Characters),
 		Staff:            catalogStaff(w.Credits, w.Characters),
 		Ratings:          catalogRatings(w.Ratings),
+		Series:           catalogSeries(w.Series),
 	}
 	if f.NameJaJp == "" && f.NameZhCn == "" && f.NameZhTw == "" && f.NameEnUs == "" {
 		f.NameJaJp = w.DisplayName
@@ -419,6 +420,20 @@ func catalogLabelToFullOfficial(gid int, l *catalogWorkLabel) GalgameFullOfficia
 			LogoHash: l.LogoHash,
 		},
 	}
+}
+
+func catalogSeries(rows []catalogWorkSeries) []GalgameSeries {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]GalgameSeries, 0, len(rows))
+	for _, s := range rows {
+		if s.ID == 0 || strings.TrimSpace(s.Name) == "" {
+			continue
+		}
+		out = append(out, GalgameSeries{ID: int(s.ID), Name: s.Name})
+	}
+	return out
 }
 
 func joinCatalogLangs(csv string) string {

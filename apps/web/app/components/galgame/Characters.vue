@@ -53,21 +53,6 @@ const secondaryOf = (c: PatchDetailCharacter) =>
 
 const voicesOf = (c: PatchDetailCharacter) =>
   c.voices.map((v) => getPreferredLanguageText(v.name)).join(' / ')
-
-const activeCharacter = ref<PatchDetailCharacter | null>(null)
-const isCharacterOpen = ref(false)
-const openCharacter = (c: PatchDetailCharacter) => {
-  activeCharacter.value = c
-  isCharacterOpen.value = true
-}
-
-const activePerson = ref<PatchDetailPerson | null>(null)
-const isPersonOpen = ref(false)
-const openPerson = (person: PatchDetailPerson) => {
-  isCharacterOpen.value = false
-  activePerson.value = person
-  isPersonOpen.value = true
-}
 </script>
 
 <template>
@@ -98,13 +83,12 @@ const openPerson = (person: PatchDetailPerson) => {
       v-if="visibleArt.length"
       class="grid grid-cols-3 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(128px,1fr))]"
     >
-      <button
+      <NuxtLink
         v-for="c in visibleArt"
         :key="c.id"
-        type="button"
+        :to="`/galgame/character/${c.id}`"
         class="group space-y-1.5 text-left"
         :aria-label="`查看角色 ${nameOf(c)}`"
-        @click="openCharacter(c)"
       >
         <div
           class="bg-default-100 group-hover:ring-primary group-focus:ring-primary relative overflow-hidden rounded-lg ring-1 ring-transparent transition-all"
@@ -153,7 +137,7 @@ const openPerson = (person: PatchDetailPerson) => {
             {{ GALGAME_CHARACTER_SPOILER_MAP[c.spoiler] }}
           </p>
         </div>
-      </button>
+      </NuxtLink>
     </div>
 
     <KunButton
@@ -179,25 +163,17 @@ const openPerson = (person: PatchDetailPerson) => {
       </p>
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
         <span v-for="c in nameOnly" :key="c.id" class="text-sm">
-          <button
-            type="button"
-            class="text-default-800 hover:text-primary cursor-pointer"
-            @click="openCharacter(c)"
+          <NuxtLink
+            :to="`/galgame/character/${c.id}`"
+            class="text-default-800 hover:text-primary"
           >
             {{ nameOf(c) }}
-          </button>
+          </NuxtLink>
           <span v-if="c.voices.length" class="text-default-400">
             （CV {{ voicesOf(c) }}）
           </span>
         </span>
       </div>
     </div>
-
-    <GalgameCharacterModal
-      v-model="isCharacterOpen"
-      :character="activeCharacter"
-      @open-staff="openPerson"
-    />
-    <GalgameStaffModal v-model="isPersonOpen" :person="activePerson" />
   </section>
 </template>
