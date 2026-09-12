@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"kun-galgame-patch-api/internal/favorite"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -37,6 +39,8 @@ type FolderView struct {
 	ItemCount   int    `json:"item_count"`
 	Created     string `json:"created"`
 	Updated     string `json:"updated"`
+	// Image hashes, not URLs: this site's clients build the image_service URL.
+	PreviewCovers []string `json:"preview_covers"`
 }
 
 type FolderMembership struct {
@@ -49,6 +53,9 @@ func folderView(f catalogv2.Folder) FolderView {
 		ID: f.ID, Name: f.Name, Description: f.Description, Visibility: f.Visibility,
 		IsDefault: f.IsDefault, ItemCount: f.ItemCount,
 		Created: f.CreatedAt, Updated: f.UpdatedAt,
+		// Empty, not nil: a nil slice marshals to `null` and the card reads
+		// .length off it.
+		PreviewCovers: []string{},
 	}
 }
 
@@ -68,28 +75,109 @@ func (s *PatchService) workIDOf(patchID int) (int64, error) {
 	return s.repo.CatalogWorkID(patchID)
 }
 
-func (s *PatchService) MyFolders(ctx context.Context, token string) ([]FolderView, error) {
+func (s *PatchService) MyFolders(ctx context.Context, token, contentLimit string) ([]FolderView, error) {
 	rows, err := s.galgame.V2().MyFolders(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	sortFolders(rows)
-	out := make([]FolderView, 0, len(rows))
-	for _, f := range rows {
-		out = append(out, folderView(f))
-	}
+	out := folderViews(rows)
+	s.attachPreviewCovers(ctx, out, token, contentLimit)
 	return out, nil
 }
 
-func (s *PatchService) PublicFolders(ctx context.Context, ownerUID int) ([]FolderView, error) {
+func (s *PatchService) PublicFolders(ctx context.Context, ownerUID int, contentLimit string) ([]FolderView, error) {
 	rows, err := s.galgame.V2().PublicFolders(ctx, int64(ownerUID))
 	if err != nil {
 		return nil, err
 	}
+	out := folderViews(rows)
+	// No token: a stranger's covers come off the public items lane, which
+	// answers public folders only — which is all this list holds.
+	s.attachPreviewCovers(ctx, out, "", contentLimit)
+	return out, nil
+}
+
+func folderViews(rows []catalogv2.Folder) []FolderView {
 	sortFolders(rows)
 	out := make([]FolderView, 0, len(rows))
 	for _, f := range rows {
 		out = append(out, folderView(f))
+	}
+	return out
+}
+
+// previewCoversPerFolder is the mosaic a shelf card draws, and it costs one
+// request per non-empty folder. Measured 2026-09-12: p99 is 3 folders per
+// person and the largest shelf in production has 27, so the loop is not worth
+// paging or parallelising.
+const previewCoversPerFolder = 4
+
+// attachPreviewCovers fills in the covers a folder card draws.
+//
+// A card can come back with fewer covers than the folder has items, or with
+// none: the shelf is shared with kungal and can hold games this site has no
+// page for, and the reader's NSFW gate drops rows here exactly as it does on
+// every other list. Both are the answer, not a failure — which is why a folder
+// that cannot be read at all only loses its covers and still renders.
+func (s *PatchService) attachPreviewCovers(ctx context.Context, views []FolderView, token, contentLimit string) {
+	if s.galgame == nil {
+		return
+	}
+	byFolder := make(map[int64][]int64, len(views))
+	var works []int64
+	for _, v := range views {
+		if v.ItemCount == 0 {
+			continue
+		}
+		items, err := s.galgame.V2().FolderPreviewItems(ctx, token, v.ID, previewCoversPerFolder)
+		if err != nil {
+			slog.Warn("收藏夹封面：读取条目失败", "folder_id", v.ID, "error", err)
+			continue
+		}
+		for _, it := range items {
+			byFolder[v.ID] = append(byFolder[v.ID], it.WorkID)
+			works = append(works, it.WorkID)
+		}
+	}
+	if len(works) == 0 {
+		return
+	}
+	hashes, err := s.bannerHashesByWork(ctx, works, contentLimit)
+	if err != nil {
+		slog.Warn("收藏夹封面：富化失败", "error", err)
+		return
+	}
+	for i := range views {
+		for _, workID := range byFolder[views[i].ID] {
+			if hash := hashes[workID]; hash != "" {
+				views[i].PreviewCovers = append(views[i].PreviewCovers, hash)
+			}
+		}
+	}
+}
+
+func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, contentLimit string) (map[int64]string, error) {
+	byWork, err := s.repo.PatchIDsByWorkIDs(workIDs)
+	if err != nil {
+		return nil, err
+	}
+	workOf := make(map[int]int64, len(byWork))
+	ids := make([]int, 0, len(byWork))
+	for workID, patchID := range byWork {
+		workOf[patchID] = workID
+		ids = append(ids, patchID)
+	}
+	out := make(map[int64]string, len(ids))
+	for start := 0; start < len(ids); start += galgameClient.BatchMaxIDs {
+		briefs, bErr := s.galgame.GalgameBatch(ctx, ids[start:min(start+galgameClient.BatchMaxIDs, len(ids))], contentLimit)
+		if bErr != nil {
+			return nil, bErr
+		}
+		for i := range briefs {
+			if h := briefs[i].EffectiveBannerHash; h != "" {
+				out[workOf[briefs[i].ID]] = h
+			}
+		}
 	}
 	return out, nil
 }
@@ -122,7 +210,7 @@ func (s *PatchService) DeleteFolder(ctx context.Context, token string, folderID 
 // this site does not carry are dropped rather than rendered as holes: a person
 // can favourite a game on the forum that has no patch page here, and the
 // folder is shared between the two.
-func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID int64, viewerIsOwner bool) (*FolderView, []model.Patch, error) {
+func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID int64, viewerIsOwner bool, page, limit int) (*FolderView, []model.Patch, int, error) {
 	var (
 		folder *catalogv2.Folder
 		items  []catalogv2.FolderItem
@@ -138,7 +226,7 @@ func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID
 		}
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	// Newest added first, which is what a shelf shows. The catalog's own order
@@ -150,7 +238,7 @@ func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID
 	}
 	byWork, mErr := s.repo.PatchIDsByWorkIDs(workIDs)
 	if mErr != nil {
-		return nil, nil, mErr
+		return nil, nil, 0, mErr
 	}
 	ids := make([]int, 0, len(workIDs))
 	for _, w := range workIDs {
@@ -158,12 +246,25 @@ func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID
 			ids = append(ids, pid)
 		}
 	}
-	patches, pErr := s.repo.PatchesByIDsOrdered(ids)
+	// The total is what this site can draw, not folder.ItemCount: a shelf is
+	// shared with kungal and the games it holds that have no page here are
+	// dropped above, so paging on the catalog's count would leave trailing
+	// pages empty.
+	total := len(ids)
+	patches, pErr := s.repo.PatchesByIDsOrdered(pageOfIDs(ids, page, limit))
 	if pErr != nil {
-		return nil, nil, pErr
+		return nil, nil, 0, pErr
 	}
 	v := folderView(*folder)
-	return &v, patches, nil
+	return &v, patches, total, nil
+}
+
+func pageOfIDs(ids []int, page, limit int) []int {
+	start := (max(page, 1) - 1) * limit
+	if start >= len(ids) {
+		return nil
+	}
+	return ids[start:min(start+limit, len(ids))]
 }
 
 // FoldersForPatch is the add-to-folder picker: every folder the person owns,

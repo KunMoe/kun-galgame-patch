@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
+
 defineOptions({ name: 'user-folder' })
 
 const route = useRoute()
@@ -23,6 +25,17 @@ const { data, pending, refresh } = await useAsyncData<{ folders: Folder[] }>(
 // everybody's view of somebody else's shelf.
 const labelOf = (folder: Folder) =>
   folder.name.trim() || (folder.is_default ? '默认收藏夹' : '未命名收藏夹')
+
+const coversOf = (folder: Folder) =>
+  (folder.preview_covers ?? [])
+    .slice(0, 4)
+    .map((hash) => imageServiceUrl(hash, 'mini'))
+    .filter(Boolean)
+
+const visibilityOf = (folder: Folder) =>
+  folder.visibility === 'private'
+    ? { icon: 'lucide:lock', label: '私密' }
+    : { icon: 'lucide:globe', label: '公开' }
 
 const creating = ref(false)
 const newName = ref('')
@@ -69,35 +82,61 @@ const createFolder = async () => {
 
     <div
       v-else-if="data?.folders?.length"
-      class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <KunLink
+      <KunCard
         v-for="folder in data.folders"
         :key="folder.id"
-        :to="`/folder/${folder.id}`"
-        class="border-default-200 hover:bg-default-100 block rounded-xl border p-4 transition-colors"
+        :href="`/folder/${folder.id}`"
+        is-hoverable
+        content-class="space-y-3"
       >
-        <div class="flex items-start gap-3">
-          <KunIcon
-            :name="folder.visibility === 'private' ? 'lucide:lock' : 'lucide:folder'"
-            class="text-default-400 mt-0.5 size-5 shrink-0"
+        <div
+          class="bg-default-100 grid aspect-video grid-cols-2 grid-rows-2 gap-0.5 overflow-hidden rounded-lg"
+        >
+          <img
+            v-for="(cover, index) in coversOf(folder)"
+            :key="index"
+            :src="cover"
+            alt=""
+            loading="lazy"
+            :class="
+              cn(
+                'size-full object-cover',
+                coversOf(folder).length === 1 && 'col-span-2 row-span-2'
+              )
+            "
           />
-          <div class="min-w-0 flex-1">
-            <p class="text-foreground truncate font-medium">
-              {{ labelOf(folder) }}
-            </p>
-            <p
-              v-if="folder.description"
-              class="text-default-500 mt-1 line-clamp-2 text-xs"
-            >
-              {{ folder.description }}
-            </p>
-            <p class="text-default-400 mt-1 text-xs">
-              {{ folder.item_count }} 个游戏
-            </p>
+          <div
+            v-if="!coversOf(folder).length"
+            class="text-default-300 col-span-2 row-span-2 flex items-center justify-center"
+          >
+            <KunIcon name="lucide:heart" class="size-10" />
           </div>
         </div>
-      </KunLink>
+
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="text-foreground truncate font-medium">
+              {{ labelOf(folder) }}
+            </span>
+            <span v-if="folder.is_default" class="text-default-400 shrink-0 text-xs">
+              默认
+            </span>
+          </div>
+          <p
+            v-if="folder.description"
+            class="text-default-500 line-clamp-2 text-xs"
+          >
+            {{ folder.description }}
+          </p>
+          <div class="text-default-500 flex items-center gap-1.5 text-xs">
+            <KunIcon :name="visibilityOf(folder).icon" class="size-3.5" />
+            <span>{{ visibilityOf(folder).label }}</span>
+            <span class="ml-auto">{{ folder.item_count }} 个游戏</span>
+          </div>
+        </div>
+      </KunCard>
     </div>
 
     <KunNull
