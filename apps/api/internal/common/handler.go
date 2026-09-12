@@ -3,11 +3,13 @@ package common
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
+	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
@@ -373,11 +375,7 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 			recs[i].IsLiked = likedSet[recs[i].ID]
 		}
 
-		var favCount int64
-		h.db.Model(&patchModel.UserPatchFavoriteRelation{}).
-			Where("user_id = ? AND galgame_id = ?", u.ID, resource.GalgameID).
-			Count(&favCount)
-		patchFavorited = favCount > 0
+		patchFavorited = h.holdsPatch(c, resource.GalgameID)
 
 		var resFavCount int64
 		h.db.Model(&patchModel.UserPatchResourceFavoriteRelation{}).
@@ -691,7 +689,7 @@ func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.
 	cards := enricher.EnrichCalendarBriefs(briefs, h.calendarPatchRows(ids))
 
 	if uid := middleware.GetUserID(c); uid > 0 {
-		fav := h.calendarFavoriteSet(uid, ids)
+		fav := h.calendarFavoriteSet(c, ids)
 		for i := range cards {
 			if fav[cards[i].ID] {
 				cards[i].IsFavorite = true
@@ -701,17 +699,46 @@ func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.
 	return cards
 }
 
-func (h *CommonHandler) calendarFavoriteSet(userID int, ids []int) map[int]bool {
+// holdsPatch and calendarFavoriteSet both used to count
+// user_patch_favorite_relation, which the 2026-09-07 cutover froze: these two
+// hearts went on showing whatever was true that day while the game page beside
+// them read the catalog and disagreed.
+//
+// The resource page asks about one game, so it asks the catalog about one work.
+func (h *CommonHandler) holdsPatch(c fiber.Ctx, patchID int) bool {
+	byPatch, err := utils.WorkIDsByPatchIDs(h.db, []int{patchID})
+	if err != nil {
+		return false
+	}
+	held, err := favorite.Holds(c.Context(), h.galgame, middleware.GetAccessToken(c), byPatch[patchID])
+	return err == nil && held
+}
+
+// The calendar asks about a whole month of games, so it asks the catalog about
+// them in one batch.
+func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, ids []int) map[int]bool {
 	set := make(map[int]bool, len(ids))
-	if userID <= 0 || len(ids) == 0 {
+	token := middleware.GetAccessToken(c)
+	if token == "" || len(ids) == 0 {
 		return set
 	}
-	var favs []int
-	h.db.Model(&patchModel.UserPatchFavoriteRelation{}).
-		Where("user_id = ? AND galgame_id IN ?", userID, ids).
-		Pluck("galgame_id", &favs)
-	for _, id := range favs {
-		set[id] = true
+	byPatch, err := utils.WorkIDsByPatchIDs(h.db, ids)
+	if err != nil {
+		return set
+	}
+	works := make([]int64, 0, len(byPatch))
+	for _, workID := range byPatch {
+		works = append(works, workID)
+	}
+	held, err := favorite.HoldsAll(c.Context(), h.galgame, token, works)
+	if err != nil {
+		slog.Warn("calendar favorite set failed", "error", err)
+		return set
+	}
+	for id, workID := range byPatch {
+		if held[workID] {
+			set[id] = true
+		}
 	}
 	return set
 }

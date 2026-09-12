@@ -4,10 +4,12 @@ import (
 	"strconv"
 	"strings"
 
+	"kun-galgame-patch-api/internal/galgame/enricher"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -180,7 +182,13 @@ func (h *PatchHandler) FolderDetail(c fiber.Ctx) error {
 	if err != nil {
 		return catalogErr(c, err, "读取收藏夹失败")
 	}
-	return response.OK(c, fiber.Map{"folder": folder, "patches": patches})
+	// The rows have to leave here as cards. Sent raw they carry no name, no
+	// cover and no count, and the shelf drew ten framed placeholders reading
+	// 暂无补丁 that still linked to the right game — the card reads count.resource,
+	// which a bare patch row does not have at all.
+	cl := utils.ContentLimitForListBrowse(c)
+	cards := enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches, cl)
+	return response.OK(c, fiber.Map{"folder": folder, "patches": cards})
 }
 
 func (h *PatchHandler) FoldersForPatch(c fiber.Ctx) error {

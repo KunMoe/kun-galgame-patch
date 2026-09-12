@@ -49,11 +49,13 @@ useHead(() => ({
         </p>
         <p class="text-default-400 text-xs">
           {{ data.folder.item_count }} 个游戏
-          <!-- The folder is shared with the forum, so it can hold games this
-               site has no patch page for. Those are left out rather than
-               rendered as holes, which makes the two numbers differ. -->
+          <!-- Two reasons the numbers differ. The folder is shared with the
+               forum, so it can hold games this site has no patch page for; and
+               the reader's NSFW gate hides rows here the same way it does on
+               every other list. Both are left out rather than rendered as
+               holes. -->
           <template v-if="data.folder.item_count !== data.patches.length">
-            · 本站收录 {{ data.patches.length }} 个
+            · 本页显示 {{ data.patches.length }} 个
           </template>
         </p>
       </div>

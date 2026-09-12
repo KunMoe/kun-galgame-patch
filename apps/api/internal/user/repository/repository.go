@@ -45,10 +45,6 @@ func (r *UserRepository) CountUserComments(userID int) int64 {
 	return countOrLog(r.db.Model(&patchModel.PatchComment{}).Where("user_id = ? AND status = 0", userID), "comments", userID)
 }
 
-func (r *UserRepository) CountUserFavorites(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.UserPatchFavoriteRelation{}).Where("user_id = ?", userID), "favorites", userID)
-}
-
 func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
@@ -93,16 +89,32 @@ func (r *UserRepository) GetUserFavoritesByIDs(patchIDs []int, offset, limit int
 	}
 	var patches []patchModel.Patch
 	var total int64
-	base := r.db.Model(&patchModel.Patch{}).Where("id IN ?", patchIDs)
-	if !includeEmpty {
-		base = base.Where("resource_count > 0")
-	}
-	base = utils.ScopePatchContentLimit(base, contentLimit)
+	base := r.favoritesScope(patchIDs, includeEmpty, contentLimit)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&patches).Error
 	return patches, total, err
+}
+
+// CountUserFavoritesByIDs is the profile header's number, taken off the very
+// builder the tab's page is taken off. Counted any other way the header and
+// the list disagree the moment the reader's NSFW gate hides a row.
+func (r *UserRepository) CountUserFavoritesByIDs(patchIDs []int, includeEmpty bool, contentLimit string) (int64, error) {
+	if len(patchIDs) == 0 {
+		return 0, nil
+	}
+	var total int64
+	err := r.favoritesScope(patchIDs, includeEmpty, contentLimit).Count(&total).Error
+	return total, err
+}
+
+func (r *UserRepository) favoritesScope(patchIDs []int, includeEmpty bool, contentLimit string) *gorm.DB {
+	base := r.db.Model(&patchModel.Patch{}).Where("id IN ?", patchIDs)
+	if !includeEmpty {
+		base = base.Where("resource_count > 0")
+	}
+	return utils.ScopePatchContentLimit(base, contentLimit)
 }
 
 func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchModel.PatchComment, int64, error) {

@@ -4,16 +4,19 @@ import (
 	"context"
 	stderrors "errors"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"kun-galgame-patch-api/internal/admin/dto"
 	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/repository"
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 
 	"github.com/redis/go-redis/v9"
@@ -24,10 +27,11 @@ type AdminService struct {
 	rdb     *redis.Client
 	setting *settingService.Service
 	patch   *patchService.PatchService
+	galgame *galgameClient.Client
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch}
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService, galgame *galgameClient.Client) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch, galgame: galgame}
 }
 
 func (s *AdminService) GetComments(search, status string, page, limit int) ([]patchModel.PatchComment, int64, error) {
@@ -72,11 +76,12 @@ func (s *AdminService) DeleteResource(resourceID, adminUID int, reason string) e
 	return s.patch.DeleteResource(resourceID, adminUID, true, reason)
 }
 
-func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*dto.UserPurgePreview, error) {
+func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, includeOwnedPatches bool, token string) (*dto.UserPurgePreview, error) {
 	c, err := s.repo.PurgePreview(userID, includeOwnedPatches)
 	if err != nil {
 		return nil, err
 	}
+	folders, items, folderErr := s.catalogFolders(ctx, userID, token)
 	return &dto.UserPurgePreview{
 		UserID:              userID,
 		UserExists:          c.UserExists,
@@ -84,7 +89,6 @@ func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*
 		Resources:           c.Resources,
 		CommentLikes:        c.CommentLikes,
 		ResourceLikes:       c.ResourceLikes,
-		Favorites:           c.Favorites,
 		Contributes:         c.Contributes,
 		Following:           c.Following,
 		Followers:           c.Followers,
@@ -95,8 +99,45 @@ func (s *AdminService) PurgeUserPreview(userID int, includeOwnedPatches bool) (*
 		OwnedPatchResources: c.OwnedPatchResources,
 		OwnedPatchComments:  c.OwnedPatchComments,
 		MiscTraces:          c.MiscTraces,
+		CatalogFolders:      folders,
+		CatalogFolderItems:  items,
+		CatalogFolderError:  folderErr,
 		CanDeleteUserRow:    c.OwnedPatches == 0 || includeOwnedPatches,
 	}, nil
+}
+
+// The folders are read and never deleted. The catalog has a face that would
+// remove them all — DELETE /v2/moderation/users/{uid}/folders — and this purge
+// deliberately does not call it: catalog_user_folder carries no site, so one
+// shelf is the central account's and the forum imported 8283 of production's
+// 11995 folders. Deleting the local account here promises kungal is untouched,
+// and that call would take a forum user's whole collection with it. Removing a
+// central account's folders belongs to whoever deletes the central account.
+//
+// Reading them needs the admin's own catalog moderation standing, which is a
+// different grant from this site's admin role: a moyu admin who does not
+// moderate in the catalog gets 403 and sees the reason rather than a zero.
+func (s *AdminService) catalogFolders(ctx context.Context, userID int, token string) (int64, int64, string) {
+	if s.galgame == nil || token == "" {
+		return 0, 0, "未读取：当前会话没有 catalog 访问令牌"
+	}
+	folders, err := s.galgame.V2().UserFolders(ctx, token, int64(userID))
+	if err != nil {
+		var p *catalogv2.Problem
+		denied := stderrors.Is(err, catalogv2.ErrForbidden) ||
+			stderrors.Is(err, catalogv2.ErrUnauthorized) ||
+			(stderrors.As(err, &p) && (p.Status == http.StatusForbidden || p.Status == http.StatusUnauthorized))
+		if denied {
+			return 0, 0, "未读取：当前管理员没有 catalog 审核权限"
+		}
+		slog.Warn("PurgeUserPreview: 读取 catalog 收藏夹失败", "user_id", userID, "error", err)
+		return 0, 0, "读取 catalog 收藏夹失败"
+	}
+	var items int64
+	for _, f := range folders {
+		items += int64(f.ItemCount)
+	}
+	return int64(len(folders)), items, ""
 }
 
 func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {

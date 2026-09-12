@@ -16,13 +16,13 @@ import (
 	chatService "kun-galgame-patch-api/internal/chat/service"
 	"kun-galgame-patch-api/internal/common"
 	uploadPkg "kun-galgame-patch-api/internal/common/upload"
+	docHandler "kun-galgame-patch-api/internal/doc/handler"
+	docRepository "kun-galgame-patch-api/internal/doc/repository"
+	docService "kun-galgame-patch-api/internal/doc/service"
 	"kun-galgame-patch-api/internal/face"
 	faceHandler "kun-galgame-patch-api/internal/face/handler"
 	faceRepo "kun-galgame-patch-api/internal/face/repository"
 	faceService "kun-galgame-patch-api/internal/face/service"
-	docHandler "kun-galgame-patch-api/internal/doc/handler"
-	docRepository "kun-galgame-patch-api/internal/doc/repository"
-	docService "kun-galgame-patch-api/internal/doc/service"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
@@ -172,7 +172,7 @@ func New(cfg *config.Config) *App {
 	messageSvc := messageService.New(messageRepository)
 	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
 
-	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc)
+	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame)
 	adminHdl := adminHandler.New(adminSvc, galgame, usrCli)
 
 	trustCli := trustclient.New(trustclient.Config{

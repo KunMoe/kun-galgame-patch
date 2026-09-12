@@ -214,7 +214,8 @@ func (h *AdminHandler) GetUserPurgePreview(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	preview, perr := h.service.PurgeUserPreview(id, fiber.Query(c, "purge_owned_patches", false))
+	preview, perr := h.service.PurgeUserPreview(c.Context(), id,
+		fiber.Query(c, "purge_owned_patches", false), middleware.GetAccessToken(c))
 	if perr != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}

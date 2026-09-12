@@ -49,7 +49,6 @@ type UserPurgePreview struct {
 	Resources       int64 `json:"resources"`
 	CommentLikes    int64 `json:"comment_likes"`
 	ResourceLikes   int64 `json:"resource_likes"`
-	Favorites       int64 `json:"favorites"`
 	Contributes     int64 `json:"contributes"`
 	Following       int64 `json:"following"`
 	Followers       int64 `json:"followers"`
@@ -62,6 +61,12 @@ type UserPurgePreview struct {
 	OwnedPatchComments  int64 `json:"owned_patch_comments"`
 
 	MiscTraces int64 `json:"misc_traces"`
+
+	// Read, never deleted — see AdminService.catalogFolders for why a purge
+	// preview counts something the purge does not touch.
+	CatalogFolders     int64  `json:"catalog_folders"`
+	CatalogFolderItems int64  `json:"catalog_folder_items"`
+	CatalogFolderError string `json:"catalog_folder_error,omitempty"`
 
 	CanDeleteUserRow bool `json:"can_delete_user_row"`
 }

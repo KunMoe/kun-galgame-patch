@@ -210,16 +210,6 @@ type PatchLink struct {
 
 func (PatchLink) TableName() string { return "patch_link" }
 
-type UserPatchFavoriteRelation struct {
-	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID    int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"user_id"`
-	GalgameID int       `gorm:"uniqueIndex:idx_user_patch_fav;not null" json:"galgame_id"`
-	Created   time.Time `gorm:"autoCreateTime" json:"created"`
-	Updated   time.Time `gorm:"autoUpdateTime" json:"updated"`
-}
-
-func (UserPatchFavoriteRelation) TableName() string { return "user_patch_favorite_relation" }
-
 type UserPatchContributeRelation struct {
 	ID        int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID    int       `gorm:"uniqueIndex:idx_user_patch_contrib;not null" json:"user_id"`

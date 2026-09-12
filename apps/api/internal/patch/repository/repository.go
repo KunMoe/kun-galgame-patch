@@ -353,20 +353,6 @@ func (r *PatchRepository) DeleteResourceFavorite(id int) error {
 	return r.db.Delete(&model.UserPatchResourceFavoriteRelation{}, id).Error
 }
 
-func (r *PatchRepository) FindFavorite(userID, patchID int) (*model.UserPatchFavoriteRelation, error) {
-	var rel model.UserPatchFavoriteRelation
-	err := r.db.Where("user_id = ? AND galgame_id = ?", userID, patchID).First(&rel).Error
-	return &rel, err
-}
-
-func (r *PatchRepository) CreateFavorite(rel *model.UserPatchFavoriteRelation) error {
-	return r.db.Create(rel).Error
-}
-
-func (r *PatchRepository) DeleteFavorite(id int) error {
-	return r.db.Delete(&model.UserPatchFavoriteRelation{}, id).Error
-}
-
 func (r *PatchRepository) GetContributorIDs(patchID int) ([]int, error) {
 	var ids []int
 	err := r.db.Table("user_patch_contribute_relation").

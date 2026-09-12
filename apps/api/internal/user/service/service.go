@@ -3,20 +3,22 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
+	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
 	"kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/internal/user/repository"
-	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -84,7 +86,7 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patch
 	}
 }
 
-func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int) (*dto.UserInfoResponse, error) {
+func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, token, contentLimit string) (*dto.UserInfoResponse, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found")
@@ -99,7 +101,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int) (
 		PatchCount:     s.repo.CountUserPatches(userID),
 		ResourceCount:  s.repo.CountUserResources(userID),
 		CommentCount:   s.repo.CountUserComments(userID),
-		FavoriteCount:  s.repo.CountUserFavorites(userID),
+		FavoriteCount:  s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit),
 	}
 
 	if s.users != nil {
@@ -120,8 +122,26 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int) (
 	return resp, nil
 }
 
+// countFavorites is the number the 收藏 tab will show: the same folders, the
+// same reader, the same gate. It used to count user_patch_favorite_relation,
+// which the cutover froze — a profile could say 10 over a list the reader was
+// not allowed to see a single row of. A catalog outage costs the number, not
+// the profile, which is what the local count did on a failed query too.
+func (s *UserService) countFavorites(ctx context.Context, userID int, token string, isOwner bool, contentLimit string) int64 {
+	ids, err := s.favoritePatchIDs(ctx, userID, token, isOwner)
+	if err == nil {
+		var total int64
+		total, err = s.repo.CountUserFavoritesByIDs(ids, true, contentLimit)
+		if err == nil {
+			return total
+		}
+	}
+	slog.Warn("user profile count failed", "what", "favorites", "user_id", userID, "error", err)
+	return 0
+}
+
 func (s *UserService) GetUserFloating(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
-	return s.GetUserInfo(ctx, userID, 0)
+	return s.GetUserInfo(ctx, userID, 0, "", utils.ContentLimitSFW)
 }
 
 func (s *UserService) Follow(followerID, followingID int) error {
@@ -313,46 +333,24 @@ func (s *UserService) GetUserResources(ctx context.Context, userID, page, limit 
 func (s *UserService) GetUserFavorites(ctx context.Context, userID int, token string, isOwner bool,
 	page, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
 
-	var (
-		folders []catalogv2.Folder
-		err     error
-	)
-	if isOwner && token != "" {
-		folders, err = s.galgame.V2().MyFolders(ctx, token)
-	} else {
-		folders, err = s.galgame.V2().PublicFolders(ctx, int64(userID))
-	}
+	ids, err := s.favoritePatchIDs(ctx, userID, token, isOwner)
 	if err != nil {
 		return nil, 0, err
 	}
+	return s.repo.GetUserFavoritesByIDs(ids, (page-1)*limit, limit, includeEmpty, contentLimit)
+}
 
-	seen := map[int64]bool{}
-	workIDs := []int64{}
-	for _, f := range folders {
-		if f.ItemCount == 0 {
-			continue
-		}
-		var items []catalogv2.FolderItem
-		if isOwner && token != "" {
-			items, err = s.galgame.V2().MyFolderItems(ctx, token, f.ID)
-		} else {
-			items, err = s.galgame.V2().PublicFolderItems(ctx, f.ID)
-		}
-		if err != nil {
-			return nil, 0, err
-		}
-		for _, it := range items {
-			if seen[it.WorkID] {
-				continue
-			}
-			seen[it.WorkID] = true
-			workIDs = append(workIDs, it.WorkID)
-		}
+// favoritePatchIDs is the pages of this site that the reader's view of the
+// person's folders resolves to. The profile counter and the tab both go
+// through it so the number and the list cannot disagree again.
+func (s *UserService) favoritePatchIDs(ctx context.Context, userID int, token string, isOwner bool) ([]int, error) {
+	workIDs, err := favorite.WorkIDs(ctx, s.galgame, userID, token, isOwner)
+	if err != nil {
+		return nil, err
 	}
-
-	byWork, mErr := s.repo.PatchIDsByWorkIDs(workIDs)
-	if mErr != nil {
-		return nil, 0, mErr
+	byWork, err := s.repo.PatchIDsByWorkIDs(workIDs)
+	if err != nil {
+		return nil, err
 	}
 	ids := make([]int, 0, len(workIDs))
 	for _, w := range workIDs {
@@ -360,7 +358,7 @@ func (s *UserService) GetUserFavorites(ctx context.Context, userID int, token st
 			ids = append(ids, pid)
 		}
 	}
-	return s.repo.GetUserFavoritesByIDs(ids, (page-1)*limit, limit, includeEmpty, contentLimit)
+	return ids, nil
 }
 
 func (s *UserService) GetUserComments(ctx context.Context, userID, page, limit int) ([]patchModel.PatchComment, int64, error) {

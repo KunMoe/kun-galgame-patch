@@ -140,7 +140,12 @@ func (a *App) RegisterRoutes() {
 	userRoutes.Get("/:id/floating", a.UserHandler.GetUserFloating)
 	userRoutes.Get("/:id/patch", a.UserHandler.GetUserPatches)
 	userRoutes.Get("/:id/resource", a.UserHandler.GetUserResources)
-	userRoutes.Get("/:id/favorite", a.UserHandler.GetUserFavorites)
+	// optionalAuth is load-bearing here. Since the folder cutover this handler
+	// asks the catalog with the reader's own token, and a private folder
+	// answers only to its owner. Registered bare it read every shelf as a
+	// stranger, and 3953 people were shown an empty 收藏 tab over their own
+	// favourites.
+	userRoutes.Get("/:id/favorite", optionalAuth, a.UserHandler.GetUserFavorites)
 	userRoutes.Get("/:id/folder", optionalAuth, a.PatchHandler.UserFolders)
 	userRoutes.Get("/:id/comment", a.UserHandler.GetUserComments)
 	userRoutes.Get("/:id/contribute", a.UserHandler.GetUserContributions)

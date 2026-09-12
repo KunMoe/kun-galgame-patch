@@ -212,7 +212,6 @@ type PurgePreviewCounts struct {
 	Resources           int64
 	CommentLikes        int64
 	ResourceLikes       int64
-	Favorites           int64
 	Contributes         int64
 	Following           int64
 	Followers           int64
@@ -252,7 +251,6 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 	count(&c.Resources, r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID))
 	count(&c.CommentLikes, r.db.Model(&patchModel.UserPatchCommentLikeRelation{}).Where("user_id = ?", userID))
 	count(&c.ResourceLikes, r.db.Model(&patchModel.UserPatchResourceLikeRelation{}).Where("user_id = ?", userID))
-	count(&c.Favorites, r.db.Model(&patchModel.UserPatchFavoriteRelation{}).Where("user_id = ?", userID))
 	count(&c.Contributes, r.db.Model(&patchModel.UserPatchContributeRelation{}).Where("user_id = ?", userID))
 	count(&c.Following, r.db.Model(&userModel.UserFollowRelation{}).Where("follower_id = ?", userID))
 	count(&c.Followers, r.db.Model(&userModel.UserFollowRelation{}).Where("following_id = ?", userID))
@@ -331,15 +329,11 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		if err != nil {
 			return err
 		}
-		pf, err := distinctInts("user_patch_favorite_relation", "galgame_id", "user_id = ?", userID)
-		if err != nil {
-			return err
-		}
 		pco, err := distinctInts("user_patch_contribute_relation", "galgame_id", "user_id = ?", userID)
 		if err != nil {
 			return err
 		}
-		affectedPatchIDs := unionInts(pc, pr, pf, pco)
+		affectedPatchIDs := unionInts(pc, pr, pco)
 
 		likedCommentIDs, err := distinctInts("user_patch_comment_like_relation", "comment_id", "user_id = ?", userID)
 		if err != nil {
@@ -406,11 +400,15 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 			return err
 		}
 
+		// favorite_count is deliberately not recounted here. Favourites live in
+		// catalog folders since the 2026-09-07 cutover and the local counter is
+		// kept by settleFavoriteSideEffects; recomputing it from the frozen
+		// user_patch_favorite_relation rolled every affected game back to its
+		// snapshot value and threw away every heart since.
 		if len(affectedPatchIDs) > 0 {
 			if err := tx.Exec(`UPDATE patch SET
 				comment_count    = (SELECT COUNT(*) FROM patch_comment WHERE patch_comment.galgame_id = patch.id),
 				resource_count   = (SELECT COUNT(*) FROM patch_resource WHERE patch_resource.galgame_id = patch.id),
-				favorite_count   = (SELECT COUNT(*) FROM user_patch_favorite_relation WHERE user_patch_favorite_relation.galgame_id = patch.id),
 				contribute_count = (SELECT COUNT(*) FROM user_patch_contribute_relation WHERE user_patch_contribute_relation.galgame_id = patch.id)
 				WHERE id IN ?`, affectedPatchIDs).Error; err != nil {
 				return err

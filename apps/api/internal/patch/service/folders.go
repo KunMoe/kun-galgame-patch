@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"kun-galgame-patch-api/internal/favorite"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -327,8 +328,8 @@ func (s *PatchService) IsFavoritedInCatalog(ctx context.Context, token string, p
 	if err != nil {
 		return false
 	}
-	holding, err := s.galgame.V2().MyFoldersHolding(ctx, token, workID)
-	return err == nil && len(holding) > 0
+	held, err := favorite.Holds(ctx, s.galgame, token, workID)
+	return err == nil && held
 }
 
 // The local counter and the author's moemoepoints follow the upstream write,

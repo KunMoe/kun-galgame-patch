@@ -42,7 +42,8 @@ func (h *UserHandler) GetUserInfo(c fiber.Ctx) error {
 	}
 
 	currentUID := middleware.GetUserID(c)
-	info, err := h.service.GetUserInfo(c.Context(), userID, currentUID)
+	info, err := h.service.GetUserInfo(c.Context(), userID, currentUID,
+		middleware.GetAccessToken(c), utils.ContentLimitForListBrowse(c))
 	if err != nil {
 		return response.Error(c, errors.ErrNotFound(err.Error()))
 	}

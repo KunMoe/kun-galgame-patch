@@ -11,6 +11,7 @@ import (
 	"time"
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
+	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/patch/model"
@@ -769,7 +770,7 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 
 	s.repo.EnsureContributor(userID, resource.GalgameID)
 
-	s.notifyFavoritedUsers(resource.GalgameID, userID)
+	go s.notifyFavoritedUsers(resource.GalgameID, userID)
 
 	resource.NoteHTML = markdown.MustRender(resource.Note)
 
@@ -1084,11 +1085,42 @@ func (s *PatchService) ExtractMentionUserIDs(content string) []int {
 	return markdown.ExtractMentionedUserIDs(content)
 }
 
+// The audience is the catalog's, because the folders have been the only record
+// of who favourited a game since the 2026-09-07 cutover. Two things about that
+// answer cannot be seen from this file.
+//
+// It needs folder_holders:read on the application key. The scope is granted by
+// an operator, never self-service, so a deployment whose key has not been
+// granted it gets 403 here and nowhere else.
+//
+// And it names central sign-in uids, which are not this site's users: the
+// folders are shared with the forum, and 5308 of the 11005 accounts holding one
+// have no row in "user" here. user_message.recipient_id is a foreign key and
+// createDedupMessage drops Create's error, so an unfiltered fan-out would
+// insert nothing for those and say nothing about it.
 func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	byPatch, err := utils.WorkIDsByPatchIDs(s.db, []int{patchID})
+	if err != nil || byPatch[patchID] == 0 {
+		return
+	}
+	holders, err := favorite.Holders(ctx, s.galgame, byPatch[patchID])
+	if err != nil {
+		slog.Warn("notifyFavoritedUsers: 读取 catalog 收藏者失败", "patch_id", patchID, "error", err)
+		return
+	}
+	if len(holders) == 0 {
+		return
+	}
+
 	var userIDs []int
-	s.db.Model(&model.UserPatchFavoriteRelation{}).
-		Where("galgame_id = ? AND user_id != ?", patchID, senderID).
-		Pluck("user_id", &userIDs)
+	if err := s.db.Table("user").Where("id IN ? AND id != ?", holders, senderID).
+		Pluck("id", &userIDs).Error; err != nil {
+		slog.Warn("notifyFavoritedUsers: 收藏者与本站用户求交失败", "patch_id", patchID, "error", err)
+		return
+	}
 
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceCreate",

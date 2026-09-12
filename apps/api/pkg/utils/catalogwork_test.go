@@ -56,3 +56,29 @@ func TestPatchIDsByWorkIDsAnswersEmptyForNoWorks(t *testing.T) {
 		t.Fatalf("got %v, want an empty map", out)
 	}
 }
+
+// A page with no catalog work must not come back as work 0. The calendar reads
+// this map to draw hearts, and a zero key would put every workless page in one
+// bucket and light them all up together.
+func TestWorkIDsByPatchIDsExcludesPagesWithNoWork(t *testing.T) {
+	db := dryRunDB(t)
+	var rows []patchWorkRow
+	stmt := db.Table("patch").Select("id, catalog_work_id").
+		Where("id IN ? AND catalog_work_id IS NOT NULL", []int{285, 898}).
+		Session(&gorm.Session{DryRun: true}).Find(&rows).Statement
+	got := db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)
+
+	if !strings.Contains(got, "catalog_work_id IS NOT NULL") {
+		t.Fatalf("workless pages were not excluded: %q", got)
+	}
+}
+
+func TestWorkIDsByPatchIDsAnswersEmptyForNoPages(t *testing.T) {
+	out, err := WorkIDsByPatchIDs(dryRunDB(t), nil)
+	if err != nil {
+		t.Fatalf("WorkIDsByPatchIDs: %v", err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("got %v, want an empty map", out)
+	}
+}

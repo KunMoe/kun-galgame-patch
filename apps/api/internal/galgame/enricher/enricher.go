@@ -72,7 +72,7 @@ func enrichPatches(ctx context.Context, galgame *galgameClient.Client, users *us
 
 	if galgame == nil {
 		if contentLimit != "" {
-			return nil
+			return []GalgameCard{}
 		}
 		return cards
 	}
@@ -88,8 +88,10 @@ func enrichPatches(ctx context.Context, galgame *galgameClient.Client, users *us
 	briefs, err := batch(ctx, ids, contentLimit)
 	if err != nil {
 		if contentLimit != "" {
+			// Empty, not nil: a nil slice marshals to `null` and a client that
+			// reads .length off the list crashes on the gate's safe answer.
 			slog.Warn("galgame 富化失败 + 处于过滤模式：返回空列表以防 NSFW 泄漏", "error", err, "count", len(patches), "content_limit", contentLimit)
-			return nil
+			return []GalgameCard{}
 		}
 		slog.Warn("galgame 富化失败，返回无 galgame 的降级结果", "error", err, "count", len(patches))
 		return cards
