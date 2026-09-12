@@ -69,12 +69,33 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Dokploy's compose webhook is a GitHub webhook receiver, not a button.
+      # It reads the branch out of the BODY and only looks there when the
+      # request carries x-github-event, so the bare `curl -X POST` this step
+      # used to send answered `{"message":"Branch Not Match"}` — with status
+      # 301, which `curl -f` does not treat as an error, and a green step.
+      # Every master build since 2026-06-02 pushed images nothing deployed.
+      #
+      # So: forward the push event's own ref and commits, and fail the step on
+      # anything but 200 (301 = branch or watchPaths mismatch, 400 = autoDeploy
+      # off, 404 = wrong token). workflow_dispatch has no commits; watchPaths
+      # is empty on this compose, which matches everything.
       - name: Trigger Dokploy redeploy
         env:
           WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK_MOYU }}
+          REF: ${{ github.ref }}
+          COMMITS: ${{ toJSON(github.event.commits) }}
         run: |
           if [ -z "$WEBHOOK" ]; then
             echo "DOKPLOY_WEBHOOK_MOYU not set — images pushed to GHCR, skipping redeploy trigger."
             exit 0
           fi
-          curl -fsS -X POST "$WEBHOOK"
+          body=$(jq -nc --arg ref "$REF" --argjson commits "${COMMITS:-null}" \
+            '{ref: $ref, commits: ($commits // [])}')
+          out=$(mktemp)
+          code=$(curl -sS -o "$out" -w '%{http_code}' -X POST "$WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -H 'X-GitHub-Event: push' \
+            --data "$body")
+          echo "dokploy responded $code: $(cat "$out")"
+          test "$code" = "200"
