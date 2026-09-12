@@ -2,22 +2,42 @@
 defineOptions({ name: 'folder-detail' })
 
 const route = useRoute()
+const router = useRouter()
 const api = useApi()
 const folderId = computed(() => Number(route.params.id))
 
 interface FolderDetailResponse {
   folder: Folder | null
   patches: GalgameCard[]
+  total: number
 }
+
+const page = computed({
+  get: () => Number(route.query.page) || 1,
+  set: (v) => router.replace({ query: { ...route.query, page: String(v) } })
+})
+const limit = 24
+const pageHref = usePageHref()
 
 const { data, pending } = await useAsyncData<FolderDetailResponse>(
   () => `folder-${folderId.value}`,
   async () => {
-    const res = await api.get<FolderDetailResponse>(`/folder/${folderId.value}`)
-    return res.code === 0 ? res.data : { folder: null, patches: [] }
+    const res = await api.get<FolderDetailResponse>(
+      `/folder/${folderId.value}?page=${page.value}&limit=${limit}`
+    )
+    return res.code === 0 ? res.data : { folder: null, patches: [], total: 0 }
   },
-  { default: () => ({ folder: null, patches: [] }) }
+  {
+    default: () => ({ folder: null, patches: [], total: 0 }),
+    watch: [page]
+  }
 )
+
+const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
+const onChangePage = (v: number) => {
+  page.value = v
+  if (import.meta.client) window.scrollTo({ top: 0 })
+}
 
 const labelOf = (folder: Folder) =>
   folder.name.trim() || (folder.is_default ? '默认收藏夹' : '未命名收藏夹')
@@ -28,7 +48,7 @@ useHead(() => ({
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl space-y-6 p-4">
+  <div class="container mx-auto my-4 space-y-6">
     <KunLoading v-if="pending" description="加载中..." />
 
     <template v-else-if="data?.folder">
@@ -54,14 +74,24 @@ useHead(() => ({
                the reader's NSFW gate hides rows here the same way it does on
                every other list. Both are left out rather than rendered as
                holes. -->
-          <template v-if="data.folder.item_count !== data.patches.length">
-            · 本页显示 {{ data.patches.length }} 个
+          <template v-if="data.folder.item_count !== data.total">
+            · 本站收录 {{ data.total }} 个
           </template>
         </p>
       </div>
 
       <GalgameList v-if="data.patches.length" :items="data.patches" />
       <KunNull v-else description="这个收藏夹还是空的" />
+
+      <div v-if="totalPages > 1" class="flex justify-center">
+        <KunPagination
+          :current-page="page"
+          :total-page="totalPages"
+          :is-loading="pending"
+          :page-href="pageHref"
+          @update:current-page="onChangePage"
+        />
+      </div>
     </template>
 
     <KunNull v-else description="收藏夹不存在或未公开" />

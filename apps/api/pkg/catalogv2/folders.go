@@ -148,6 +148,33 @@ func (c *Client) MyFolderItems(ctx context.Context, accessToken string, folderID
 	return itemsView(rows), err
 }
 
+// FolderPreviewItems is one page of a folder's items and nothing more — what a
+// shelf card needs to draw a few covers. It takes the reader's token for their
+// own folders and the application key for a public one, the same split as the
+// full walk.
+//
+// These are not the newest additions: the catalog orders items by its
+// updated_at sync watermark, and the reading order this site shows is applied
+// after a full walk. A cover mosaic does not care which four it gets; walking
+// every page of every folder to find out would cost a request per hundred
+// items per folder on a page that draws one card each.
+func (c *Client) FolderPreviewItems(ctx context.Context, accessToken string, folderID int64, limit int) ([]FolderItem, error) {
+	q := url.Values{"limit": {strconv.Itoa(min(max(limit, 1), folderPageMax))}}
+	id := strconv.FormatInt(folderID, 10)
+	var page List[folderItemWire]
+	if accessToken != "" {
+		if _, err := c.userDo(ctx, http.MethodGet,
+			"/v2/me/folders/"+id+"/items?"+q.Encode(), accessToken, nil, &page); err != nil {
+			return nil, err
+		}
+		return itemsView(page.Items), nil
+	}
+	if err := c.get(ctx, "/v2/folders/"+id+"/items?"+q.Encode(), &page); err != nil {
+		return nil, err
+	}
+	return itemsView(page.Items), nil
+}
+
 func (c *Client) MyFolder(ctx context.Context, accessToken string, folderID int64) (*Folder, error) {
 	var out folderWire
 	if _, err := c.userDo(ctx, http.MethodGet,

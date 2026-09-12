@@ -17,6 +17,8 @@ import (
 const (
 	folderNameMax        = 60
 	folderDescriptionMax = 500
+	// The same page a shelf of galgame cards is drawn at everywhere else.
+	folderPageSize = 24
 )
 
 type folderWriteRequest struct {
@@ -66,7 +68,7 @@ func (h *PatchHandler) MyFolders(c fiber.Ctx) error {
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
-	folders, err := h.service.MyFolders(c.Context(), token)
+	folders, err := h.service.MyFolders(c.Context(), token, utils.ContentLimitForListBrowse(c))
 	if err != nil {
 		return catalogErr(c, err, "读取收藏夹失败")
 	}
@@ -80,16 +82,17 @@ func (h *PatchHandler) UserFolders(c fiber.Ctx) error {
 	}
 	// Somebody else's shelf shows only what they published. Their own shelf is
 	// MyFolders, which is the only face that knows about private folders.
+	cl := utils.ContentLimitForListBrowse(c)
 	if user := middleware.GetUser(c); user != nil && user.ID == ownerID {
 		if token := middleware.GetAccessToken(c); token != "" {
-			folders, mErr := h.service.MyFolders(c.Context(), token)
+			folders, mErr := h.service.MyFolders(c.Context(), token, cl)
 			if mErr != nil {
 				return catalogErr(c, mErr, "读取收藏夹失败")
 			}
 			return response.OK(c, fiber.Map{"folders": folders})
 		}
 	}
-	folders, pErr := h.service.PublicFolders(c.Context(), ownerID)
+	folders, pErr := h.service.PublicFolders(c.Context(), ownerID, cl)
 	if pErr != nil {
 		return catalogErr(c, pErr, "读取收藏夹失败")
 	}
@@ -172,12 +175,14 @@ func (h *PatchHandler) FolderDetail(c fiber.Ctx) error {
 		return response.Error(c, idErr)
 	}
 	token := middleware.GetAccessToken(c)
+	page := max(fiber.Query(c, "page", 1), 1)
+	limit := min(max(fiber.Query(c, "limit", folderPageSize), 1), folderPageSize)
 	// Try the owner's lane first when there is a token: it is the only one that
 	// answers a private folder, and it 404s just the same when the reader is
 	// not the owner, so nothing leaks by attempting it.
-	folder, patches, err := h.service.FolderPatches(c.Context(), token, folderID, token != "")
+	folder, patches, total, err := h.service.FolderPatches(c.Context(), token, folderID, token != "", page, limit)
 	if err != nil && token != "" {
-		folder, patches, err = h.service.FolderPatches(c.Context(), "", folderID, false)
+		folder, patches, total, err = h.service.FolderPatches(c.Context(), "", folderID, false, page, limit)
 	}
 	if err != nil {
 		return catalogErr(c, err, "读取收藏夹失败")
@@ -186,9 +191,9 @@ func (h *PatchHandler) FolderDetail(c fiber.Ctx) error {
 	// cover and no count, and the shelf drew ten framed placeholders reading
 	// 暂无补丁 that still linked to the right game — the card reads count.resource,
 	// which a bare patch row does not have at all.
-	cl := utils.ContentLimitForListBrowse(c)
-	cards := enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches, cl)
-	return response.OK(c, fiber.Map{"folder": folder, "patches": cards})
+	cards := enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches,
+		utils.ContentLimitForListBrowse(c))
+	return response.OK(c, fiber.Map{"folder": folder, "patches": cards, "total": total})
 }
 
 func (h *PatchHandler) FoldersForPatch(c fiber.Ctx) error {

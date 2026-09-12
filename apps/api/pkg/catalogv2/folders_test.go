@@ -284,3 +284,46 @@ func TestFolderCreateOmitsUnsetFields(t *testing.T) {
 		t.Errorf("name did not travel: %s", seen)
 	}
 }
+
+// A preview is one page and stops there. The full walk exists next to it and
+// follows next_cursor to the end; a shelf card drawing four covers must not,
+// or a person with a 400-item folder pays four requests for a thumbnail.
+func TestFolderPreviewItemsTakeOnePageOnTheRightLane(t *testing.T) {
+	face := &folderFace{pages: map[string][]string{
+		"/v2/me/folders/5/items": {itemListBody("cur_2", 900, 901)},
+		"/v2/folders/6/items":    {itemListBody("cur_2", 902)},
+	}}
+	srv := face.server(t)
+	c := New(srv.URL, "nmk_live_key")
+	ctx := context.Background()
+
+	mine, err := c.FolderPreviewItems(ctx, "user-jwt", 5, 4)
+	if err != nil {
+		t.Fatalf("FolderPreviewItems(own): %v", err)
+	}
+	if len(mine) != 2 {
+		t.Fatalf("want the one page's 2 items, got %d", len(mine))
+	}
+	if _, err = c.FolderPreviewItems(ctx, "", 6, 4); err != nil {
+		t.Fatalf("FolderPreviewItems(public): %v", err)
+	}
+
+	calls := face.calls()
+	if len(calls) != 2 {
+		t.Fatalf("want one request each, got %d: %v", len(calls), calls)
+	}
+	for _, call := range calls {
+		if !strings.Contains(call.Query, "limit=4") {
+			t.Errorf("%s asked %q, want limit=4", call.Path, call.Query)
+		}
+		if strings.Contains(call.Query, "cursor=") {
+			t.Errorf("%s followed the cursor: %q", call.Path, call.Query)
+		}
+	}
+	if calls[0].Auth != "Bearer user-jwt" {
+		t.Errorf("own lane sent %q, want the user token", calls[0].Auth)
+	}
+	if !strings.Contains(calls[1].Auth, "nmk_live_key") {
+		t.Errorf("public lane sent %q, want the application key", calls[1].Auth)
+	}
+}

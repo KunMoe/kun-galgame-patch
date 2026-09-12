@@ -14,6 +14,11 @@ interface Folder {
   item_count: number
   created: string
   updated: string
+  // image_service hashes, not URLs — the card builds the URL. Fewer than
+  // item_count, and sometimes none: the shelf is shared with kungal and can
+  // hold games this site has no page for, and the NSFW gate drops rows here
+  // like it does everywhere else.
+  preview_covers: string[]
 }
 
 interface FolderMembership extends Folder {
