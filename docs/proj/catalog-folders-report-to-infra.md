@@ -235,3 +235,80 @@ kun_catalog=# \d catalog_user_folder
 `user` 表的外键，而 **11005 个持有收藏夹的账号里有 5308 个在 moyu 没有行**。不做求交就直接
 扇出，那 5308 个人的插入全部违反外键，而 `createDedupMessage` 丢掉了 `Create` 的错误——
 一次静默的半数丢失。moyu 已在扇出前和本地 `user` 表求交。
+
+---
+
+## §7 2026-09-12 追加：同一个收藏夹，两个站点渲染出不同的游戏
+
+**来源**：用户报障 ——「补丁站的收藏夹还是没图，而且同样是默认收藏夹，补丁站的默认收藏夹
+好歹还是存的我以前收藏的游戏，主站收藏夹里的游戏大部分我完全没收藏过，除了数量完全不像
+相同的收藏夹。」
+
+两件事，各归各家。
+
+### 补丁站「没图」：moyu 自己的缺陷，已修，待部署
+
+`GET /api/v1/folder/:id` 把 `model.Patch` 原样发了出去。生产实测：
+
+```
+$ curl https://www.moyu.moe/api/v1/folder/11819
+{"patches":[{"id":5355,"vndb_id":"v21429","status":0,"download":1013, ...}]}
+```
+
+没有 `name`，没有 `galgame`，因而没有 `effective_portrait_hash`——卡片的封面取自那个
+字段，取不到就画 `lucide:image-off` 的占位框，`count.resource` 也不存在，于是每张卡都是
+一个空框加「暂无补丁」。修复是 commit `45ca7647`（`EnrichPatchCards`），**在 PR #36 里，
+尚未合并**，所以线上仍是坏的。这条与 catalog 无关，不需要 infra 做任何事。
+
+### 主站「大部分没收藏过」：收藏夹项的 id 空间被读错了
+
+收藏夹里存的是什么，先落实：`catalog_user_folder_item.work_id` 上没有外键，但生产
+**252,544 条项 100% 能解析成 `catalog_work.id`**（只有 250,720 条能解析成 gid），所以它
+是 **catalog work id**，不是任何下游站点的 id。moyu 按这个读（`patch.catalog_work_id`，
+按 vndb 锚点回填），读出来的就是用户当年收藏的那些游戏——和报障一致。
+
+kungal 的合集详情页把同一批 `work_id` 当成**自己的 gid** 喂给了按 gid 解析的批量面
+（`CollectionService.GetDetail` → `HydrateCardsByIDs` → `GetBatchPublic` →
+`CatalogRowsByGIDs`），封面预览那条路径同样（`resolvePreviewCovers` 把 `it.WorkID`
+直接塞进 `allGids`）。两个 id 空间是错位的，于是解析得到的是**另一个游戏**。
+
+以报障用户的默认收藏夹 11819（10 项）为例，左边是收藏夹里真正的作品，右边是按 gid 解析
+后会渲染出来的作品：
+
+```
+work 5259 ビッチ学園が清純なはずがないっ！！？  ->  work 5165 ようこそ種付け村へ…
+work 4417 創刻のアテリアル                      ->  work 4367 その花びらにくちづけを…
+work 3788 珊海王の円環                          ->  work 3768 状況開始っ!
+work 3168 忍堕とし                              ->  work 3159 雪花 -きら-
+work 2927 大番長 -Big Bang Age-                 ->  work 2920 幻創のイデア
+work 1551 姫と穢欲のサクリファイス              ->  work 1547 隷嬢管理棟
+work  898 デモニオン                            ->  work  898 デモニオン        （偶然对上）
+work  285 戦巫〈センナギ〉                       ->  work  285 戦巫〈センナギ〉  （偶然对上）
+work 207230 屋根裏の眠り姫                      ->  （无 kungal 认领，整条消失）
+work 210962 ぐるぐる痴漢電車                    ->  （同上）
+```
+
+八对二，数量却都是 8——这正是「除了数量完全不像相同的收藏夹」。全量同样：
+
+```sql
+SELECT count(*) AS items,
+       count(*) FILTER (WHERE g.id IS NULL)              AS 渲染不出来,
+       count(*) FILTER (WHERE g.id = i.work_id)          AS 碰巧对,
+       count(*) FILTER (WHERE g.id IS NOT NULL AND g.id <> i.work_id) AS 画成了别的游戏
+  FROM catalog_user_folder_item i
+  LEFT JOIN catalog_work g ON g.site = 'kungal' AND g.product_work_id = i.work_id;
+
+ 252544 | 1686 | 58680 | 192178
+```
+
+**76% 的收藏夹项在主站上被画成了另一个游戏**，23% 碰巧对上（两个 id 空间都是稠密的小
+整数，撞上是常态），0.7% 干脆消失。这解释了为什么它「看起来像个别人的收藏夹」而不是
+「看起来像坏了」——后者会被立刻发现，前者不会。
+
+修复在 kungal 仓，不在这里：喂进 `HydrateCardsByIDs` / `GetBatchPublic` 之前，
+`work_id` 要先经过一次 work → gid 的映射，和 moyu 的 `PatchIDsByWorkIDs` 同一层意思。
+
+**给 infra 的那一条**：这是同一份数据被两个下游按两种 id 空间读的第一个实例，而且失败是
+静默的——没有 404，没有报错，只是换了个游戏。如果 catalog 愿意在 `/v2/folders/{id}/items`
+的响应里除 `work_id` 外再带上调用方 site 的 `product_work_id`（或者干脆让 `include=`
+支持把 work 一起展开），这一类错误就没有发生的余地了。要不要做由 infra 定，moyu 这边不阻塞。

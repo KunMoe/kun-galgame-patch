@@ -15,6 +15,14 @@ type patchWorkRow struct {
 // PatchIDsByWorkIDs turns catalog work ids back into the patch that represents
 // each one.
 //
+// Doing the translation is not optional, and skipping it fails silently. A
+// folder item names a CATALOG work; every hydrate face on this site is keyed on
+// the patch id. kungal fed the same folder rows straight into its gid-keyed
+// batch and its collection page drew a different game for 192,178 of
+// production's 252,544 items — the two id spaces are both dense small integers,
+// so 58,680 landed on the right game by luck and the page reads as somebody
+// else's shelf rather than as a break.
+//
 // A work can be named by more than one patch. This site dedupes on the vndb_id
 // STRING, so a game that reaches it once as `wiki-<n>` and once as `v<n>` gets
 // two pages — production has two such pairs, and the unique index that first
