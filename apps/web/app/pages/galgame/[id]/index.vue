@@ -19,13 +19,33 @@ const galgameId = computed(() => Number(route.params.id))
 
 const coversOpen = ref(false)
 
-const { data: patch } = await useAsyncData<PatchHeader | null>(
+type PatchHeaderOrMove = PatchHeader & { moved_to?: number }
+
+const { data: header } = await useAsyncData<PatchHeaderOrMove | null>(
   () => `patch-${galgameId.value}`,
   async () => {
-    const res = await api.get<PatchHeader>(`/patch/${galgameId.value}`)
+    const res = await api.get<PatchHeaderOrMove>(`/patch/${galgameId.value}`)
     return res.code === 0 ? res.data : null
   }
 )
+
+// When catalog merges a work away, this page answers with the successor ALONE,
+// in place of the record -- the same shape /galgame/official/:id already 301s
+// on. Reading it as a record rendered a header with no id and threw a 500,
+// because the merge erases the claim naming the work and patch_redirect is the
+// only place the successor is still written down.
+const movedTo = (v: PatchHeaderOrMove | null | undefined) => v?.moved_to ?? 0
+const hopTo = (to: number) =>
+  navigateTo(`/galgame/${to}`, { redirectCode: 301, replace: true })
+
+const moved = movedTo(header.value)
+if (moved > 0) await hopTo(moved)
+watch(header, (v) => {
+  const to = movedTo(v)
+  if (to > 0) hopTo(to)
+})
+
+const patch = computed(() => (header.value?.moved_to ? null : header.value))
 
 const chipUserId = computed(
   () => patch.value?.creator?.id ?? patch.value?.user?.id ?? 0
