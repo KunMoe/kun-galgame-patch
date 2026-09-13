@@ -11,10 +11,17 @@
 const route = useRoute()
 const api = useApi()
 
-const [rawID, segment] = String(route.params.slug ?? '')
-  .split('/')
+// A catch-all hands `slug` over as an array of segments, and String() joins it
+// with a comma: "999001,resource" is NaN as an id, so /patch/<n>/resource and
+// /patch/<n>/comment fell through to the not-found branch and answered 200
+// while only the bare /patch/<n> redirected.
+const segments = (
+  Array.isArray(route.params.slug) ? route.params.slug : [route.params.slug]
+)
+  .map(String)
   .filter(Boolean)
 
+const [rawID, segment] = segments
 const legacyID = Number(rawID)
 
 const TAB_OF_SEGMENT: Record<string, string> = {
@@ -33,13 +40,21 @@ const target = await (async () => {
   return tab ? `/galgame/${id}?tab=${tab}` : `/galgame/${id}`
 })()
 
-if (target) {
-  await navigateTo(target, { redirectCode: 301, replace: true })
+if (!target) {
+  throw createError({
+    statusCode: 404,
+    statusMessage: '这个页面的地址已经变了，而且没有找到它的新位置',
+    fatal: true
+  })
 }
 
 useKunDisableSeo('页面已迁移')
+
+await navigateTo(target, { redirectCode: 301, replace: true })
 </script>
 
 <template>
-  <KunNull description="这个页面的地址已经变了，而且没有找到它的新位置" />
+  <div class="py-16">
+    <KunLoading description="正在跳转到新地址" />
+  </div>
 </template>
