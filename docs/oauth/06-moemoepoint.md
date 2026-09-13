@@ -56,6 +56,7 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 | `content_removed` | − | 上述产出被删 / 撤回时回收（与发放同 `ref`）|
 | `daily_checkin` | + | 每日签到 |
 | `liked` | + | 内容被点赞 |
+| `name_change` | − | 修改用户名（OAuth 内部扣费，见 §3.3）；OAuth 内部，s2s 不可用 |
 
 约定：`delta` 禁止为 0；可回收的产出，回收用相同 `ref` 对账。新增一种来源 = 往这张表加一行（你一个人控制全部 client，一次小改即可，无需治理协调）。
 
@@ -103,9 +104,9 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 
 `applied=false` 表示幂等键命中、未重复执行。
 
-**错误**（HTTP 400 + 对应 code，除非另注）：`16002` delta 为 0 或超 ±1,000,000；`16003` reason 非法 / 用了保留 reason；`16004` 幂等键已存在但请求体不一致；`403/16005` client 不在铸币白名单（`moemoepoint_awarder=false`）；`404/10005` 用户不存在；`401` Basic Auth 失败。
+**错误**（HTTP 400 + 对应 code，除非另注）：`16002` delta 为 0 或超 ±1,000,000；`16003` reason 非法 / 用了保留 reason；`16004` 幂等键已存在但请求体不一致；`403/16005` client 不在铸币白名单（`moemoepoint_awarder=false`）；`404/10005` 用户不存在；`401` Basic Auth 失败。s2s 调用**永远不会**收到 `16006`（见 §3.3）。
 
-> 余额**允许为负**（精简取舍：不做非负约束，保证回收/反转永不被挡）。
+> 余额**允许为负**（精简取舍：不做非负约束，保证回收/反转永不被挡）。这条只约束**回收方向**：一笔*付费动作*（§3.3）可以逐笔要求扣完后不为负，扣不动就返回 `400/16006`「萌萌点不足」。两者不冲突——「不许花没有的钱」和「拿回不该给的钱」是两条规则，混成一条会让最需要纠正的用户反而纠正不了。
 
 ### 3.2 读取
 
@@ -113,6 +114,19 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 - `GET /users/:id/moemoepoint/log?limit=20&before_id=&reason=` → 分页流水（`reason` 可选过滤）。**s2s 返回精简视图**：`{ id, delta, reason, source_app, source_name, ref, created_at }`，**不含** `note` / `actor_user_id`（这俩可能含管理处罚备注，下游可能渲染给终端用户，故不下发；管理端 `/admin/.../log` 返回完整视图，额外含 `note` / `actor_user_id`）。`source_name` = `source_app`（发放方 OAuth client id）经服务端 `LEFT JOIN oauth_clients` 解析出的该 client 展示名；`source_app="oauth"`（OAuth 内部发放）或未知 id 时为空串，由消费方回落到本地标签。
 - 也可在 `/auth/me` / userinfo 里直接返回 OAuth 的实时余额（替掉现在的冻结快照）。
 - **自助流水**：`GET /auth/me/moemoepoint/log?limit=&before_id=&reason=`（**用户 JWT**，`Auth` 鉴权，id 取自 token 非路径参——避免越权读他人）。返回与 s2s 同口径的**精简视图**（无 `note` / `actor_user_id`）。OAuth web 端 `/profile`「萌萌点记录」直接用它；下游站点若不想自己代理 s2s 端点，用户也可直连此端点查自己的流水。
+
+### 3.3 付费动作（OAuth 内部，无 s2s 入口）
+
+OAuth 自己也会**花**萌萌点。目前只有一种：**修改用户名**。
+
+- 入口：`PATCH /auth/me { name }`（论坛 `PUT /user/username` 是它的代理）。
+- 价格：配置中心 `auth.name_change_cost`，默认 **17**（论坛旧 Nitro 端点的历史价）；置 0 即免费。
+- reason `name_change`，`source_app="oauth"`，`actor_user_id` = 用户本人，`note` 记「旧名 → 新名」。
+- 幂等键 `oauth:name_change:<userId>:<第几次>`。**不能**按「用户 + 目标名」构键：那样 A→B→A→B 的第四次会命中第一次的键，白送一次改名。
+- 余额不足 → `400/16006`，且**改名不发生**：改名、其余 profile 字段与扣费在同一个事务里。
+- 改成与当前同名 = 不算一次改名，不扣费；重试同一个请求因此天然只扣一次。
+
+> 为什么扣费在 OAuth：用户名和余额都是 **OP 全局**属性。论坛旧后端曾在自己那边扣 17，Go 重写把该路由改成代理 `PATCH /auth/me` 之后这笔扣费**丢了数月无人察觉**——扣费和它所支付的那个动作只要不在同一个事务里，就迟早会走散。
 
 ## 4. 幂等（唯一需要严谨的点）
 
@@ -157,8 +171,9 @@ OAuth **不发布 SDK**，每个 consumer 自己写薄客户端（同 `/users/ba
 | 16003 | `ErrMoemoepointInvalidReason` | reason 不在枚举内，或 s2s 用了保留 reason（admin_*/migration）|
 | 16004 | `ErrMoemoepointIdemConflict` | idempotency_key 已存在但请求体不一致 |
 | 16005 | `ErrMoemoepointNotAwarder` | client 无铸币权限（`moemoepoint_awarder=false`，仅 POST 调整，HTTP 403）|
+| 16006 | `ErrMoemoepointInsufficient` | 余额不足以支付一笔付费动作（§3.3；仅 OAuth 内部路径，s2s 收不到）|
 
-> 已实现状态：上述 4 个码 + `moemoepoint_log` 表 + s2s/admin 端点 + 管理端 UI **均已落地**（待 oauth 后端重启生效）。铸币白名单（`16005` + `moemoepoint_awarder` 列 + `cmd/migrate` 按域名回填论坛/补丁）于 2026-06-13 落地。下游消费 + 数据合并迁移（§6/§7）仍待各站对接。
+> 已实现状态：上述 5 个码 + `moemoepoint_log` 表 + s2s/admin 端点 + 管理端 UI **均已落地**（待 oauth 后端重启生效）。铸币白名单（`16005` + `moemoepoint_awarder` 列 + `cmd/migrate` 按域名回填论坛/补丁）于 2026-06-13 落地。下游消费 + 数据合并迁移（§6/§7）仍待各站对接。
 > 并发同键竞态：唯一索引兜底（不会重复加分），极少数并发同键会得到一次性 500，调用方重试即转为 `applied:false`。
 
 ## 9. 刻意没做的（将来需要时再升级）
