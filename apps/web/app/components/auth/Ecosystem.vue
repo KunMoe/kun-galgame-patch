@@ -66,7 +66,7 @@ watch(expanded, (open) => {
     <KunDivider class="w-full" />
 
     <p class="text-default-500 text-center text-xs">
-      拥有<span class="text-primary font-semibold">鲲 Galgame</span>账号，一键登录以下全部 ACG 网站
+      拥有<span class="text-primary font-semibold">NextMoe·未萌</span>账号，一键登录以下全部 ACG 网站
     </p>
 
     <div class="flex flex-wrap items-center justify-center gap-2">

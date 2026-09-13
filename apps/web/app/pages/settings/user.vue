@@ -99,7 +99,7 @@ const uploadAvatar = async () => {
 
 const config = useRuntimeConfig()
 const oauthWebUrl =
-  (config.public.oauthWebUrl as string) || 'https://oauth.kungal.com'
+  (config.public.oauthWebUrl as string) || 'https://account.nextmoe.com'
 const settingsMounted = ref(false)
 onMounted(() => (settingsMounted.value = true))
 const oauthProfileUrl = computed(() => {
@@ -235,7 +235,7 @@ const currentAvatarUrl = computed(() => {
         <div class="space-y-4">
           <p class="text-default-600 text-sm">
             修改邮箱、密码、注销账号等敏感操作需要在
-            <strong>鲲 Galgame OAuth</strong>完成 ——
+            <strong>NextMoe·未萌 账号</strong>完成 ——
             这是为了让所有身份层操作集中在一个安全审计点。改完后页面会自动跳回。
           </p>
           <div class="flex justify-end">
@@ -246,7 +246,7 @@ const currentAvatarUrl = computed(() => {
             >
               <KunButton color="primary" variant="flat">
                 <KunIcon name="lucide:external-link" class="size-4" />
-                前往 鲲 Galgame OAuth
+                前往 NextMoe·未萌 账号
               </KunButton>
             </a>
           </div>

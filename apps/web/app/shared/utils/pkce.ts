@@ -26,7 +26,7 @@ const generateState = (): string => {
 }
 
 // PKCE `state` + `code_verifier` are stashed in short-lived cookies (NOT
-// sessionStorage). The OAuth flow leaves our origin (→ oauth.kungal.com) and
+// sessionStorage). The OAuth flow leaves our origin (→ account.nextmoe.com) and
 // redirects back to /auth/callback; lightweight / old mobile browsers (Via,
 // in-app WebViews) drop the per-tab sessionStorage across that cross-origin
 // round-trip, which surfaced as "OAuth callback verification failed". A cookie
@@ -91,9 +91,9 @@ const prepareAuthorizeUrl = async (
   else deleteOAuthCookie('oauth_return_to')
 
   // `/oauth/authorize` is an API endpoint (lives under oauthServerUrl =
-  // dev :9277/api/v1, prod oauth.kungal.com/api/v1). The user-facing
+  // dev :9277/api/v1, prod account.nextmoe.com/api/v1). The user-facing
   // pages (/auth/register, /forgot, /profile) live on oauthWebUrl
-  // (dev :9420, prod oauth.kungal.com) and the API server 302-redirects
+  // (dev :9420, prod account.nextmoe.com) and the API server 302-redirects
   // to those when its consent flow needs UI. Earlier this used oauthWebUrl
   // and produced `:9420/oauth/authorize` which doesn't exist.
   const oauthServerUrl = config.public.oauthServerUrl as string
@@ -170,7 +170,7 @@ export const startOAuthRegister = async (): Promise<void> => {
 }
 
 // RP-initiated logout. Clearing only moyu's own session is NOT enough: the
-// central OP (oauth.kungal.com) session survives (its localStorage user is
+// central OP (account.nextmoe.com) session survives (its localStorage user is
 // cross-origin and its refresh cookie is cross-site), so the next login would
 // silently re-consent (first-party auto_consent) and log the user straight back
 // into the same account. After clearing the local session, callers top-level

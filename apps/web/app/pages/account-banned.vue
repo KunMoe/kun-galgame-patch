@@ -11,7 +11,7 @@ const reason = computed(() => (route.query.reason as string) || '')
 
 const config = useRuntimeConfig()
 const oauthOrigin = computed(
-  () => (config.public.oauthWebUrl as string) || 'https://oauth.kungal.com'
+  () => (config.public.oauthWebUrl as string) || 'https://account.nextmoe.com'
 )
 </script>
 
@@ -40,7 +40,7 @@ const oauthOrigin = computed(
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-primary hover:underline"
-              >鲲 Galgame OAuth</a>
+              >NextMoe·未萌 账号</a>
               联系管理员了解封禁原因
             </li>
             <li>申诉成功后再尝试登录本站</li>
