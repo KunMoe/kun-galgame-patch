@@ -101,6 +101,32 @@ renumber leaves the favourites face with no mapping at all, and the renumber
 before 037 aborts on `update or delete on table patch violates foreign key
 constraint`.
 
+## Rehearsed, 2026-09-13
+
+The whole sequence ran against a full-size local copy (10,928 patch rows,
+229,722 catalog works) before the window: migration 037, `-apply`, migration
+038, then the site. The plan came out the same shape as production's and
+**the three folds were identical** — same target works, same survivors, same
+losers — which is the part that could not be checked any other way.
+
+```
+patch 行            10,928      已经恒等 1,026   需要改号 9,899
+catalog 认不出          27       写入 patch_redirect 10,928
+合并 -> work 1241 保留 1245 并入 5235 | 4082 保留 4115 并入 4107 | 214969 保留 62560 并入 62992
+丢弃 6 条重复关系行（1 贡献 + 5 收藏），无用户文字
+站内通知链接已重写 120,943
+```
+
+After it: no orphaned rows in any of the five child tables, every ledger
+target is a live page, and no `/patch/` link left in `user_message`. The
+overlap behaves as designed — old page 923 now answers at `/galgame/922`,
+while `/galgame/923` is a different game entirely.
+
+One thing the rehearsal changed: the resolve pass hit 960 transient timeouts
+and the command used to abort on the first one, throwing the run away. It now
+retries. Expect the resolve to take tens of minutes and to log retries; that
+is normal, an abort is not.
+
 ## Rollback
 
 The renumber is one transaction, so a failure mid-flight leaves nothing behind.
