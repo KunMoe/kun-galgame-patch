@@ -125,9 +125,11 @@ interface GalgameCard {
     // This replaced the wiki `status` int, which was product state the canonical
     // catalog face does not carry.
     claim_state: string
-    // The registry's own id for this work, for deep-linking the canonical
-    // record. moyu keys on the wiki gid (`id`) everywhere else.
-    catalog_work_id?: number
+    // The FORUM's page id for this game, read off the catalog claim. `id` is
+    // this site's page and the catalog work in one number; kungal still keys on
+    // the legacy gid, so a link to the forum has to use this and nothing else.
+    // Absent when no forum page claims the work.
+    forum_gid?: number
   }
 }
 
@@ -172,7 +174,7 @@ interface GalgameScreenshotRow extends GalgameCoverRow {
 // enables for www.moyu.moe.
 type GalgameImageUploadPreset = 'topic'
 
-// Patch header (/patch/:id) -- GalgameCard + is_favorite.
+// Patch header (GET /patch/:id) -- GalgameCard + is_favorite.
 interface PatchHeader extends GalgameCard {
   is_favorite: boolean
   // The DLsite purchase entry, assembled server-side. Absent whenever the work
@@ -185,7 +187,7 @@ interface PatchHeader extends GalgameCard {
   dlsite_campaign_name?: string
 }
 
-// Patch detail (/patch/:id/detail) -- GalgameCard plus Wiki's full galgame info.
+// Patch detail (GET /patch/:id/detail) -- GalgameCard plus the full catalog record.
 // introduction_markdown is filled in by the backend via Wiki /galgame/:gid; the
 // enricher also resolves tags/officials by name on the server side so the frontend
 // can render labels directly.

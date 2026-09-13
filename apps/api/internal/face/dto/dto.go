@@ -52,16 +52,16 @@ type Patch struct {
 	ID     string `json:"id"`
 
 	// The two anchors a caller arrives by. VndbID is this site's own dedupe
-	// key and is always present; CatalogWorkID is the catalog work the vndb
-	// anchor resolves to and is null for the placeholder pages that have no
-	// work yet. They are different id spaces and neither equals ID.
+	// key and is always present. CatalogWorkID is kept for callers written
+	// against the old shape and now always equals ID: a page id IS the catalog
+	// work id since migration 037. It went null on placeholder pages and named
+	// a different number on the rest, which is what that migration ended.
 	VndbID        string  `json:"vndb_id"`
 	CatalogWorkID *string `json:"catalog_work_id"`
 
 	// ContentLimit mirrors catalog's verdict for this work in catalog's own
-	// vocabulary, sfw or nsfw. Null means this site has not mirrored it yet
-	// (129 of 10,925 pages as of 2026-09-08, almost all placeholders); catalog
-	// remains the authority either way.
+	// vocabulary, sfw or nsfw. Null means this site has not mirrored it yet;
+	// catalog remains the authority either way.
 	ContentLimit *string `json:"content_limit"`
 
 	ReleaseDate *string  `json:"release_date"`

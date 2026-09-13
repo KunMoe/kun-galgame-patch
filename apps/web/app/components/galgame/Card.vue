@@ -33,7 +33,7 @@ const coverSrc = computed(() => resolvePortraitUrl(props.patch))
 
 const releaseDate = computed(() => props.patch.release_date?.slice(0, 10) ?? '')
 
-const patchHref = computed(() => `/patch/${props.patch.id}/introduction`)
+const patchHref = computed(() => `/galgame/${props.patch.id}`)
 
 const maker = computed(() => resolveMaker(props.patch))
 const makerName = computed(() =>

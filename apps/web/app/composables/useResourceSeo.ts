@@ -89,7 +89,7 @@ export const useResourceSeo = (
     }
 
     const canonicalUrl = `${kunMoyuMoe.domain.main}${route.path}`
-    const gameUrl = `${kunMoyuMoe.domain.main}/patch/${r.galgame_id}/resource`
+    const gameUrl = `${kunMoyuMoe.domain.main}/galgame/${r.galgame_id}`
     // Un-varianted (full size) for social cards: bannerSrc on the page is the
     // 460x259 `mini` thumbnail, which is well under the 1200x630 that Twitter /
     // OpenGraph want for a large card.
@@ -224,9 +224,9 @@ export const useResourceSeo = (
           name: 'Galgame 补丁',
           item: `${kunMoyuMoe.domain.main}/galgame`
         },
-        // Position 3 uses the patch page's OWN canonical (/patch/:id/resource),
-        // not whichever tab happens to link here — a breadcrumb pointing at a
-        // non-canonical variant just asks the crawler to reconcile two URLs.
+        // Position 3 uses the game page's canonical /galgame/:id, never a
+        // ?tab= variant — a breadcrumb pointing at one just asks the crawler to
+        // reconcile two URLs for the same page.
         {
           '@type': 'ListItem',
           position: 3,

@@ -68,9 +68,9 @@ func TestFacetFromReadsOnlyTheTwoCreditedRoles(t *testing.T) {
 }
 
 // The shelf used to cost a second works read per page, keyed back to the cards
-// by gid. It rides the hydrate now: a page must resolve in the gid lookup plus
-// exactly one works read, and that read has to name tags and credits or every
-// card in every list renders bare.
+// by gid. It rides the hydrate now, and since migration 037 there is no gid
+// lookup in front of it either: a page is exactly one works read, and that read
+// has to name tags and credits or every card in every list renders bare.
 func TestGalgameCardBatchDrawsTheShelfInTheHydrateRead(t *testing.T) {
 	srv := newCatalogFake(t)
 	briefs, err := NewWithKey(srv.URL, "nm_test_key").
@@ -78,7 +78,7 @@ func TestGalgameCardBatchDrawsTheShelfInTheHydrateRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GalgameCardBatch: %v", err)
 	}
-	srv.wantPaths(t, "/v2/catalog/works", "/v2/catalog/works")
+	srv.wantPaths(t, "/v2/catalog/works")
 
 	if got, want := srv.last().query.Get("include"), strings.Join(listCardInclude, ","); got != want {
 		t.Errorf("include = %q, want %q", got, want)

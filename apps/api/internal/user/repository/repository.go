@@ -76,11 +76,22 @@ func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchMod
 // so the set arrives over HTTP; everything after that — the empty-patch
 // filter, the content-limit scope, the ordering and the paging — is the query
 // this site always ran, and is left alone.
-// A folder item names a catalog work; patch.id is a different id space
-// (migration 034). patch.catalog_work_id is the map, so this is one indexed
-// lookup rather than a resolution call per row.
-func (r *UserRepository) PatchIDsByWorkIDs(workIDs []int64) (map[int64]int, error) {
-	return utils.PatchIDsByWorkIDs(r.db, workIDs)
+// A folder item names a catalog work and a page id IS that number since
+// migration 037, so this narrows the shelf to the games that have a page here
+// rather than translating between two id spaces.
+func (r *UserRepository) ExistingPatchIDs(ids []int) (map[int]bool, error) {
+	out := make(map[int]bool, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var found []int
+	if err := r.db.Table("patch").Where("id IN ?", ids).Pluck("id", &found).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range found {
+		out[id] = true
+	}
+	return out, nil
 }
 
 func (r *UserRepository) GetUserFavoritesByIDs(patchIDs []int, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {

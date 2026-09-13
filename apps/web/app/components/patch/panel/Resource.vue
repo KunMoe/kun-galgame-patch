@@ -9,6 +9,10 @@ const { open: openReport } = useReportModal()
 
 const galgameId = computed(() => Number(route.params.id))
 
+// The panel is mounted when its tab is opened, so the page above it has to be
+// told when the fetch is in flight or the tab swaps to an empty box.
+const emit = defineEmits<{ 'update:loading': [boolean] }>()
+
 const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   () => `patch-resource-${galgameId.value}`,
   async () => {
@@ -19,6 +23,8 @@ const { data: resources, pending } = await useAsyncData<PatchResource[]>(
   },
   { default: () => [], deep: true }
 )
+
+watch(pending, (value) => emit('update:loading', value), { immediate: true })
 
 const publishOpen = ref(false)
 const handlePublishClick = () => {

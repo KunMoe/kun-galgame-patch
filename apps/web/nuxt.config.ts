@@ -60,7 +60,7 @@ export default defineNuxtConfig({
 
   sitemap: {
     // Keep private / auth-gated / editor / non-content routes OUT of the
-    // auto-discovered static pages. Routes with params (/patch/[id],
+    // auto-discovered static pages. Routes with params (/galgame/[id],
     // /user/[id], /resource/[id], /doc/[...slug]) are never auto-included —
     // those come from the dynamic source below — so only param-free pages
     // need listing here.

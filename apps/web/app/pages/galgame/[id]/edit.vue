@@ -32,6 +32,18 @@ useKunDisableSeo('编辑游戏资料')
 
 const kungalOrigin = kunMoyuMoe.domain.kungal
 
+// kungal still keys on the legacy gid while this site's page id is the catalog
+// work id, so a link to the forum can only come off the claim. The key matches
+// the game page's own fetch, so arriving from there costs no extra request.
+const { data: header } = await useAsyncData<PatchHeader | null>(
+  () => `patch-${id}`,
+  async () => {
+    const res = await api.get<PatchHeader>(`/patch/${id}`)
+    return res.code === 0 ? res.data : null
+  }
+)
+const forumGID = computed(() => header.value?.galgame?.forum_gid ?? 0)
+
 const { data } = await useAsyncData(`patch-catalog-edit-${id}`, async () => {
   if (!userStore.isLoggedIn) return null
   return await api.get<EditBootstrap>(`/patch/${id}/catalog-edit`)
@@ -148,13 +160,15 @@ const save = async () => {
         <p class="text-default-500 text-sm">
           这里修改的是
           <a
-            :href="`${kungalOrigin}/galgame/${id}`"
+            v-if="forumGID"
+            :href="`${kungalOrigin}/galgame/${forumGID}`"
             target="_blank"
             rel="noopener noreferrer"
             class="text-primary hover:underline"
           >
             鲲 Galgame 资料库
           </a>
+          <span v-else>鲲 Galgame 资料库</span>
           里的条目，保存后全站生效。
         </p>
       </div>
@@ -208,7 +222,7 @@ const save = async () => {
               type="button"
               variant="light"
               color="default"
-              :href="`/patch/${id}/introduction`"
+              :href="`/galgame/${id}`"
             >
               返回
             </KunButton>
@@ -243,7 +257,8 @@ const save = async () => {
           class="border-default-200 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-4 text-sm"
         >
           <a
-            :href="`${kungalOrigin}/galgame/${id}`"
+            v-if="forumGID"
+            :href="`${kungalOrigin}/galgame/${forumGID}`"
             target="_blank"
             rel="noopener noreferrer"
             class="text-primary flex items-center gap-1.5 hover:underline"
@@ -252,7 +267,8 @@ const save = async () => {
             前往主站完整编辑
           </a>
           <a
-            :href="`${kungalOrigin}/galgame/${id}/history`"
+            v-if="forumGID"
+            :href="`${kungalOrigin}/galgame/${forumGID}/history`"
             target="_blank"
             rel="noopener noreferrer"
             class="text-primary flex items-center gap-1.5 hover:underline"

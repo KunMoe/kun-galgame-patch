@@ -24,10 +24,11 @@ interface CommentListResponse {
 
 interface Options {
   // When set, the current page lives in the URL under this query key, so
-  // back-nav and shared links restore it. Used by /patch/:id/comment, which is
-  // its own route. Omitted for an area embedded in a page whose URL already
-  // means something else (the resource detail tabs) — there the page is a plain
-  // ref and paging leaves the URL alone.
+  // back-nav and shared links restore it. Used by the game page's 评论 tab,
+  // which pages alongside its own ?tab= rather than clobbering it. Omitted for
+  // an area embedded in a page whose URL already means something else (the
+  // resource detail tabs) — there the page is a plain ref and paging leaves the
+  // URL alone.
   routeQueryKey?: string
 }
 

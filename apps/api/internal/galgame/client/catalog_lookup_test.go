@@ -51,83 +51,20 @@ func v2Work(id int64, gid int) string {
 		`"claim":{"site":"galgame_wiki","site_work_id":"` + g + `","state":"live","content_limit":"sfw"}}`
 }
 
-func TestResolveGIDDecodeBranches(t *testing.T) {
-	hit := v2List(v2Work(900, 7))
-	cases := []struct {
-		name      string
-		status    int
-		body      string
-		wantID    int64
-		wantFound bool
-		wantErr   bool
-	}{
-		{name: "resolved", status: 200, body: hit, wantID: 900, wantFound: true},
-		{name: "empty list is a miss", status: 200, body: v2List("")},
-		{name: "documented 404 is a miss", status: 404, body: `{"code":"NOT_FOUND","status":404}`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := &scripted{status: tc.status, body: tc.body}
-			id, found, err := s.client(t).resolveGID(context.Background(), 7)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("err = %v, wantErr = %v", err, tc.wantErr)
-			}
-			if err != nil {
-				return
-			}
-			if id != tc.wantID || found != tc.wantFound {
-				t.Errorf("resolveGID = (%d, %v), want (%d, %v)", id, found, tc.wantID, tc.wantFound)
-			}
-		})
-	}
-
-	t.Run("a non-positive gid never dials", func(t *testing.T) {
-		s := &scripted{status: 200, body: hit}
-		c := s.client(t)
-		if _, found, err := c.resolveGID(context.Background(), 0); err != nil || found {
-			t.Fatalf("resolveGID(0) = (%v, %v), want (false, nil)", found, err)
-		}
-		if s.count() != 0 {
-			t.Errorf("calls = %d, want 0", s.count())
-		}
-	})
-
-	t.Run("identity is cached after a hit", func(t *testing.T) {
-		s := &scripted{status: 200, body: hit}
-		c := s.client(t)
-		for i := range 2 {
-			if _, found, err := c.resolveGID(context.Background(), 7); err != nil || !found {
-				t.Fatalf("call %d = (%v, %v), want found", i, found, err)
-			}
-		}
-		if s.count() != 1 {
-			t.Errorf("calls = %d, want 1", s.count())
-		}
-	})
-}
-
-func TestResolveGIDsDecodeBranches(t *testing.T) {
-	s := &scripted{status: 200, body: v2List(v2Work(900, 7))}
-	got, err := s.client(t).resolveGIDs(context.Background(), []int{7})
-	if err != nil {
-		t.Fatalf("resolveGIDs: %v", err)
-	}
-	if got[7] != 900 {
-		t.Fatalf("resolveGIDs = %v, want map[7:900]", got)
-	}
-}
-
 func TestClaimStatesDecodeBranches(t *testing.T) {
 	body := v2List(
-		`{"object":"work","id":"900","claim":{"site":"galgame_wiki","site_work_id":"7","state":"live","content_limit":"sfw"},"refs":[{"source":"galgame_wiki","external_id":"7"},{"source":"curated","external_id":"7"}]}`,
+		`{"object":"work","id":"900","claim":{"site":"galgame_wiki","site_work_id":"7","state":"live","content_limit":"sfw"}}`,
 	)
 	s := &scripted{status: 200, body: body}
-	got, err := s.client(t).ClaimStates(context.Background(), []int{7})
+	got, err := s.client(t).ClaimStates(context.Background(), []int{900})
 	if err != nil {
 		t.Fatalf("ClaimStates: %v", err)
 	}
-	if got[7] != catalogClaimStateLive {
-		t.Fatalf("ClaimStates = %v, want live for 7", got)
+	// Keyed by the catalog id, which is the page id. The claim's site_work_id
+	// is the forum's number and keying on it filed the state under a different
+	// game here.
+	if got[900] != catalogClaimStateLive {
+		t.Fatalf("ClaimStates = %v, want live for 900", got)
 	}
 }
 

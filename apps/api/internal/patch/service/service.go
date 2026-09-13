@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"kun-galgame-patch-api/internal/patch/repository"
 	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/pkg/artifactclient"
-	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
@@ -70,30 +68,6 @@ func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galga
 	return s.createPatchRow(ctx, userID, galgameID, vndb)
 }
 
-// resolveCatalogWork turns this site's vndb id into a catalog work. A
-// `wiki-<n>` id is a catalog work id with a prefix — that is what it was
-// minted from — and a `pending-<n>` placeholder has no work at all.
-func (s *PatchService) resolveCatalogWork(ctx context.Context, vndbID string) *int64 {
-	if rest, cut := strings.CutPrefix(vndbID, "wiki-"); cut {
-		if n, err := strconv.ParseInt(rest, 10, 64); err == nil && n > 0 {
-			return &n
-		}
-		return nil
-	}
-	if !strings.HasPrefix(vndbID, "v") {
-		return nil
-	}
-	w, err := s.galgame.V2().WorkByRef(ctx, "vndb", vndbID, true)
-	if err != nil || w == nil {
-		return nil
-	}
-	n, ok := catalogv2.ParseID(w.ID)
-	if !ok {
-		return nil
-	}
-	return &n
-}
-
 func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int, vndbID string) (int, error) {
 	if existing, _ := s.repo.GetPatchDetail(galgameID); existing != nil && existing.ID != 0 {
 		if existing.IsStub {
@@ -107,21 +81,13 @@ func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int
 		releaseDate = utils.ParseGalgameReleaseDate(*env.Galgame.ReleaseDate)
 	}
 
-	// Without this a game created after the folder cutover cannot be
-	// favourited: a folder item names a catalog work and patch.id is a
-	// different id space (migration 034). Resolution is best effort — a
-	// `pending-<n>` placeholder has no work yet — and the backfill script
-	// picks up whatever was missed.
-	workID := s.resolveCatalogWork(ctx, vndbID)
-
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		p := &model.Patch{
 			ID:            galgameID,
 			VndbID:        vndbID,
-			UserID:        userID,
-			ReleaseDate:   releaseDate,
-			CatalogWorkID: workID,
+			UserID:      userID,
+			ReleaseDate: releaseDate,
 		}
 		if err := tx.Create(p).Error; err != nil {
 			return fmt.Errorf("创建 patch 失败: %w", err)
@@ -592,7 +558,7 @@ func (s *PatchService) DeleteComment(commentID, userID int, isPrivileged bool, r
 		} else {
 			content += "如有疑问可联系管理员。"
 		}
-		area := fmt.Sprintf("/patch/%d/comment", comment.GalgameID)
+		area := fmt.Sprintf("/galgame/%d?tab=comment", comment.GalgameID)
 		if comment.ResourceID != nil {
 			area = fmt.Sprintf("/resource/%d", *comment.ResourceID)
 		}
@@ -940,7 +906,7 @@ func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool,
 			"type":         "system",
 			"content":      content,
 			"status":       0,
-			"link":         fmt.Sprintf("/patch/%d/resource", resource.GalgameID),
+			"link":         fmt.Sprintf("/galgame/%d?tab=resource", resource.GalgameID),
 			"sender_id":    nil,
 			"recipient_id": resource.UserID,
 			"created":      time.Now(),
@@ -1102,11 +1068,10 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	byPatch, err := utils.WorkIDsByPatchIDs(s.db, []int{patchID})
-	if err != nil || byPatch[patchID] == 0 {
+	if patchID <= 0 || model.IsLocalOnly(patchID) {
 		return
 	}
-	holders, err := favorite.Holders(ctx, s.galgame, byPatch[patchID])
+	holders, err := favorite.Holders(ctx, s.galgame, int64(patchID))
 	if err != nil {
 		slog.Warn("notifyFavoritedUsers: 读取 catalog 收藏者失败", "patch_id", patchID, "error", err)
 		return
@@ -1125,7 +1090,7 @@ func (s *PatchService) notifyFavoritedUsers(patchID, senderID int) {
 	for _, userID := range userIDs {
 		s.createDedupMessage(senderID, userID, "patchResourceCreate",
 			"您收藏的游戏发布了新补丁资源",
-			fmt.Sprintf("/patch/%d/resource", patchID), true)
+			fmt.Sprintf("/galgame/%d?tab=resource", patchID), true)
 	}
 }
 
@@ -1171,7 +1136,7 @@ func commentAnchorLink(c *model.PatchComment) string {
 	if c.ResourceID != nil {
 		return fmt.Sprintf("/resource/%d#comment-%d", *c.ResourceID, c.ID)
 	}
-	return fmt.Sprintf("/patch/%d/comment#comment-%d", c.GalgameID, c.ID)
+	return fmt.Sprintf("/galgame/%d?tab=comment#comment-%d", c.GalgameID, c.ID)
 }
 
 func (s *PatchService) CreateMentionMessages(senderID int, comment *model.PatchComment, content string) {

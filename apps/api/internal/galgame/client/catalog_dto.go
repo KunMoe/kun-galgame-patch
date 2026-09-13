@@ -24,7 +24,13 @@ type catalogClaimedBy struct {
 	ContentLimit string `json:"content_limit"`
 }
 
-func (c *catalogClaimedBy) gid() int {
+// The claim's site_work_id is the FORUM's page id, not this site's. Both
+// downstreams answer to catalog site `kungal` and shared one gid space; this
+// site's page id is the catalog work id since migration 037, kungal's is still
+// the legacy number, and the claim names kungal's. Reading it as our own is
+// what every "drew somebody else's game" incident was made of, so it leaves
+// here under a name that says whose it is.
+func (c *catalogClaimedBy) forumGID() int {
 	if c == nil || !isGIDClaimSite(c.Site) {
 		return 0
 	}
@@ -39,23 +45,12 @@ func (c *catalogClaimedBy) live() bool {
 	return c != nil && isGIDClaimSite(c.Site) && c.State == catalogClaimStateLive
 }
 
-func publicGID(claimed *catalogClaimedBy, catalogID int64) int {
-	if gid := claimed.gid(); gid > 0 {
-		return gid
-	}
-	if catalogID > 0 {
-		return int(catalogID)
-	}
-	return 0
-}
+// This site's page id IS the catalog work id (migration 037), so there is
+// nothing to elect any more. It used to prefer the claim's site_work_id and
+// fall back to the catalog id, which is how one number could mean two games.
+func (it *catalogWorkListItem) publicGID() int { return int(it.ID) }
 
-func (it *catalogWorkListItem) publicGID() int {
-	return publicGID(it.ClaimedBy, it.ID)
-}
-
-func (w *catalogWork) publicGID() int {
-	return publicGID(w.ClaimedBy, w.ID)
-}
+func (w *catalogWork) publicGID() int { return int(w.ID) }
 
 type catalogRef struct {
 	Source     string `json:"source"`

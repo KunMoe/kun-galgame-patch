@@ -236,7 +236,7 @@ func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 
 	b := GalgameBrief{
 		ID:                       it.publicGID(),
-		CatalogWorkID:            it.ID,
+		ForumGID:                 it.ClaimedBy.forumGID(),
 		VndbID:                   vndbIDOf(it.Refs),
 		DlsiteWorkno:             dlsiteWorknoOf(it.Refs),
 		ClaimState:               claimStateOf(it.ClaimedBy),
@@ -267,7 +267,7 @@ func catalogItemToHit(it *catalogWorkListItem) GalgameHit {
 	b := catalogItemToBrief(it)
 	return GalgameHit{
 		ID:                       b.ID,
-		CatalogWorkID:            b.CatalogWorkID,
+		ForumGID:                 b.ForumGID,
 		VndbID:                   b.VndbID,
 		ClaimState:               b.ClaimState,
 		NameEnUs:                 b.NameEnUs,
@@ -396,7 +396,7 @@ func catalogWorkToFull(w *catalogWork) GalgameFull {
 
 	f := GalgameFull{
 		ID:               w.publicGID(),
-		CatalogWorkID:    w.ID,
+		ForumGID:         w.ClaimedBy.forumGID(),
 		VndbID:           vndbIDOf(w.Refs),
 		ClaimState:       claimStateOf(w.ClaimedBy),
 		NameJaJp:         names["ja-jp"],

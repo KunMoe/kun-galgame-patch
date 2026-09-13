@@ -140,10 +140,7 @@ func (h *PatchHandler) catalogEditContext(c fiber.Ctx) (int64, string, error) {
 	if idErr != nil {
 		return 0, "", response.Error(c, idErr.(*errors.AppError))
 	}
-	workID, hErr := h.resolveWorkID(c, id)
-	if hErr != nil {
-		return 0, "", hErr
-	}
+	workID := int64(id)
 	token, tErr := catalogUserToken(c)
 	if tErr != nil {
 		return 0, "", response.Error(c, tErr)

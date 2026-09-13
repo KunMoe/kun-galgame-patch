@@ -75,33 +75,28 @@ func (r *Repository) patchQuery(f PatchFilter) *gorm.DB {
 	return q
 }
 
-// batchScope ORs the three anchors a caller may arrive by. They are separate
-// id spaces -- a patch id, this site's vndb key and a catalog work id are three
-// different numbers for the same game -- so they can only be matched column by
-// column, never folded into one IN list.
+// batchScope ORs the anchors a caller may arrive by. A `catalog:<n>` token and
+// a bare page id are the same number since migration 037, so both land on
+// patch.id; the vndb key is this site's own string and still needs its own
+// column. The two used to be separate id spaces matched column by column.
 func (r *Repository) batchScope(f PatchFilter) *gorm.DB {
 	scope := r.db.Where("1 = 0")
-	if len(f.IDs) > 0 {
-		scope = scope.Or("patch.id IN ?", f.IDs)
+	ids := make([]int64, 0, len(f.IDs)+len(f.WorkIDs))
+	for _, id := range f.IDs {
+		ids = append(ids, int64(id))
+	}
+	ids = append(ids, f.WorkIDs...)
+	if len(ids) > 0 {
+		scope = scope.Or("patch.id IN ?", ids)
 	}
 	if len(f.VndbIDs) > 0 {
 		scope = scope.Or("patch.vndb_id IN ?", f.VndbIDs)
-	}
-	if len(f.WorkIDs) > 0 {
-		scope = scope.Or("patch.catalog_work_id IN ?", f.WorkIDs)
 	}
 	return scope
 }
 
 func (r *Repository) ListPatches(f PatchFilter) ([]patchModel.Patch, error) {
 	order := sortOrders[f.Sort]
-	if f.Batch {
-		// A batch answer is a set, not a page, and a work can be named by two
-		// pages. Ordering it the way the site picks a work's representative
-		// puts the page a reader should land on first, so a caller taking
-		// items[0] gets the same one the site would show.
-		order = utils.PatchWorkOrder
-	}
 	if order == "" {
 		order = sortOrders["updated"]
 	}

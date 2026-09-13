@@ -159,15 +159,15 @@ export const buildSitemapUrls = async (
 
   const paged: PagedSource[] = [
     {
-      // Galgame browse → patch detail. /patch/:id 302-redirects to
-      // /patch/:id/introduction, so emit the final URL directly.
+      // Galgame browse → the game page. One route, one URL: the three tabs
+      // used to be three paths and the sitemap had to name the canonical one.
       path: '/galgame',
       query: 'selected_type=all&sort_field=created&sort_order=desc&indexed=true',
       pageSize: 24,
       pick: (d) =>
         ((d as { galgames?: [] })?.galgames ?? []) as Record<string, unknown>[],
       total: (d) => (d as { total?: number })?.total,
-      loc: (r) => `/patch/${num(r, 'id')}/introduction`,
+      loc: (r) => `/galgame/${num(r, 'id')}`,
       lastmod: (r) => toIso(r.resource_update_time ?? r.created),
       priority: 0.8
     },

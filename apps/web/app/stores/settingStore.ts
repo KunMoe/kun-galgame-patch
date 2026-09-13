@@ -11,7 +11,7 @@ export interface KunSettingData {
   kunNsfwEnable: KunNsfwPreference
   // Per-patch NSFW acknowledgements for anonymous callers.
   //
-  // Background: anonymous + 'sfw' callers get a 404 from /patch/:id when the
+  // Background: anonymous + 'sfw' callers get a 404 from the game page when the
   // patch is NSFW (SEO safe-by-default). Product rule: such users should be
   // able to opt-in *per patch* via a "this game contains NSFW, click to
   // continue" confirm — without flipping the global NSFW mode.

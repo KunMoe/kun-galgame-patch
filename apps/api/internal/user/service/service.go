@@ -290,10 +290,10 @@ func (s *UserService) attachMoemoepointLinks(items []moemoepoint.LogEntry) {
 		case "resource":
 			items[i].Link = fmt.Sprintf("/resource/%d", id)
 		case "galgame", "patch":
-			items[i].Link = fmt.Sprintf("/patch/%d", id)
+			items[i].Link = fmt.Sprintf("/galgame/%d", id)
 		case "comment":
 			if gid := galgameByComment[id]; gid > 0 {
-				items[i].Link = fmt.Sprintf("/patch/%d/comment#comment-%d", gid, id)
+				items[i].Link = fmt.Sprintf("/galgame/%d?tab=comment#comment-%d", gid, id)
 			}
 		}
 	}
@@ -348,13 +348,19 @@ func (s *UserService) favoritePatchIDs(ctx context.Context, userID int, token st
 	if err != nil {
 		return nil, err
 	}
-	byWork, err := s.repo.PatchIDsByWorkIDs(workIDs)
+	candidates := make([]int, 0, len(workIDs))
+	for _, w := range workIDs {
+		if w > 0 {
+			candidates = append(candidates, int(w))
+		}
+	}
+	here, err := s.repo.ExistingPatchIDs(candidates)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]int, 0, len(workIDs))
-	for _, w := range workIDs {
-		if pid, ok := byWork[w]; ok {
+	ids := make([]int, 0, len(candidates))
+	for _, pid := range candidates {
+		if here[pid] {
 			ids = append(ids, pid)
 		}
 	}

@@ -28,15 +28,18 @@ var gidFixture = map[int]struct {
 	state     string
 	limit     string
 }{
-	7:  {900, catalogClaimStateLive, "sfw"},
-	8:  {901, catalogClaimStateLive, "sfw"},
-	20: {920, catalogClaimStateDraft, "nsfw"},
-	21: {921, catalogClaimStateHidden, "nsfw"},
-	22: {922, catalogClaimStateLive, "sfw"},
+	// A page id IS the catalog work id (migration 037). The fixture used to
+	// map gid 7 to catalog 900 because those were two id spaces; keeping the
+	// two columns equal is what the whole codebase now assumes.
+	7:  {7, catalogClaimStateLive, "sfw"},
+	8:  {8, catalogClaimStateLive, "sfw"},
+	20: {20, catalogClaimStateDraft, "nsfw"},
+	21: {21, catalogClaimStateHidden, "nsfw"},
+	22: {22, catalogClaimStateLive, "sfw"},
 }
 
 func ratingForCatalogID(id int64) string {
-	if id == 922 {
+	if id == 22 {
 		return "r18"
 	}
 	return "all_ages"

@@ -55,11 +55,11 @@ const onFoldersSaved = (payload: { favorited: boolean }) => {
 
 const handleShare = () => {
   const name = getPreferredLanguageText(props.patch.name)
-  const link = `${name} - ${window.location.origin}/patch/${props.patch.id}/introduction`
+  const link = `${name} - ${window.location.origin}/galgame/${props.patch.id}`
   useKunCopy(link)
 }
 
-const editPath = computed(() => `/patch/${props.patch.id}/edit`)
+const editPath = computed(() => `/galgame/${props.patch.id}/edit`)
 
 const canDelete = computed(() => {
   if (!isOnSite.value) return false

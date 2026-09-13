@@ -107,7 +107,7 @@ const isEmpty = computed(
           <NuxtLink
             v-for="r in data.resources.items"
             :key="r.id"
-            :to="`/patch/${r.galgame_id}/resource`"
+            :to="`/galgame/${r.galgame_id}?tab=resource`"
             class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block rounded-lg border p-3 transition-colors"
           >
             <div class="flex items-center justify-between gap-3">

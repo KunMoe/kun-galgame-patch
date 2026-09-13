@@ -70,12 +70,17 @@ func (r *PatchRepository) UpdatePatch(patch *model.Patch) error {
 
 func (r *PatchRepository) DeletePatch(id int) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// The page is one route now, so every link to it starts /galgame/<id>
+		// and carries the tab in a query -- the LIKE has to admit `?` as well
+		// as `/`, or a "您收藏的游戏发布了新补丁资源" notice outlives the page
+		// it points at and 404s. user_message.link has no foreign key, which is
+		// why this cascade is written by hand (migration 019).
 		if err := tx.Exec(
 			`DELETE FROM user_message
 			 WHERE link = ?
 			    OR link LIKE ?
 			    OR link IN (SELECT '/resource/' || id FROM patch_resource WHERE galgame_id = ?)`,
-			fmt.Sprintf("/patch/%d", id), fmt.Sprintf("/patch/%d/%%", id), id,
+			fmt.Sprintf("/galgame/%d", id), fmt.Sprintf("/galgame/%d?%%", id), id,
 		).Error; err != nil {
 			return err
 		}

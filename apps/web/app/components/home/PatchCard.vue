@@ -12,7 +12,7 @@ const bannerSrc = computed(() => resolveBannerUrl(props.patch, 'mini'))
 
 <template>
   <KunCard
-    :href="`/patch/${props.patch.id}/introduction`"
+    :href="`/galgame/${props.patch.id}`"
     class-name="w-full"
     padding="sm"
   >
