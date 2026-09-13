@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
 
@@ -121,6 +122,36 @@ func claimedGID(c *catalogv2.Claim) int {
 	return int(id)
 }
 
+// resolveOne retries a blown request instead of losing the whole run to it.
+// The local catalog timed out once at 6,532 of 10,928 rows and the command
+// exited, throwing away eight minutes of resolve. A transient failure must
+// also never be read as "catalog cannot name this page": that answer parks a
+// live page at LocalOnlyIDBase, where nothing would ever look for it again.
+// workOfGID already returns a clean not-found as (0, false, nil), so anything
+// arriving here as an error is a transport problem and worth another attempt.
+const resolveAttempts = 5
+
+func resolveOne(ctx context.Context, v2 *catalogv2.Client, gid int) (int64, bool, error) {
+	var err error
+	for attempt := range resolveAttempts {
+		var (
+			workID int64
+			found  bool
+		)
+		workID, found, err = workOfGID(ctx, v2, gid)
+		if err == nil {
+			return workID, found, nil
+		}
+		slog.Warn("解析重试", "gid", gid, "attempt", attempt+1, "error", err)
+		select {
+		case <-ctx.Done():
+			return 0, false, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * time.Second):
+		}
+	}
+	return 0, false, err
+}
+
 func resolveTargets(
 	ctx context.Context,
 	v2 *catalogv2.Client,
@@ -142,7 +173,7 @@ func resolveTargets(
 		go func() {
 			defer wg.Done()
 			for gid := range jobs {
-				workID, found, err := workOfGID(ctx, v2, gid)
+				workID, found, err := resolveOne(ctx, v2, gid)
 				mu.Lock()
 				switch {
 				case err != nil && firstErr == nil:
