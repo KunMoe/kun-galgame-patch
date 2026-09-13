@@ -36,10 +36,10 @@ that work does not claim another page), and renumbers the table to match.
 ```
 patch rows            10,957
 already identical      1,031
-renumbered             9,923
-folded (duplicates)        3 groups, 3 child rows dropped
-parked (catalog cannot name it)  20   → 1,500,000,000 + old id
-patch_redirect rows    9,926   (every pre-037 id, moved or not)
+renumbered             9,923   (9,896 realigned + 27 parked)
+folded (duplicates)        3 groups, 3 pages merged away, 6 join rows dropped
+parked (catalog cannot name it)  27   → 1,500,000,000 + old id
+patch_redirect rows   10,957   (every pre-037 id, moved or not)
 ```
 
 The three folds are pages that turn out to be one work, which is what catalog's
@@ -96,6 +96,14 @@ binary against renumbered data. Keep it short.
 3. **Deploy the identity image with migration 038**, which drops
    `patch.catalog_work_id` and pushes the id sequence out of reach.
 
+**Stop the API for step 2.** The first production attempt ran against live
+traffic and died 57 seconds into the park hop with `ERROR: deadlock detected
+(SQLSTATE 40P01)`, rolling the whole run back -- a page view increments
+`patch.view` and reaches the same rows from the other side, and the renumber
+holds them for minutes. With `moyu-api` stopped the same run took 3m44s end to
+end. `applyPlan` now also takes every table it touches up front, which turns a
+lost run into a stalled one, but that is a backstop and not a substitute.
+
 Running them in any other order fails loudly rather than quietly: 038 before the
 renumber leaves the favourites face with no mapping at all, and the renumber
 before 037 aborts on `update or delete on table patch violates foreign key
@@ -126,6 +134,32 @@ One thing the rehearsal changed: the resolve pass hit 960 transient timeouts
 and the command used to abort on the first one, throwing the run away. It now
 retries. Expect the resolve to take tens of minutes and to log retries; that
 is normal, an abort is not.
+
+## Ran in production, 2026-09-13
+
+Window 23:15:08-23:18:52 +08 with `moyu-api` stopped; snapshot at
+`/var/moyu-align/pre-align-20260913-230828.dump` on the host.
+
+```
+10,957 rows -> 1,031 identical / 9,896 realigned / 27 parked / 3 folded away
+folds: work 1241 keep 1245 drop 5235 | 4082 keep 4115 drop 4107 | 214969 keep 62560 drop 62992
+dropped 6 duplicate join rows (1 contribute + 5 favourite), no user-written text
+10,954 patch rows, 10,957 ledger rows, id sequence at 2,000,000,000
+```
+
+The plan matched the rehearsal exactly on the folds, which was the part nothing
+else could check.
+
+Two numbers in the table above had drifted from an earlier dry run and are now
+the applied ones: the ledger covers every pre-037 id (10,957, not 9,926), and 27
+pages have no catalog work rather than 20. Of those 27, 26 are stubs; the one
+real page is 7668 (`v134628`, one resource), which already had no
+`catalog_work_id` before this ran -- catalog holds `curated:7668` against an
+entity of another type, not a work. All 27 keep a ledger row, so their old URLs
+still 301.
+
+Afterwards: no orphaned rows in any of the five child tables, every ledger
+target a live page, and no `/patch/` link left in `user_message`.
 
 ## Rollback
 

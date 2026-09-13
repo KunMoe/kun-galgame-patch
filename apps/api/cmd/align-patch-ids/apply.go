@@ -32,8 +32,23 @@ var foldUnique = []struct{ table, peer string }{
 	{"user_patch_favorite_relation", "user_id"},
 }
 
+// Everything this transaction touches, parents before children. The first
+// production attempt died 57 seconds into the park hop with "ERROR: deadlock
+// detected (SQLSTATE 40P01)" and rolled the whole run back: a page view
+// increments patch.view and reaches the same rows from the other side, and the
+// renumber holds them for minutes. Taking the tables up front makes every other
+// writer queue instead of racing. Stop the API for the window regardless --
+// this only turns a lost run into a stalled site.
+const lockEverything = `LOCK TABLE
+	patch, patch_resource, patch_comment, patch_link,
+	user_patch_contribute_relation, user_patch_favorite_relation, user_message
+	IN ACCESS EXCLUSIVE MODE`
+
 func applyPlan(db *gorm.DB, p *Plan) error {
 	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(lockEverything).Error; err != nil {
+			return fmt.Errorf("lock: %w", err)
+		}
 		for _, f := range p.Folds {
 			for _, loser := range f.Losers {
 				if err := foldPatch(tx, loser, f.Survivor); err != nil {
