@@ -56,13 +56,11 @@ func TestResourceDTOCarriesNoWayToDownload(t *testing.T) {
 
 func TestPatchDTOShape(t *testing.T) {
 	svc := New(nil, nil, nil, "https://www.moyu.moe")
-	work := int64(61311)
 	limit := "nsfw"
 	released := time.Date(2016, 11, 25, 0, 0, 0, 0, time.UTC)
 	row := patchModel.Patch{
 		ID:            223309,
 		VndbID:        "v65869",
-		CatalogWorkID: &work,
 		ContentLimit:  &limit,
 		ReleaseDate:   &released,
 		ResourceCount: 3,
@@ -70,8 +68,13 @@ func TestPatchDTOShape(t *testing.T) {
 	}
 
 	item := svc.patchDTO(&row)
-	if item.ID != "223309" || item.CatalogWorkID == nil || *item.CatalogWorkID != "61311" {
-		t.Fatalf("ids = %+v; both are strings on the wire and they are different id spaces", item)
+	// catalog_work_id survives for callers written against the old shape and
+	// now always equals id: they were two id spaces until migration 037.
+	if item.ID != "223309" || item.CatalogWorkID == nil || *item.CatalogWorkID != "223309" {
+		t.Fatalf("ids = %+v; both are strings on the wire and both are the page id", item)
+	}
+	if item.WebURL != "https://www.moyu.moe/galgame/223309" {
+		t.Errorf("web_url = %q, want the /galgame canonical path", item.WebURL)
 	}
 	if item.ReleaseDate == nil || *item.ReleaseDate != "2016-11-25" {
 		t.Errorf("release date = %v, want a bare YYYY-MM-DD", item.ReleaseDate)
@@ -84,7 +87,7 @@ func TestPatchDTOShape(t *testing.T) {
 	}
 
 	// An unmirrored row answers null rather than guessing sfw: catalog is the
-	// authority and 129 of 10,925 pages have not been mirrored yet.
+	// authority.
 	row.ContentLimit = nil
 	if svc.patchDTO(&row).ContentLimit != nil {
 		t.Error("an unmirrored content limit must stay null")
@@ -99,9 +102,8 @@ func TestPatchDTOShape(t *testing.T) {
 }
 
 func TestMissingAnchorsEchoesTheCallersSpelling(t *testing.T) {
-	work := int64(61311)
 	rows := []patchModel.Patch{
-		{ID: 1, VndbID: "v65869", CatalogWorkID: &work},
+		{ID: 61311, VndbID: "v65869"},
 	}
 	q := &PatchQuery{Refs: []string{"vndb:v65869", "catalog:61311", "vndb:v999", "catalog:7"}}
 	got := missingAnchors(q, rows)

@@ -102,15 +102,13 @@ func (s *Service) patchDTO(p *patchModel.Patch) dto.Patch {
 		ViewCount:         p.View,
 		FavoriteCount:     p.FavoriteCount,
 		CommentCount:      p.CommentCount,
-		WebURL:            s.siteURL + "/patch/" + strconv.Itoa(p.ID),
+		WebURL:            s.siteURL + "/galgame/" + strconv.Itoa(p.ID),
 		CreatedAt:         stamp(p.Created),
 		UpdatedAt:         stamp(p.Updated),
 		ResourceUpdatedAt: stamp(p.ResourceUpdateTime),
 	}
-	if p.CatalogWorkID != nil {
-		id := strconv.FormatInt(*p.CatalogWorkID, 10)
-		item.CatalogWorkID = &id
-	}
+	workID := item.ID
+	item.CatalogWorkID = &workID
 	if p.ContentLimit != nil && *p.ContentLimit != "" {
 		limit := *p.ContentLimit
 		item.ContentLimit = &limit
@@ -172,9 +170,7 @@ func missingAnchors(q *PatchQuery, rows []patchModel.Patch) []string {
 	for i := range rows {
 		found[strconv.Itoa(rows[i].ID)] = true
 		found["vndb:"+rows[i].VndbID] = true
-		if rows[i].CatalogWorkID != nil {
-			found["catalog:"+strconv.FormatInt(*rows[i].CatalogWorkID, 10)] = true
-		}
+		found["catalog:"+strconv.Itoa(rows[i].ID)] = true
 	}
 	asked := q.IDs
 	if len(asked) == 0 {

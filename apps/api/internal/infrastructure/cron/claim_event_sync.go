@@ -23,10 +23,13 @@ const (
 	claimSyncSchedule = "*/10 * * * *"
 	claimSyncBatch    = 100
 	claimSyncMaxPages = 50
-	// Every event here is applied to the moyu patch its product_work_id names.
-	// Read without site= the feed answers every tenant, and their product ids
-	// are somebody else's rows; the request pins the tenant and applyClaimEvent
-	// refuses anything that still arrives from another one.
+	// Every event is applied to the page catalog's work_id names, which is this
+	// site's page id since migration 037. product_work_id is the FORUM's page
+	// number -- both downstreams answer to catalog site `kungal` and only
+	// kungal still carries the legacy gid -- so keying on it would file the
+	// event on whatever unrelated game holds that number here. Read without
+	// site= the feed answers every tenant as well, which is why the request
+	// pins it and applyClaimEvent refuses anything from another one.
 	claimSyncSite = catalogv2.SiteKungal
 )
 
@@ -165,7 +168,7 @@ func applyClaimEvent(
 		return nil
 	}
 
-	gid := int(*ev.ProductWorkID)
+	gid := int(ev.WorkID)
 	recipient, err := submitterOf(tx, ev.WorkID)
 	if err != nil {
 		return fmt.Errorf("look up submitter (work=%d): %w", ev.WorkID, err)
@@ -267,7 +270,7 @@ func writeClaimNotification(tx *gorm.DB, recipient, gid int, text string) error 
 		Type:        "system",
 		Content:     text,
 		Status:      0,
-		Link:        fmt.Sprintf("/patch/%d/introduction", gid),
+		Link:        fmt.Sprintf("/galgame/%d", gid),
 		SenderID:    nil,
 		RecipientID: &recipient,
 	}).Error

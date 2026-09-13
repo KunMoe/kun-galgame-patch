@@ -101,46 +101,41 @@ func TestCatalogTwoHopReads(t *testing.T) {
 	c := NewWithKey(srv.URL, "nm_test_key")
 	ctx := context.Background()
 
-	t.Run("batch = lookup/batch then works?ids=", func(t *testing.T) {
+	// One request, not two. The batch used to resolve every gid through a
+	// `curated` ref lookup first, because a page id and a catalog work id were
+	// different numbers; migration 037 made them the same one.
+	t.Run("batch = works?ids= in one hop", func(t *testing.T) {
 		srv.reset()
 		briefs, err := c.GalgameBatch(ctx, []int{7}, "")
 		if err != nil {
 			t.Fatalf("GalgameBatch: %v", err)
 		}
-		srv.wantPaths(t, "/v2/catalog/works", "/v2/catalog/works")
+		srv.wantPaths(t, "/v2/catalog/works")
 		last := srv.last()
-		if got := last.query.Get("ids"); got != "900" {
-			t.Errorf("ids = %q, want the CATALOG id 900 (not the gid)", got)
+		if got := last.query.Get("ids"); got != "7" {
+			t.Errorf("ids = %q, want the page id 7 sent as the catalog id", got)
 		}
 		if got, want := last.query.Get("include"), strings.Join(cardInclude, ","); got != want {
 			t.Errorf("include = %q, want %q", got, want)
 		}
 		if len(briefs) != 1 || briefs[0].ID != 7 {
-			t.Fatalf("briefs = %+v, want one row keyed by gid 7", briefs)
+			t.Fatalf("briefs = %+v, want one row keyed by 7", briefs)
 		}
 		if briefs[0].VndbID != "v42" {
 			t.Errorf("vndb_id = %q, want v42 (from include=refs)", briefs[0].VndbID)
 		}
-		if briefs[0].CatalogWorkID != 900 {
-			t.Errorf("catalog_work_id = %d, want 900", briefs[0].CatalogWorkID)
+		if briefs[0].ForumGID != 7 {
+			t.Errorf("forum_gid = %d, want the claim's site_work_id 7", briefs[0].ForumGID)
 		}
 	})
 
-	t.Run("gid→catalog id is cached across calls", func(t *testing.T) {
-		srv.reset()
-		if _, err := c.GalgameBatch(ctx, []int{7}, ""); err != nil {
-			t.Fatalf("GalgameBatch: %v", err)
-		}
-		srv.wantPaths(t, "/v2/catalog/works")
-	})
-
-	t.Run("detail = lookup then works/{id}", func(t *testing.T) {
+	t.Run("detail = works/{id} in one hop", func(t *testing.T) {
 		srv.reset()
 		env, err := c.GetGalgame(ctx, 8, "")
 		if err != nil {
 			t.Fatalf("GetGalgame: %v", err)
 		}
-		srv.wantPaths(t, "/v2/catalog/works", "/v2/catalog/works/901")
+		srv.wantPaths(t, "/v2/catalog/works/8")
 		if env.Galgame.ID != 8 {
 			t.Errorf("detail id = %d, want the gid 8", env.Galgame.ID)
 		}

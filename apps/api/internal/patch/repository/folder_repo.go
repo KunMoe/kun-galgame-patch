@@ -1,40 +1,28 @@
 package repository
 
 import (
-	"errors"
-
 	"kun-galgame-patch-api/internal/patch/model"
-	"kun-galgame-patch-api/pkg/utils"
 )
 
-// A `pending-<n>` placeholder has no vndb number and therefore no work. Its
-// favourites cannot travel to the catalog, and answering 0 would file them on
-// nothing, so the refusal is explicit.
-var ErrNoCatalogWork = errors.New("patch has no catalog work")
-
-// A folder item names a catalog WORK, and this site's patch.id is a different
-// id space (migration 034). Both directions are a local index lookup on
-// patch.catalog_work_id so a heart click costs no extra catalog call and
-// rendering "my favourites" stays one SQL query.
-
-func (r *PatchRepository) CatalogWorkID(patchID int) (int64, error) {
-	var row model.Patch
-	if err := r.db.Select("catalog_work_id").Where("id = ?", patchID).First(&row).Error; err != nil {
-		return 0, err
+// ExistingPatchIDs narrows catalog work ids to the ones this site has a page
+// for. A folder is shared with the forum, so a shelf routinely holds games that
+// were never published here, and they have to be dropped before the count is
+// taken or the last pages come back empty. This used to be a translation --
+// patch.catalog_work_id was a second id space that had to be mapped back -- and
+// is a primary-key lookup now.
+func (r *PatchRepository) ExistingPatchIDs(ids []int) (map[int]bool, error) {
+	out := make(map[int]bool, len(ids))
+	if len(ids) == 0 {
+		return out, nil
 	}
-	if row.CatalogWorkID == nil {
-		return 0, ErrNoCatalogWork
+	var found []int
+	if err := r.db.Table("patch").Where("id IN ?", ids).Pluck("id", &found).Error; err != nil {
+		return nil, err
 	}
-	return *row.CatalogWorkID, nil
-}
-
-func (r *PatchRepository) PatchIDsByWorkIDs(workIDs []int64) (map[int64]int, error) {
-	return utils.PatchIDsByWorkIDs(r.db, workIDs)
-}
-
-func (r *PatchRepository) SetCatalogWorkID(patchID int, workID int64) error {
-	return r.db.Model(&model.Patch{}).Where("id = ?", patchID).
-		Update("catalog_work_id", workID).Error
+	for _, id := range found {
+		out[id] = true
+	}
+	return out, nil
 }
 
 // PatchesByIDsOrdered keeps the order the caller asked for. The folder decides

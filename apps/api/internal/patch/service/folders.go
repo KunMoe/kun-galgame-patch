@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"log/slog"
@@ -9,17 +10,14 @@ import (
 	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/patch/model"
-	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
-// ErrNoCatalogWork is the repository's sentinel, re-exported so the handler can
-// map it without reaching past the service. 84 patches carry no work — 78
-// `pending-<n>` placeholders plus 13 v-numbers the catalog has never anchored —
-// and 76 of them are published with resources, so this is a real button people
-// press. Left unmapped it fell through to a 500 "please try again later" for a
-// condition that will never succeed on a retry.
-var ErrNoCatalogWork = repository.ErrNoCatalogWork
+// ErrNoCatalogWork is what the heart button gets on a page catalog cannot name.
+// Those pages live in the local-only id band since migration 037 and there are
+// 20 of them, all already unreachable. Left unmapped this fell through to a 500
+// "please try again later" for a condition that never succeeds on a retry.
+var ErrNoCatalogWork = errors.New("patch has no catalog work")
 
 // Favourites live in the catalog. This site never had folders — a favourite
 // was one row in user_patch_favorite_relation — and the 2026-09-07 backfill
@@ -71,8 +69,19 @@ func sortFolders(rows []catalogv2.Folder) {
 	})
 }
 
+func (s *PatchService) LegacyRedirect(oldID int) (int, bool) {
+	return s.repo.LegacyRedirect(oldID)
+}
+
+func (s *PatchService) MergeRedirect(workID int) (int, bool) {
+	return s.repo.MergeRedirect(workID)
+}
+
 func (s *PatchService) workIDOf(patchID int) (int64, error) {
-	return s.repo.CatalogWorkID(patchID)
+	if patchID <= 0 || model.IsLocalOnly(patchID) {
+		return 0, ErrNoCatalogWork
+	}
+	return int64(patchID), nil
 }
 
 func (s *PatchService) MyFolders(ctx context.Context, token, contentLimit string) ([]FolderView, error) {
@@ -157,16 +166,7 @@ func (s *PatchService) attachPreviewCovers(ctx context.Context, views []FolderVi
 }
 
 func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, contentLimit string) (map[int64]string, error) {
-	byWork, err := s.repo.PatchIDsByWorkIDs(workIDs)
-	if err != nil {
-		return nil, err
-	}
-	workOf := make(map[int]int64, len(byWork))
-	ids := make([]int, 0, len(byWork))
-	for workID, patchID := range byWork {
-		workOf[patchID] = workID
-		ids = append(ids, patchID)
-	}
+	ids := patchIDsOf(workIDs)
 	out := make(map[int64]string, len(ids))
 	for start := 0; start < len(ids); start += galgameClient.BatchMaxIDs {
 		briefs, bErr := s.galgame.GalgameBatch(ctx, ids[start:min(start+galgameClient.BatchMaxIDs, len(ids))], contentLimit)
@@ -175,7 +175,7 @@ func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, 
 		}
 		for i := range briefs {
 			if h := briefs[i].EffectiveBannerHash; h != "" {
-				out[workOf[briefs[i].ID]] = h
+				out[int64(briefs[i].ID)] = h
 			}
 		}
 	}
@@ -236,13 +236,13 @@ func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID
 	for _, it := range items {
 		workIDs = append(workIDs, it.WorkID)
 	}
-	byWork, mErr := s.repo.PatchIDsByWorkIDs(workIDs)
+	here, mErr := s.repo.ExistingPatchIDs(patchIDsOf(workIDs))
 	if mErr != nil {
 		return nil, nil, 0, mErr
 	}
 	ids := make([]int, 0, len(workIDs))
 	for _, w := range workIDs {
-		if pid, ok := byWork[w]; ok {
+		if pid := int(w); here[pid] {
 			ids = append(ids, pid)
 		}
 	}
@@ -257,6 +257,18 @@ func (s *PatchService) FolderPatches(ctx context.Context, token string, folderID
 	}
 	v := folderView(*folder)
 	return &v, patches, total, nil
+}
+
+// A folder item names a catalog work and a page id IS that number, so the two
+// lists differ only in type.
+func patchIDsOf(workIDs []int64) []int {
+	out := make([]int, 0, len(workIDs))
+	for _, w := range workIDs {
+		if w > 0 {
+			out = append(out, int(w))
+		}
+	}
+	return out
 }
 
 func pageOfIDs(ids []int, page, limit int) []int {

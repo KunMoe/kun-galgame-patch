@@ -17,11 +17,7 @@ func (h *PatchHandler) claimOnFirstResource(c fiber.Ctx, gid int) {
 	if token == "" {
 		return
 	}
-	workID, found, err := h.galgame.ResolveWorkID(c.Context(), gid)
-	if err != nil || !found {
-		slog.Warn("resource: 解析 catalog work 失败，跳过静默收录", "gid", gid, "error", err)
-		return
-	}
+	workID := int64(gid)
 	if appErr := adoptAndPublish(c, h.catalogV2(), token, workID); appErr != nil {
 		slog.Warn("resource: 静默收录 catalog 作品失败", "gid", gid, "work_id", workID, "error", appErr)
 	}

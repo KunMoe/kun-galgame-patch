@@ -42,6 +42,7 @@ func (a *App) RegisterRoutes() {
 
 	patchRoutes.Post("/", auth, a.PatchHandler.CreatePatch)
 
+	patchRoutes.Get("/legacy/:id", a.PatchHandler.GetLegacyRedirect)
 	patchRoutes.Get("/:id", optionalAuth, a.PatchHandler.GetPatch)
 	patchRoutes.Get("/:id/detail", optionalAuth, a.PatchHandler.GetPatchDetail)
 	patchRoutes.Get("/:id/comment", optionalAuth, a.PatchHandler.GetComments)

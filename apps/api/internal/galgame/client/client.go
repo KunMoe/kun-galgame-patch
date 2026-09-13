@@ -66,15 +66,11 @@ func upstreamError(resp *http.Response, code int, message string) *GalgameError 
 }
 
 type Client struct {
-	v2   *catalogv2.Client
-	gids *gidMap
+	v2 *catalogv2.Client
 }
 
 func NewWithKey(baseURL, apiKey string) *Client {
-	return &Client{
-		v2:   catalogv2.New(baseURL, apiKey),
-		gids: newGIDMap(),
-	}
+	return &Client{v2: catalogv2.New(baseURL, apiKey)}
 }
 
 func (c *Client) V2() *catalogv2.Client { return c.v2 }
@@ -94,7 +90,7 @@ type Paginated[T any] struct {
 
 type GalgameBrief struct {
 	ID                         int               `json:"id"`
-	CatalogWorkID              int64             `json:"catalog_work_id,omitempty"`
+	ForumGID                   int               `json:"forum_gid,omitempty"`
 	VndbID                     string            `json:"vndb_id"`
 	ClaimState                 string            `json:"claim_state"`
 	NameEnUs                   string            `json:"name_en_us"`
@@ -142,7 +138,7 @@ type GalgameMaker struct {
 
 type GalgameHit struct {
 	ID                         int               `json:"id"`
-	CatalogWorkID              int64             `json:"catalog_work_id,omitempty"`
+	ForumGID                   int               `json:"forum_gid,omitempty"`
 	VndbID                     string            `json:"vndb_id"`
 	ClaimState                 string            `json:"claim_state"`
 	NameEnUs                   string            `json:"name_en_us"`
@@ -335,7 +331,7 @@ type GalgameSeries struct {
 
 type GalgameFull struct {
 	ID               int     `json:"id"`
-	CatalogWorkID    int64   `json:"catalog_work_id,omitempty"`
+	ForumGID         int     `json:"forum_gid,omitempty"`
 	VndbID           string  `json:"vndb_id"`
 	ClaimState       string  `json:"claim_state"`
 	NameEnUs         string  `json:"name_en_us"`
@@ -379,15 +375,7 @@ type GalgameDetailEnvelope struct {
 }
 
 func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (*GalgameDetailEnvelope, error) {
-	catalogID, found, err := c.resolveGID(ctx, gid)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "galgame not found"}
-	}
-
-	w, err := c.v2.GetWork(ctx, catalogID, true)
+	w, err := c.v2.GetWork(ctx, int64(gid), true)
 	if err != nil {
 		return nil, catalogErr(err)
 	}
@@ -437,16 +425,9 @@ func (c *Client) galgameBatch(ctx context.Context, ids []int, contentLimit strin
 	if len(ids) > CatalogWorksIDsMax {
 		return nil, fmt.Errorf("GalgameBatch: %d ids exceeds the %d-id ceiling — chunk by client.CatalogWorksIDsMax", len(ids), CatalogWorksIDsMax)
 	}
-	byGID, err := c.resolveGIDs(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	if len(byGID) == 0 {
+	catalogIDs := catalogIDsOf(ids)
+	if len(catalogIDs) == 0 {
 		return nil, nil
-	}
-	catalogIDs := make([]int64, 0, len(byGID))
-	for _, id := range byGID {
-		catalogIDs = append(catalogIDs, id)
 	}
 
 	gate := gateFor(contentLimit)

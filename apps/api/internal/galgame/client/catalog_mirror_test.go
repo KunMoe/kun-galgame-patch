@@ -40,62 +40,50 @@ func TestDisplayVerdictsOpenBothGates(t *testing.T) {
 	if got, ok := q["content_limit"]; ok {
 		t.Errorf("content_limit = %v, want it absent", got)
 	}
-	if q.Get("include") != "refs" {
-		t.Errorf("include = %q, want refs — the anchor lives there", q.Get("include"))
+	if got, ok := q["include"]; ok {
+		t.Errorf("include = %v, want it absent — the row is keyed by its own id now", got)
 	}
 	if q.Get("ids") != "1,2" {
 		t.Errorf("ids = %q, want 1,2", q.Get("ids"))
 	}
 }
 
-func TestDisplayVerdictKeysOnTheAnchorNotTheCatalogID(t *testing.T) {
+// The feed hands over catalog ids and a page id IS one, so a verdict is filed
+// under the id it arrived as. This test used to assert the opposite — that the
+// claim's site_work_id won and an unclaimed work fell back to its `curated`
+// anchor — because filing a work under its catalog id then meant marking a
+// different game nsfw. Two of these rows still prove something: a claim's
+// content_limit beats content_rating, and another product's claim is not read
+// as ours.
+func TestDisplayVerdictKeysOnTheCatalogID(t *testing.T) {
 	var q url.Values
 	c := mirrorServer(t, `{"object":"list","items":[
 		{"object":"work","id":"501","content_rating":"all",
-		 "claim":{"site":"kungal","site_work_id":"7001","state":"live","content_limit":"nsfw"},
-		 "refs":[{"source":"curated","external_id":"7001"}]},
-		{"object":"work","id":"502","content_rating":"r18",
-		 "refs":[{"source":"galgame_wiki","external_id":"7002"}]},
-		{"object":"work","id":"503","content_rating":"r18","refs":[{"source":"vndb","external_id":"v503"}]},
+		 "claim":{"site":"kungal","site_work_id":"7001","state":"live","content_limit":"nsfw"}},
+		{"object":"work","id":"502","content_rating":"r18"},
 		{"object":"work","id":"504","content_rating":"all",
-		 "claim":{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"sfw"},
-		 "refs":[{"source":"curated","external_id":"7004"}]}
+		 "claim":{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"sfw"}}
 	]}`, &q)
 
-	rows, err := c.DisplayVerdictsByCatalogIDs(context.Background(), []int64{501, 502, 503, 504})
+	rows, err := c.DisplayVerdictsByCatalogIDs(context.Background(), []int64{501, 502, 504})
 	if err != nil {
 		t.Fatalf("DisplayVerdictsByCatalogIDs: %v", err)
 	}
 
-	t.Run("the claim's site_work_id wins over the catalog id", func(t *testing.T) {
-		if cl, ok := verdictOf(rows, 7001); !ok || cl != "nsfw" {
-			t.Errorf("gid 7001 = %q/%v, want nsfw — claimed_by.content_limit beats content_rating", cl, ok)
+	if cl, ok := verdictOf(rows, 501); !ok || cl != "nsfw" {
+		t.Errorf("501 = %q/%v, want nsfw — claimed_by.content_limit beats content_rating", cl, ok)
+	}
+	if cl, ok := verdictOf(rows, 502); !ok || cl != "nsfw" {
+		t.Errorf("502 = %q/%v, want nsfw from content_rating r18", cl, ok)
+	}
+	if cl, ok := verdictOf(rows, 504); !ok || cl != "sfw" {
+		t.Errorf("504 = %q/%v, want sfw — letmoe's claim is not ours to read", cl, ok)
+	}
+	for _, foreign := range []int{7001, 88} {
+		if _, ok := verdictOf(rows, foreign); ok {
+			t.Errorf("%d is somebody else's page number and was filed as ours", foreign)
 		}
-		if _, ok := verdictOf(rows, 501); ok {
-			t.Error("catalog id 501 was filed as a gid; it names a different game in the patch table")
-		}
-	})
-
-	t.Run("an unclaimed work falls back to its anchor ref", func(t *testing.T) {
-		if cl, ok := verdictOf(rows, 7002); !ok || cl != "nsfw" {
-			t.Errorf("gid 7002 = %q/%v, want nsfw from content_rating r18", cl, ok)
-		}
-	})
-
-	t.Run("a work with neither anchor is skipped rather than keyed on its catalog id", func(t *testing.T) {
-		if _, ok := verdictOf(rows, 503); ok {
-			t.Error("catalog id 503 was filed as a gid despite carrying no moyu anchor")
-		}
-	})
-
-	t.Run("another product's claim does not name a moyu row", func(t *testing.T) {
-		if cl, ok := verdictOf(rows, 7004); !ok || cl != "sfw" {
-			t.Errorf("gid 7004 = %q/%v, want sfw from the ref anchor and content_rating", cl, ok)
-		}
-		if _, ok := verdictOf(rows, 88); ok {
-			t.Error("letmoe's site_work_id 88 was read as a moyu gid")
-		}
-	})
+	}
 }
 
 func TestDisplayVerdictsRefuseAnOversizedBatch(t *testing.T) {

@@ -95,17 +95,6 @@ func catalogErr(c fiber.Ctx, err error, fallback string) error {
 	return response.Error(c, errors.ErrInternal(fallback))
 }
 
-func (h *PatchHandler) resolveWorkID(c fiber.Ctx, gid int) (int64, error) {
-	workID, found, err := h.galgame.ResolveWorkID(c.Context(), gid)
-	if err != nil {
-		return 0, response.Error(c, errors.ErrInternal("解析资料库条目失败"))
-	}
-	if !found {
-		return 0, response.Error(c, errors.ErrNotFound("资料库中没有这个条目"))
-	}
-	return workID, nil
-}
-
 func getIDParam(c fiber.Ctx, name string) (int, error) {
 	id, err := strconv.Atoi(c.Params(name))
 	if err != nil || id < 1 {
@@ -192,12 +181,12 @@ func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 				return response.OK(c, h.withPurchaseLinks(headerCard{GalgameCard: *card}))
 			}
 		}
-		return response.Error(c, errors.ErrNotFound("patch not found"))
+		return h.patchGone(c, id)
 	}
 
 	enriched := enricher.EnrichPatch(c.Context(), h.galgame, h.users, patch, cl)
 	if enriched == nil {
-		return response.Error(c, errors.ErrNotFound("patch not found"))
+		return h.patchGone(c, id)
 	}
 
 	card := h.withPurchaseLinks(headerCard{GalgameCard: *enriched})
@@ -798,10 +787,7 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 	if idErr != nil {
 		return response.Error(c, idErr.(*errors.AppError))
 	}
-	workID, hErr := h.resolveWorkID(c, gid)
-	if hErr != nil {
-		return hErr
-	}
+	workID := int64(gid)
 	token, tErr := catalogUserToken(c)
 	if tErr != nil {
 		return response.Error(c, tErr)
@@ -838,10 +824,7 @@ func (h *PatchHandler) WithdrawGalgameSubmission(c fiber.Ctx) error {
 	if idErr != nil {
 		return response.Error(c, idErr.(*errors.AppError))
 	}
-	workID, hErr := h.resolveWorkID(c, gid)
-	if hErr != nil {
-		return hErr
-	}
+	workID := int64(gid)
 	token, tErr := catalogUserToken(c)
 	if tErr != nil {
 		return response.Error(c, tErr)

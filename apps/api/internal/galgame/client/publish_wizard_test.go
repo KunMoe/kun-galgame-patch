@@ -89,15 +89,19 @@ func TestPublishWizard_ItemsComeFromTheCatalog(t *testing.T) {
 	}
 }
 
-func TestPublishWizard_ItemsAreGidKeyedAndDropWithdrawnRows(t *testing.T) {
+// The row the wizard hands back is keyed by the catalog id, which is the page
+// the publish flow then creates. It used to be keyed by the claim's
+// site_work_id, so picking a game in the wizard opened a page id that belonged
+// to a different game here.
+func TestPublishWizard_ItemsAreCatalogKeyedAndDropWithdrawnRows(t *testing.T) {
 	rec := &wizardRecorder{}
 	out := rec.search(t)
 
 	if len(out.Items) != 3 {
 		t.Fatalf("items = %d, want 3 (hidden claims drop; unclaimed rows are the library)", len(out.Items))
 	}
-	if out.Items[0].ID != 292 || out.Items[1].ID != 9978 || out.Items[2].ID != 14 {
-		t.Errorf("ids = %d,%d,%d, want 292,9978,14", out.Items[0].ID, out.Items[1].ID, out.Items[2].ID)
+	if out.Items[0].ID != 11 || out.Items[1].ID != 12 || out.Items[2].ID != 14 {
+		t.Errorf("ids = %d,%d,%d, want 11,12,14", out.Items[0].ID, out.Items[1].ID, out.Items[2].ID)
 	}
 	if out.Items[0].ClaimState != "live" || out.Items[1].ClaimState != "draft" || out.Items[2].ClaimState != "" {
 		t.Errorf("claim states = %q,%q,%q, want live,draft,empty",

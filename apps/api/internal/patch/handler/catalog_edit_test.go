@@ -18,6 +18,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// The page id IS the catalog work id since migration 037, so the request path
+// and the work the handler edits are the same number. They used to differ and a
+// fake resolved one to the other.
 const catalogEditWorkID = 9000
 
 type catalogEditFake struct {
@@ -152,7 +155,7 @@ func TestCatalogEditBootstrapKeepsEveryWireKeyOfTheFourFields(t *testing.T) {
 	fake := newCatalogEditFake(t)
 	ta, session := newCatalogEditApp(t, fake)
 
-	resp := ta.Request(t, http.MethodGet, "/patch/1/catalog-edit", "", session)
+	resp := ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit", "", session)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -217,7 +220,7 @@ func TestCatalogEditBootstrapCanEditFollowsTheSchema(t *testing.T) {
 		`{"key":"catalog.work.titles","field_type":"list","diff_hint":"items","deprecated":true}]}`
 	ta, session := newCatalogEditApp(t, fake)
 
-	data := editData(t, ta.Request(t, http.MethodGet, "/patch/1/catalog-edit", "", session))
+	data := editData(t, ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit", "", session))
 	if data["can_edit"] != false {
 		t.Fatalf("a schema that permits nothing must not report can_edit: %v", data)
 	}
@@ -230,7 +233,7 @@ func TestCatalogEditSubmitBuildsTheFieldKeyPatch(t *testing.T) {
 	body := `{"display_name":"新名","olang":"zh-Hans","content_rating":0,` +
 		`"titles":[{"lang":"ja","title":"新標題","kind":0},{"lang":"","title":"略称","latin":"","kind":1}],` +
 		`"note":"fix","cover":"should-be-ignored"}`
-	resp := ta.Request(t, http.MethodPost, "/patch/1/catalog-edit", body, session)
+	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", body, session)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body = %s", resp.StatusCode, testutil.ReadBody(t, resp))
 	}
@@ -287,7 +290,7 @@ func TestCatalogEditSubmitRefusesAnEmptyPatch(t *testing.T) {
 	fake := newCatalogEditFake(t)
 	ta, session := newCatalogEditApp(t, fake)
 
-	resp := ta.Request(t, http.MethodPost, "/patch/1/catalog-edit", `{"note":"nothing"}`, session)
+	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"note":"nothing"}`, session)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", resp.StatusCode)
 	}
@@ -302,7 +305,7 @@ func TestCatalogEditScopeDenialLandsOnTheRelogInCode(t *testing.T) {
 	fake.errBody = `{"code":"SCOPE_REQUIRED","status":403,"title":"Forbidden","detail":"the access token is missing the catalog:edit scope"}`
 	ta, session := newCatalogEditApp(t, fake)
 
-	resp := ta.Request(t, http.MethodPost, "/patch/1/catalog-edit", `{"display_name":"新名"}`, session)
+	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
 	r := testutil.ParseResponse(t, resp)
 	if r.Code != 40399 || resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("scope denial = %d/%d, want 403/40399", resp.StatusCode, r.Code)
@@ -335,7 +338,7 @@ func TestCatalogEditUpstreamStatusMapping(t *testing.T) {
 			fake.status, fake.errBody = tc.status, tc.body
 			ta, session := newCatalogEditApp(t, fake)
 
-			resp := ta.Request(t, http.MethodPost, "/patch/1/catalog-edit", `{"display_name":"新名"}`, session)
+			resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
 			r := testutil.ParseResponse(t, resp)
 			if resp.StatusCode != tc.wantStatus || r.Code != tc.wantCode {
 				t.Fatalf("got %d/%d, want %d/%d (%s)", resp.StatusCode, r.Code, tc.wantStatus, tc.wantCode, r.Message)
@@ -355,7 +358,7 @@ func TestCatalogEditRelaysTheFieldLevelRejection(t *testing.T) {
 		`{"pointer":"/patch/catalog.work.olang","reason":"IMMUTABLE","detail":"field is locked"}]}`
 	ta, session := newCatalogEditApp(t, fake)
 
-	resp := ta.Request(t, http.MethodPost, "/patch/1/catalog-edit", `{"display_name":"新名"}`, session)
+	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
 	data := editData(t, resp)
 	rows, _ := data["errors"].([]any)
 	if len(rows) != 2 {
@@ -374,7 +377,7 @@ func TestCatalogEditProposalsAndWithdraw(t *testing.T) {
 	fake := newCatalogEditFake(t)
 	ta, session := newCatalogEditApp(t, fake)
 
-	data := editData(t, ta.Request(t, http.MethodGet, "/patch/1/catalog-edit/proposals", "", session))
+	data := editData(t, ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit/proposals", "", session))
 	items, _ := data["items"].([]any)
 	if len(items) != 1 {
 		t.Fatalf("proposals: %v", data)
@@ -409,9 +412,9 @@ func TestCatalogEditNeedsASession(t *testing.T) {
 	ta, _ := newCatalogEditApp(t, fake)
 
 	for _, tc := range []struct{ method, path, body string }{
-		{http.MethodGet, "/patch/1/catalog-edit", ""},
-		{http.MethodPost, "/patch/1/catalog-edit", `{"display_name":"x"}`},
-		{http.MethodGet, "/patch/1/catalog-edit/proposals", ""},
+		{http.MethodGet, "/patch/9000/catalog-edit", ""},
+		{http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"x"}`},
+		{http.MethodGet, "/patch/9000/catalog-edit/proposals", ""},
 		{http.MethodPost, "/catalog-proposal/32/withdraw", ""},
 	} {
 		resp := ta.Request(t, tc.method, tc.path, tc.body, "")
@@ -431,7 +434,7 @@ func TestCatalogEditWithoutACatalogClient(t *testing.T) {
 	ta.App.Get("/patch/:id/catalog-edit", auth, h.CatalogEditBootstrap)
 	session := ta.CreateTestSession(t, 42)
 
-	resp := ta.Request(t, http.MethodGet, "/patch/1/catalog-edit", "", session)
+	resp := ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit", "", session)
 	r := testutil.ParseResponse(t, resp)
 	if resp.StatusCode != fiber.StatusServiceUnavailable || r.Code != 50320 {
 		t.Fatalf("got %d/%d, want 503/50320", resp.StatusCode, r.Code)

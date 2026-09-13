@@ -706,11 +706,10 @@ func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.
 //
 // The resource page asks about one game, so it asks the catalog about one work.
 func (h *CommonHandler) holdsPatch(c fiber.Ctx, patchID int) bool {
-	byPatch, err := utils.WorkIDsByPatchIDs(h.db, []int{patchID})
-	if err != nil {
+	if patchID <= 0 || patchModel.IsLocalOnly(patchID) {
 		return false
 	}
-	held, err := favorite.Holds(c.Context(), h.galgame, middleware.GetAccessToken(c), byPatch[patchID])
+	held, err := favorite.Holds(c.Context(), h.galgame, middleware.GetAccessToken(c), int64(patchID))
 	return err == nil && held
 }
 
@@ -722,21 +721,19 @@ func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, ids []int) map[int]bool
 	if token == "" || len(ids) == 0 {
 		return set
 	}
-	byPatch, err := utils.WorkIDsByPatchIDs(h.db, ids)
-	if err != nil {
-		return set
-	}
-	works := make([]int64, 0, len(byPatch))
-	for _, workID := range byPatch {
-		works = append(works, workID)
+	works := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id > 0 && !patchModel.IsLocalOnly(id) {
+			works = append(works, int64(id))
+		}
 	}
 	held, err := favorite.HoldsAll(c.Context(), h.galgame, token, works)
 	if err != nil {
 		slog.Warn("calendar favorite set failed", "error", err)
 		return set
 	}
-	for id, workID := range byPatch {
-		if held[workID] {
+	for _, id := range ids {
+		if held[int64(id)] {
 			set[id] = true
 		}
 	}
