@@ -64,16 +64,16 @@ export const useApi = () => {
   //      NOT flip lists to all — per product rule, "页面上的各种游戏列表
   //      只有用户打开显示全部内容才会显示". The logged-in convenience
   //      only applies to (2) below — directly opening a NSFW detail URL.
-  //   2. Detail-page routes (/patch/<id>(/...)? or /resource/<id>) AND
+  //   2. Detail-page routes (/galgame/<id> or /resource/<id>) AND
   //      (logged-in OR per-patch ack present) → 'all'. Logged-in users
   //      who land on a NSFW patch's detail URL see the content directly,
   //      no confirm step. Anonymous + ack'd is the "I already confirmed"
-  //      branch from pages/patch/[id].vue.
+  //      branch from pages/galgame/[id]/index.vue.
   //   3. Default 'sfw' — SEO safe-by-default for anonymous crawlers, and
   //      the default for every list/index/tool surface regardless of
   //      login state.
   //
-  // The detail-route regex is intentionally narrow: only patch/resource
+  // The detail-route regex is intentionally narrow: only game/resource
   // detail pages get the bypass. /galgame/tag/<id>, /galgame/official/<id>
   // and /user/<id> + their child tabs are list-semantics (show many galgames
   // under a tag/label/user) and stay sfw-default — the catalog's own taxonomy
@@ -87,7 +87,7 @@ export const useApi = () => {
   const userStore = useUserStore()
   const route = useRoute()
 
-  const isDetailRoute = /^\/(patch|resource)\/\d+/.test(route.path)
+  const isDetailRoute = /^\/(galgame|resource)\/\d+/.test(route.path)
 
   const contentLimit = (() => {
     if (setting.data.kunNsfwEnable !== 'sfw') return setting.data.kunNsfwEnable

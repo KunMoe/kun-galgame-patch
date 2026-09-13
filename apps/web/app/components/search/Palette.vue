@@ -109,7 +109,7 @@ const groups = computed<KunCommandGroup[]>(() => {
         const title = getPreferredLanguageText(galgame.name)
         const maker = resolveMaker(galgame)
         return {
-          value: `/patch/${galgame.id}/introduction`,
+          value: `/galgame/${galgame.id}`,
           label: title,
           // The credited company, or the original title when the reader's
           // 标题语言 is showing them a translation of it.

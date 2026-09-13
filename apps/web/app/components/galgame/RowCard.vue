@@ -30,7 +30,7 @@ const japaneseName = computed(() => {
 
 const coverSrc = computed(() => resolvePortraitUrl(props.patch))
 
-const patchHref = computed(() => `/patch/${props.patch.id}/introduction`)
+const patchHref = computed(() => `/galgame/${props.patch.id}`)
 
 const maker = computed(() => resolveMaker(props.patch))
 const makerName = computed(() =>

@@ -92,7 +92,7 @@ const confirmDelete = async () => {
     if (res.code === 0) {
       useKunMessage('已删除资源', 'success')
       deleteOpen.value = false
-      await navigateTo(`/patch/${props.resource.galgame_id}/resource`)
+      await navigateTo(`/galgame/${props.resource.galgame_id}?tab=resource`)
     } else {
       useKunMessage(res.message || '删除失败', 'error')
     }

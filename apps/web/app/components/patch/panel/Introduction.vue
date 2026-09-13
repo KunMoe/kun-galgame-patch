@@ -169,17 +169,20 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
             </a>
           </span>
         </div>
-        <div v-if="detail.galgame" class="flex items-center gap-2 text-sm">
+        <div
+          v-if="detail.galgame?.forum_gid"
+          class="flex items-center gap-2 text-sm"
+        >
           <KunIcon name="lucide:book-open" class="size-4" />
           <span>
             鲲 Galgame:
             <a
-              :href="`${kungalOrigin}/galgame/${detail.galgame.id}`"
+              :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
               target="_blank"
               rel="noopener noreferrer"
               class="text-primary hover:underline"
             >
-              #{{ detail.galgame.id }}（完整资料 / 修订历史）
+              #{{ detail.galgame.forum_gid }}（完整资料 / 修订历史）
             </a>
           </span>
         </div>
@@ -317,11 +320,11 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
       <GalgameGallery :screenshots="detail.galgame.screenshots" />
     </section>
 
-    <section v-if="detail.galgame">
+    <section v-if="detail.galgame?.forum_gid">
       <p class="text-default-500 text-sm">
         游戏资料、修订历史等更多信息请查看
         <a
-          :href="`${kungalOrigin}/galgame/${detail.galgame.id}`"
+          :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"

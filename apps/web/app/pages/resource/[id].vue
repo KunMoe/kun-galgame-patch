@@ -194,7 +194,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
         <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
           <NuxtLink
             v-if="detail.patch"
-            :to="`/patch/${detail.patch.id}/introduction`"
+            :to="`/galgame/${detail.patch.id}`"
             class="group shrink-0"
           >
             <KunImage
@@ -217,7 +217,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             <div class="flex flex-wrap items-center gap-2">
               <h1 class="text-2xl font-bold break-words sm:text-3xl"><NuxtLink
                   v-if="detail.patch"
-                  :to="`/patch/${detail.patch.id}/resource`"
+                  :to="`/galgame/${detail.patch.id}?tab=resource`"
                   class="hover:text-primary transition-colors"
                 >{{ titleName }}</NuxtLink><template v-else>{{ titleName }}</template>{{ titleSuffix }}</h1>
               <KunTooltip
@@ -258,7 +258,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             />
 
             <div v-if="detail.patch" class="flex flex-wrap gap-3 pt-1">
-              <NuxtLink :to="`/patch/${detail.patch.id}/introduction`">
+              <NuxtLink :to="`/galgame/${detail.patch.id}`">
                 <KunButton
                   color="primary"
                   variant="flat"
@@ -269,7 +269,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
                   查看 Galgame 介绍
                 </KunButton>
               </NuxtLink>
-              <NuxtLink :to="`/patch/${detail.patch.id}/resource`">
+              <NuxtLink :to="`/galgame/${detail.patch.id}?tab=resource`">
                 <KunButton
                   color="secondary"
                   variant="flat"

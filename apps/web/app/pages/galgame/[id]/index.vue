@@ -94,7 +94,7 @@ if (
   const base = displayName.value || `补丁 ${galgameId.value}`
   const cover = resolveBannerUrl(p) || undefined
 
-  const canonicalPath = `/patch/${galgameId.value}/resource`
+  const canonicalPath = `/galgame/${galgameId.value}`
   const canonicalUrl = `${kunMoyuMoe.domain.main}${canonicalPath}`
 
   const jaName = p.name['ja-jp']
@@ -201,34 +201,32 @@ onMounted(async () => {
 
 provide('patch', patch)
 
-const tabs = computed(() => {
-  const all = [
-    {
-      key: 'introduction',
-      title: 'Galgame 信息',
-      href: `/patch/${galgameId.value}/introduction`
-    },
-    {
-      key: 'resource',
-      title: '补丁资源下载',
-      href: `/patch/${galgameId.value}/resource`
-    },
-    {
-      key: 'comment',
-      title: '游戏评论',
-      href: `/patch/${galgameId.value}/comment`
-    }
-  ]
-  return all
-})
+// One page, three panels. These were three routes — /patch/:id/introduction,
+// /resource and /comment — and the tab now rides a query so a link can still
+// name one. `intro` is the default and carries no query, which keeps the
+// canonical URL a bare /galgame/<id>.
+const TABS = [
+  { value: 'intro', textValue: 'Galgame 信息' },
+  { value: 'resource', textValue: '补丁资源下载' },
+  { value: 'comment', textValue: '游戏评论' }
+]
 
+const router = useRouter()
 const currentTab = computed({
   get: () => {
-    const segment = route.path.split('/').filter(Boolean).pop() ?? ''
-    return tabs.value.some((t) => t.key === segment) ? segment : 'introduction'
+    const asked = String(route.query.tab ?? '')
+    return TABS.some((t) => t.value === asked) ? asked : 'intro'
   },
-  set: () => {}
+  set: (value: string) => {
+    const query = { ...route.query }
+    if (value === 'intro') delete query.tab
+    else query.tab = value
+    router.replace({ query })
+  }
 })
+
+const resourceLoading = ref(false)
+const commentLoading = ref(false)
 </script>
 
 <template>
@@ -343,17 +341,28 @@ const currentTab = computed({
 
     <KunTab
       v-model="currentTab"
-      :items="
-        tabs.map((t) => ({ value: t.key, textValue: t.title, href: t.href }))
-      "
+      :items="TABS"
       variant="underlined"
       color="primary"
       size="md"
     />
 
-    <div>
-      <NuxtPage />
-    </div>
+    <KunTabPanels v-model="currentTab">
+      <KunTabPanel value="intro">
+        <PatchPanelIntroduction />
+      </KunTabPanel>
+
+      <!-- This site's own data is fetched when its tab is opened; the Galgame
+           information above comes from the catalog read the page already
+           made. -->
+      <KunTabPanel value="resource" mount="lazy" :loading="resourceLoading">
+        <PatchPanelResource @update:loading="resourceLoading = $event" />
+      </KunTabPanel>
+
+      <KunTabPanel value="comment" mount="lazy" :loading="commentLoading">
+        <PatchPanelComment @update:loading="commentLoading = $event" />
+      </KunTabPanel>
+    </KunTabPanels>
   </div>
 
   <div

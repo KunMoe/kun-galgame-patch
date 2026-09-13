@@ -10,6 +10,8 @@ const target = computed<CommentTarget>(() => ({
   galgameId: galgameId.value
 }))
 
+const emit = defineEmits<{ 'update:loading': [boolean] }>()
+
 const {
   items,
   totalPages,
@@ -23,6 +25,8 @@ const {
   onEdited,
   onRemoved
 } = useCommentList(target, { routeQueryKey: 'page' })
+
+watch(pending, (value) => emit('update:loading', value), { immediate: true })
 </script>
 
 <template>

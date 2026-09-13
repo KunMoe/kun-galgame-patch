@@ -58,7 +58,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
           <div class="flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2">
               <NuxtLink
-                :to="`/patch/${g.id}/introduction`"
+                :to="`/galgame/${g.id}`"
                 class="text-primary text-lg font-semibold hover:underline"
               >
                 {{ getPreferredLanguageText(g.name) || `补丁 #${g.id}` }}

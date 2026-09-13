@@ -68,7 +68,7 @@ const onChangeSort = async (v: string | string[] | null) => {
       <NuxtLink
         v-for="(patch, index) in data"
         :key="patch.id"
-        :to="`/patch/${patch.id}/introduction`"
+        :to="`/galgame/${patch.id}`"
         class="border-default/20 hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"
       >
         <span class="text-default-500 w-8 text-right font-mono font-semibold">

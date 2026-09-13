@@ -65,7 +65,7 @@ export const commentSurface = (target: CommentTarget): CommentSurface => {
     kind: 'patch',
     listUrl: `/patch/${target.galgameId}/comment`,
     createUrl: `/patch/${target.galgameId}/comment`,
-    pagePath: `/patch/${target.galgameId}/comment`,
+    pagePath: `/galgame/${target.galgameId}?tab=comment`,
     emptyDescription: '暂无评论, 快来抢沙发吧~',
     // Routes resource complaints to the right place. Now that every resource has
     // its own comment area, a "链接失效了" posted here reaches nobody who can act
@@ -100,4 +100,4 @@ export const commentPermalink = (comment: {
 }) =>
   comment.resource_id
     ? `/resource/${comment.resource_id}#${commentAnchorId(comment.id)}`
-    : `/patch/${comment.galgame_id}/comment#${commentAnchorId(comment.id)}`
+    : `/galgame/${comment.galgame_id}?tab=comment#${commentAnchorId(comment.id)}`

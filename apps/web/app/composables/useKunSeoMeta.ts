@@ -26,9 +26,7 @@ export const useKunSeoMeta = (
     | 'twitterImageAlt'
   >,
   options?: NuxtUseHeadOptions,
-  // Override the canonical + og:url path (defaults to the current route). Used to
-  // consolidate a tabbed route onto ONE canonical URL — e.g. every /patch/:id/*
-  // tab points at the 补丁资源下载 tab so the tabs don't compete as duplicates.
+  // Override the canonical + og:url path (defaults to the current route).
   canonicalPath?: string
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
 ): ActiveHeadEntry<UseSeoMetaInput> | void => {

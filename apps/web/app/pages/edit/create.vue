@@ -46,7 +46,7 @@ const claimStateLabel = (state: string): string =>
 
 const isPendingReview = (h: GalgameHit): boolean => h.claim_state === 'pending'
 
-const gameHref = (h: GalgameHit): string => `/patch/${h.id}/resource`
+const gameHref = (h: GalgameHit): string => `/galgame/${h.id}?tab=resource`
 
 const doSearch = async () => {
   const q = searchQuery.value.trim()

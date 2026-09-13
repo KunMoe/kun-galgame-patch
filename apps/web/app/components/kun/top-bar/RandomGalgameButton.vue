@@ -22,7 +22,7 @@ const handleRandom = async () => {
   try {
     const res = await api.get<{ id: number | string }>('/home/random')
     if (res.code === 0 && res.data?.id) {
-      await navigateTo(`/patch/${res.data.id}/introduction`)
+      await navigateTo(`/galgame/${res.data.id}`)
     } else {
       useKunMessage(res.message || '获取随机游戏失败', 'error')
     }

@@ -143,7 +143,7 @@ const histTotalPages = computed(() =>
           >
             <td class="px-3 py-2">
               <NuxtLink
-                :to="`/patch/${r.galgame_id}/resource`"
+                :to="`/galgame/${r.galgame_id}?tab=resource`"
                 class="text-primary hover:underline"
               >
                 {{

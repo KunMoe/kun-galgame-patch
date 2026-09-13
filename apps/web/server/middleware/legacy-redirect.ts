@@ -14,6 +14,12 @@
 // pages under /galgame/ in the SINGULAR on both this site and kungal, so one
 // URL describes a tag wherever you meet it.
 //
+// /patch/:id does NOT come through here either, for the same reason and more
+// sharply: the old page number only resolves through patch_redirect, so the
+// redirect needs a lookup and lives in pages/patch/[...slug].vue. Guessing
+// /galgame/:id from it would serve a different game -- 9,519 of the old page
+// ids are also a live catalog work id.
+//
 // The wiki-keyed shells (/tag/:id, /official/:id) do NOT come through here:
 // they have to resolve an id in a different id space first, so they stay real
 // pages — and they point straight at the final address, never at a path that
