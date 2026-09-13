@@ -25,7 +25,7 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PATCH /api/v1/auth/me` | 登录 | `authH.UpdateMe` | 对齐 | 代理 OAuth 改**展示层**（name/bio/avatar）；原样回传 OAuth 状态码+envelope；FE 仅读 `code` 后 refetch `/auth/me`，故 OAuth 富 body 不被绑定（实测空 body no-op 200）。身份层（改密码/邮箱/2FA/注销）不代理，跳转 oauth.kungal.com/profile |
+| `PATCH /api/v1/auth/me` | 登录 | `authH.UpdateMe` | 对齐 | 代理 OAuth 改**展示层**（name/bio/avatar）；原样回传 OAuth 状态码+envelope；FE 仅读 `code` 后 refetch `/auth/me`，故 OAuth 富 body 不被绑定（实测空 body no-op 200）。身份层（改密码/邮箱/2FA/注销）不代理，跳转 account.nextmoe.com/profile |
 
 ## 2. Galgame 投稿代理 `/galgame`（→ Wiki）
 

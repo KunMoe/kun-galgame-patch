@@ -163,8 +163,12 @@ services:
     environment:
       NUXT_API_BASE_SSR: http://moyu-api:5214/api/v1           # SSR → 本仓 api 服务名 moyu-api(唯一,避免与 kungal api 冲突)
       NUXT_PUBLIC_API_BASE: https://www.moyu.moe/api/v1         # browser
-      NUXT_PUBLIC_OAUTH_SERVER_URL: https://oauth.kungal.com/api/v1
-      NUXT_PUBLIC_OAUTH_WEB_URL: https://oauth.kungal.com
+      # OP = account.nextmoe.com (「NextMoe·未萌 账号」) since infra's 2026-09 rebrand.
+      # oauth.kungal.com no longer answers: the edge 308 was removed on 2026-09-13
+      # because it strips Authorization across the host change, so a stale value
+      # here is an outage now, not a warning that still happens to work.
+      NUXT_PUBLIC_OAUTH_SERVER_URL: https://account.nextmoe.com/api/v1
+      NUXT_PUBLIC_OAUTH_WEB_URL: https://account.nextmoe.com
       NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
     expose: ["3000"]
