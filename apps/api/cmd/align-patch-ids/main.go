@@ -85,7 +85,7 @@ func report(p *Plan, path string) {
 	fmt.Printf("  patch 行            %6d\n", p.Total)
 	fmt.Printf("  已经恒等            %6d\n", p.Identical)
 	fmt.Printf("  需要改号            %6d\n", len(p.Moves))
-	fmt.Printf("  需要合并的重复页    %6d 组，丢弃 %d 行子表\n", len(p.Folds), p.FoldLosers)
+	fmt.Printf("  需要合并的重复页    %6d 组，并入 %d 页\n", len(p.Folds), p.FoldLosers)
 	fmt.Printf("  catalog 认不出      %6d（挪到 %d+ 的本地专用段）\n", p.Parked, localBase)
 	fmt.Printf("  写入 patch_redirect %6d\n", len(p.Redirects))
 	for _, f := range p.Folds {
