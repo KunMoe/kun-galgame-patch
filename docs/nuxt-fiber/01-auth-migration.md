@@ -49,7 +49,7 @@
 | `GET /oauth/userinfo` | 获取用户信息（Bearer token） |
 | `POST /oauth/revoke` | 吊销 token（登出） |
 
-- 生产环境：`https://oauth.kungal.com/api/v1`
+- 生产环境：`https://account.nextmoe.com/api/v1`
 - 开发环境：`http://127.0.0.1:9277/api/v1`
 
 ## Session 结构（Redis）
