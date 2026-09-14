@@ -205,8 +205,12 @@ func TestRenderWithTOCSkipsHeadingsBeyondLevel3(t *testing.T) {
 func TestContentImageTokenResolution(t *testing.T) {
 	const hash = "278c8e45bb9622b74b6cccd200477aacb05c509c0b9632674eeb5972ab04acdf"
 
-	markdown.SetContentImageResolver(func(h string) string {
-		return "https://cdn.example.com/" + h[:2] + "/" + h[2:4] + "/" + h + ".webp"
+	markdown.SetContentImageResolver(func(h, variant string) string {
+		suffix := ""
+		if variant != "" {
+			suffix = "_" + variant
+		}
+		return "https://cdn.example.com/" + h[:2] + "/" + h[2:4] + "/" + h + suffix + ".webp"
 	})
 	t.Cleanup(func() { markdown.SetContentImageResolver(nil) })
 
@@ -229,6 +233,11 @@ func TestContentImageTokenResolution(t *testing.T) {
 			name: "short/invalid hash is not treated as a token",
 			in:   "![pic](/image/deadbeef)",
 			want: `src="/image/deadbeef"`,
+		},
+		{
+			name: "variant suffix survives into the CDN url",
+			in:   "![sticker](/image/" + hash + "_320)",
+			want: `src="https://cdn.example.com/27/8c/` + hash + `_320.webp"`,
 		},
 	}
 	for _, tc := range cases {

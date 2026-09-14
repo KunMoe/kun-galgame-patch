@@ -84,8 +84,8 @@ func (s *PatchService) createPatchRow(ctx context.Context, userID, galgameID int
 	var patchID int
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		p := &model.Patch{
-			ID:            galgameID,
-			VndbID:        vndbID,
+			ID:          galgameID,
+			VndbID:      vndbID,
 			UserID:      userID,
 			ReleaseDate: releaseDate,
 		}
@@ -474,7 +474,7 @@ func (s *PatchService) createComment(patchID int, resourceID *int, userID int, c
 		GalgameID:  patchID,
 		ResourceID: resourceID,
 		UserID:     userID,
-		Content:    content,
+		Content:    markdown.NormalizeContentImageURLs(content),
 		ParentID:   parentID,
 		Status:     status,
 	}
@@ -527,7 +527,7 @@ func (s *PatchService) UpdateComment(commentID, userID int, content string) (*mo
 	if comment.UserID != userID {
 		return nil, fmt.Errorf("can only edit your own comments")
 	}
-	comment.Content = content
+	comment.Content = markdown.NormalizeContentImageURLs(content)
 	comment.Edit = time.Now().Format(time.RFC3339)
 	if err := s.repo.UpdateComment(comment); err != nil {
 		return nil, err
@@ -695,6 +695,7 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 
 func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
+	resource.Note = markdown.NormalizeContentImageURLs(resource.Note)
 
 	if _, err := s.ensureLocalPatch(ctx, resource.GalgameID, userID); err != nil {
 		return fmt.Errorf("patch not found")
@@ -825,7 +826,7 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		existing.Size = update.Size
 		existing.Code = update.Code
 		existing.Password = update.Password
-		existing.Note = update.Note
+		existing.Note = markdown.NormalizeContentImageURLs(update.Note)
 		existing.S3Key = update.S3Key
 		existing.ArtifactUUID = update.ArtifactUUID
 		existing.Content = update.Content

@@ -6,6 +6,7 @@ import (
 
 	"kun-galgame-patch-api/internal/chat/model"
 	"kun-galgame-patch-api/internal/chat/repository"
+	"kun-galgame-patch-api/internal/infrastructure/markdown"
 
 	"github.com/rs/xid"
 )
@@ -96,7 +97,7 @@ func (s *ChatService) CreateMessage(userID int, link string, content, fileURL st
 	msg := &model.ChatMessage{
 		ChatRoomID: room.ID,
 		SenderID:   userID,
-		Content:    content,
+		Content:    markdown.NormalizeContentImageURLs(content),
 		FileURL:    fileURL,
 		ReplyToID:  replyToID,
 		Status:     "SENT",
@@ -118,7 +119,7 @@ func (s *ChatService) UpdateMessage(userID, messageID int, newContent string) er
 	if m.Status == "DELETED" {
 		return fmt.Errorf("已删除的消息无法编辑")
 	}
-	return s.repo.UpdateMessageContent(m, m.Content, newContent)
+	return s.repo.UpdateMessageContent(m, m.Content, markdown.NormalizeContentImageURLs(newContent))
 }
 
 func (s *ChatService) DeleteMessage(userID int, isPrivileged bool, messageID int) error {
