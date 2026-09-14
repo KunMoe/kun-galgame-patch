@@ -36,9 +36,11 @@ var galgameNameTypes = map[string]bool{
 }
 
 // The page moved to /galgame/<id> and every stored link was rewritten with it
-// (migration 037), so a regexp still reading /patch/ matched nothing and these
-// 91,128 notices silently fell back to the name frozen into content at write
-// time -- readable, but never translated and never refreshed.
+// (migration 037), so a regexp still reading /patch/ matched nothing and the
+// 84,307 favourite and like notices carrying such a link silently fell back to
+// the name frozen into content at write time -- readable, but never translated
+// and never refreshed. favoriteResource links are /resource/<id> and have never
+// matched here; that type reads as a whole sentence without a name.
 var galgameLinkRe = regexp.MustCompile(`^/galgame/(\d+)`)
 
 func (h *MessageHandler) attachGalgameNames(ctx context.Context, msgs []userModel.UserMessage) {
