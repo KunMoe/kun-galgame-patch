@@ -329,7 +329,10 @@ func (s *DocService) Create(ctx context.Context, userID int, req dto.DocCreateRe
 	}
 	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
 		doc.AuthorName = b.Name
-		doc.AuthorAvatar = s.effectiveAuthorAvatar(b)
+		// Stored, unlike the two read-time uses above: this row is the fallback
+		// for when the OAuth brief cannot be read, and a CDN URL in it welds the
+		// image host into the row -- the same shape that killed the sticker URLs.
+		doc.AuthorAvatar = markdown.NormalizeContentImageURLs(s.effectiveAuthorAvatar(b))
 	}
 	if err := s.repo.Create(doc); err != nil {
 		return nil, err

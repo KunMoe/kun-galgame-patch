@@ -52,6 +52,10 @@ var targets = []target{
 	{"chat_message", "content"},
 	{"chat_message_edit_history", "previous_content"},
 	{"user_message", "content"},
+	// Not markdown, but the same rot: the main chatroom's avatar is one of the
+	// dead sticker URLs, and a doc's stored author avatar is a CDN URL.
+	{"chat_room", "avatar"},
+	{"doc", "author_avatar"},
 }
 
 func splitHashes(raw string) []string { return strings.Fields(raw) }
