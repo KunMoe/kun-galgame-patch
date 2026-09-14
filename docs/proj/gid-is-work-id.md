@@ -200,6 +200,39 @@ Two things it does besides the move:
 - **Refuses to 301 onto a 404.** A survivor with no page here gets no ledger
   row; the retired id keeps answering the 404 it already answers.
 
+### What a fold carries
+
+The fold is the only shape that moves user-facing rows. Resources and comments
+move wholesale, and everything hanging off them -- resource likes and
+favourites, revisions, file history, comment likes, the comments attached to a
+resource -- follows by resource id and comment id without being touched. The
+three join tables with a unique key per (page, peer) -- `patch_link`, contribute,
+the frozen favourite table -- drop the loser's row where the survivor already
+has one. Counters are recounted from the moved rows, and so are
+`patch.type/language/platform`: the browse filters read those arrays and not the
+resources, so a fold that skipped them left the survivor unfilterable by
+everything it had just gained. The survivor also adopts the loser's `vndb_id`
+when its own is a placeholder, and its `bangumi_id` when it has none -- catalog
+merges the external refs onto the survivor in the same transaction, and the
+`/v2/moyu` face answers "no page" for an anchor it cannot see.
+
+Two things are deliberate rather than exact:
+
+- **`favorite_count` is summed, not recounted.** The favourites themselves are
+  catalog folder rows and infra's merge rehangs them onto the survivor, deduped.
+  This column is only this site's own sort key, kept incrementally by
+  `settleFavoriteSideEffects`, and the local holder list has been frozen since
+  the cutover -- so a reader who had favourited both pages counts twice here and
+  once everywhere a reader can see.
+- **The survivor keeps its own publisher.** `patch.user_id` gates who may edit
+  the page; the loser's resources keep their own `user_id`, so their authors
+  keep them.
+
+Notification links are not rewritten. A notice pointing at the retired page
+keeps working through the ledger's 301, which is why the fold deletes the page
+row directly instead of going through `DeletePatch` -- that path deletes the
+notices, and here the thing they point at has moved rather than gone.
+
 The first drain replays the whole merge history from an empty cursor — 4,473
 work redirects, measured 2026-09-14. On production that is 0 folds, 0 renumbers
 and 2,199 ledger rows: the renumber resolved every page *through* catalog, so

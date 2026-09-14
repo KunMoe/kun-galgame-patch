@@ -35,7 +35,11 @@ var galgameNameTypes = map[string]bool{
 	"likeResource":     true,
 }
 
-var patchLinkRe = regexp.MustCompile(`^/patch/(\d+)`)
+// The page moved to /galgame/<id> and every stored link was rewritten with it
+// (migration 037), so a regexp still reading /patch/ matched nothing and these
+// 91,128 notices silently fell back to the name frozen into content at write
+// time -- readable, but never translated and never refreshed.
+var galgameLinkRe = regexp.MustCompile(`^/galgame/(\d+)`)
 
 func (h *MessageHandler) attachGalgameNames(ctx context.Context, msgs []userModel.UserMessage) {
 	if h.galgame == nil || len(msgs) == 0 {
@@ -47,7 +51,7 @@ func (h *MessageHandler) attachGalgameNames(ctx context.Context, msgs []userMode
 		if !galgameNameTypes[msgs[i].Type] {
 			continue
 		}
-		m := patchLinkRe.FindStringSubmatch(msgs[i].Link)
+		m := galgameLinkRe.FindStringSubmatch(msgs[i].Link)
 		if m == nil {
 			continue
 		}

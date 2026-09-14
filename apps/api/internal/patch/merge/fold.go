@@ -77,16 +77,52 @@ func Fold(tx *gorm.DB, loser, survivor int) error {
 		return err
 	}
 
-	return tx.Exec("DELETE FROM patch WHERE id = ?", loser).Error
+	// vndb_id and bangumi_id are UNIQUE, so the survivor can only adopt an
+	// anchor after the loser has stopped holding it. Catalog moves the retired
+	// work's external refs onto the survivor in the same transaction as the
+	// merge; dropping them here leaves the /v2/moyu face answering "no page"
+	// for a vndb id catalog says this site covers.
+	var gone struct {
+		VndbID    string
+		BangumiID *int
+	}
+	if err := tx.Raw(
+		`DELETE FROM patch WHERE id = ? RETURNING vndb_id, bangumi_id`, loser,
+	).Scan(&gone).Error; err != nil {
+		return err
+	}
+	return tx.Exec(`
+		UPDATE patch SET
+			vndb_id    = CASE WHEN vndb_id !~ '^v[0-9]+$' AND ? ~ '^v[0-9]+$'
+			                  THEN ? ELSE vndb_id END,
+			bangumi_id = COALESCE(bangumi_id, ?)
+		WHERE id = ?`, gone.VndbID, gone.VndbID, gone.BangumiID, survivor).Error
 }
 
-// Recount rebuilds the counters a fold invalidates. Call it on the survivor
-// once every loser has been folded in.
+// Recount rebuilds what a fold invalidates on the survivor: the three counters,
+// and the facet arrays the browse filters read. patch.type / language /
+// platform are aggregated from the page's own resources and /galgame?language=
+// reads those arrays, never the resources -- so moving resources across without
+// recomputing them leaves the survivor unfilterable by everything it just
+// gained. Call it once every loser has been folded in.
 func Recount(tx *gorm.DB, patchID int) error {
 	return tx.Exec(`
 		UPDATE patch SET
 			resource_count   = (SELECT count(*) FROM patch_resource WHERE galgame_id = patch.id),
 			comment_count    = (SELECT count(*) FROM patch_comment WHERE galgame_id = patch.id),
-			contribute_count = (SELECT count(*) FROM user_patch_contribute_relation WHERE galgame_id = patch.id)
+			contribute_count = (SELECT count(*) FROM user_patch_contribute_relation WHERE galgame_id = patch.id),
+			type             = `+resourceFacet("type")+`,
+			language         = `+resourceFacet("language")+`,
+			platform         = `+resourceFacet("platform")+`
 		WHERE id = ?`, patchID).Error
+}
+
+// resourceFacet is the derivation PatchRepository.RecalculatePatchAggregates
+// does in Go, as SQL so it can run inside the fold's transaction.
+func resourceFacet(column string) string {
+	return fmt.Sprintf(`COALESCE((
+		SELECT jsonb_agg(DISTINCT e.v ORDER BY e.v)
+		FROM patch_resource r
+		CROSS JOIN LATERAL jsonb_array_elements_text(r.%s) AS e(v)
+		WHERE r.galgame_id = patch.id), '[]'::jsonb)`, column)
 }
