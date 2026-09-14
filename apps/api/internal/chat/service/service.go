@@ -25,7 +25,7 @@ func (s *ChatService) ListRooms(userID int) ([]model.ChatRoom, error) {
 
 func (s *ChatService) CreateGroupRoom(ownerUID int, name, avatar string) (*model.ChatRoom, error) {
 	link := xid.New().String()
-	return s.repo.CreateRoom(ownerUID, name, link, avatar)
+	return s.repo.CreateRoom(ownerUID, name, link, markdown.NormalizeContentImageURLs(avatar))
 }
 
 func (s *ChatService) JoinRoomByLink(userID int, link string) (*model.ChatRoom, error) {
