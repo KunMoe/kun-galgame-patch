@@ -246,7 +246,8 @@ func New(cfg *config.Config) *App {
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 
-	markdown.SetContentImageResolver(imgCli.MainURL)
+	markdown.SetContentImageResolver(imgCli.VariantURL)
+	markdown.RegisterContentImageHost(imgCfg.CDNBase)
 
 	contentImageMeta := imgCli.NewMetaResolver(3 * time.Second)
 	markdown.SetContentImageMetaResolver(func(hashes []string) map[string]markdown.ImageMeta {

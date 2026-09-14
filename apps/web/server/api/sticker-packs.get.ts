@@ -1,3 +1,9 @@
+interface UpstreamSticker {
+  src: string
+  name: string
+  hash?: string
+}
+
 interface StickerItem {
   src: string
   name: string
@@ -17,6 +23,15 @@ interface StickerPack {
  * addressed a position in a collection on a site we do not own, and that site
  * stopped serving static files.
  *
+ * `src` is rewritten to `/image/<hash>_<variant>` before it reaches the picker,
+ * and that is the load-bearing line here. Whatever `src` holds is what the
+ * picker writes into the post: upstream hands over an absolute CDN URL, so
+ * passing it through welded `image.kungal.iloveren.link` into every message and
+ * comment that used a sticker — the same mistake one domain later, which is how
+ * the first 498 URLs died. The token names the bytes; /image/** resolves it to
+ * whichever CDN is configured, and the picker's own thumbnails go through that
+ * route too.
+ *
  * Server-side because the browser must not reach across origins for it, and
  * cached because 82 KB is worth fetching once an hour rather than per picker
  * open. `staleMaxAge` is the load-bearing part: a sticker site outage should
@@ -28,7 +43,10 @@ export default defineCachedEventHandler(
     const res = await $fetch<{
       code: number
       message: string
-      data: { packs: StickerPack[] } | null
+      data: {
+        variant?: string
+        packs: { name: string; stickers: UpstreamSticker[] }[]
+      } | null
     }>(`${base}/api/v1/editor-packs`, { timeout: 8000 })
     if (res.code !== 0 || !res.data) {
       throw createError({
@@ -36,7 +54,18 @@ export default defineCachedEventHandler(
         statusMessage: res.message || 'sticker packs unavailable'
       })
     }
-    return res.data
+    const variant = res.data.variant ?? ''
+    return {
+      packs: res.data.packs.map((pack) => ({
+        name: pack.name,
+        stickers: pack.stickers.map((sticker) => ({
+          name: sticker.name,
+          src: sticker.hash
+            ? `/image/${sticker.hash}${variant ? `_${variant}` : ''}`
+            : sticker.src
+        }))
+      }))
+    }
   },
   { name: 'sticker-packs', maxAge: 3600, staleMaxAge: 604800, swr: true }
 )
