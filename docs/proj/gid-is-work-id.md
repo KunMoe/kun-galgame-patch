@@ -170,6 +170,50 @@ destroyed nothing recoverable only because the rows they dropped were join rows
 (`user_patch_contribute_relation`, `user_patch_favorite_relation`,
 `patch_link`) with no user-written text. Take a database snapshot before step 2.
 
+## Following catalog's own merges
+
+The renumber put every page on the work it shows *at that moment*. Catalog keeps
+merging works after that, and a merge erases the claim naming the work in the
+same transaction — so a merged-away id would leave its page on a number that
+stops meaning anything, with nothing on this side able to work out where it
+went. `GET /v2/catalog/redirects` is the only record of the successor.
+
+`internal/infrastructure/cron/catalog_merge_sync.go` consumes it every ten
+minutes (`cmd/catalog-merge-sync` runs the same drain on demand, `-apply` to
+write). Each redirect is one of four shapes:
+
+| retired id | survivor | what happens |
+| --- | --- | --- |
+| is a page | is a page | fold the retired page into the survivor, recount |
+| is a page | is not | the page renumbers onto the survivor's id |
+| is not | is a page | ledger only: `/galgame/<retired>` gains a 301 |
+| is not | is not | nothing — a work this site never carried |
+
+Two things it does besides the move:
+
+- **Flattens the local ledger.** Catalog rewrites its own older rows when the
+  target of a merge is itself merged, in place and *without touching
+  `merged_at`* — so `A → B` never resurfaces on the feed after `B → C`. A copy
+  that did not flatten at the same moment would keep pointing at a page that
+  stopped existing one merge ago. Both scopes move: a `legacy` row names the
+  page that took over a pre-037 number, and that page has just moved too.
+- **Refuses to 301 onto a 404.** A survivor with no page here gets no ledger
+  row; the retired id keeps answering the 404 it already answers.
+
+The first drain replays the whole merge history from an empty cursor — 4,473
+work redirects, measured 2026-09-14. On production that is 0 folds, 0 renumbers
+and 2,199 ledger rows: the renumber resolved every page *through* catalog, so
+no page was left stranded on a merged id. The 2,199 are catalog ids that 404
+today and should 301 to the page that holds the game.
+
+Migration 039 goes with it. `patch_redirect` was keyed on `old_id` alone, which
+was right while `align-patch-ids` was the only writer and every row was
+`legacy`. The two scopes number their old ids out of different spaces, and 24 of
+catalog's merged-away work ids are also a pre-037 page number that already holds
+a legacy row — under the old key the cron's upsert would have taken those rows
+over and `/patch/<n>` would have started 404ing for 24 working URLs. The key is
+`(scope, old_id)` now.
+
 ## Still owed by infra and kungal
 
 This closes moyu's half. The gid is **shared** — kungal's `galgame.id` is the
