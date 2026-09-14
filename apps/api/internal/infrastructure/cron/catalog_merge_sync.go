@@ -59,13 +59,16 @@ func actionFor(oldIsPage, newIsPage bool) redirectAction {
 }
 
 // MergeSyncReport is what one drain did, split by what each redirect asked
-// for. A run that only moves the ledger is the steady state; a Folded or
-// Renumbered above zero means a page this site serves changed number.
+// for. A Folded or Renumbered above zero means a page this site serves changed
+// number. Unchanged is the tail the next tick always re-reads: a short page
+// carries no cursor to advance past, so the settled state replays its last few
+// rows forever and only Applied() tells a real change from that churn.
 type MergeSyncReport struct {
 	Scanned    int
 	Folded     int
 	Renumbered int
 	Ledger     int
+	Unchanged  int
 	Skipped    int
 }
 
@@ -134,10 +137,14 @@ func applyRedirects(
 	for i := range items {
 		ids = append(ids, int(items[i].OldID), int(items[i].CurrentID))
 	}
-	// Most of the backlog is about works this site never carried, so the page
-	// is settled for the whole batch in one query rather than opening a
-	// transaction per redirect to find nothing to do.
+	// Most of the backlog is about works this site never carried, so both the
+	// page and the ledger are settled for the whole batch in one query each,
+	// rather than opening a transaction per redirect to find nothing to do.
 	pages, err := existingPages(db, ids)
+	if err != nil {
+		return err
+	}
+	ledger, err := mergeLedger(db, ids)
 	if err != nil {
 		return err
 	}
@@ -149,6 +156,10 @@ func applyRedirects(
 		}
 		report.Scanned++
 		action := actionFor(pages[oldID], pages[newID])
+		if action == redirectLedger && ledger[oldID] == newID {
+			report.Unchanged++
+			continue
+		}
 		switch action {
 		case redirectSkip:
 			report.Skipped++
@@ -210,6 +221,23 @@ func applyRedirect(tx *gorm.DB, action redirectAction, oldID, newID int) error {
 		INSERT INTO patch_redirect(old_id, new_id, scope) VALUES (?, ?, 'merge')
 		ON CONFLICT(scope, old_id) DO UPDATE SET new_id = EXCLUDED.new_id
 	`, oldID, newID).Error
+}
+
+// mergeLedger is the merge rows already recorded for these ids, so a redirect
+// whose row is already right is not rewritten and not counted as work done.
+func mergeLedger(db *gorm.DB, ids []int) (map[int]int, error) {
+	type row struct{ OldID, NewID int }
+	var rows []row
+	if err := db.Raw(
+		`SELECT old_id, new_id FROM patch_redirect WHERE scope = 'merge' AND old_id IN ?`, ids,
+	).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("look up merge ledger: %w", err)
+	}
+	out := make(map[int]int, len(rows))
+	for _, r := range rows {
+		out[r.OldID] = r.NewID
+	}
+	return out, nil
 }
 
 func existingPages(db *gorm.DB, ids []int) (map[int]bool, error) {

@@ -51,6 +51,7 @@ func main() {
 	fmt.Printf("  折叠重复页      %6d\n", report.Folded)
 	fmt.Printf("  页面改号        %6d\n", report.Renumbered)
 	fmt.Printf("  只补 301        %6d\n", report.Ledger)
+	fmt.Printf("  已经是对的      %6d\n", report.Unchanged)
 	fmt.Printf("  与本站无关      %6d\n", report.Skipped)
 	fmt.Printf("  已追平          %6v\n", caughtUp)
 
