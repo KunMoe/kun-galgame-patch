@@ -35,8 +35,14 @@ const { data: header } = await useAsyncData<PatchHeaderOrMove | null>(
 // because the merge erases the claim naming the work and patch_redirect is the
 // only place the successor is still written down.
 const movedTo = (v: PatchHeaderOrMove | null | undefined) => v?.moved_to ?? 0
+// Carry the query and hash across. A comment notice links
+// /galgame/<id>?tab=comment#comment-<n>, and hopping to the bare path dropped
+// the reader on the info tab of a page they were sent to a comment on.
 const hopTo = (to: number) =>
-  navigateTo(`/galgame/${to}`, { redirectCode: 301, replace: true })
+  navigateTo(
+    { path: `/galgame/${to}`, query: route.query, hash: route.hash },
+    { redirectCode: 301, replace: true }
+  )
 
 const moved = movedTo(header.value)
 if (moved > 0) await hopTo(moved)
