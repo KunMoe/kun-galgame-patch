@@ -77,6 +77,23 @@ func Start(
 		}); err != nil {
 			slog.Error("注册 catalog 展示轴同步任务失败", "error", err)
 		}
+
+		if _, err := c.AddFunc(mergeSyncSchedule, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			report, caughtUp, err := RunCatalogMergeSync(ctx, db, catalog, true)
+			if err != nil {
+				slog.Error("catalog 合并同步失败", "error", err, "applied", report.Applied())
+				return
+			}
+			if report.Applied() > 0 || !caughtUp {
+				slog.Info("catalog 合并同步完成",
+					"folded", report.Folded, "renumbered", report.Renumbered,
+					"ledger", report.Ledger, "caught_up", caughtUp)
+			}
+		}); err != nil {
+			slog.Error("注册 catalog 合并同步任务失败", "error", err)
+		}
 	}
 
 	if img != nil && img.Configured() {
