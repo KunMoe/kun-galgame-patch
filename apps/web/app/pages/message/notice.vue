@@ -7,7 +7,7 @@ interface ListResponse {
 }
 
 const api = useApi()
-const messageStore = useMessageStore()
+const { refresh: refreshUnread } = useUnreadCounts()
 
 const { data, pending } = await useAsyncData<ListResponse>(
   'message-notice',
@@ -20,7 +20,7 @@ const { data, pending } = await useAsyncData<ListResponse>(
 
 onMounted(async () => {
   const res = await api.put('/message/read', { type: 'all' })
-  if (res.code === 0) messageStore.clear()
+  if (res.code === 0) await refreshUnread()
 })
 </script>
 

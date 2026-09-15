@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 
+	chatService "kun-galgame-patch-api/internal/chat/service"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/message/dto"
 	"kun-galgame-patch-api/internal/message/service"
@@ -21,12 +22,13 @@ import (
 
 type MessageHandler struct {
 	service *service.MessageService
+	chat    *chatService.ChatService
 	users   *userclient.Client
 	galgame *galgameClient.Client
 }
 
-func New(svc *service.MessageService, users *userclient.Client, galgame *galgameClient.Client) *MessageHandler {
-	return &MessageHandler{service: svc, users: users, galgame: galgame}
+func New(svc *service.MessageService, chat *chatService.ChatService, users *userclient.Client, galgame *galgameClient.Client) *MessageHandler {
+	return &MessageHandler{service: svc, chat: chat, users: users, galgame: galgame}
 }
 
 var galgameNameTypes = map[string]bool{
@@ -164,6 +166,35 @@ func (h *MessageHandler) GetUnreadTypes(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.OK(c, types)
+}
+
+// GetUnreadCounts answers the message center's per-category badges and the
+// top-bar bell. The six notification categories ride the same user_message
+// types the tabs filter on; `notice` is their sum (the 通知消息 tab shows every
+// type) and `chat` is the private/group unread, which lives in its own tables.
+func (h *MessageHandler) GetUnreadCounts(c fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+
+	counts, err := h.service.GetUnreadCounts(user.ID)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	if counts == nil {
+		counts = map[string]int{}
+	}
+	notice := 0
+	for _, n := range counts {
+		notice += n
+	}
+
+	chat, err := h.chat.CountUnread(user.ID)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+
+	counts["notice"] = notice
+	counts["chat"] = chat
+	return response.OK(c, counts)
 }
 
 func (h *MessageHandler) MarkAsRead(c fiber.Ctx) error {

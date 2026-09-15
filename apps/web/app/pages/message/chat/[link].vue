@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
+import { format, isToday, isYesterday } from 'date-fns'
 
 useKunDisableSeo('聊天')
 
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { refresh: refreshUnread } = useUnreadCounts()
 
 const link = computed(() => String(route.params.link))
 
@@ -130,6 +132,16 @@ const pollNew = async () => {
   if (!fresh.length) return
   messages.value = [...messages.value, ...fresh]
   if (wasAtBottom) await scrollToBottom()
+  if (fresh.some((m) => m.sender_id !== myUserId.value)) await markSeen()
+}
+
+// Viewing the room is the read event. Mark the whole room rather than the
+// loaded tail: a room can hold more unread than PAGE, and the message-center
+// 私聊 badge counts the ones this page never fetched.
+const markSeen = async () => {
+  if (!room.value) return
+  const res = await api.put(`/chat/room/${link.value}/seen-all`)
+  if (res.code === 0) await refreshUnread()
 }
 
 const onScroll = () => {
@@ -295,9 +307,34 @@ const fmtTime = (d: string | Date) => {
   ).padStart(2, '0')}`
 }
 
+const dayLabel = (d: string | Date) => {
+  const date = new Date(d)
+  if (isToday(date)) return '今天'
+  if (isYesterday(date)) return '昨天'
+  const sameYear = date.getFullYear() === new Date().getFullYear()
+  return format(date, sameYear ? 'M月d日' : 'yyyy年M月d日')
+}
+
+// The messages list is oldest-first, so a separator belongs to whichever
+// message is the first of its calendar day. Keyed by message id (not index):
+// loadOlder prepends and pollNew appends, and either can open a new day.
+const dateSeparators = computed<Record<number, string>>(() => {
+  const separators: Record<number, string> = {}
+  let prevDay = ''
+  for (const m of messages.value) {
+    const day = format(new Date(m.created), 'yyyy-MM-dd')
+    if (day !== prevDay) {
+      separators[m.id] = dayLabel(m.created)
+      prevDay = day
+    }
+  }
+  return separators
+})
+
 onMounted(async () => {
   if (room.value) {
     await loadLatest()
+    await markSeen()
     resume()
   }
 })
@@ -364,6 +401,17 @@ onBeforeUnmount(() => pause())
             没有更早的消息了
           </div>
           <template v-for="m in messages" :key="m.id">
+            <div
+              v-if="dateSeparators[m.id]"
+              class="my-2 flex justify-center"
+            >
+              <span
+                class="bg-default-100 text-default-500 rounded-full px-3 py-1 text-xs"
+              >
+                {{ dateSeparators[m.id] }}
+              </span>
+            </div>
+
             <div v-if="m.status === 'DELETED'" class="my-1 flex justify-center">
               <span
                 class="bg-default-100 text-default-500 rounded-full px-3 py-1 text-xs"

@@ -284,3 +284,37 @@ func (r *ChatRepository) MarkSeen(roomID, userID int, messageIDs []int) error {
 	}
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&records).Error
 }
+
+// CountUnread counts every message the user has not seen: messages in the rooms
+// they belong to, sent by somebody else, not withdrawn, with no chat_message_seen
+// row for this user. The seen rows are written by MarkSeen when the chat page
+// loads a room, so an unopened room contributes its whole tail.
+func (r *ChatRepository) CountUnread(userID int) (int, error) {
+	var total int64
+	err := r.db.Model(&model.ChatMessage{}).
+		Joins("JOIN chat_member ON chat_member.chat_room_id = chat_message.chat_room_id AND chat_member.user_id = ?", userID).
+		Joins("LEFT JOIN chat_message_seen ON chat_message_seen.chat_message_id = chat_message.id AND chat_message_seen.user_id = ?", userID).
+		Where("chat_message.sender_id <> ?", userID).
+		Where("chat_message.status <> ?", "DELETED").
+		Where("chat_message_seen.id IS NULL").
+		Count(&total).Error
+	return int(total), err
+}
+
+// MarkRoomSeen marks every message in the room as seen for the user. Opening a
+// room is the read event, and the room may hold more unread than the page loads
+// (PAGE = 50), so this writes the tail the client never fetched.
+func (r *ChatRepository) MarkRoomSeen(roomID, userID int) error {
+	return r.db.Exec(`
+		INSERT INTO chat_message_seen (chat_message_id, user_id)
+		SELECT m.id, ?
+		FROM chat_message m
+		WHERE m.chat_room_id = ?
+		  AND m.sender_id <> ?
+		  AND NOT EXISTS (
+			SELECT 1 FROM chat_message_seen s
+			WHERE s.chat_message_id = m.id AND s.user_id = ?
+		  )
+		ON CONFLICT (user_id, chat_message_id) DO NOTHING
+	`, userID, roomID, userID, userID).Error
+}
