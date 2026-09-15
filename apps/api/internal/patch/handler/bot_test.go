@@ -3,33 +3,47 @@ package handler
 import "testing"
 
 func TestValidateBotResource(t *testing.T) {
-	ok := []string{"zh-Hans"}
+	zh := []string{"zh-Hans"}
 	win := []string{"windows"}
-	if msg := validateBotResource(nil, ok, win); msg == "" {
-		t.Fatal("empty types")
+
+	refused := []struct {
+		name  string
+		types []string
+		langs []string
+		plats []string
+	}{
+		{"crack", []string{"crack"}, zh, win},
+		{"decensor", []string{"decensor"}, zh, win},
+		{"r18", []string{"r18"}, zh, win},
+		{"mod", []string{"mod"}, zh, win},
+		{"save", []string{"save"}, zh, win},
+		{"image", []string{"image"}, zh, win},
+		{"other", []string{"other"}, zh, win},
+		{"unknown type", []string{"nope"}, zh, win},
+		{"one bad type among good", []string{"manual", "crack"}, zh, win},
+		{"unknown language", []string{"manual"}, []string{"jp"}, win},
+		{"unknown platform", []string{"manual"}, zh, []string{"zh-Hans"}},
 	}
-	if msg := validateBotResource([]string{"manual"}, nil, win); msg == "" {
-		t.Fatal("empty language")
+	for _, c := range refused {
+		if msg := validateBotResource(c.types, c.langs, c.plats); msg == "" {
+			t.Errorf("%s: accepted, want refused", c.name)
+		}
 	}
-	if msg := validateBotResource([]string{"manual"}, ok, nil); msg == "" {
-		t.Fatal("empty platform")
+
+	accepted := []struct {
+		name  string
+		types []string
+		langs []string
+		plats []string
+	}{
+		{"manual zh-Hans", []string{"manual"}, zh, win},
+		{"fix ja", []string{"fix"}, []string{"ja"}, win},
+		{"ai + machine_polishing", []string{"ai", "machine_polishing"}, zh, win},
+		{"machine android", []string{"machine"}, zh, []string{"android"}},
 	}
-	if msg := validateBotResource([]string{"crack"}, ok, win); msg == "" {
-		t.Fatal("crack must be refused")
-	}
-	if msg := validateBotResource([]string{"nope"}, ok, win); msg == "" {
-		t.Fatal("unknown type")
-	}
-	if msg := validateBotResource([]string{"manual"}, []string{"jp"}, win); msg == "" {
-		t.Fatal("unknown language")
-	}
-	if msg := validateBotResource([]string{"manual"}, ok, ok); msg == "" {
-		t.Fatal("unknown platform")
-	}
-	if msg := validateBotResource([]string{"manual"}, ok, win); msg != "" {
-		t.Fatalf("manual: %s", msg)
-	}
-	if msg := validateBotResource([]string{"fix"}, []string{"ja"}, win); msg != "" {
-		t.Fatalf("fix: %s", msg)
+	for _, c := range accepted {
+		if msg := validateBotResource(c.types, c.langs, c.plats); msg != "" {
+			t.Errorf("%s: %s", c.name, msg)
+		}
 	}
 }

@@ -25,7 +25,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var ErrGalgameMissing = errors.New("galgame missing for vndb_id")
+var (
+	ErrGalgameMissing       = errors.New("galgame missing for vndb_id")
+	ErrArtifactUnconfigured = errors.New("artifact client is not configured")
+	ErrArtifactNotReady     = errors.New("artifact is missing or not ready")
+)
 
 type AuditLogger interface {
 	CreateLog(actorID int, action string, data any) error
@@ -693,22 +697,41 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 	}
 }
 
-func (s *PatchService) ResourceTypes(galgameID int) ([]string, error) {
-	return s.repo.ResourceTypes(galgameID)
+func (s *PatchService) ResourceCoverage(galgameID int) (repository.ResourceCoverage, error) {
+	return s.repo.ResourceCoverage(galgameID)
 }
 
-func (s *PatchService) BotCreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
-	if resource.Storage != "s3" || resource.ArtifactUUID == "" {
-		return fmt.Errorf("bot resources must be hosted artifacts")
+// EnsureLocalUser writes the user row the patch/patch_resource foreign keys
+// point at. Every human path gets it from OAuthCallback's provisioning, so
+// nothing else needs to ask -- but a machine key never runs that callback, and
+// without this its first write dies on ERROR: insert or update on table
+// "patch" violates foreign key constraint "patch_user_id_fkey".
+func (s *PatchService) EnsureLocalUser(ctx context.Context, userID int) error {
+	if userID <= 0 {
+		return fmt.Errorf("invalid user id %d", userID)
 	}
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&authModel.User{ID: userID}).Error
+}
+
+// EnsureArtifactReady rejects a uuid the artifact service does not hold as
+// n=ready. The human lane cannot reach this state -- the browser goes through
+// /api/v1/upload/complete, which fails loudly -- but a bot hands over a uuid
+// nothing else has looked at, and storing an unfinished one gives the resource
+// a download that 404s forever.
+func (s *PatchService) EnsureArtifactReady(ctx context.Context, uuid string) error {
 	if s.art == nil || !s.art.Configured() {
-		return fmt.Errorf("artifact client is not configured")
+		return ErrArtifactUnconfigured
 	}
-	art, err := s.art.Get(ctx, resource.ArtifactUUID)
-	if err != nil || art == nil || art.Status != artifactclient.StatusReady {
-		return fmt.Errorf("artifact is missing or not ready")
+	art, err := s.art.Get(ctx, uuid)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrArtifactNotReady, uuid, err)
 	}
-	return s.CreateResource(ctx, resource, userID)
+	if art == nil || art.Status != artifactclient.StatusReady {
+		return fmt.Errorf("%w: %s", ErrArtifactNotReady, uuid)
+	}
+	return nil
 }
 
 func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {

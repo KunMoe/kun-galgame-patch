@@ -281,17 +281,39 @@ func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, erro
 	return resources, err
 }
 
-func (r *PatchRepository) ResourceTypes(galgameID int) ([]string, error) {
-	var types []string
-	err := r.db.Raw(`
-		select distinct t
-		from patch_resource, jsonb_array_elements_text(type) as t
-		where galgame_id = ? and status <> 2 and t <> ''
-	`, galgameID).Scan(&types).Error
-	if types == nil {
-		types = []string{}
+// ResourceCoverage answers "what does this page already have", which is a
+// question about type AND language: a bot deciding whether a 汉化 already
+// exists cannot read that off type alone -- "manual" is equally a hand-made
+// Japanese fix -- so both axes ship together.
+type ResourceCoverage struct {
+	Types     []string `json:"types"`
+	Languages []string `json:"languages"`
+}
+
+func (r *PatchRepository) ResourceCoverage(galgameID int) (ResourceCoverage, error) {
+	var rows []struct {
+		Facet string
+		Value string
 	}
-	return types, err
+	cov := ResourceCoverage{Types: []string{}, Languages: []string{}}
+	err := r.db.Raw(`
+		select 'type' as facet, v as value
+		from patch_resource, jsonb_array_elements_text(type) as v
+		where galgame_id = ? and status <> 2 and v <> ''
+		union
+		select 'language', v
+		from patch_resource, jsonb_array_elements_text(language) as v
+		where galgame_id = ? and status <> 2 and v <> ''
+		order by 1, 2
+	`, galgameID, galgameID).Scan(&rows).Error
+	for _, row := range rows {
+		if row.Facet == "type" {
+			cov.Types = append(cov.Types, row.Value)
+		} else {
+			cov.Languages = append(cov.Languages, row.Value)
+		}
+	}
+	return cov, err
 }
 
 func (r *PatchRepository) CreateResource(resource *model.PatchResource) error {
