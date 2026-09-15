@@ -39,11 +39,19 @@ func (a *App) RegisterRoutes() {
 	authRoutes.Post("/me/avatar", auth, a.AuthHandler.UploadAvatar)
 
 	if a.Config.BotSubmit.Configured() {
+		botUser := a.Config.BotSubmit.UserID
 		bot := api.Group("/bot", middleware.BotKey(a.Config.BotSubmit.Key))
 		bot.Get("/patches/:id/coverage", a.PatchHandler.BotCoverage)
 		bot.Post("/patches/:id/resources", func(c fiber.Ctx) error {
-			return a.PatchHandler.BotCreateResource(c, a.Config.BotSubmit.UserID)
+			return a.PatchHandler.BotCreateResource(c, botUser)
 		})
+		bot.Post("/upload/init", func(c fiber.Ctx) error {
+			return a.UploadHandler.BotInit(c, botUser)
+		})
+		bot.Post("/upload/complete", func(c fiber.Ctx) error {
+			return a.UploadHandler.BotComplete(c, botUser)
+		})
+		bot.Post("/upload/resume", a.UploadHandler.BotResume)
 	}
 
 	patchRoutes := api.Group("/patch")

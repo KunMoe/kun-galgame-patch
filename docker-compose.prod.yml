@@ -70,7 +70,9 @@ x-moyu-api-env: &moyu-api-env
   # Read by config.Load() in EVERY moyu binary (api/migrate/tools), so it must
   # be here in the shared anchor, not just the Dokploy panel.
   KUN_ARTIFACT_SERVICE_BASE_URL: http://artifact:9279
-  # forge bot lane (same key/user as letmoe). Empty = routes not registered.
+  # forge bot lane (same key/user as letmoe). Either one empty = routes not
+  # registered. The user id is also provisioned into the local "user" table at
+  # boot -- both patch.user_id and patch_resource.user_id have a FK to it.
   KUN_BOT_SUBMIT_KEY: ${KUN_BOT_SUBMIT_KEY:-}
   KUN_BOT_SUBMIT_USER_ID: ${KUN_BOT_SUBMIT_USER_ID:-}
   KUN_IMAGE_OAUTH_CLIENT_ID: ${KUN_IMAGE_OAUTH_CLIENT_ID:-}

@@ -278,6 +278,8 @@ func New(cfg *config.Config) *App {
 	app.Use(recover.New())
 	app.Use(middleware.CORS(cfg.CORS))
 
+	provisionBotUser(cfg.BotSubmit, patchSvc)
+
 	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli)
 	stopBackground := func() {
 		cronStop()
@@ -305,6 +307,28 @@ func New(cfg *config.Config) *App {
 		TrustHandler:   trustHdl,
 		CronStop:       stopBackground,
 	}
+}
+
+// provisionBotUser writes the bot's local user row once at boot. The bot lane
+// is gated on both variables being set, so a key with no user id (or a
+// mistyped one -- config falls back to 0) silently unregisters the routes and
+// answers 404; say so rather than leaving the forge to guess.
+func provisionBotUser(cfg config.BotSubmit, svc *patchService.PatchService) {
+	if !cfg.Configured() {
+		if cfg.Key != "" || cfg.UserID != 0 {
+			slog.Warn("bot submit lane disabled: KUN_BOT_SUBMIT_KEY and KUN_BOT_SUBMIT_USER_ID must both be set",
+				"has_key", cfg.Key != "", "user_id", cfg.UserID)
+		}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := svc.EnsureLocalUser(ctx, cfg.UserID); err != nil {
+		slog.Error("bot submit lane: provisioning the local user row failed; every submission will fail on the user_id foreign key",
+			"user_id", cfg.UserID, "error", err)
+		return
+	}
+	slog.Info("bot submit lane enabled", "user_id", cfg.UserID)
 }
 
 // globalErrorHandler speaks whichever error language the path belongs to.
