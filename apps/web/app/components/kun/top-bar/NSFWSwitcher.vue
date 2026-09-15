@@ -15,6 +15,9 @@ const isDanger = computed(() => {
 
 const onSelect = (key: KunNsfwPreference) => {
   settingStore.setNsfwPreference(key)
+  // Persist synchronously before the reload: the plugin's own write rides a
+  // pre-flush watcher (a microtask), and location.reload() would race it.
+  settingStore.$persist()
   if (import.meta.client) location.reload()
 }
 </script>
