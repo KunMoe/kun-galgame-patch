@@ -131,7 +131,13 @@ export default defineNuxtConfig({
     // on cross-site POST/iframe/subrequests, so there's no CSRF exposure — and
     // it matches the session cookie these mirror.
     cookieOptions: {
-      maxAge: 60 * 60 * 24 * 7,
+      // 400 days — the longest a browser keeps a cookie (Chrome caps at 400).
+      // The plugin only rewrites a cookie when its store mutates, so a user who
+      // sets a preference and then changes nothing would otherwise lose it when
+      // this lapses; app/plugins/persist-refresh.client.ts re-persists on every
+      // load to make the window slide. Both are display/pref mirrors, so a long
+      // life is safe — the real auth boundary is the httpOnly moyu_session.
+      maxAge: 60 * 60 * 24 * 400,
       sameSite: 'lax'
     }
   },
