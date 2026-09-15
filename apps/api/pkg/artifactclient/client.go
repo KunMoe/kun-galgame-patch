@@ -73,6 +73,7 @@ type Config struct {
 const (
 	callTimeout         = 30 * time.Second
 	completeCallTimeout = 90 * time.Second
+	StatusReady         = 1
 )
 
 type Client struct {
@@ -111,6 +112,22 @@ func New(cfg Config) *Client {
 }
 
 func (c *Client) Configured() bool { return c.inner != nil && c.basicAuth != "" }
+
+func (c *Client) Get(ctx context.Context, uuid string) (*ArtifactResponse, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+	resp, err := c.inner.GetArtifactWithResponse(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
+		return resp.JSON200.Data, nil
+	}
+	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+}
 
 func (c *Client) InitUpload(ctx context.Context, req InitUploadRequest) (*InitUploadResponse, error) {
 	if !c.Configured() {

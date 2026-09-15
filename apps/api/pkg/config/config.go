@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -17,7 +18,15 @@ type Config struct {
 	Dlsite       DlsiteConfig
 	CORS         CORSConfig
 	Site         SiteConfig
+	BotSubmit    BotSubmit
 }
+
+type BotSubmit struct {
+	Key    string
+	UserID int
+}
+
+func (b BotSubmit) Configured() bool { return b.Key != "" && b.UserID > 0 }
 
 // SiteConfig is what this service knows about its own public address.
 //
@@ -166,6 +175,10 @@ func Load() *Config {
 		Site: SiteConfig{
 			BaseURL: strings.TrimRight(getEnv("KUN_SITE_BASE_URL", "https://www.moyu.moe"), "/"),
 		},
+		BotSubmit: BotSubmit{
+			Key:    getEnv("KUN_BOT_SUBMIT_KEY", ""),
+			UserID: int(getEnvUint64("KUN_BOT_SUBMIT_USER_ID", 0)),
+		},
 	}
 }
 
@@ -174,6 +187,18 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvUint64(key string, fallback uint64) uint64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func mustGetEnv(key string) string {

@@ -693,6 +693,24 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 	}
 }
 
+func (s *PatchService) ResourceTypes(galgameID int) ([]string, error) {
+	return s.repo.ResourceTypes(galgameID)
+}
+
+func (s *PatchService) BotCreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
+	if resource.Storage != "s3" || resource.ArtifactUUID == "" {
+		return fmt.Errorf("bot resources must be hosted artifacts")
+	}
+	if s.art == nil || !s.art.Configured() {
+		return fmt.Errorf("artifact client is not configured")
+	}
+	art, err := s.art.Get(ctx, resource.ArtifactUUID)
+	if err != nil || art == nil || art.Status != artifactclient.StatusReady {
+		return fmt.Errorf("artifact is missing or not ready")
+	}
+	return s.CreateResource(ctx, resource, userID)
+}
+
 func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
 	resource.Note = markdown.NormalizeContentImageURLs(resource.Note)

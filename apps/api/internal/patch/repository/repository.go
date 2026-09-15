@@ -281,6 +281,19 @@ func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, erro
 	return resources, err
 }
 
+func (r *PatchRepository) ResourceTypes(galgameID int) ([]string, error) {
+	var types []string
+	err := r.db.Raw(`
+		select distinct t
+		from patch_resource, jsonb_array_elements_text(type) as t
+		where galgame_id = ? and status <> 2 and t <> ''
+	`, galgameID).Scan(&types).Error
+	if types == nil {
+		types = []string{}
+	}
+	return types, err
+}
+
 func (r *PatchRepository) CreateResource(resource *model.PatchResource) error {
 	return r.db.Create(resource).Error
 }

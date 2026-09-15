@@ -38,6 +38,14 @@ func (a *App) RegisterRoutes() {
 	authRoutes.Patch("/me", auth, a.AuthHandler.UpdateMe)
 	authRoutes.Post("/me/avatar", auth, a.AuthHandler.UploadAvatar)
 
+	if a.Config.BotSubmit.Configured() {
+		bot := api.Group("/bot", middleware.BotKey(a.Config.BotSubmit.Key))
+		bot.Get("/patches/:id/coverage", a.PatchHandler.BotCoverage)
+		bot.Post("/patches/:id/resources", func(c fiber.Ctx) error {
+			return a.PatchHandler.BotCreateResource(c, a.Config.BotSubmit.UserID)
+		})
+	}
+
 	patchRoutes := api.Group("/patch")
 
 	patchRoutes.Post("/", auth, a.PatchHandler.CreatePatch)
