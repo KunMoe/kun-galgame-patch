@@ -1,21 +1,13 @@
 <script setup lang="ts">
 const userStore = useUserStore()
-const messageStore = useMessageStore()
-const api = useApi()
 const { refreshMe } = useRefreshMe()
+const { refresh: refreshUnread } = useUnreadCounts()
 
 const { open: openAuthModal } = useAuthModal()
 
-const fetchUnread = async () => {
-  const res = await api.get<string[]>('/message/unread')
-  if (res.code === 0) {
-    messageStore.setUnread(res.data ?? [])
-  }
-}
-
 onMounted(async () => {
   if (userStore.user.id) {
-    await Promise.all([refreshMe(), fetchUnread()])
+    await Promise.all([refreshMe(), refreshUnread()])
   }
 })
 </script>

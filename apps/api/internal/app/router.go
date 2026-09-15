@@ -176,6 +176,7 @@ func (a *App) RegisterRoutes() {
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)
 	msgRoutes.Get("/all", a.MessageHandler.GetAllMessages)
 	msgRoutes.Get("/unread", a.MessageHandler.GetUnreadTypes)
+	msgRoutes.Get("/unread/counts", a.MessageHandler.GetUnreadCounts)
 	msgRoutes.Put("/read", a.MessageHandler.MarkAsRead)
 
 	adminRoutes := api.Group("/admin", auth, moderatorAuth)
@@ -246,6 +247,7 @@ func (a *App) RegisterRoutes() {
 	chatRoutes.Get("/room/:link/message", a.ChatHandler.ListMessages)
 	chatRoutes.Post("/room/:link/message", a.ChatHandler.CreateMessage)
 	chatRoutes.Put("/room/:link/seen", a.ChatHandler.MarkSeen)
+	chatRoutes.Put("/room/:link/seen-all", a.ChatHandler.MarkRoomSeen)
 	chatRoutes.Put("/message/:id", a.ChatHandler.UpdateMessage)
 	chatRoutes.Delete("/message/:id", a.ChatHandler.DeleteMessage)
 	chatRoutes.Post("/message/:id/reaction", a.ChatHandler.ToggleReaction)

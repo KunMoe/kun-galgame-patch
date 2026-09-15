@@ -7,6 +7,7 @@ interface ListResponse {
 }
 
 const api = useApi()
+const { refresh: refreshUnread } = useUnreadCounts()
 const { data, pending } = await useAsyncData<ListResponse>(
   'message-mention',
   async () => {
@@ -17,6 +18,11 @@ const { data, pending } = await useAsyncData<ListResponse>(
   },
   { default: () => ({ items: [], total: 0 }) }
 )
+
+onMounted(async () => {
+  const res = await api.put('/message/read', { type: 'mention' })
+  if (res.code === 0) await refreshUnread()
+})
 </script>
 
 <template>

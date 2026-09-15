@@ -21,6 +21,10 @@ func (s *MessageService) GetUnreadTypes(recipientID int) ([]string, error) {
 	return s.repo.GetUnreadTypes(recipientID)
 }
 
+func (s *MessageService) GetUnreadCounts(recipientID int) (map[string]int, error) {
+	return s.repo.GetUnreadCounts(recipientID)
+}
+
 func (s *MessageService) MarkAsRead(recipientID int, msgType string) error {
 	return s.repo.MarkAsRead(recipientID, msgType)
 }

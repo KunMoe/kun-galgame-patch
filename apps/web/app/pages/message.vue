@@ -2,26 +2,32 @@
 useKunDisableSeo('消息中心')
 
 const route = useRoute()
+const messageStore = useMessageStore()
+const { refresh: refreshUnread } = useUnreadCounts()
 
 const navItems = [
-  { key: 'notice', title: '通知消息', href: '/message/notice', icon: 'lucide:bell' },
-  { key: 'follow', title: '关注消息', href: '/message/follow', icon: 'lucide:users' },
-  { key: 'mention', title: '@ 消息', href: '/message/mention', icon: 'lucide:at-sign' },
+  { key: 'notice', title: '通知消息', href: '/message/notice', icon: 'lucide:bell', countKey: 'notice' },
+  { key: 'follow', title: '关注消息', href: '/message/follow', icon: 'lucide:users', countKey: 'follow' },
+  { key: 'mention', title: '@ 消息', href: '/message/mention', icon: 'lucide:at-sign', countKey: 'mention' },
   {
     key: 'patch-resource-create',
     title: '新补丁通知',
     href: '/message/patch-resource-create',
-    icon: 'lucide:plus-circle'
+    icon: 'lucide:plus-circle',
+    countKey: 'patchResourceCreate'
   },
   {
     key: 'patch-resource-update',
     title: '补丁更新通知',
     href: '/message/patch-resource-update',
-    icon: 'lucide:refresh-cw'
+    icon: 'lucide:refresh-cw',
+    countKey: 'patchResourceUpdate'
   },
-  { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog' },
-  { key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }
+  { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog', countKey: 'system' },
+  { key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail', countKey: 'chat' }
 ]
+
+const countOf = (key: string) => messageStore.unreadCounts[key] ?? 0
 
 const currentKey = computed(
   () => route.path.split('/').filter(Boolean)[1] ?? ''
@@ -33,6 +39,8 @@ const navLinkClass = (key: string) => [
     ? 'bg-primary text-white'
     : 'text-default-600 hover:bg-default-100'
 ]
+
+onMounted(() => refreshUnread())
 </script>
 
 <template>
@@ -49,6 +57,13 @@ const navLinkClass = (key: string) => [
       >
         <KunIcon :name="item.icon" class="size-4 shrink-0" />
         {{ item.title }}
+        <span v-if="countOf(item.countKey) > 0" class="ml-auto">
+          <KunBadge
+            variant="count"
+            :count="countOf(item.countKey)"
+            class-name="bg-primary-100 text-primary-700"
+          />
+        </span>
       </NuxtLink>
     </nav>
 
@@ -64,6 +79,13 @@ const navLinkClass = (key: string) => [
             >
               <KunIcon :name="item.icon" class="size-4 shrink-0" />
               {{ item.title }}
+              <span v-if="countOf(item.countKey) > 0" class="ml-auto">
+                <KunBadge
+                  variant="count"
+                  :count="countOf(item.countKey)"
+                  class-name="bg-primary-100 text-primary-700"
+                />
+              </span>
             </NuxtLink>
           </nav>
         </KunCard>

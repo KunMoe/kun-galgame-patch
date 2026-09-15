@@ -157,6 +157,18 @@ func (s *ChatService) MarkSeen(userID int, link string, messageIDs []int) error 
 	return s.repo.MarkSeen(room.ID, userID, messageIDs)
 }
 
+func (s *ChatService) CountUnread(userID int) (int, error) {
+	return s.repo.CountUnread(userID)
+}
+
+func (s *ChatService) MarkRoomSeen(userID int, link string) error {
+	room, err := s.resolveRoomForMember(userID, link)
+	if err != nil {
+		return err
+	}
+	return s.repo.MarkRoomSeen(room.ID, userID)
+}
+
 func (s *ChatService) resolveRoomForMember(userID int, link string) (*model.ChatRoom, error) {
 	room, err := s.repo.FindRoomByLink(link)
 	if err != nil {

@@ -425,3 +425,15 @@ func (h *ChatHandler) MarkSeen(c fiber.Ctx) error {
 	}
 	return response.OKMessage(c, "已标记")
 }
+
+// MarkRoomSeen marks the whole room read. Opening a room is the read event, and
+// a room can hold more unread than the page loads, so this is what lets the
+// message-center 私聊 badge fall to zero.
+func (h *ChatHandler) MarkRoomSeen(c fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	link := c.Params("link")
+	if err := h.svc.MarkRoomSeen(user.ID, link); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	return response.OKMessage(c, "已标记")
+}

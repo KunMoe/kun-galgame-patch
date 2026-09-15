@@ -168,9 +168,13 @@ func New(cfg *config.Config) *App {
 	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder)
 	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
+	chatRepository := chatRepo.New(db)
+	chatSvc := chatService.New(chatRepository)
+	chatHdl := chatHandler.New(chatSvc, usrCli)
+
 	messageRepository := messageRepo.New(db)
 	messageSvc := messageService.New(messageRepository)
-	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
+	messageHdl := messageHandler.New(messageSvc, chatSvc, usrCli, galgame)
 
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame)
 	adminHdl := adminHandler.New(adminSvc, galgame, usrCli)
@@ -258,10 +262,6 @@ func New(cfg *config.Config) *App {
 		}
 		return out
 	})
-
-	chatRepository := chatRepo.New(db)
-	chatSvc := chatService.New(chatRepository)
-	chatHdl := chatHandler.New(chatSvc, usrCli)
 
 	docRepo := docRepository.New(db)
 	docSvc := docService.New(docRepo, imgCli, usrCli)
