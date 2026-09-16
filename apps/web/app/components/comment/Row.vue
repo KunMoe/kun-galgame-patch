@@ -95,6 +95,7 @@ const onReplySubmitted = (reply: PatchPageComment) => {
 
 const editing = ref(false)
 const editContent = ref('')
+const editReason = ref('')
 const editKey = ref(0)
 const savingEdit = ref(false)
 
@@ -102,6 +103,7 @@ const savingEdit = ref(false)
 // already carries — no second request to open it.
 const startEdit = () => {
   editContent.value = props.comment.content
+  editReason.value = ''
   editKey.value++
   editing.value = true
 }
@@ -120,7 +122,9 @@ const submitEdit = async () => {
   try {
     const res = await api.put<PatchPageComment>(
       `/patch/comment/${props.comment.id}`,
-      { content: text }
+      isAuthor.value
+        ? { content: text }
+        : { content: text, reason: editReason.value.trim() }
     )
     if (res.code === 0 && res.data) {
       emit('edited', res.data)
@@ -217,13 +221,22 @@ const reportComment = () => {
       />
       <div v-else class="mt-2 space-y-2">
         <p v-if="!isAuthor" class="text-warning text-xs">
-          正在以管理身份编辑他人的评论，保存后会标注「已编辑（管理）」并记入管理日志
+          正在以管理身份编辑他人的评论，保存后会标注「已编辑（管理）」
         </p>
         <KunMarkdownEditor
           :key="`edit-${editKey}`"
           :model-value="editContent"
           @update:model-value="(val) => (editContent = val)"
         />
+        <div v-if="!isAuthor" class="space-y-1">
+          <label class="text-default-600 text-sm">
+            编辑原因（可选，会通知作者并记入管理日志）
+          </label>
+          <KunInput
+            v-model="editReason"
+            placeholder="例如：移除广告链接 / 删去人身攻击"
+          />
+        </div>
         <div class="flex justify-end gap-2">
           <KunButton
             variant="light"

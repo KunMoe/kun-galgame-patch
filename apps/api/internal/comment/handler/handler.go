@@ -40,6 +40,7 @@ type createRequest struct {
 
 type updateRequest struct {
 	Content string `json:"content" validate:"required,min=1,max=10007"`
+	Reason  string `json:"reason"`
 }
 
 type flagRequest struct {
@@ -135,7 +136,7 @@ func (h *Handler) UpdateComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	item, appErr := h.service.Update(c.Context(), postID, user.ID, middleware.IsModerator(c), req.Content)
+	item, appErr := h.service.Update(c.Context(), postID, user.ID, middleware.IsModerator(c), req.Content, clampReason(req.Reason))
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -319,16 +320,20 @@ func postIDParam(c fiber.Ctx) (int64, *errors.AppError) {
 	return id, nil
 }
 
+func clampReason(r string) string {
+	r = strings.TrimSpace(r)
+	if rs := []rune(r); len(rs) > 500 {
+		r = string(rs[:500])
+	}
+	return r
+}
+
 func deleteReason(c fiber.Ctx) string {
 	var body struct {
 		Reason string `json:"reason"`
 	}
 	_ = c.Bind().Body(&body)
-	r := strings.TrimSpace(body.Reason)
-	if rs := []rune(r); len(rs) > 500 {
-		r = string(rs[:500])
-	}
-	return r
+	return clampReason(body.Reason)
 }
 
 // patchSummaryFinder is the vndb-id lookup the feed rows' game names are built

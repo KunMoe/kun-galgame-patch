@@ -86,7 +86,7 @@ func (s *Service) afterCreate(ctx context.Context, surface Surface, userID, pare
 // Update edits a post. A moderator edit is declared to community with
 // as_moderator so the post carries the "edited by a moderator" bit; an author
 // editing their own post never sets it.
-func (s *Service) Update(ctx context.Context, postID int64, userID int, isModerator bool, content string) (*Item, *errors.AppError) {
+func (s *Service) Update(ctx context.Context, postID int64, userID int, isModerator bool, content, reason string) (*Item, *errors.AppError) {
 	post, surface, appErr := s.resolvePost(ctx, postID, 0)
 	if appErr != nil {
 		return nil, appErr
@@ -101,14 +101,20 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 		return nil, mapError(err)
 	}
 
-	// An edit can introduce a mention that was not there before; it cannot
-	// un-notify one that was, and the dedup keeps a re-save from repeating it.
-	s.notifyMentions(userID, content, s.postLink(surface, postID))
-
-	if asModerator && s.audit != nil {
-		_ = s.audit.CreateLog(userID, "updateComment", map[string]any{
-			"post_id": postID, "owner_id": updated.AuthorID, "galgame_id": surface.PatchID,
-		})
+	link := s.postLink(surface, postID)
+	if asModerator {
+		// No mention pass here: a moderator's save sent every mention the author
+		// wrote out again, in the moderator's name.
+		s.notifyModeratorAction(int(updated.AuthorID), moderatorNotice("编辑", reason), link)
+		if s.audit != nil {
+			_ = s.audit.CreateLog(userID, "updateComment", map[string]any{
+				"post_id": postID, "owner_id": updated.AuthorID, "galgame_id": surface.PatchID, "reason": reason,
+			})
+		}
+	} else {
+		// An edit can introduce a mention that was not there before; it cannot
+		// un-notify one that was, and the dedup keeps a re-save from repeating it.
+		s.notifyMentions(userID, content, link)
 	}
 
 	return buildItem(*updated, surface, briefToUser(s.brief(ctx, int(updated.AuthorID)))), nil
@@ -137,7 +143,7 @@ func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModera
 	s.repo.BumpCommentCount(surface.PatchID, -1)
 
 	if asModerator {
-		s.notifyModeratorDelete(owner, surface, reason)
+		s.notifyModeratorAction(owner, moderatorNotice("删除", reason), wallLink(surface))
 		if s.audit != nil && userID != 0 {
 			_ = s.audit.CreateLog(userID, "deleteComment", map[string]any{
 				"post_id": postID, "owner_id": owner, "galgame_id": surface.PatchID, "reason": reason,
@@ -212,30 +218,32 @@ func (s *Service) Flag(ctx context.Context, postID int64, userID int, reason int
 	return nil
 }
 
-func (s *Service) postLink(surface Surface, postID int64) string {
+func wallLink(surface Surface) string {
 	if surface.ResourceID != 0 {
-		return fmt.Sprintf("/resource/%d#post-%d", surface.ResourceID, postID)
+		return fmt.Sprintf("/resource/%d", surface.ResourceID)
 	}
-	return fmt.Sprintf("/galgame/%d?tab=comment#post-%d", surface.PatchID, postID)
+	return fmt.Sprintf("/galgame/%d?tab=comment", surface.PatchID)
 }
 
-func (s *Service) notifyModeratorDelete(ownerID int, surface Surface, reason string) {
-	content := "您发布的评论已被版主删除。"
+func (s *Service) postLink(surface Surface, postID int64) string {
+	return wallLink(surface) + fmt.Sprintf("#post-%d", postID)
+}
+
+func moderatorNotice(action, reason string) string {
+	content := "您发布的评论已被版主" + action + "。"
 	if reason != "" {
-		content += "原因：" + reason
-	} else {
-		content += "如有疑问可联系管理员。"
+		return content + "原因：" + reason
 	}
-	area := fmt.Sprintf("/galgame/%d?tab=comment", surface.PatchID)
-	if surface.ResourceID != 0 {
-		area = fmt.Sprintf("/resource/%d", surface.ResourceID)
-	}
+	return content + "如有疑问可联系管理员。"
+}
+
+func (s *Service) notifyModeratorAction(ownerID int, content, link string) {
 	if err := s.db.Table("user_message").Create(map[string]any{
-		"type": "system", "content": content, "status": 0, "link": area,
+		"type": "system", "content": content, "status": 0, "link": link,
 		"sender_id": nil, "recipient_id": ownerID,
 		"created": time.Now(), "updated": time.Now(),
 	}).Error; err != nil {
-		slog.Warn("comment: moderator-delete notice insert failed",
+		slog.Warn("comment: moderator-action notice insert failed",
 			"owner", ownerID, "error", err)
 	}
 }

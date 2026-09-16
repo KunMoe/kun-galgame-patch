@@ -124,3 +124,30 @@ func TestBuildItemCarriesUpstreamReactions(t *testing.T) {
 		t.Errorf("item = %+v", item)
 	}
 }
+
+func TestModeratorNoticeCarriesTheReason(t *testing.T) {
+	if got := moderatorNotice("编辑", ""); got != "您发布的评论已被版主编辑。如有疑问可联系管理员。" {
+		t.Errorf("moderatorNotice(编辑, empty) = %q", got)
+	}
+	if got := moderatorNotice("删除", "广告"); got != "您发布的评论已被版主删除。原因：广告" {
+		t.Errorf("moderatorNotice(删除, 广告) = %q", got)
+	}
+}
+
+func TestPostLinkExtendsTheWallLink(t *testing.T) {
+	var s Service
+	game := PatchSurface(42)
+	if got := s.postLink(game, 900); got != wallLink(game)+"#post-900" {
+		t.Errorf("game postLink = %q, wallLink = %q", got, wallLink(game))
+	}
+	if got := s.postLink(game, 900); got != "/galgame/42?tab=comment#post-900" {
+		t.Errorf("game postLink = %q", got)
+	}
+	res := ResourceSurface(678, 42)
+	if got := s.postLink(res, 901); got != wallLink(res)+"#post-901" {
+		t.Errorf("resource postLink = %q, wallLink = %q", got, wallLink(res))
+	}
+	if got := s.postLink(res, 901); got != "/resource/678#post-901" {
+		t.Errorf("resource postLink = %q", got)
+	}
+}
