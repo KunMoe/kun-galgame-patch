@@ -24,11 +24,20 @@ import (
 )
 
 type UserService struct {
-	repo    *repository.UserRepository
-	users   *userclient.Client
-	galgame *galgameClient.Client
-	db      *gorm.DB
-	mp      *moemoepoint.Awarder
+	repo     *repository.UserRepository
+	users    *userclient.Client
+	galgame  *galgameClient.Client
+	db       *gorm.DB
+	mp       *moemoepoint.Awarder
+	comments CommentStats
+}
+
+// CommentStats is what the profile still needs to know about comments now that
+// they live in the community primitive: how many a user has written, and which
+// game page a moemoepoint `comment:<id>` reference points at.
+type CommentStats interface {
+	AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
+	PatchIDsForRefs(ctx context.Context, ids []int) map[int]int
 }
 
 func New(
@@ -37,8 +46,16 @@ func New(
 	galgame *galgameClient.Client,
 	db *gorm.DB,
 	mp *moemoepoint.Awarder,
+	comments CommentStats,
 ) *UserService {
-	return &UserService{repo: repo, users: users, galgame: galgame, db: db, mp: mp}
+	return &UserService{repo: repo, users: users, galgame: galgame, db: db, mp: mp, comments: comments}
+}
+
+func (s *UserService) commentCount(ctx context.Context, userID int) int64 {
+	if s.comments == nil {
+		return 0
+	}
+	return s.comments.AuthorCounts(ctx, []int{userID})[userID]
 }
 
 type patchSummaryFinder struct{ db *gorm.DB }
@@ -52,14 +69,11 @@ func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, e
 	return rows, err
 }
 
-func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
-	if len(comments) == 0 && len(resources) == 0 {
+func (s *UserService) attachPatchSummaries(ctx context.Context, resources []patchModel.PatchResource) {
+	if len(resources) == 0 {
 		return
 	}
-	idSet := make(map[int]struct{}, len(comments)+len(resources))
-	for _, c := range comments {
-		idSet[c.GalgameID] = struct{}{}
-	}
+	idSet := make(map[int]struct{}, len(resources))
 	for _, r := range resources {
 		idSet[r.GalgameID] = struct{}{}
 	}
@@ -72,12 +86,6 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, comments []patch
 	}
 
 	summaries := enricher.BuildPatchSummaryMap(ctx, s.galgame, patchSummaryFinder{db: s.db}, ids)
-	for i := range comments {
-		if sum, ok := summaries[comments[i].GalgameID]; ok {
-			cp := sum
-			comments[i].Patch = &cp
-		}
-	}
 	for i := range resources {
 		if sum, ok := summaries[resources[i].GalgameID]; ok {
 			cp := sum
@@ -100,7 +108,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 		RegisterTime:   user.Created.Format(time.RFC3339),
 		PatchCount:     s.repo.CountUserPatches(userID),
 		ResourceCount:  s.repo.CountUserResources(userID),
-		CommentCount:   s.repo.CountUserComments(userID),
+		CommentCount:   s.commentCount(ctx, userID),
 		FavoriteCount:  s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit),
 	}
 
@@ -250,11 +258,11 @@ func (s *UserService) GetMoemoepointLog(ctx context.Context, userID, limit int, 
 	if err != nil {
 		return items, hasMore, err
 	}
-	s.attachMoemoepointLinks(items)
+	s.attachMoemoepointLinks(ctx, items)
 	return items, hasMore, nil
 }
 
-func (s *UserService) attachMoemoepointLinks(items []moemoepoint.LogEntry) {
+func (s *UserService) attachMoemoepointLinks(ctx context.Context, items []moemoepoint.LogEntry) {
 	commentIDs := make([]int, 0)
 	for i := range items {
 		if !items[i].IsLocal {
@@ -265,18 +273,8 @@ func (s *UserService) attachMoemoepointLinks(items []moemoepoint.LogEntry) {
 		}
 	}
 	galgameByComment := map[int]int{}
-	if len(commentIDs) > 0 {
-		var rows []struct {
-			ID        int
-			GalgameID int
-		}
-		s.db.Model(&patchModel.PatchComment{}).
-			Select("id", "galgame_id").
-			Where("id IN ?", commentIDs).
-			Scan(&rows)
-		for _, r := range rows {
-			galgameByComment[r.ID] = r.GalgameID
-		}
+	if len(commentIDs) > 0 && s.comments != nil {
+		galgameByComment = s.comments.PatchIDsForRefs(ctx, commentIDs)
 	}
 	for i := range items {
 		if !items[i].IsLocal {
@@ -319,7 +317,7 @@ func (s *UserService) GetUserResources(ctx context.Context, userID, page, limit 
 	}
 	patchModel.RenderResourceNotes(rs)
 	s.attachResourceUsers(ctx, rs)
-	s.attachPatchSummaries(ctx, nil, rs)
+	s.attachPatchSummaries(ctx, rs)
 	return rs, total, nil
 }
 
@@ -367,16 +365,6 @@ func (s *UserService) favoritePatchIDs(ctx context.Context, userID int, token st
 	return ids, nil
 }
 
-func (s *UserService) GetUserComments(ctx context.Context, userID, page, limit int) ([]patchModel.PatchComment, int64, error) {
-	cs, total, err := s.repo.GetUserComments(userID, (page-1)*limit, limit)
-	if err != nil {
-		return cs, total, err
-	}
-	s.attachCommentUsers(ctx, cs)
-	s.attachPatchSummaries(ctx, cs, nil)
-	return cs, total, nil
-}
-
 func (s *UserService) GetUserContributions(userID, page, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
 	return s.repo.GetUserContributions(userID, (page-1)*limit, limit, includeEmpty, contentLimit)
 }
@@ -390,19 +378,6 @@ func (s *UserService) attachResourceUsers(ctx context.Context, rs []patchModel.P
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
 			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
-		}
-	}
-}
-
-func (s *UserService) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
-	uids := make([]int, 0, len(cs))
-	for _, c := range cs {
-		uids = append(uids, c.UserID)
-	}
-	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
-	for i := range cs {
-		if b := briefs[cs[i].UserID]; b != nil {
-			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }

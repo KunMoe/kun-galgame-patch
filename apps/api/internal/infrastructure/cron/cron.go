@@ -19,6 +19,7 @@ func Start(
 	galgame *galgameClient.Client,
 	mp *moemoepoint.Client,
 	img *imageclient.Client,
+	comments CommentImages,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -100,7 +101,7 @@ func Start(
 		if _, err := c.AddFunc("0 4 * * *", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			updated, notFound, err := RunReferencePing(ctx, db, img)
+			updated, notFound, err := RunReferencePing(ctx, db, img, comments)
 			if err != nil {
 				slog.Error("image ref-ping 失败", "error", err)
 				return

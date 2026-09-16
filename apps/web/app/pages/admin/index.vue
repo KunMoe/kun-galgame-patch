@@ -8,8 +8,7 @@ const api = useApi()
 const emptySum: SumData = {
   user_count: 0,
   galgame_count: 0,
-  resource_count: 0,
-  comment_count: 0
+  resource_count: 0
 }
 
 const { data: sum } = await useAsyncData<SumData>(
@@ -26,8 +25,7 @@ const emptyOverview: OverviewData = {
   new_user: 0,
   new_active_user: 0,
   new_galgame: 0,
-  new_resource: 0,
-  new_comment: 0
+  new_resource: 0
 }
 
 const { data: overview, pending, refresh } = await useAsyncData<OverviewData>(

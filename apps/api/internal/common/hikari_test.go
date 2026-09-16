@@ -77,7 +77,7 @@ func TestGetHikariIntegration(t *testing.T) {
 		t.Fatalf("seed disabled resource: %v", err)
 	}
 
-	h := NewHandler(db, nil, nil, nil, nil)
+	h := NewHandler(db, nil, nil, nil, nil, nil)
 	app := fiber.New()
 	api := app.Group("/api/v1")
 	api.Use("/hikari", middleware.HikariCORS())

@@ -13,7 +13,14 @@ import (
 
 // A child table with nothing unique per game: both pages' rows can coexist
 // under the survivor, so every row simply moves.
-var movableChildren = []string{"patch_resource", "patch_comment"}
+//
+// patch_comment is NOT here any more. The loser's comment wall is a thread in
+// the community primitive, anchored on the loser's page id, and no SQL in this
+// database can move it. Fold logs the stranded wall instead; infra's
+// cmd/retire-merged-comments sweeps it, and knows this site by name — a moyu
+// site_game anchor IS a catalog work id (铁律 3), so the "a product id that
+// merely collides" exclusion the forum needs is off for moyu.
+var movableChildren = []string{"patch_resource"}
 
 // A child table with a unique key over (galgame_id, peer). When the survivor
 // already has a row for that peer the two cannot both live, so the loser's row
@@ -30,6 +37,14 @@ var uniqueChildren = []struct{ table, peer string }{
 // the loser. It leaves patch_redirect alone: which scope records the move is
 // the caller's decision, and the two callers answer different URLs.
 func Fold(tx *gorm.DB, loser, survivor int) error {
+	var strandedComments int64
+	tx.Table("patch").Select("comment_count").Where("id = ?", loser).Scan(&strandedComments)
+	if strandedComments > 0 {
+		slog.Warn("合并遗留了一面评论墙：community 的串仍锚在被合并页上，本库无法搬移",
+			"loser", loser, "survivor", survivor, "comments", strandedComments,
+			"site", "moyu", "anchor_kind", 1, "anchor_id", loser)
+	}
+
 	for _, table := range movableChildren {
 		if err := tx.Exec(
 			fmt.Sprintf("UPDATE %s SET galgame_id = ? WHERE galgame_id = ?", table),
@@ -106,10 +121,12 @@ func Fold(tx *gorm.DB, loser, survivor int) error {
 // recomputing them leaves the survivor unfilterable by everything it just
 // gained. Call it once every loser has been folded in.
 func Recount(tx *gorm.DB, patchID int) error {
+	// comment_count is absent on purpose: it counts posts in the community
+	// primitive, which this query cannot see. Recomputing it from the frozen
+	// patch_comment would reset the survivor to its pre-cutover snapshot.
 	return tx.Exec(`
 		UPDATE patch SET
 			resource_count   = (SELECT count(*) FROM patch_resource WHERE galgame_id = patch.id),
-			comment_count    = (SELECT count(*) FROM patch_comment WHERE galgame_id = patch.id),
 			contribute_count = (SELECT count(*) FROM user_patch_contribute_relation WHERE galgame_id = patch.id),
 			type             = `+resourceFacet("type")+`,
 			language         = `+resourceFacet("language")+`,

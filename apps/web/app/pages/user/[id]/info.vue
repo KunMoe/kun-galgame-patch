@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { commentPermalink } from '~/shared/utils/commentTarget'
 
 const route = useRoute()
 const api = useApi()
@@ -7,10 +6,6 @@ const userId = computed(() => Number(route.params.id))
 
 const PREVIEW = 5
 
-interface CommentList {
-  items: UserComment[]
-  total: number
-}
 interface ResourceList {
   items: PatchResource[]
   total: number
@@ -30,22 +25,24 @@ const { data, pending } = await useAsyncData(
       api.get<ResourceList>(
         `/user/${userId.value}/resource?page=1&limit=${PREVIEW}`
       ),
-      api.get<CommentList>(
-        `/user/${userId.value}/comment?page=1&limit=${PREVIEW}`
+      // Keyset, so no total: the 更多 link is shown whenever a cursor came back.
+      api.get<PatchCommentFeed>(
+        `/user/${userId.value}/comment?limit=${PREVIEW}`
       )
     ])
     return {
       galgames: galgames.code === 0 ? galgames.data : { items: [], total: 0 },
       resources:
         resources.code === 0 ? resources.data : { items: [], total: 0 },
-      comments: comments.code === 0 ? comments.data : { items: [], total: 0 }
+      comments:
+        comments.code === 0 ? comments.data : { items: [], next_cursor: '' }
     }
   },
   {
     default: () => ({
       galgames: { items: [], total: 0 },
       resources: { items: [], total: 0 },
-      comments: { items: [], total: 0 }
+      comments: { items: [], next_cursor: '' }
     })
   }
 )
@@ -143,7 +140,7 @@ const isEmpty = computed(
           <NuxtLink
             v-for="c in data.comments.items"
             :key="c.id"
-            :to="commentPermalink(c)"
+            :to="c.link"
             class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 block rounded-lg border p-3 transition-colors"
           >
             <div class="text-default-500 mb-1 text-xs">

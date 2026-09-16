@@ -41,10 +41,6 @@ func (r *UserRepository) CountUserResources(userID int) int64 {
 	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID), "resources", userID)
 }
 
-func (r *UserRepository) CountUserComments(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.PatchComment{}).Where("user_id = ? AND status = 0", userID), "comments", userID)
-}
-
 func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
 	var patches []patchModel.Patch
 	var total int64
@@ -126,17 +122,6 @@ func (r *UserRepository) favoritesScope(patchIDs []int, includeEmpty bool, conte
 		base = base.Where("resource_count > 0")
 	}
 	return utils.ScopePatchContentLimit(base, contentLimit)
-}
-
-func (r *UserRepository) GetUserComments(userID, offset, limit int) ([]patchModel.PatchComment, int64, error) {
-	var comments []patchModel.PatchComment
-	var total int64
-	base := r.db.Model(&patchModel.PatchComment{}).Where("user_id = ? AND status = 0", userID)
-	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).Find(&comments).Error
-	return comments, total, err
 }
 
 func (r *UserRepository) GetUserContributions(userID, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {

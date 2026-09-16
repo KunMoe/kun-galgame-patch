@@ -50,4 +50,3 @@ func (c *Client) DisplayVerdictsByCatalogIDs(ctx context.Context, ids []int64) (
 	}
 	return out, nil
 }
-

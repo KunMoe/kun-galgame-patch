@@ -1,10 +1,17 @@
 // Matches apps/api/internal/common/site_search.go.
 
-type SearchType = 'all' | 'galgame' | 'entity' | 'resource' | 'user'
+type SearchType =
+  | 'all'
+  | 'galgame'
+  | 'entity'
+  | 'resource'
+  | 'user'
+  | 'comment'
 
-// 全部 pages nothing and 资料库 pages one family at a time through its own
-// endpoint; the three left over share GET /search.
-type SearchPagedType = Exclude<SearchType, 'all' | 'entity'>
+// 全部 pages nothing, 资料库 pages one family at a time through its own endpoint,
+// and 评论 is keyset — it answers a cursor and no total, so it cannot ride the
+// {items, total} envelope the paged lanes share on GET /search.
+type SearchPagedType = Exclude<SearchType, 'all' | 'entity' | 'comment'>
 
 // No engine: catalog indexes one, moyu has no /galgame/engine/:id to open.
 type SearchEntityFamily =

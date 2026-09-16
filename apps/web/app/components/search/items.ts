@@ -38,6 +38,12 @@ export const SEARCH_CATEGORIES: SearchCategory[] = [
     textValue: '用户',
     icon: 'lucide:user-round',
     countUnit: '位用户'
+  },
+  {
+    value: 'comment',
+    textValue: '评论',
+    icon: 'lucide:message-square',
+    countUnit: '条评论'
   }
 ]
 

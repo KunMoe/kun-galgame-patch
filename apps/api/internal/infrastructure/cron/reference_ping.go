@@ -13,8 +13,11 @@ const referencePingBatch = 1000
 
 type ContentColumn struct{ Table, Col string }
 
+// No patch_comment: comment bodies live in the community primitive since the
+// cutover and no SQL here can see them. CommentImages is how they are swept —
+// without it every image ever posted in a comment stops being referenced and is
+// eventually collected.
 var ContentTokenColumns = []ContentColumn{
-	{"patch_comment", "content"},
 	{"patch_resource", "note"},
 	{"chat_message", "content"},
 	{"doc", "content"},
@@ -22,10 +25,25 @@ var ContentTokenColumns = []ContentColumn{
 	{"admin_log", "content"},
 }
 
-func RunReferencePing(ctx context.Context, db *gorm.DB, img *imageclient.Client) (updated, notFound int, err error) {
+// CommentImages sweeps the comment walls for the images they embed. Nil skips
+// the sweep, which is what an unconfigured community client amounts to.
+type CommentImages interface {
+	CollectImageHashes(ctx context.Context) ([]string, error)
+}
+
+func RunReferencePing(ctx context.Context, db *gorm.DB, img *imageclient.Client, comments CommentImages) (updated, notFound int, err error) {
 	hashes, err := collectReferencedHashes(db)
 	if err != nil {
 		return 0, 0, err
+	}
+	if comments != nil {
+		commentHashes, cerr := comments.CollectImageHashes(ctx)
+		if cerr != nil {
+			// Half a sweep pings half the images, and the unpinged half is what
+			// gets collected. Fail the run instead.
+			return 0, 0, cerr
+		}
+		hashes = append(hashes, commentHashes...)
 	}
 	if len(hashes) == 0 {
 		return 0, 0, nil

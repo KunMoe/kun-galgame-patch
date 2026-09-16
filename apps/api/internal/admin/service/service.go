@@ -11,7 +11,6 @@ import (
 	adminModel "kun-galgame-patch-api/internal/admin/model"
 	"kun-galgame-patch-api/internal/admin/repository"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
-	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
@@ -23,37 +22,24 @@ import (
 )
 
 type AdminService struct {
-	repo    *repository.AdminRepository
-	rdb     *redis.Client
-	setting *settingService.Service
-	patch   *patchService.PatchService
-	galgame *galgameClient.Client
+	repo     *repository.AdminRepository
+	rdb      *redis.Client
+	setting  *settingService.Service
+	patch    *patchService.PatchService
+	galgame  *galgameClient.Client
+	comments CommentPurger
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService, galgame *galgameClient.Client) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch, galgame: galgame}
+// CommentPurger is the community primitive's side of erasing a user. Comments
+// are not in this database any more, so a purge that only ran SQL would leave
+// every comment the user wrote standing.
+type CommentPurger interface {
+	CountAuthorComments(ctx context.Context, userID int) int64
+	PurgeAuthor(ctx context.Context, userID int) (int64, error)
 }
 
-func (s *AdminService) GetComments(search, status string, page, limit int) ([]patchModel.PatchComment, int64, error) {
-	comments, total, err := s.repo.GetComments(search, status, (page-1)*limit, limit)
-	if err == nil {
-		for i := range comments {
-			comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
-		}
-	}
-	return comments, total, err
-}
-
-func (s *AdminService) UpdateComment(commentID int, content string, adminUID int) error {
-	if err := s.repo.UpdateComment(commentID, content); err != nil {
-		return err
-	}
-	s.repo.CreateLog(adminUID, "updateComment", map[string]any{"comment_id": commentID})
-	return nil
-}
-
-func (s *AdminService) DeleteComment(commentID, adminUID int) error {
-	return s.patch.DeleteComment(commentID, adminUID, true, "")
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService, galgame *galgameClient.Client, comments CommentPurger) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch, galgame: galgame, comments: comments}
 }
 
 func (s *AdminService) GetResources(search string, page, limit int) ([]patchModel.PatchResource, int64, error) {
@@ -85,9 +71,8 @@ func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, include
 	return &dto.UserPurgePreview{
 		UserID:              userID,
 		UserExists:          c.UserExists,
-		Comments:            c.Comments,
+		Comments:            s.comments.CountAuthorComments(ctx, userID),
 		Resources:           c.Resources,
-		CommentLikes:        c.CommentLikes,
 		ResourceLikes:       c.ResourceLikes,
 		Contributes:         c.Contributes,
 		Following:           c.Following,
@@ -97,7 +82,6 @@ func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, include
 		PrivateMessages:     c.PrivateMessages,
 		OwnedPatches:        c.OwnedPatches,
 		OwnedPatchResources: c.OwnedPatchResources,
-		OwnedPatchComments:  c.OwnedPatchComments,
 		MiscTraces:          c.MiscTraces,
 		CatalogFolders:      folders,
 		CatalogFolderItems:  items,
@@ -140,7 +124,16 @@ func (s *AdminService) catalogFolders(ctx context.Context, userID int, token str
 	return int64(len(folders)), items, ""
 }
 
-func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
+func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
+	// Comments first, and not best-effort: the local rows are about to go and
+	// with them every trace of which posts were this user's, so a failure here
+	// after the SQL purge would leave orphaned comments nothing can find again.
+	commentsPurged, cErr := s.comments.PurgeAuthor(ctx, userID)
+	if cErr != nil {
+		slog.Error("PurgeUser: community 评论清除失败，已中止", "user_id", userID, "error", cErr)
+		return nil, errors.ErrCommunityUnavailable("评论服务不可用，用户清除已中止")
+	}
+
 	uuids, uErr := s.repo.CollectUserArtifactUUIDs(userID, purgeOwnedPatches)
 	if uErr != nil {
 		slog.Warn("PurgeUser: failed to enumerate artifact_uuids for cleanup", "user_id", userID, "error", uErr)
@@ -160,7 +153,7 @@ func (s *AdminService) PurgeUser(userID int, purgeOwnedPatches bool, adminUID in
 		s.patch.SoftDeleteArtifacts(ctx, uuids)
 	}
 
-	res := &dto.UserPurgeResult{UserID: userID, UserRowDeleted: true}
+	res := &dto.UserPurgeResult{UserID: userID, UserRowDeleted: true, CommentsPurged: commentsPurged}
 
 	if s.rdb != nil {
 		if n, rerr := middleware.RevokeUserSessions(context.Background(), s.rdb, userID); rerr != nil {
@@ -196,23 +189,21 @@ func (s *AdminService) SetSetting(key string, enabled bool, adminUID int) error 
 
 func (s *AdminService) GetStats(days int) *dto.AdminStatsResponse {
 	since := time.Now().AddDate(0, 0, -days)
-	newUser, newActive, newGalgame, newResource, newComment := s.repo.GetStats(since)
+	newUser, newActive, newGalgame, newResource := s.repo.GetStats(since)
 	return &dto.AdminStatsResponse{
 		NewUser:          newUser,
 		NewActiveUser:    newActive,
 		NewGalgame:       newGalgame,
 		NewPatchResource: newResource,
-		NewComment:       newComment,
 	}
 }
 
 func (s *AdminService) GetStatsSum() *dto.AdminStatsSumResponse {
-	u, g, r, c := s.repo.GetStatsSum()
+	u, g, r := s.repo.GetStatsSum()
 	return &dto.AdminStatsSumResponse{
 		UserCount:          u,
 		GalgameCount:       g,
 		PatchResourceCount: r,
-		PatchCommentCount:  c,
 	}
 }
 

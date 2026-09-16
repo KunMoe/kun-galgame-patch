@@ -5,13 +5,10 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 // six of its comment sections look identical: the LOOK lives in one component
 // set, and only the addressing is per-surface.
 //
-// moyu has two areas:
-//   patch    → /patch/:gid/comment   (patch_comment.resource_id IS NULL)
-//   resource → /resource/:rid        (patch_comment.resource_id = :rid)
-//
-// Both are the same table and the same wire shape, so edit / delete / like /
-// locate are comment-addressed and shared; only list + create + the deep-link
-// page differ.
+// Both walls are threads in the NextMoe community primitive. moyu addresses them
+// by ANCHOR, not by thread id, and the anchor is minted server-side:
+//   patch    → anchor_kind=1 "<patch id>"    (/galgame/:id?tab=comment)
+//   resource → anchor_kind=2 "<resource id>" (/resource/:rid)
 
 export type CommentTarget =
   | { kind: 'patch'; galgameId: number }
@@ -21,9 +18,10 @@ export type CommentTarget =
 
 export interface CommentSurface {
   kind: CommentTarget['kind']
-  // Paginated list read. Both areas take the same ?page=&limit=.
+  // Keyset list read. Both areas take the same ?after=&limit=, where `after` is
+  // a post_number rather than an opaque cursor.
   listUrl: string
-  // POST target; the body is { content, parent_id? } for both.
+  // POST target; the body is { content, reply_to_post_id? } for both.
   createUrl: string
   // Absolute page a comment lives on, WITHOUT the anchor — the base for the
   // report evidence URL and for the "jump here" deep-link.
@@ -34,15 +32,19 @@ export interface CommentSurface {
   // placeholder can't provide: its composer is pre-seeded with the publisher's
   // @mention, so it is never empty and the placeholder never renders.
   notice: { title: string; body: string } | null
-  // The resource this area belongs to, or null for the patch area. Used to
-  // reject a locate() result that belongs to the OTHER area.
+  // The resource this area belongs to, or null for the patch area.
   resourceId: number | null
 }
 
-// The anchor id every comment node renders and every deep-link targets. Shared
-// verbatim across both areas so links minted before resource comments existed
-// (#comment-<id>) keep resolving.
-export const commentAnchorId = (commentId: number) => `comment-${commentId}`
+// The anchor id a comment node renders and a new deep-link targets. It is the
+// POST id, and the `post-` prefix is what keeps it apart from the pre-cutover
+// `comment-<n>` shape: an old comment id and a post id can be the same number,
+// and the two resolve through completely different paths.
+export const commentAnchorId = (postId: number) => `post-${postId}`
+
+// Links minted before the cutover. They still arrive from notifications and from
+// anywhere a reader saved one, and only the server's map table can resolve them.
+export const legacyCommentAnchorId = (commentId: number) => `comment-${commentId}`
 
 export const commentSurface = (target: CommentTarget): CommentSurface => {
   if (target.kind === 'resource') {
@@ -80,24 +82,18 @@ export const commentSurface = (target: CommentTarget): CommentSurface => {
   }
 }
 
-// Absolute URL of one comment — the evidence link handed to the report modal, so
+// Absolute URL of one comment — the evidence link handed to the report flow, so
 // a moderator opens the comment in context on whichever surface it lives.
 export const commentAbsoluteUrl = (
   surface: CommentSurface,
-  commentId: number
-) => `${kunMoyuMoe.domain.main}${surface.pagePath}#${commentAnchorId(commentId)}`
+  postId: number
+) => `${kunMoyuMoe.domain.main}${surface.pagePath}#${commentAnchorId(postId)}`
 
-// Site-relative permalink for a comment ROW coming out of any of the mixed feeds
-// (home / the global feed / a user's profile / the admin queue). Those lists
-// contain both kinds, so the surface has to be decided per row: a resource
-// comment is NOT reachable at /patch/:gid/comment, whose list filters
-// resource_id IS NULL, so the patch shape would land the reader on a page the
-// comment isn't on. Mirrors the server's commentAnchorLink.
-export const commentPermalink = (comment: {
-  id: number
-  galgame_id: number
-  resource_id?: number | null
-}) =>
-  comment.resource_id
-    ? `/resource/${comment.resource_id}#${commentAnchorId(comment.id)}`
-    : `/galgame/${comment.galgame_id}?tab=comment#${commentAnchorId(comment.id)}`
+// The report reasons the community service accepts, in its own numbering.
+export const COMMENT_FLAG_REASONS = [
+  { value: 0, label: '垃圾广告' },
+  { value: 1, label: '辱骂 / 人身攻击' },
+  { value: 2, label: '与主题无关' },
+  { value: 4, label: 'NSFW 标注错误' },
+  { value: 3, label: '其他' }
+] as const

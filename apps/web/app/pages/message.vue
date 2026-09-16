@@ -8,6 +8,12 @@ const navItems = [
   { key: 'follow', title: '关注消息', href: '/message/follow', icon: 'lucide:users' },
   { key: 'mention', title: '@ 消息', href: '/message/mention', icon: 'lucide:at-sign' },
   {
+    key: 'comment',
+    title: '关注的评论区',
+    href: '/message/comment',
+    icon: 'lucide:message-square'
+  },
+  {
     key: 'patch-resource-create',
     title: '新补丁通知',
     href: '/message/patch-resource-create',

@@ -1,33 +1,51 @@
 <script setup lang="ts">
+import type { CommentGroup } from '~/composables/useCommentList'
 import type { CommentTarget } from '~/shared/utils/commentTarget'
 import { commentSurface } from '~/shared/utils/commentTarget'
 
 const props = withDefaults(
   defineProps<{
     target: CommentTarget
-    items: PatchPageComment[]
-    totalPages: number
+    groups: CommentGroup[]
     expandedRoots: Set<number>
+    threadId: number
+    subscription: CommentThreadState | null
+    hasMore?: boolean
+    loadingMore?: boolean
     pending?: boolean
     canModerate?: boolean
     mentionUser?: KunUser | null
   }>(),
-  { pending: false, canModerate: false, mentionUser: null }
+  {
+    hasMore: false,
+    loadingMore: false,
+    pending: false,
+    canModerate: false,
+    mentionUser: null
+  }
 )
 
 const emit = defineEmits<{
   commentAdded: [comment: PatchPageComment]
   liked: [id: number, liked: boolean]
-  replyAdded: [reply: PatchPageComment]
   edited: [updated: PatchPageComment]
   removed: [id: number]
   toggleExpand: [rootId: number]
+  loadMore: []
+  setLevel: [level: CommentNotificationLevel]
 }>()
-
-const page = defineModel<number>('page', { required: true })
 
 const userStore = useUserStore()
 const surface = commentSurface(props.target)
+
+const INLINE_LIMIT = 3
+const visibleReplies = (group: CommentGroup) =>
+  props.expandedRoots.has(group.root.id)
+    ? group.replies
+    : group.replies.slice(0, INLINE_LIMIT)
+
+const hiddenReplyCount = (group: CommentGroup) =>
+  Math.max(0, group.replies.length - INLINE_LIMIT)
 
 const composerSeed = computed(() => {
   const u = props.mentionUser
@@ -84,32 +102,67 @@ const composerSeed = computed(() => {
       后发表评论
     </div>
 
+    <div v-if="threadId" class="flex justify-end">
+      <CommentSubscribe
+        :thread-id="threadId"
+        :subscription="subscription"
+        @set-level="(l) => emit('setLevel', l)"
+      />
+    </div>
+
     <KunLoading v-if="pending" description="加载评论中..." />
 
-    <div v-else-if="items.length" class="space-y-8">
+    <div v-else-if="groups.length" class="space-y-8">
       <CommentRow
-        v-for="c in items"
-        :key="c.id"
-        :comment="c"
+        v-for="g in groups"
+        :key="g.root.id"
+        :comment="g.root"
         :target="target"
         :depth="0"
         :can-moderate="canModerate"
-        :expanded="expandedRoots.has(c.id)"
+        :expanded="expandedRoots.has(g.root.id)"
+        :reply-count="hiddenReplyCount(g)"
         @liked="(id, l) => emit('liked', id, l)"
-        @reply-added="(r) => emit('replyAdded', r)"
+        @reply-added="(r) => emit('commentAdded', r)"
         @edited="(u) => emit('edited', u)"
         @removed="(id) => emit('removed', id)"
         @toggle-expand="(id) => emit('toggleExpand', id)"
-      />
+      >
+        <template #replies>
+          <div v-if="visibleReplies(g).length" class="mt-4 space-y-4">
+            <CommentRow
+              v-for="r in visibleReplies(g)"
+              :key="r.id"
+              :comment="r"
+              :target="target"
+              :depth="1"
+              :can-moderate="canModerate"
+              @liked="(id, l) => emit('liked', id, l)"
+              @reply-added="(rr) => emit('commentAdded', rr)"
+              @edited="(u) => emit('edited', u)"
+              @removed="(id) => emit('removed', id)"
+            />
+          </div>
+        </template>
+      </CommentRow>
     </div>
 
     <KunNull v-else :description="surface.emptyDescription" />
 
-    <KunPagination
-      v-if="totalPages > 1"
-      v-model:current-page="page"
-      :total-page="totalPages"
-      :is-loading="pending"
-    />
+    <!--
+      Load more, not a paginator: the wall is keyset by post number and the
+      upstream face answers a cursor, so there is no page count to render.
+    -->
+    <div v-if="hasMore" class="flex justify-center">
+      <KunButton
+        variant="light"
+        color="primary"
+        :loading="loadingMore"
+        :disabled="loadingMore"
+        @click="emit('loadMore')"
+      >
+        加载更多评论
+      </KunButton>
+    </div>
   </div>
 </template>

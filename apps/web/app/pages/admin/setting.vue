@@ -3,7 +3,10 @@ useKunDisableSeo('网站设置')
 
 const api = useApi()
 
-type SettingKey = 'comment-verify' | 'creator-only'
+// No comment-verify. Comment pre-moderation was a moyu-only switch and the
+// community primitive has none: a newcomer's first posts are held by ITS
+// sandbox and released from ITS review queue.
+type SettingKey = 'creator-only'
 
 interface SettingDefinition {
   key: SettingKey
@@ -14,12 +17,6 @@ interface SettingDefinition {
 
 const definitions: SettingDefinition[] = [
   {
-    key: 'comment-verify',
-    name: '评论需要审核',
-    description: '开启后新评论需要版主审核通过才能显示',
-    isInverse: false
-  },
-  {
     key: 'creator-only',
     name: '仅创作者 / 版主 / 管理员可发布 Galgame',
     description:
@@ -29,11 +26,9 @@ const definitions: SettingDefinition[] = [
 ]
 
 const values = reactive<Record<SettingKey, boolean>>({
-  'comment-verify': false,
   'creator-only': false
 })
 const updating = reactive<Record<SettingKey, boolean>>({
-  'comment-verify': false,
   'creator-only': false
 })
 

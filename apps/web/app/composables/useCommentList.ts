@@ -7,173 +7,205 @@
 // and emitting the count back up would settle the tab label one tick after the
 // parent first rendered — a visible flicker. The page awaits this instead.
 //
-// It also owns the mutation handlers, because they patch the very array it
-// holds: every CommentRow emits its RESULT and this applies it in place, so no
-// refetch and no loading flash.
+// The wall is a community thread: a flat sequence of posts keyset by post
+// number, each naming its parent by id. So this loads FORWARD (没有页码) and
+// assembles the two-tier tree itself.
 import {
+  commentAnchorId,
   commentSurface,
   type CommentTarget
 } from '~/shared/utils/commentTarget'
 
 export const COMMENT_LIMIT = 30
 
-interface CommentListResponse {
-  items: PatchPageComment[]
-  total: number
-}
-
-interface Options {
-  // When set, the current page lives in the URL under this query key, so
-  // back-nav and shared links restore it. Used by the game page's 评论 tab,
-  // which pages alongside its own ?tab= rather than clobbering it. Omitted for
-  // an area embedded in a page whose URL already means something else (the
-  // resource detail tabs) — there the page is a plain ref and paging leaves the
-  // URL alone.
-  routeQueryKey?: string
+export interface CommentGroup {
+  root: PatchPageComment
+  replies: PatchPageComment[]
 }
 
 export const useCommentList = (
-  target: Ref<CommentTarget> | CommentTarget,
-  options: Options = {}
+  target: Ref<CommentTarget> | CommentTarget
 ) => {
   const api = useApi()
   const route = useRoute()
-  const router = useRouter()
+  const userStore = useUserStore()
 
   const resolved = computed(() => unref(target))
   const surface = computed(() => commentSurface(resolved.value))
 
-  const queryKey = options.routeQueryKey
-  const page = queryKey
-    ? computed({
-        get: () => Number(route.query[queryKey]) || 1,
-        set: (v: number) => {
-          router.push({
-            query: { ...route.query, [queryKey]: v },
-            hash: route.hash
-          })
-        }
-      })
-    : ref(1)
+  const subscription = ref<CommentThreadState | null>(null)
+  const loadingMore = ref(false)
 
-  // Not awaited, so this stays a plain (non-async) composable that callers can
-  // use without threading another await through their setup. Nuxt resolves the
-  // pending fetch before it renders on the server either way, so `total` is
-  // already correct on the first paint — which is what the resource page's tab
-  // label depends on.
-  const { data, pending } = useAsyncData<CommentListResponse>(
-    () => `comments-${surface.value.listUrl}-${page.value}`,
+  const emptyPage = (): PatchCommentPage => ({
+    thread_id: 0,
+    posts: [],
+    next_cursor: '',
+    total: 0
+  })
+
+  // The wall IS `data`: loadMore and the mutation handlers below write into it.
+  // A separate ref seeded from it stays empty on the server, which runs no
+  // watchers, so every wall rendered empty there and hydrated a full list over
+  // it.
+  const { data, pending } = useAsyncData<PatchCommentPage>(
+    () => `comments-${surface.value.listUrl}`,
     async () => {
-      const res = await api.get<CommentListResponse>(
-        `${surface.value.listUrl}?page=${page.value}&limit=${COMMENT_LIMIT}`
+      const res = await api.get<PatchCommentPage>(
+        `${surface.value.listUrl}?limit=${COMMENT_LIMIT}`
       )
-      return res.code === 0 ? res.data : { items: [], total: 0 }
+      return res.code === 0 ? res.data : emptyPage()
     },
     {
-      default: () => ({ items: [], total: 0 }),
+      default: emptyPage,
       // Watch the listUrl STRING, not `surface` — that computed builds a fresh
       // object on every evaluation, so its identity always differs and the
       // watcher would refire on any unrelated recompute of the target. On the
       // resource page `target` is a computed over the deep-reactive `detail`, so
       // bumping the download counter alone would have refetched the comments.
-      watch: [page, () => surface.value.listUrl],
-      // Nuxt 4 makes `data` a shallowRef by default, so the optimistic handlers
-      // below (unshift/splice/push + nested like_count/content edits on
-      // data.value.items) wouldn't trigger a re-render. deep:true restores the
-      // deep reactivity those in-place mutations rely on.
+      watch: [() => surface.value.listUrl],
+      // Nuxt 4 makes `data` a shallowRef; onLiked flips fields on a post in
+      // place.
       deep: true
     }
   )
 
-  const items = computed(() => data.value?.items ?? [])
-  // total = APPROVED ROOT-comment count (the server paginates over roots), so it
-  // drives the paginator directly. Note it is NOT the total number of comments —
-  // replies aren't in it.
-  const total = computed(() => data.value?.total ?? 0)
-  const totalPages = computed(() => Math.max(1, Math.ceil(total.value / COMMENT_LIMIT)))
-  const hasComments = computed(() => total.value > 0)
+  const posts = computed(() => data.value.posts)
+  const total = computed(() => data.value.total)
+  const threadId = computed(() => data.value.thread_id)
+
+  // The read receipt is a POST the reader makes, never something inferred from
+  // the GET above: a read face with a write side effect cannot be cached,
+  // retried or prefetched safely. It answers with the viewer's standing on this
+  // wall, which is what gives the follow toggle a state to render, and it
+  // creates nothing for a wall the viewer has never written on or followed —
+  // otherwise opening one game page would enrol them in its notifications.
+  //
+  // Declared above the watcher that calls it during setup: declared below it,
+  // every wall 500'd with "Cannot access 'reportRead' before initialization".
+  const reportRead = async () => {
+    if (!userStore.user.id || !threadId.value || import.meta.server) return
+    const res = await api
+      .post<CommentThreadState>(`/community/thread/${threadId.value}/read`)
+      .catch(() => null)
+    if (res?.code === 0 && res.data) {
+      subscription.value = res.data
+    }
+  }
+
+  watch(threadId, reportRead, { immediate: true })
+
+  const setLevel = async (level: CommentNotificationLevel) => {
+    if (!threadId.value) return
+    const res = await api.post<CommentThreadState>(
+      `/community/thread/${threadId.value}/notification`,
+      { level }
+    )
+    if (res.code === 0 && res.data) {
+      subscription.value = res.data
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  }
+
+  const hasMore = computed(() => data.value.next_cursor !== '')
+
+  const loadMore = async () => {
+    if (!hasMore.value || loadingMore.value) return
+    loadingMore.value = true
+    try {
+      const page = data.value
+      const res = await api.get<PatchCommentPage>(
+        `${surface.value.listUrl}?after=${page.next_cursor}&limit=${COMMENT_LIMIT}`
+      )
+      if (res.code !== 0) return
+      const seen = new Set(page.posts.map((p) => p.id))
+      page.posts = [
+        ...page.posts,
+        ...res.data.posts.filter((p) => !seen.has(p.id))
+      ]
+      page.next_cursor = res.data.next_cursor
+      page.total = res.data.total
+    } finally {
+      loadingMore.value = false
+    }
+  }
+
+  // Two tiers, assembled from the flat sequence. A reply whose root has not been
+  // loaded yet stands on its own rather than disappearing — the wall reads
+  // forward, so that only happens transiently while paging.
+  const groups = computed<CommentGroup[]>(() => {
+    const list: CommentGroup[] = []
+    const byRoot = new Map<number, CommentGroup>()
+    for (const p of posts.value) {
+      const rootId = p.root_comment_id
+      if (rootId == null) {
+        const group: CommentGroup = { root: p, replies: [] }
+        byRoot.set(p.id, group)
+        list.push(group)
+        continue
+      }
+      const owner = byRoot.get(rootId)
+      if (owner) owner.replies.push(p)
+      else list.push({ root: p, replies: [] })
+    }
+    return list
+  })
+
+  const hasComments = computed(() => groups.value.length > 0)
 
   // ─── optimistic mutation handlers ───────────────────
-  const findComment = (id: number): PatchPageComment | undefined => {
-    for (const c of items.value) {
-      if (c.id === id) return c
-      const r = c.reply?.find((x) => x.id === id)
-      if (r) return r
-    }
-    return undefined
-  }
+  const findPost = (id: number) => posts.value.find((p) => p.id === id)
 
   const onLiked = (id: number, liked: boolean) => {
-    const c = findComment(id)
-    if (!c || c.is_liked === liked) return
-    c.like_count = Math.max(0, c.like_count + (liked ? 1 : -1))
-    c.is_liked = liked
+    const p = findPost(id)
+    if (!p || p.is_liked === liked) return
+    p.like_count = Math.max(0, p.like_count + (liked ? 1 : -1))
+    p.is_liked = liked
   }
 
-  // A brand-new root comment from the area's own composer.
   const onCommentAdded = (comment: PatchPageComment) => {
-    if (!data.value) return
-    data.value.items.unshift(comment)
-    data.value.total++
-  }
-
-  const onReplyAdded = (reply: PatchPageComment) => {
-    if (!data.value) return
-    // A reply always attaches to a ROOT (parent_id = root id) — one tier.
-    const root = data.value.items.find((c) => c.id === reply.parent_id)
-    if (!root) return
-    if (!root.reply) root.reply = []
-    root.reply.push(reply)
-    // Expand the thread so the just-posted reply is visible even when it lands
-    // past the inline preview (otherwise it'd hide behind "展开更多").
-    expandedRoots.value.add(root.id)
-    // total = root count → a reply doesn't change it (keeps totalPages correct).
+    const page = data.value
+    if (page.posts.some((p) => p.id === comment.id)) return
+    page.posts = [...page.posts, comment]
+    page.total += 1
+    expandedRoots.value.add(comment.root_comment_id ?? comment.id)
+    // Writing subscribes the author upstream, and on an empty wall this comment
+    // is also what created the thread — so the follow control only becomes real
+    // here. A new thread id reaches reportRead through its watcher.
+    if (!page.thread_id && comment.thread_id) {
+      page.thread_id = comment.thread_id
+    } else {
+      reportRead()
+    }
   }
 
   const onEdited = (updated: PatchPageComment) => {
-    const c = findComment(updated.id)
-    if (!c) return
-    c.content = updated.content
-    c.content_html = updated.content_html
-    c.edit = updated.edit
+    const page = data.value
+    page.posts = page.posts.map((p) => (p.id === updated.id ? updated : p))
   }
 
+  // A delete is a tombstone upstream: the post keeps its number so the wall's
+  // numbering never collapses. Removing the row here instead would make replies
+  // under it look orphaned until the next read. `total` is the thread's
+  // posts_count, which counts the stub too; decrementing it here showed one
+  // fewer comment than the same wall after a reload.
   const onRemoved = (id: number) => {
-    if (!data.value) return
-    const rootIdx = data.value.items.findIndex((c) => c.id === id)
-    if (rootIdx >= 0) {
-      data.value.items.splice(rootIdx, 1)
-      // total = root count → removing a root drops it by exactly 1.
-      data.value.total = Math.max(0, data.value.total - 1)
-      expandedRoots.value.delete(id)
-      return
-    }
-    for (const c of data.value.items) {
-      const i = c.reply?.findIndex((x) => x.id === id) ?? -1
-      if (i >= 0) {
-        c.reply.splice(i, 1)
-        // reply removal doesn't affect the root count / paginator
-        return
-      }
-    }
+    const page = data.value
+    page.posts = page.posts.map((p) =>
+      p.id === id
+        ? { ...p, deleted: true, held: false, content: '', content_html: '' }
+        : p
+    )
   }
 
   // ─── inline thread expansion ────────────────────────
-  // Root ids whose replies are fully expanded in place (a Set so several threads
-  // can be open at once; a deep-link jump adds the target's root here). Vue 3
-  // proxies Set mutations, so add/delete are reactive.
   const expandedRoots = ref<Set<number>>(new Set())
   const toggleExpand = (rootId: number) => {
     if (expandedRoots.value.has(rootId)) expandedRoots.value.delete(rootId)
     else expandedRoots.value.add(rootId)
   }
 
-  // ─── deep-link: jump to a specific comment, across pages ──
-  // Links (notifications / home / the global feed) point at
-  // <area>#comment-:cid. Try the current page first; if the target isn't here,
-  // ask the server which page it's on (GET /patch/comment/:id/locate), go
-  // there, then scroll. A collapsed reply (only the first few show inline) is
-  // revealed by expanding its thread. Once found, scroll + flash it.
+  // ─── deep-link: jump to a specific comment ──────────
   // Landing on a deep-link target is NOT a one-shot scroll. Everything above the
   // target keeps growing after the list first paints — rendered markdown, inline
   // images, the editor — so a single scrollIntoView aims at coordinates that then
@@ -186,6 +218,7 @@ export const useCommentList = (
   const OFF_CENTER_TOLERANCE = 120
   const SETTLE_TRIES = 12
   const SETTLE_INTERVAL = 150
+  const LOAD_GUARD = 50
 
   const offCenterBy = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
@@ -231,98 +264,95 @@ export const useCommentList = (
     setTimeout(() => el.classList.remove('kun-comment-flash'), 2000)
   }
 
-  const tryScroll = (id: number) => {
-    const el = document.getElementById(`comment-${id}`)
-    if (el) {
-      flash(el)
-      return true
-    }
-    return false
+  const tryScroll = (postId: number) => {
+    const el = document.getElementById(commentAnchorId(postId))
+    if (!el) return false
+    flash(el)
+    return true
   }
 
-  const revealReplyInline = (rootId: number, id: number) => {
-    expandedRoots.value.add(rootId)
-    let tries = 0
-    const tick = () => {
-      if (tryScroll(id) || tries++ > 12) return
-      setTimeout(tick, 60)
+  const jumpTo = async (postId: number) => {
+    // Reveal it if it is a collapsed reply of an already-loaded root.
+    const known = findPost(postId)
+    if (known?.root_comment_id) {
+      expandedRoots.value.add(known.root_comment_id)
     }
-    nextTick(tick)
+    await nextTick()
+    if (tryScroll(postId)) return
+
+    // Otherwise read forward until it arrives. The wall is ordered, so a post
+    // that exists is always ahead of where we have read to.
+    let guard = 0
+    while (!findPost(postId) && hasMore.value && guard++ < LOAD_GUARD) {
+      await loadMore()
+    }
+    const found = findPost(postId)
+    if (!found) return
+    if (found.root_comment_id) {
+      expandedRoots.value.add(found.root_comment_id)
+    }
+    await nextTick()
+    tryScroll(postId)
   }
 
-  // Set while waiting for a page navigation's data to load (consumed by watch).
-  const pendingTarget = ref<{
-    id: number
-    rootId: number
-    isReply: boolean
-  } | null>(null)
+  // A client-side navigation mounts the wall while its first page is still in
+  // flight; jumping then searched an empty list with nothing more to load and
+  // gave up, so only a full page load ever landed on the post.
+  const loaded = async () => {
+    if (!pending.value) return
+    await new Promise<void>((resolve) => {
+      const stop = watch(pending, (value) => {
+        if (value) return
+        stop()
+        resolve()
+      })
+    })
+  }
 
   const resolveDeepLink = async () => {
-    const m = route.hash.match(/^#comment-(\d+)$/)
-    if (!m) return
-    const id = Number(m[1])
-    await nextTick()
-    if (tryScroll(id)) return
-
-    const res = await api
-      .get<{
-        page: number
-        root_id: number
-        is_reply: boolean
-        resource_id?: number
-      }>(`/patch/comment/${id}/locate?limit=${COMMENT_LIMIT}`)
-      .catch(() => null)
-    if (!res || res.code !== 0) return
-    const {
-      page: targetPage,
-      root_id: rootId,
-      is_reply: isReply,
-      resource_id: resourceId
-    } = res.data
-
-    // The comment may belong to the OTHER comment area (a resource comment while
-    // we're the patch tab, or vice versa). Its page number is computed within
-    // its own listing, so applying it here would jump to a page the comment
-    // isn't on — leave the anchor unresolved instead.
-    if ((resourceId ?? null) !== surface.value.resourceId) return
-
-    if (targetPage !== page.value) {
-      // Navigate; the watch(data) below finishes the jump once the page loads.
-      pendingTarget.value = { id, rootId, isReply }
-      page.value = targetPage
+    if (!/^#(post|comment)-\d+$/.test(route.hash)) return
+    await loaded()
+    const post = route.hash.match(/^#post-(\d+)$/)
+    if (post) {
+      await jumpTo(Number(post[1]))
       return
     }
-    // Right page but not inline → a collapsed reply.
-    if (isReply) revealReplyInline(rootId, id)
-  }
 
-  // Finish a jump after the navigated-to page's data arrives (useAsyncData
-  // replaces data.value on refetch, so this fires on page change, not on the
-  // in-place optimistic mutations).
-  watch(data, async () => {
-    const t = pendingTarget.value
-    if (!t) return
-    pendingTarget.value = null
-    await nextTick()
-    if (tryScroll(t.id)) return
-    if (t.isReply) revealReplyInline(t.rootId, t.id)
-  })
+    // A link minted before the cutover. Only the server's map table can turn an
+    // old comment id into the post that now holds it, and an id that resolves to
+    // the OTHER wall is left alone — its page number meant nothing here.
+    const legacy = route.hash.match(/^#comment-(\d+)$/)
+    if (!legacy) return
+    const res = await api
+      .get<{
+        post_id: number
+        resource_id?: number | null
+      }>(`/patch/comment/locate?legacy_id=${legacy[1]}`)
+      .catch(() => null)
+    if (!res || res.code !== 0) return
+    if ((res.data.resource_id ?? null) !== surface.value.resourceId) return
+    await jumpTo(res.data.post_id)
+  }
 
   onMounted(resolveDeepLink)
   watch(() => route.hash, resolveDeepLink)
 
   return {
-    items,
+    posts,
+    groups,
     total,
-    totalPages,
+    threadId,
+    subscription,
+    setLevel,
     hasComments,
+    hasMore,
+    loadMore,
+    loadingMore,
     pending,
-    page,
     expandedRoots,
     toggleExpand,
     onLiked,
     onCommentAdded,
-    onReplyAdded,
     onEdited,
     onRemoved
   }

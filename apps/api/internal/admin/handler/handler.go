@@ -31,19 +31,6 @@ func New(svc *service.AdminService, galgame *galgameClient.Client, users *usercl
 	return &AdminHandler{service: svc, galgame: galgame, users: users}
 }
 
-func (h *AdminHandler) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
-	uids := make([]int, 0, len(cs))
-	for _, c := range cs {
-		uids = append(uids, c.UserID)
-	}
-	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
-	for i := range cs {
-		if b := briefs[cs[i].UserID]; b != nil {
-			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
-		}
-	}
-}
-
 func (h *AdminHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
 	uids := make([]int, 0, len(rs))
 	for _, r := range rs {
@@ -57,11 +44,8 @@ func (h *AdminHandler) attachResourceUsers(ctx context.Context, rs []patchModel.
 	}
 }
 
-func (h *AdminHandler) attachPatchSummaries(ctx context.Context, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
-	idSet := make(map[int]struct{}, len(comments)+len(resources))
-	for _, m := range comments {
-		idSet[m.GalgameID] = struct{}{}
-	}
+func (h *AdminHandler) attachPatchSummaries(ctx context.Context, resources []patchModel.PatchResource) {
+	idSet := make(map[int]struct{}, len(resources))
 	for _, r := range resources {
 		idSet[r.GalgameID] = struct{}{}
 	}
@@ -73,12 +57,6 @@ func (h *AdminHandler) attachPatchSummaries(ctx context.Context, comments []patc
 		ids = append(ids, id)
 	}
 	summaries := enricher.BuildPatchSummaryMap(ctx, h.galgame, h.service, ids)
-	for i := range comments {
-		if s, ok := summaries[comments[i].GalgameID]; ok {
-			summary := s
-			comments[i].Patch = &summary
-		}
-	}
 	for i := range resources {
 		if s, ok := summaries[resources[i].GalgameID]; ok {
 			summary := s
@@ -108,52 +86,6 @@ func getIDParam(c fiber.Ctx, name string) (int, error) {
 	return id, nil
 }
 
-func (h *AdminHandler) GetComments(c fiber.Ctx) error {
-	var req dto.AdminPaginationRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	comments, total, err := h.service.GetComments(req.Search, req.Status, req.Page, req.Limit)
-	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-	h.attachCommentUsers(c.Context(), comments)
-	h.attachPatchSummaries(c.Context(), comments, nil)
-	return response.Paginated(c, comments, total)
-}
-
-func (h *AdminHandler) UpdateComment(c fiber.Ctx) error {
-	id, err := getIDParam(c, "id")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	var req dto.AdminUpdateCommentRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-
-	admin := middleware.MustGetUser(c)
-	if err := h.service.UpdateComment(id, req.Content, admin.ID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "Comment updated")
-}
-
-func (h *AdminHandler) DeleteComment(c fiber.Ctx) error {
-	id, err := getIDParam(c, "id")
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	admin := middleware.MustGetUser(c)
-	if err := h.service.DeleteComment(id, admin.ID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	return response.OKMessage(c, "Comment deleted")
-}
-
 func (h *AdminHandler) GetResources(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
@@ -165,7 +97,7 @@ func (h *AdminHandler) GetResources(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	h.attachResourceUsers(c.Context(), resources)
-	h.attachPatchSummaries(c.Context(), nil, resources)
+	h.attachPatchSummaries(c.Context(), resources)
 	return response.Paginated(c, resources, total)
 }
 
@@ -233,7 +165,7 @@ func (h *AdminHandler) PurgeUser(c fiber.Ctx) error {
 	}
 
 	admin := middleware.MustGetUser(c)
-	res, perr := h.service.PurgeUser(id, req.PurgeOwnedPatches, admin.ID)
+	res, perr := h.service.PurgeUser(c.Context(), id, req.PurgeOwnedPatches, admin.ID)
 	if perr != nil {
 		if appErr, ok := perr.(*errors.AppError); ok {
 			return response.Error(c, appErr)
@@ -255,21 +187,6 @@ func (h *AdminHandler) GetGalgame(c fiber.Ctx) error {
 	}
 	cards := enricher.EnrichPatches(c.Context(), h.galgame, h.users, patches, "all")
 	return response.Paginated(c, cards, total)
-}
-
-func (h *AdminHandler) GetCommentVerify(c fiber.Ctx) error {
-	return response.OK(c, map[string]bool{"enabled": h.service.GetSetting(settingService.KeyCommentVerify)})
-}
-
-func (h *AdminHandler) SetCommentVerify(c fiber.Ctx) error {
-	var req dto.AdminSettingBoolRequest
-	if err := utils.ParseAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	if err := h.service.SetSetting(settingService.KeyCommentVerify, req.Enabled, middleware.MustGetUser(c).ID); err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-	return response.OKMessage(c, "Setting updated")
 }
 
 func (h *AdminHandler) GetCreatorOnly(c fiber.Ctx) error {
