@@ -64,10 +64,11 @@ x-moyu-api-env: &moyu-api-env
   KUN_DLSITE_COUPON_URL: ${KUN_DLSITE_COUPON_URL:-}
   KUN_STORE_API_KEY: ${KUN_STORE_API_KEY:-}
   # ── 评论区 = NextMoe 社区原语 (kun_community) ──
-  # 每一面评论墙都在这里, 本库只留点赞镜像和旧 id 映射表。租户由本 client 的
-  # oauth_clients.catalog_site 决定 (= kungal, 和论坛同一个租户), 所以线上不传站点,
-  # 靠锚点前缀 moyu: / moyu-resource: 与论坛分开。凭据回落到上面的 OAUTH_CLIENT_*。
-  # 留空 = 评论降级 (读空墙 / 写 503), 不 panic。
+  # 每一面评论墙都在这里, 本库只留旧 id 映射表 (patch_comment_community_map),
+  # 没有点赞镜像。租户由本 client 的 oauth_clients.community_site 决定 (= moyu,
+  # 不是 catalog_site 的 kungal), 锚点是裸的 patch.id / resource.id。回复/@/关注/点赞
+  # 通知由社区生成, API 每 20s 拉 /notifications/feed 镜像进 user_message。
+  # 凭据回落到上面的 OAUTH_CLIENT_*。留空 = 评论降级 (读空墙 / 写 503), 不 panic。
   KUN_COMMUNITY_API_BASE: http://community:9282/api/v1/community
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
