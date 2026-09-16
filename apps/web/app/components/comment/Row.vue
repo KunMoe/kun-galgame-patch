@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
-  commentAnchorId,
   commentAbsoluteUrl,
+  commentAnchorId,
   commentSurface,
   type CommentTarget
 } from '~/shared/utils/commentTarget'
@@ -13,8 +13,9 @@ const props = withDefaults(
     depth?: number
     canModerate?: boolean
     expanded?: boolean
+    replyCount?: number
   }>(),
-  { depth: 0, canModerate: false, expanded: false }
+  { depth: 0, canModerate: false, expanded: false, replyCount: 0 }
 )
 
 const emit = defineEmits<{
@@ -28,21 +29,12 @@ const emit = defineEmits<{
 const api = useApi()
 const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
-const { open: openReport } = useReportModal()
 
 const surface = commentSurface(props.target)
 
-const isAuthor = computed(() => userStore.user.id === props.comment.user_id)
-const canEdit = computed(() => isAuthor.value)
-const canDelete = computed(() => isAuthor.value || props.canModerate)
-const isEdited = computed(() => !!props.comment.edit)
-
-const INLINE_LIMIT = 3
-const replies = computed(() => props.comment.reply ?? [])
-const visibleReplies = computed(() =>
-  props.expanded ? replies.value : replies.value.slice(0, INLINE_LIMIT)
-)
-const canToggle = computed(() => replies.value.length > INLINE_LIMIT)
+const isAuthor = computed(() => userStore.user.id === props.comment.user?.id)
+const canManage = computed(() => isAuthor.value || props.canModerate)
+const isEdited = computed(() => !!props.comment.edited)
 
 const liked = ref(props.comment.is_liked)
 const likeCount = ref(props.comment.like_count)
@@ -65,7 +57,7 @@ const onLikeChange = async (active: boolean) => {
     revertLike(active)
     return
   }
-  const res = await api.put<{ liked: boolean }>(
+  const res = await api.put<{ liked: boolean; like_count: number }>(
     `/patch/comment/${props.comment.id}/like`
   )
   if (res.code === 0) {
@@ -83,13 +75,17 @@ const openReply = () => {
   if (!requireLogin()) return
   replySeed.value =
     props.depth === 1 && props.comment.user
-      ? `[@${props.comment.user.name}](/user/${props.comment.user_id}) `
+      ? `[@${props.comment.user.name}](/user/${props.comment.user.id}) `
       : ''
   replying.value = true
 }
 
-const rootId = computed(() =>
-  props.depth === 1 ? (props.comment.parent_id ?? props.comment.id) : props.comment.id
+// A reply always attaches to the ROOT post — moyu's wall is two tiers, and
+// community threads a reply-to-a-reply under the same root.
+const replyToId = computed(() =>
+  props.depth === 1
+    ? (props.comment.root_comment_id ?? props.comment.id)
+    : props.comment.id
 )
 
 const onReplySubmitted = (reply: PatchPageComment) => {
@@ -99,11 +95,15 @@ const onReplySubmitted = (reply: PatchPageComment) => {
 
 const editing = ref(false)
 const editContent = ref('')
+const editReason = ref('')
 const editKey = ref(0)
 const savingEdit = ref(false)
 
+// The editor is seeded from the post's markdown source, which the wall read
+// already carries — no second request to open it.
 const startEdit = () => {
   editContent.value = props.comment.content
+  editReason.value = ''
   editKey.value++
   editing.value = true
 }
@@ -122,7 +122,9 @@ const submitEdit = async () => {
   try {
     const res = await api.put<PatchPageComment>(
       `/patch/comment/${props.comment.id}`,
-      { content: text }
+      isAuthor.value
+        ? { content: text }
+        : { content: text, reason: editReason.value.trim() }
     )
     if (res.code === 0 && res.data) {
       emit('edited', res.data)
@@ -139,7 +141,6 @@ const submitEdit = async () => {
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const deleteReason = ref('')
-const isForeignDelete = computed(() => !isAuthor.value)
 
 const askDelete = () => {
   deleteReason.value = ''
@@ -151,7 +152,7 @@ const confirmDelete = async () => {
   try {
     const res = await api.delete(
       `/patch/comment/${props.comment.id}`,
-      isForeignDelete.value ? { reason: deleteReason.value.trim() } : undefined
+      isAuthor.value ? undefined : { reason: deleteReason.value.trim() }
     )
     if (res.code === 0) {
       emit('removed', props.comment.id)
@@ -165,19 +166,12 @@ const confirmDelete = async () => {
   }
 }
 
+const reportOpen = ref(false)
+
 const reportComment = () => {
   if (!requireLogin()) return
-  openReport({
-    subjectKind: 'patch_comment',
-    subjectId: props.comment.id,
-    subjectUrl: commentAbsoluteUrl(surface, props.comment.id),
-    snapshot: props.comment.content
-  })
+  reportOpen.value = true
 }
-
-const showMenu = computed(
-  () => canEdit.value || canDelete.value || !isAuthor.value
-)
 </script>
 
 <template>
@@ -189,26 +183,60 @@ const showMenu = computed(
         class="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs leading-5"
       >
         <span class="text-default-800 text-sm font-medium">
-          {{ comment.user.name }}
+          {{ comment.user?.name ?? '已注销用户' }}
+        </span>
+        <span v-if="comment.target_user" class="text-default-400">
+          回复
+          <span class="text-primary-500">@{{ comment.target_user.name }}</span>
         </span>
         <span class="text-default-400">
-          {{ formatDate(comment.created, { isPrecise: true, isShowYear: true }) }}
+          {{
+            formatDate(comment.created, { isPrecise: true, isShowYear: true })
+          }}
         </span>
-        <span v-if="isEdited" class="text-default-400 italic">已编辑</span>
+        <span v-if="isEdited" class="text-default-400 italic">
+          {{ comment.edited_by_moderator ? '已编辑（管理）' : '已编辑' }}
+        </span>
+        <!--
+          Held by the newcomer sandbox: created hidden and queued for review.
+          Only its own author is served this row at all, and without the label
+          they would think the comment simply failed and post it again.
+        -->
+        <span
+          v-if="comment.held"
+          class="bg-warning/15 text-warning rounded-full px-2 py-0.5 text-xs"
+        >
+          审核中，仅你可见
+        </span>
       </div>
 
+      <p v-if="comment.deleted" class="text-default-400 mt-2 text-sm italic">
+        该评论已删除
+      </p>
       <KunContent
-        v-if="!editing"
+        v-else-if="!editing"
         class="mt-2"
         compact
         :content="comment.content_html"
       />
       <div v-else class="mt-2 space-y-2">
+        <p v-if="!isAuthor" class="text-warning text-xs">
+          正在以管理身份编辑他人的评论，保存后会标注「已编辑（管理）」
+        </p>
         <KunMarkdownEditor
           :key="`edit-${editKey}`"
           :model-value="editContent"
           @update:model-value="(val) => (editContent = val)"
         />
+        <div v-if="!isAuthor" class="space-y-1">
+          <label class="text-default-600 text-sm">
+            编辑原因（可选，会通知作者并记入管理日志）
+          </label>
+          <KunInput
+            v-model="editReason"
+            placeholder="例如：移除广告链接 / 删去人身攻击"
+          />
+        </div>
         <div class="flex justify-end gap-2">
           <KunButton
             variant="light"
@@ -230,7 +258,10 @@ const showMenu = computed(
         </div>
       </div>
 
-      <div v-if="!editing" class="mt-2.5 flex items-center gap-1">
+      <div
+        v-if="!editing && !comment.deleted"
+        class="mt-2.5 flex items-center gap-1"
+      >
         <KunTooltip text="回复">
           <KunReaction
             :toggle="false"
@@ -253,7 +284,7 @@ const showMenu = computed(
           />
         </KunTooltip>
 
-        <KunPopover v-if="showMenu" position="bottom-start">
+        <KunPopover position="bottom-start">
           <template #trigger>
             <KunReaction
               :toggle="false"
@@ -265,7 +296,7 @@ const showMenu = computed(
 
           <div class="flex w-44 flex-col gap-2 p-2">
             <KunButton
-              v-if="canEdit"
+              v-if="canManage"
               variant="light"
               color="default"
               size="sm"
@@ -289,7 +320,7 @@ const showMenu = computed(
             </KunButton>
 
             <KunButton
-              v-if="canDelete"
+              v-if="canManage"
               variant="light"
               color="danger"
               size="sm"
@@ -308,7 +339,7 @@ const showMenu = computed(
           v-if="replying"
           class="mt-3"
           :target="target"
-          :parent-id="rootId"
+          :reply-to-post-id="replyToId"
           :seed="replySeed"
           is-reply
           @close="replying = false"
@@ -316,23 +347,10 @@ const showMenu = computed(
         />
       </KunFadeCard>
 
-      <div v-if="depth === 0 && visibleReplies.length" class="mt-4 space-y-4">
-        <CommentRow
-          v-for="r in visibleReplies"
-          :key="r.id"
-          :comment="r"
-          :target="target"
-          :depth="1"
-          :can-moderate="canModerate"
-          @liked="(id, l) => emit('liked', id, l)"
-          @reply-added="(rr) => emit('replyAdded', rr)"
-          @edited="(u) => emit('edited', u)"
-          @removed="(id) => emit('removed', id)"
-        />
-      </div>
+      <slot name="replies" />
 
       <KunButton
-        v-if="depth === 0 && canToggle"
+        v-if="depth === 0 && replyCount > 0"
         variant="light"
         color="primary"
         size="sm"
@@ -343,21 +361,32 @@ const showMenu = computed(
           :name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
           class="size-4"
         />
-        {{
-          expanded ? '收起回复' : `展开更多 ${replies.length - INLINE_LIMIT} 条回复`
-        }}
+        {{ expanded ? '收起回复' : `展开更多 ${replyCount} 条回复` }}
       </KunButton>
     </div>
 
-    <KunModal v-model="deleteOpen" inner-class-name="max-w-md" aria-label="删除评论">
+    <CommentFlagModal
+      v-model="reportOpen"
+      :post-id="comment.id"
+      :evidence-url="commentAbsoluteUrl(surface, comment.id)"
+    />
+
+    <KunModal
+      v-model="deleteOpen"
+      inner-class-name="max-w-md"
+      aria-label="删除评论"
+    >
       <div class="space-y-4 py-2">
         <h3 class="text-lg font-bold">删除评论？</h3>
+        <!--
+          The reply tier is NOT deleted with its root. Community tombstones the
+          one post and keeps its number, which is what stops a wall's numbering
+          from collapsing under it.
+        -->
         <p class="text-default-600 text-sm">
-          此操作不可恢复{{
-            depth === 0 ? '，该评论下的所有回复也会一并删除' : ''
-          }}。
+          此操作不可恢复，该评论会保留位置并显示为「已删除」。
         </p>
-        <div v-if="isForeignDelete" class="space-y-1">
+        <div v-if="!isAuthor" class="space-y-1">
           <label class="text-default-600 text-sm">
             删除原因（可选，会通知作者并记入管理日志）
           </label>

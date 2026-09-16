@@ -36,18 +36,10 @@ interface PatchSummary {
   name: KunLanguage
 }
 
-interface UserComment {
-  id: number
-  content: string
-  like_count: number
-  user_id: number
-  galgame_id: number
-  // Set when the comment lives in a RESOURCE's comment area rather than the
-  // game's comment tab (migration 028) — decides which page a row links to.
-  resource_id?: number | null
-  created: string
-  patch?: PatchSummary
-}
+// A user's comments come from the same community feed shape every other mixed
+// comment list does — including `link`, which is the only thing that knows which
+// of the two walls a row is on.
+type UserComment = PatchComment
 
 type UserFavoriteItem = GalgameCard
 

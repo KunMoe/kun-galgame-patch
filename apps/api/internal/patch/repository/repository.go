@@ -124,116 +124,6 @@ func (r *PatchRepository) GetRandomPatchIDs(n int, includeEmpty bool) ([]int, er
 	return ids, err
 }
 
-func (r *PatchRepository) GetComments(patchID, offset, limit int) ([]model.PatchComment, int64, error) {
-	var comments []model.PatchComment
-	var total int64
-
-	base := r.db.Model(&model.PatchComment{}).
-		Where("galgame_id = ? AND resource_id IS NULL AND parent_id IS NULL AND status = 0", patchID)
-	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
-		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Where("status = 0").Order("created ASC, id ASC")
-		}).
-		Find(&comments).Error
-
-	return comments, total, err
-}
-
-func (r *PatchRepository) GetResourceComments(resourceID, offset, limit int) ([]model.PatchComment, int64, error) {
-	var comments []model.PatchComment
-	var total int64
-
-	base := r.db.Model(&model.PatchComment{}).
-		Where("resource_id = ? AND parent_id IS NULL AND status = 0", resourceID)
-	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
-		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Where("status = 0").Order("created ASC, id ASC")
-		}).
-		Find(&comments).Error
-
-	return comments, total, err
-}
-
-func (r *PatchRepository) CountResourceComments(resourceID int) (int64, error) {
-	var n int64
-	err := r.db.Model(&model.PatchComment{}).
-		Where("resource_id = ? AND status = 0", resourceID).
-		Count(&n).Error
-	return n, err
-}
-
-func (r *PatchRepository) CreateComment(comment *model.PatchComment) error {
-	return r.db.Create(comment).Error
-}
-
-func (r *PatchRepository) UpdateCommentStatus(commentID, status int) error {
-	return r.db.Model(&model.PatchComment{}).Where("id = ?", commentID).
-		Update("status", status).Error
-}
-
-func (r *PatchRepository) GetCommentByID(id int) (*model.PatchComment, error) {
-	var comment model.PatchComment
-	err := r.db.First(&comment, id).Error
-	return &comment, err
-}
-
-func (r *PatchRepository) CountRootCommentsBefore(root *model.PatchComment) (int64, error) {
-	var n int64
-	q := r.db.Model(&model.PatchComment{}).
-		Where("parent_id IS NULL AND status = 0").
-		Where("(created, id) > (?, ?)", root.Created, root.ID)
-	if root.ResourceID != nil {
-		q = q.Where("resource_id = ?", *root.ResourceID)
-	} else {
-		q = q.Where("galgame_id = ? AND resource_id IS NULL", root.GalgameID)
-	}
-	err := q.Count(&n).Error
-	return n, err
-}
-
-func (r *PatchRepository) UpdateComment(comment *model.PatchComment) error {
-	return r.db.Save(comment).Error
-}
-
-func (r *PatchRepository) DeleteComment(id int) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(
-			`WITH RECURSIVE doomed AS (
-			   SELECT id FROM patch_comment WHERE id = ?
-			   UNION
-			   SELECT c.id FROM patch_comment c JOIN doomed d ON c.parent_id = d.id
-			 )
-			 DELETE FROM user_message
-			 WHERE link ~ '#comment-[0-9]+$'
-			   AND substring(link FROM '#comment-([0-9]+)$')::int IN (SELECT id FROM doomed)`,
-			id,
-		).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&model.PatchComment{}, id).Error
-	})
-}
-
-func (r *PatchRepository) CountCommentAndReplies(commentID int) (int64, error) {
-	var count int64
-	r.db.Model(&model.PatchComment{}).
-		Where("(id = ? OR parent_id = ?) AND status = 0", commentID, commentID).
-		Count(&count)
-	return count, nil
-}
-
-func (r *PatchRepository) GetCommentMarkdown(commentID int) (string, error) {
-	var content string
-	err := r.db.Model(&model.PatchComment{}).Where("id = ?", commentID).Pluck("content", &content).Error
-	return content, err
-}
-
 func (r *PatchRepository) GetResourcePatchID(resourceID int) (int, error) {
 	var patchID int
 	err := r.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
@@ -245,32 +135,6 @@ func (r *PatchRepository) GetResourcePatchID(resourceID int) (int, error) {
 		return 0, gorm.ErrRecordNotFound
 	}
 	return patchID, nil
-}
-
-func (r *PatchRepository) GetCommentPatchID(commentID int) (int, error) {
-	var patchID int
-	err := r.db.Model(&model.PatchComment{}).Where("id = ?", commentID).Pluck("galgame_id", &patchID).Error
-	if err != nil {
-		return 0, err
-	}
-	if patchID == 0 {
-		return 0, gorm.ErrRecordNotFound
-	}
-	return patchID, nil
-}
-
-func (r *PatchRepository) FindCommentLike(userID, commentID int) (*model.UserPatchCommentLikeRelation, error) {
-	var rel model.UserPatchCommentLikeRelation
-	err := r.db.Where("user_id = ? AND comment_id = ?", userID, commentID).First(&rel).Error
-	return &rel, err
-}
-
-func (r *PatchRepository) CreateCommentLike(rel *model.UserPatchCommentLikeRelation) error {
-	return r.db.Create(rel).Error
-}
-
-func (r *PatchRepository) DeleteCommentLike(id int) error {
-	return r.db.Delete(&model.UserPatchCommentLikeRelation{}, id).Error
 }
 
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
@@ -462,14 +326,6 @@ func (r *PatchRepository) GetFavoritedResourceIDs(userID int, resourceIDs []int)
 	err := r.db.Model(&model.UserPatchResourceFavoriteRelation{}).
 		Where("user_id = ? AND resource_id IN ?", userID, resourceIDs).
 		Pluck("resource_id", &ids).Error
-	return ids, err
-}
-
-func (r *PatchRepository) GetLikedCommentIDs(userID int, commentIDs []int) ([]int, error) {
-	var ids []int
-	err := r.db.Model(&model.UserPatchCommentLikeRelation{}).
-		Where("user_id = ? AND comment_id IN ?", userID, commentIDs).
-		Pluck("comment_id", &ids).Error
 	return ids, err
 }
 

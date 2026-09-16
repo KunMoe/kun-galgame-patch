@@ -14,8 +14,15 @@ import (
 	chatHandler "kun-galgame-patch-api/internal/chat/handler"
 	chatRepo "kun-galgame-patch-api/internal/chat/repository"
 	chatService "kun-galgame-patch-api/internal/chat/service"
+	commentHandler "kun-galgame-patch-api/internal/comment/handler"
+	commentRepo "kun-galgame-patch-api/internal/comment/repository"
+	commentService "kun-galgame-patch-api/internal/comment/service"
 	"kun-galgame-patch-api/internal/common"
 	uploadPkg "kun-galgame-patch-api/internal/common/upload"
+	communityAnchor "kun-galgame-patch-api/internal/community/anchor"
+	communityEngagement "kun-galgame-patch-api/internal/community/engagement"
+	communityHandler "kun-galgame-patch-api/internal/community/handler"
+	communityInbox "kun-galgame-patch-api/internal/community/inbox"
 	docHandler "kun-galgame-patch-api/internal/doc/handler"
 	docRepository "kun-galgame-patch-api/internal/doc/repository"
 	docService "kun-galgame-patch-api/internal/doc/service"
@@ -44,6 +51,7 @@ import (
 	userRepo "kun-galgame-patch-api/internal/user/repository"
 	userService "kun-galgame-patch-api/internal/user/service"
 	"kun-galgame-patch-api/pkg/artifactclient"
+	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/config"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/imageclient"
@@ -69,15 +77,20 @@ type App struct {
 
 	AuthHandler    *authHandler.AuthHandler
 	PatchHandler   *patchHandler.PatchHandler
-	UserHandler    *userHandler.UserHandler
-	MessageHandler *messageHandler.MessageHandler
-	AdminHandler   *adminHandler.AdminHandler
-	CommonHandler  *common.CommonHandler
-	FaceHandler    *faceHandler.Handler
-	UploadHandler  *uploadPkg.Handler
-	ChatHandler    *chatHandler.ChatHandler
-	DocHandler     *docHandler.DocHandler
-	TrustHandler   *trustHandler.TrustHandler
+	CommentHandler *commentHandler.Handler
+	// CommunityHandler is the read-receipt / subscription face. It is separate
+	// from CommentHandler because it is addressed by the wall's anchor, not by
+	// a comment the reader wrote.
+	CommunityHandler *communityHandler.EngagementHandler
+	UserHandler      *userHandler.UserHandler
+	MessageHandler   *messageHandler.MessageHandler
+	AdminHandler     *adminHandler.AdminHandler
+	CommonHandler    *common.CommonHandler
+	FaceHandler      *faceHandler.Handler
+	UploadHandler    *uploadPkg.Handler
+	ChatHandler      *chatHandler.ChatHandler
+	DocHandler       *docHandler.DocHandler
+	TrustHandler     *trustHandler.TrustHandler
 
 	CronStop func()
 }
@@ -164,15 +177,36 @@ func New(cfg *config.Config) *App {
 	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, galgame, usrCli, mpAwarder, adminRepository)
 	patchHdl := patchHandler.New(patchSvc, galgame, usrCli, storeLinks)
 
+	// Every comment wall on this site lives in the community primitive. An
+	// unconfigured client degrades comments (reads answer an empty wall, writes
+	// 503) rather than panicking, which is what keeps a prod deploy that has not
+	// been given KUN_COMMUNITY_API_BASE from taking the whole site down.
+	communityCli := communityclient.New(communityclient.Config{
+		BaseURL:      cfg.Community.BaseURL,
+		ClientID:     cfg.Community.ClientID,
+		ClientSecret: cfg.Community.ClientSecret,
+	})
+	if communityCli.Configured() {
+		slog.Info("community comment backend configured", "base_url", cfg.Community.BaseURL)
+	} else {
+		slog.Warn("community comment backend NOT configured; comments degrade (reads empty / writes 503) — set KUN_COMMUNITY_API_BASE + OAuth creds")
+	}
+	commentRepository := commentRepo.New(db)
+	commentAnchors := communityAnchor.New(galgame, commentRepository)
+	communityInboxSvc := communityInbox.New(communityCli, commentAnchors, db)
+	commentSvc := commentService.New(communityCli, commentRepository, commentAnchors, usrCli, galgame, db, mpAwarder, adminRepository, communityInboxSvc)
+	commentHdl := commentHandler.New(commentSvc, galgame, db)
+	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors, communityInboxSvc))
+
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder)
+	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder, commentSvc)
 	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
 	messageRepository := messageRepo.New(db)
-	messageSvc := messageService.New(messageRepository)
+	messageSvc := messageService.New(messageRepository, communityInboxSvc)
 	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
 
-	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame)
+	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame, commentSvc)
 	adminHdl := adminHandler.New(adminSvc, galgame, usrCli)
 
 	trustCli := trustclient.New(trustclient.Config{
@@ -185,22 +219,11 @@ func New(cfg *config.Config) *App {
 	} else {
 		slog.Warn("trust service client NOT configured; reporting returns 未启用 — set KUN_TRUST_BASE_URL + OAuth creds")
 	}
+	// No patch_comment subject: a comment is a community post now, and the
+	// primitive runs its own reporting — weighted by the reporter's trust level
+	// and past accuracy — with its own review queue. A moyu-side subject would
+	// enforce against patch_comment rows nothing writes any more.
 	trustRegistry := enforce.Registry{
-		"patch_comment": {
-			Hide: func(_ context.Context, id int) error {
-				return patchRepository.UpdateCommentStatus(id, 1)
-			},
-			Remove: func(_ context.Context, id int) error {
-				return patchSvc.DeleteComment(id, 0, true, "内容违规（审核处置）")
-			},
-			AuthorID: func(_ context.Context, id int) (int, error) {
-				cmt, err := patchRepository.GetCommentByID(id)
-				if err != nil {
-					return 0, nil
-				}
-				return cmt.UserID, nil
-			},
-		},
 		"patch_resource": {
 			Hide: func(_ context.Context, id int) error {
 				return patchRepository.SetResourceStatus(id, 2)
@@ -242,7 +265,7 @@ func New(cfg *config.Config) *App {
 		ClientSecret: imgCfg.ClientSecret,
 	})
 
-	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, imgCli)
+	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, imgCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 
@@ -280,7 +303,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli)
+	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli, commentSvc, communityInboxSvc)
 	stopBackground := func() {
 		cronStop()
 		storeStop()
@@ -289,23 +312,25 @@ func New(cfg *config.Config) *App {
 	slog.Info("Application initialized")
 
 	return &App{
-		Fiber:          app,
-		DB:             db,
-		RDB:            rdb,
-		UserClient:     usrCli,
-		Config:         cfg,
-		AuthHandler:    authHdl,
-		PatchHandler:   patchHdl,
-		UserHandler:    userHdl,
-		MessageHandler: messageHdl,
-		AdminHandler:   adminHdl,
-		CommonHandler:  commonHdl,
-		FaceHandler:    faceHdl,
-		UploadHandler:  uploadHdl,
-		ChatHandler:    chatHdl,
-		DocHandler:     docHdl,
-		TrustHandler:   trustHdl,
-		CronStop:       stopBackground,
+		Fiber:            app,
+		DB:               db,
+		RDB:              rdb,
+		UserClient:       usrCli,
+		Config:           cfg,
+		AuthHandler:      authHdl,
+		PatchHandler:     patchHdl,
+		CommentHandler:   commentHdl,
+		CommunityHandler: communityHdl,
+		UserHandler:      userHdl,
+		MessageHandler:   messageHdl,
+		AdminHandler:     adminHdl,
+		CommonHandler:    commonHdl,
+		FaceHandler:      faceHdl,
+		UploadHandler:    uploadHdl,
+		ChatHandler:      chatHdl,
+		DocHandler:       docHdl,
+		TrustHandler:     trustHdl,
+		CronStop:         stopBackground,
 	}
 }
 

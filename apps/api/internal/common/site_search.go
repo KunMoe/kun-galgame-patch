@@ -289,7 +289,7 @@ func (h *CommonHandler) searchResourceLane(
 		func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 	patchModel.RenderResourceNotes(resources)
 	h.attachResourceUsers(ctx, resources)
-	h.attachPatchSummaries(ctx, nil, resources)
+	h.attachPatchSummaries(ctx, resources)
 	patchModel.StripResourceSecrets(resources)
 	return resources, total, nil
 }
@@ -347,14 +347,12 @@ func (h *CommonHandler) attachSearchUserCounts(ctx context.Context, items []sear
 		Moemoepoint   int `gorm:"column:moemoepoint"`
 		PatchCount    int `gorm:"column:patch_count"`
 		ResourceCount int `gorm:"column:resource_count"`
-		CommentCount  int `gorm:"column:comment_count"`
 	}
 	var rows []row
 	if err := h.db.WithContext(ctx).Table(`"user" u`).
 		Select(`u.id, u.moemoepoint,
 			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
-			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count,
-			COALESCE((SELECT COUNT(*) FROM patch_comment pc WHERE pc.user_id = u.id), 0) AS comment_count`).
+			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count`).
 		Where("u.id IN ?", ids).Find(&rows).Error; err != nil {
 		slog.Warn("用户搜索的贡献统计失败", "error", err)
 		return
@@ -364,6 +362,10 @@ func (h *CommonHandler) attachSearchUserCounts(ctx context.Context, items []sear
 	for _, r := range rows {
 		byID[r.ID] = r
 	}
+	// The comment count is the community primitive's, not a local COUNT: this
+	// site stores no comments any more. The batch caps at 100 ids, which is
+	// above this lane's own ceiling of 50.
+	commentCounts := h.comments.AuthorCounts(ctx, ids)
 	for i := range items {
 		r, ok := byID[items[i].ID]
 		if !ok {
@@ -372,6 +374,6 @@ func (h *CommonHandler) attachSearchUserCounts(ctx context.Context, items []sear
 		items[i].Moemoepoint = r.Moemoepoint
 		items[i].PatchCount = r.PatchCount
 		items[i].ResourceCount = r.ResourceCount
-		items[i].CommentCount = r.CommentCount
+		items[i].CommentCount = int(commentCounts[items[i].ID])
 	}
 }

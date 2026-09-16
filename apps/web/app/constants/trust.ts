@@ -31,8 +31,13 @@ export const TRUST_ACTIONS = [
 ] as const
 
 // moyu's reportable subject kinds (mirror the backend enforce registry).
+//
+// No patch_comment: a comment is a post in the community primitive, which runs
+// its own reporting — weighted by the reporter's trust level and past accuracy
+// — and its own review queue. Reports made before the cutover still arrive here
+// with that kind, so the label stays.
 export const TRUST_SUBJECT_KIND: Record<string, string> = {
-  patch_comment: '补丁评论',
+  patch_comment: '补丁评论（已迁出）',
   patch_resource: '补丁资源',
   user: '用户'
 }

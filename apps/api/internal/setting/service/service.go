@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	KeyCommentVerify = "comment_verify"
-	KeyCreatorOnly   = "creator_only"
+	KeyCreatorOnly = "creator_only"
 )
 
 type Service struct {

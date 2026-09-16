@@ -1,9 +1,11 @@
 // GET /api/v1/admin/stats/sum
+// No comment total: comments are posts in the community primitive, which counts
+// per author and per thread but has no site-wide total and no "created since"
+// face. The dashboard prints what it can still answer.
 interface SumData {
   user_count: number
   galgame_count: number
   resource_count: number
-  comment_count: number
 }
 
 // GET /api/v1/admin/stats?days=N
@@ -12,7 +14,6 @@ interface OverviewData {
   new_active_user: number
   new_galgame: number
   new_resource: number
-  new_comment: number
 }
 
 // AdminUser and AdminCreator types were removed alongside their endpoints

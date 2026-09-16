@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	commentService "kun-galgame-patch-api/internal/comment/service"
 	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
@@ -32,10 +34,22 @@ type CommonHandler struct {
 	users   *userclient.Client
 	art     *artifactclient.Client
 	img     *imageclient.Client
+	// comments answers the two things this file still needs from the comment
+	// walls now that they live in the community primitive: the home page's
+	// newest rows, and how many comments a listed user has written.
+	comments CommentSource
 }
 
-func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client) *CommonHandler {
-	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, img: img}
+// CommentSource is the community-backed comment service, narrowed to what the
+// mixed lists here ask of it.
+type CommentSource interface {
+	SiteFeed(ctx context.Context, cursor string, limit int, cl string, db commentService.PatchSummaryDB) (*commentService.FeedPage, *errors.AppError)
+	AuthorBoard(ctx context.Context, limit int) []int
+	AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
+}
+
+func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client, comments CommentSource) *CommonHandler {
+	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, img: img, comments: comments}
 }
 
 func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
@@ -50,22 +64,6 @@ func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
 			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
-		}
-	}
-}
-
-func (h *CommonHandler) attachCommentUsers(ctx context.Context, cs []patchModel.PatchComment) {
-	if len(cs) == 0 {
-		return
-	}
-	uids := make([]int, 0, len(cs))
-	for _, c := range cs {
-		uids = append(uids, c.UserID)
-	}
-	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
-	for i := range cs {
-		if b := briefs[cs[i].UserID]; b != nil {
-			cs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
 		}
 	}
 }
@@ -85,7 +83,7 @@ func (p patchSummaryFinder) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, e
 type homeResponse struct {
 	Galgames  []enricher.GalgameCard     `json:"galgames"`
 	Resources []patchModel.PatchResource `json:"resources"`
-	Comments  []patchModel.PatchComment  `json:"comments"`
+	Comments  []*commentService.FeedItem `json:"comments"`
 }
 
 const homeGalgameCount = 12
@@ -99,12 +97,13 @@ const homeGalgameCount = 12
 // either way.
 const homeGalgameOverfetch = 4
 
+const homeCommentCount = 6
+
 func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 
 	var patches []patchModel.Patch
 	var resources []patchModel.PatchResource
-	var comments []patchModel.PatchComment
 
 	patchQuery := h.db.Model(&patchModel.Patch{}).Order("created DESC, id DESC").
 		Limit(homeGalgameCount * homeGalgameOverfetch)
@@ -114,19 +113,21 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	patchQuery = utils.ScopePatchContentLimit(patchQuery, cl)
 	patchQuery.Find(&patches)
 	h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&resources)
-	h.db.Model(&patchModel.PatchComment{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&comments)
 
 	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
-	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
 
 	patchModel.RenderResourceNotes(resources)
-	for i := range comments {
-		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
-	}
 	h.attachResourceUsers(c.Context(), resources)
-	h.attachCommentUsers(c.Context(), comments)
-	h.attachPatchSummaries(c.Context(), comments, resources)
+	h.attachPatchSummaries(c.Context(), resources)
 	patchModel.StripResourceSecrets(resources)
+
+	// The comment strip comes from the community primitive's site feed, which
+	// keysets on creation time rather than id — the import gives historical
+	// comments fresh ids, so id order is import order.
+	comments := []*commentService.FeedItem{}
+	if page, appErr := h.comments.SiteFeed(c.Context(), "", homeCommentCount, cl, patchSummaryFinder{db: h.db}); appErr == nil {
+		comments = page.Items
+	}
 
 	galgames := enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches, cl)
 	if len(galgames) > homeGalgameCount {
@@ -164,46 +165,12 @@ type commentListRequest struct {
 	Limit     int    `query:"limit" validate:"required,min=1,max=50"`
 }
 
-func (h *CommonHandler) GetGlobalComments(c fiber.Ctx) error {
-	var req commentListRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	cl := utils.ContentLimitForListBrowse(c)
-
-	var comments []patchModel.PatchComment
-	var total int64
-
-	base := h.db.Model(&patchModel.PatchComment{}).Where("status = 0")
-	base.Session(&gorm.Session{}).Count(&total)
-
-	err := base.Session(&gorm.Session{}).Order(fmt.Sprintf("%s %s, id DESC", req.SortField, req.SortOrder)).
-		Offset((req.Page - 1) * req.Limit).Limit(req.Limit).
-		Find(&comments).Error
-
-	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-
-	comments = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, comments, func(m patchModel.PatchComment) int { return m.GalgameID }, cl)
-
-	for i := range comments {
-		comments[i].ContentHTML = markdown.MustRender(comments[i].Content)
-	}
-	h.attachCommentUsers(c.Context(), comments)
-	h.attachPatchSummaries(c.Context(), comments, nil)
-	return response.Paginated(c, comments, total)
-}
-
-func (h *CommonHandler) attachPatchSummaries(ctx context.Context, comments []patchModel.PatchComment, resources []patchModel.PatchResource) {
-	if len(comments) == 0 && len(resources) == 0 {
+func (h *CommonHandler) attachPatchSummaries(ctx context.Context, resources []patchModel.PatchResource) {
+	if len(resources) == 0 {
 		return
 	}
 
-	idSet := make(map[int]struct{}, len(comments)+len(resources))
-	for _, m := range comments {
-		idSet[m.GalgameID] = struct{}{}
-	}
+	idSet := make(map[int]struct{}, len(resources))
 	for _, r := range resources {
 		idSet[r.GalgameID] = struct{}{}
 	}
@@ -216,12 +183,6 @@ func (h *CommonHandler) attachPatchSummaries(ctx context.Context, comments []pat
 	}
 
 	summaries := enricher.BuildPatchSummaryMap(ctx, h.galgame, patchSummaryFinder{db: h.db}, ids)
-	for i := range comments {
-		if s, ok := summaries[comments[i].GalgameID]; ok {
-			summary := s
-			comments[i].Patch = &summary
-		}
-	}
 	for i := range resources {
 		if s, ok := summaries[resources[i].GalgameID]; ok {
 			summary := s
@@ -269,7 +230,7 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 	patchModel.RenderResourceNotes(resources)
 	h.attachResourceUsers(c.Context(), resources)
-	h.attachPatchSummaries(c.Context(), nil, resources)
+	h.attachPatchSummaries(c.Context(), resources)
 	patchModel.StripResourceSecrets(resources)
 	return response.Paginated(c, resources, total)
 }
@@ -556,7 +517,6 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 		Moemoepoint   int   `gorm:"column:moemoepoint"`
 		PatchCount    int64 `gorm:"column:patch_count"`
 		ResourceCount int64 `gorm:"column:resource_count"`
-		CommentCount  int64 `gorm:"column:comment_count"`
 	}
 
 	orderBy := "u.moemoepoint DESC, u.id DESC"
@@ -565,21 +525,38 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 		orderBy = "patch_count DESC, u.moemoepoint DESC, u.id DESC"
 	case "resource", "resource_count":
 		orderBy = "resource_count DESC, u.moemoepoint DESC, u.id DESC"
-	case "comment", "comment_count":
-		orderBy = "comment_count DESC, u.moemoepoint DESC, u.id DESC"
+	}
+
+	// Comments cannot be ordered in SQL — they live in the community primitive —
+	// so that one sort asks the primitive who the top authors are and this query
+	// only fills in the rest of their row.
+	var board []int
+	if sortBy == "comment" || sortBy == "comment_count" {
+		if board = h.comments.AuthorBoard(c.Context(), limit); len(board) == 0 {
+			return response.OK(c, []rankingUser{})
+		}
+	}
+
+	q := h.db.Table(`"user" u`).
+		Select(`u.id, u.moemoepoint,
+			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
+			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count`)
+	if board != nil {
+		q = q.Where("u.id IN ?", board)
+	} else {
+		q = q.Order(orderBy).Limit(limit)
 	}
 
 	var rows []row
-	err := h.db.Table(`"user" u`).
-		Select(`u.id, u.moemoepoint,
-			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
-			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count,
-			COALESCE((SELECT COUNT(*) FROM patch_comment pc WHERE pc.user_id = u.id), 0) AS comment_count`).
-		Order(orderBy).
-		Limit(limit).
-		Find(&rows).Error
-	if err != nil {
+	if err := q.Find(&rows).Error; err != nil {
 		return response.Error(c, errors.ErrInternal(""))
+	}
+	if board != nil {
+		rank := make(map[int]int, len(board))
+		for i, id := range board {
+			rank[id] = i
+		}
+		slices.SortFunc(rows, func(a, b row) int { return rank[a.ID] - rank[b.ID] })
 	}
 
 	uids := make([]int, 0, len(rows))
@@ -587,6 +564,7 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 		uids = append(uids, r.ID)
 	}
 	briefs := userclient.BriefMapByInt(c.Context(), h.users, uids)
+	commentCounts := h.comments.AuthorCounts(c.Context(), uids)
 
 	out := make([]rankingUser, 0, len(rows))
 	for _, r := range rows {
@@ -595,7 +573,7 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 			Moemoepoint:   r.Moemoepoint,
 			PatchCount:    r.PatchCount,
 			ResourceCount: r.ResourceCount,
-			CommentCount:  r.CommentCount,
+			CommentCount:  commentCounts[r.ID],
 		}
 		if b := briefs[r.ID]; b != nil {
 			if b.Status != 0 {

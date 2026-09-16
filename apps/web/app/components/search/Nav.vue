@@ -11,10 +11,13 @@ const emit = defineEmits<{
   'update:modelValue': [value: SearchType]
 }>()
 
-const counts = computed<Record<SearchType, number>>(() => {
+// Partial, because 评论 has no count to show: its upstream face answers a
+// keyset cursor and no total. An absent number renders as no number at all
+// rather than as a zero.
+const counts = computed<Partial<Record<SearchType, number>>>(() => {
   const totals = props.totals
   if (!totals) {
-    return {} as Record<SearchType, number>
+    return {}
   }
   const sum = Object.values(totals).reduce((acc, value) => acc + value, 0)
   return { ...totals, all: sum }

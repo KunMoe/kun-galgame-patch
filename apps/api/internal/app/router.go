@@ -61,21 +61,25 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Get("/legacy/:id", a.PatchHandler.GetLegacyRedirect)
 	patchRoutes.Get("/:id", optionalAuth, a.PatchHandler.GetPatch)
 	patchRoutes.Get("/:id/detail", optionalAuth, a.PatchHandler.GetPatchDetail)
-	patchRoutes.Get("/:id/comment", optionalAuth, a.PatchHandler.GetComments)
+	patchRoutes.Get("/:id/comment", optionalAuth, a.CommentHandler.GetPatchComments)
 	patchRoutes.Get("/:id/resource", optionalAuth, a.PatchHandler.GetResources)
 	patchRoutes.Get("/:id/contributor", a.PatchHandler.GetContributors)
 	patchRoutes.Put("/:id/view", a.PatchHandler.IncrementView)
-	patchRoutes.Get("/comment/:commentId/markdown", a.PatchHandler.GetCommentMarkdown)
-	patchRoutes.Get("/comment/:commentId/locate", optionalAuth, a.PatchHandler.LocateComment)
-	patchRoutes.Get("/resource/:resourceId/comment", optionalAuth, a.PatchHandler.GetResourceComments)
+	// Registered before /comment/:postId/... so the literal segment is not read
+	// as a post id. It takes ?legacy_id= rather than a path id because the two
+	// id spaces overlap: an old comment id is also a plausible post id.
+	patchRoutes.Get("/comment/locate", optionalAuth, a.CommentHandler.LocateComment)
+	patchRoutes.Get("/comment/:postId/markdown", a.CommentHandler.GetCommentMarkdown)
+	patchRoutes.Get("/resource/:resourceId/comment", optionalAuth, a.CommentHandler.GetResourceComments)
 
 	patchRoutes.Put("/:id", auth, a.PatchHandler.UpdatePatch)
 	patchRoutes.Delete("/:id", auth, a.PatchHandler.DeletePatch)
-	patchRoutes.Post("/:id/comment", auth, a.PatchHandler.CreateComment)
-	patchRoutes.Put("/comment/:commentId", auth, a.PatchHandler.UpdateComment)
-	patchRoutes.Delete("/comment/:commentId", auth, a.PatchHandler.DeleteComment)
-	patchRoutes.Put("/comment/:commentId/like", auth, a.PatchHandler.ToggleCommentLike)
-	patchRoutes.Post("/resource/:resourceId/comment", auth, a.PatchHandler.CreateResourceComment)
+	patchRoutes.Post("/:id/comment", auth, a.CommentHandler.CreatePatchComment)
+	patchRoutes.Put("/comment/:postId", auth, a.CommentHandler.UpdateComment)
+	patchRoutes.Delete("/comment/:postId", auth, a.CommentHandler.DeleteComment)
+	patchRoutes.Put("/comment/:postId/like", auth, a.CommentHandler.ToggleLike)
+	patchRoutes.Post("/comment/:postId/flag", auth, a.CommentHandler.FlagComment)
+	patchRoutes.Post("/resource/:resourceId/comment", auth, a.CommentHandler.CreateResourceComment)
 	patchRoutes.Post("/:id/resource", auth, a.PatchHandler.CreateResource)
 	patchRoutes.Put("/resource/:resourceId", auth, a.PatchHandler.UpdateResource)
 	patchRoutes.Delete("/resource/:resourceId", auth, a.PatchHandler.DeleteResource)
@@ -164,13 +168,22 @@ func (a *App) RegisterRoutes() {
 	// favourites.
 	userRoutes.Get("/:id/favorite", optionalAuth, a.UserHandler.GetUserFavorites)
 	userRoutes.Get("/:id/folder", optionalAuth, a.PatchHandler.UserFolders)
-	userRoutes.Get("/:id/comment", a.UserHandler.GetUserComments)
+	userRoutes.Get("/:id/comment", a.CommentHandler.GetUserComments)
 	userRoutes.Get("/:id/contribute", a.UserHandler.GetUserContributions)
 	userRoutes.Get("/:id/follower", optionalAuth, a.UserHandler.GetFollowers)
 	userRoutes.Get("/:id/following", optionalAuth, a.UserHandler.GetFollowing)
 
 	userRoutes.Put("/:id/follow", auth, a.UserHandler.Follow)
 	userRoutes.Delete("/:id/follow", auth, a.UserHandler.Unfollow)
+
+	// The comment walls a reader follows, addressed by the wall's anchor. A
+	// read receipt is a POST the reader makes and is never inferred from the
+	// wall's GET: a read face with a write side effect cannot be cached,
+	// retried or prefetched safely.
+	communityRoutes := api.Group("/community", auth)
+	communityRoutes.Get("/unread", a.CommunityHandler.Unread)
+	communityRoutes.Post("/wall/read", a.CommunityHandler.ReadWall)
+	communityRoutes.Post("/wall/notification", a.CommunityHandler.SetWallNotification)
 
 	msgRoutes := api.Group("/message", auth)
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)
@@ -180,10 +193,14 @@ func (a *App) RegisterRoutes() {
 
 	adminRoutes := api.Group("/admin", auth, moderatorAuth)
 
-	adminRoutes.Get("/comment", a.AdminHandler.GetComments)
-	adminRoutes.Put("/comment/:id", a.AdminHandler.UpdateComment)
-	adminRoutes.Delete("/comment/:id", a.AdminHandler.DeleteComment)
-	adminRoutes.Put("/comment/:id/approve", a.PatchHandler.ApproveComment)
+	// The admin comment queue reads the community primitive like every other
+	// comment surface: a keyword search over the walls, or the newest comments
+	// when there is none. There is no approve face — community has no
+	// pre-moderation, and site_setting never carried an enabled comment_verify.
+	adminRoutes.Get("/comment", a.CommentHandler.SearchComments)
+	adminRoutes.Get("/comment/recent", a.CommentHandler.GetGlobalComments)
+	adminRoutes.Put("/comment/:postId", a.CommentHandler.UpdateComment)
+	adminRoutes.Delete("/comment/:postId", a.CommentHandler.DeleteComment)
 
 	adminRoutes.Get("/resource", a.AdminHandler.GetResources)
 	adminRoutes.Put("/resource/:id", a.AdminHandler.UpdateResource)
@@ -193,8 +210,6 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Get("/user/:id/purge-preview", adminAuth, a.AdminHandler.GetUserPurgePreview)
 	adminRoutes.Post("/user/:id/purge", adminAuth, a.AdminHandler.PurgeUser)
 
-	adminRoutes.Get("/setting/comment-verify", a.AdminHandler.GetCommentVerify)
-	adminRoutes.Put("/setting/comment-verify", adminAuth, a.AdminHandler.SetCommentVerify)
 	adminRoutes.Get("/setting/creator-only", a.AdminHandler.GetCreatorOnly)
 	adminRoutes.Put("/setting/creator-only", adminAuth, a.AdminHandler.SetCreatorOnly)
 
@@ -226,7 +241,8 @@ func (a *App) RegisterRoutes() {
 	api.Get("/home", a.CommonHandler.GetHome)
 	api.Get("/home/random", a.PatchHandler.GetRandomPatch)
 	api.Get("/galgame", a.CommonHandler.GetGalgameList)
-	api.Get("/comment", a.CommonHandler.GetGlobalComments)
+	api.Get("/comment", a.CommentHandler.GetGlobalComments)
+	api.Get("/search/comment", a.CommentHandler.SearchComments)
 	api.Get("/resource", a.CommonHandler.GetGlobalResources)
 	api.Get("/resource/:id",
 		optionalAuth,

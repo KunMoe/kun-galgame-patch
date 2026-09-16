@@ -144,31 +144,6 @@ func (h *UserHandler) GetUserFavorites(c fiber.Ctx) error {
 	return response.Paginated(c, enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches, cl), total)
 }
 
-func (h *UserHandler) GetUserComments(c fiber.Ctx) error {
-	userID, err := getUID(c)
-	if err != nil {
-		return response.Error(c, err.(*errors.AppError))
-	}
-
-	var req dto.GetUserProfileRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
-	}
-	if req.Page == 0 {
-		req.Page = 1
-	}
-	if req.Limit == 0 {
-		req.Limit = 10
-	}
-
-	data, total, err := h.service.GetUserComments(c.Context(), userID, req.Page, req.Limit)
-	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
-	}
-	data = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, data, func(m patchModel.PatchComment) int { return m.GalgameID }, utils.ContentLimitForListBrowse(c))
-	return response.Paginated(c, data, total)
-}
-
 func (h *UserHandler) GetUserContributions(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {

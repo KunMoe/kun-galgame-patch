@@ -13,36 +13,40 @@ const target = computed<CommentTarget>(() => ({
 const emit = defineEmits<{ 'update:loading': [boolean] }>()
 
 const {
-  items,
-  totalPages,
+  groups,
+  subscription,
+  setLevel,
+  hasMore,
+  loadMore,
+  loadingMore,
   pending,
-  page,
   expandedRoots,
   toggleExpand,
   onLiked,
   onCommentAdded,
-  onReplyAdded,
   onEdited,
   onRemoved
-} = useCommentList(target, { routeQueryKey: 'page' })
+} = useCommentList(target)
 
 watch(pending, (value) => emit('update:loading', value), { immediate: true })
 </script>
 
 <template>
   <CommentSection
-    v-model:page="page"
     :target="target"
-    :items="items"
-    :total-pages="totalPages"
+    :groups="groups"
     :expanded-roots="expandedRoots"
+    :subscription="subscription"
+    :has-more="hasMore"
+    :loading-more="loadingMore"
     :pending="pending"
     :can-moderate="userStore.isModerator"
     @comment-added="onCommentAdded"
     @liked="onLiked"
-    @reply-added="onReplyAdded"
     @edited="onEdited"
     @removed="onRemoved"
     @toggle-expand="toggleExpand"
+    @load-more="loadMore"
+    @set-level="setLevel"
   />
 </template>

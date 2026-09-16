@@ -4,11 +4,11 @@ import { commentSurface, type CommentTarget } from '~/shared/utils/commentTarget
 const props = withDefaults(
   defineProps<{
     target: CommentTarget
-    parentId?: number | null
+    replyToPostId?: number | null
     seed?: string
     isReply?: boolean
   }>(),
-  { parentId: null, seed: '', isReply: false }
+  { replyToPostId: null, seed: '', isReply: false }
 )
 
 const emit = defineEmits<{
@@ -53,7 +53,7 @@ const publish = async () => {
   try {
     const res = await api.post<PatchPageComment>(surface.createUrl, {
       content: text,
-      ...(props.parentId ? { parent_id: props.parentId } : {})
+      ...(props.replyToPostId ? { reply_to_post_id: props.replyToPostId } : {})
     })
     if (res.code !== 0) {
       useKunMessage(res.message || '发布失败', 'error')
@@ -61,22 +61,21 @@ const publish = async () => {
     }
     resetToSeed()
 
-    if (res.data?.status === 1) {
+    // A newcomer's first posts are HELD upstream: created hidden and queued for
+    // review. They are still returned to their own author, so the row renders
+    // with its 审核中 label rather than vanishing — but say so here too, or the
+    // post looks like it simply failed and gets written again.
+    if (res.data?.held) {
       useKunMessage(
         props.isReply
-          ? '回复已提交，等待版主审核通过后显示'
-          : '评论已提交，等待版主审核通过后显示',
+          ? '回复已提交，新用户的前两条内容会先经过审核'
+          : '评论已提交，新用户的前两条内容会先经过审核',
         'info'
       )
-      emit('close')
-      return
+    } else {
+      useKunMessage(props.isReply ? '回复成功' : '评论发布成功', 'success')
     }
-    emit('submitted', {
-      ...res.data,
-      user: userStore.user,
-      reply: res.data.reply ?? []
-    })
-    useKunMessage(props.isReply ? '回复成功' : '评论发布成功', 'success')
+    emit('submitted', { ...res.data, user: res.data.user ?? userStore.user })
     emit('close')
   } finally {
     publishing.value = false

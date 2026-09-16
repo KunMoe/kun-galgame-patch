@@ -28,14 +28,12 @@ type AdminStatsResponse struct {
 	NewActiveUser    int64 `json:"new_active_user"`
 	NewGalgame       int64 `json:"new_galgame"`
 	NewPatchResource int64 `json:"new_resource"`
-	NewComment       int64 `json:"new_comment"`
 }
 
 type AdminStatsSumResponse struct {
 	UserCount          int64 `json:"user_count"`
 	GalgameCount       int64 `json:"galgame_count"`
 	PatchResourceCount int64 `json:"resource_count"`
-	PatchCommentCount  int64 `json:"comment_count"`
 }
 
 type PurgeUserRequest struct {
@@ -47,7 +45,6 @@ type UserPurgePreview struct {
 	UserExists      bool  `json:"user_exists"`
 	Comments        int64 `json:"comments"`
 	Resources       int64 `json:"resources"`
-	CommentLikes    int64 `json:"comment_likes"`
 	ResourceLikes   int64 `json:"resource_likes"`
 	Contributes     int64 `json:"contributes"`
 	Following       int64 `json:"following"`
@@ -58,7 +55,6 @@ type UserPurgePreview struct {
 	OwnedPatches    int64 `json:"owned_patches"`
 
 	OwnedPatchResources int64 `json:"owned_patch_resources"`
-	OwnedPatchComments  int64 `json:"owned_patch_comments"`
 
 	MiscTraces int64 `json:"misc_traces"`
 
@@ -72,7 +68,8 @@ type UserPurgePreview struct {
 }
 
 type UserPurgeResult struct {
-	UserID          int  `json:"user_id"`
-	UserRowDeleted  bool `json:"user_row_deleted"`
-	SessionsRevoked int  `json:"sessions_revoked"`
+	UserID          int   `json:"user_id"`
+	UserRowDeleted  bool  `json:"user_row_deleted"`
+	SessionsRevoked int   `json:"sessions_revoked"`
+	CommentsPurged  int64 `json:"comments_purged"`
 }

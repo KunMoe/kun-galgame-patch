@@ -15,6 +15,7 @@ type Config struct {
 	ImageService ImageServiceConfig
 	Artifact     ArtifactConfig
 	Trust        TrustConfig
+	Community    CommunityConfig
 	Dlsite       DlsiteConfig
 	CORS         CORSConfig
 	Site         SiteConfig
@@ -80,6 +81,22 @@ type ArtifactConfig struct {
 	BaseURL      string
 	ClientID     string
 	ClientSecret string
+}
+
+// CommunityConfig points at the NextMoe community primitive, which owns every
+// comment wall on this site.
+//
+// The credentials are moyu's own OAuth client: community derives its tenant from
+// that client's oauth_clients.catalog_site, so there is nothing site-shaped to
+// configure here and nothing to send on the wire.
+type CommunityConfig struct {
+	BaseURL      string
+	ClientID     string
+	ClientSecret string
+}
+
+func (c CommunityConfig) Configured() bool {
+	return c.BaseURL != "" && c.ClientID != "" && c.ClientSecret != ""
 }
 
 type TrustConfig struct {
@@ -159,6 +176,11 @@ func Load() *Config {
 			BaseURL:        getEnvOptionalProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
 			Site:           getEnv("KUN_TRUST_SITE", "moyu"),
 			CallbackSecret: getEnv("KUN_TRUST_CALLBACK_SECRET", ""),
+		},
+		Community: CommunityConfig{
+			BaseURL:      getEnvOptionalProd("KUN_COMMUNITY_API_BASE", "http://127.0.0.1:9282/api/v1/community", mode),
+			ClientID:     getEnv("KUN_COMMUNITY_CLIENT_ID", getEnv("OAUTH_CLIENT_ID", "")),
+			ClientSecret: getEnv("KUN_COMMUNITY_CLIENT_SECRET", getEnv("OAUTH_CLIENT_SECRET", "")),
 		},
 		Dlsite: DlsiteConfig{
 			LinkTemplate: getEnv("KUN_DLSITE_LINK_TEMPLATE", ""),

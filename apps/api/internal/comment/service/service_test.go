@@ -1,0 +1,183 @@
+package service
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"kun-galgame-patch-api/internal/community/anchor"
+	"kun-galgame-patch-api/pkg/communityclient"
+)
+
+// The TL0 sandbox holds a newcomer's first posts: created hidden, queued for
+// review. The author still has to see their own, or posting looks like it
+// silently failed and they post again.
+func TestHeldPostIsVisibleOnlyToItsAuthor(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int32
+		authorID int64
+		viewerID int
+		want     bool
+	}{
+		{"held, author looking", communityclient.PostHeld, 3, 3, true},
+		{"held, someone else", communityclient.PostHeld, 3, 4, false},
+		{"held, anonymous", communityclient.PostHeld, 3, 0, false},
+		{"visible to anyone", communityclient.PostVisible, 3, 0, true},
+		// A tombstone keeps its post_number — it is what holds the wall's
+		// numbering — so it renders as a stub rather than disappearing.
+		{"tombstone still renders", communityclient.PostDeleted, 3, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := visibleTo(tc.status, tc.authorID, tc.viewerID); got != tc.want {
+				t.Errorf("visibleTo = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildItemBlanksATombstone(t *testing.T) {
+	post := communityclient.PostView{
+		ID: 900, ThreadID: 7, AuthorID: 3,
+		ContentRaw: "链接失效了", Status: communityclient.PostDeleted,
+	}
+	item := buildItem(post, PatchSurface(42), nil)
+	if item.Content != "" || item.ContentHTML != "" {
+		t.Errorf("tombstone still carries content: %q / %q", item.Content, item.ContentHTML)
+	}
+	if !item.Deleted {
+		t.Error("deleted flag not set")
+	}
+}
+
+func TestBuildItemKeepsReplyPointersNilWhenAbsent(t *testing.T) {
+	root := buildItem(communityclient.PostView{ID: 900}, PatchSurface(42), nil)
+	if root.ParentCommentID != nil || root.RootCommentID != nil {
+		t.Errorf("a root post claims a parent: %+v / %+v", root.ParentCommentID, root.RootCommentID)
+	}
+
+	reply := buildItem(communityclient.PostView{ID: 901, ReplyToPostID: 900, RootPostID: 900},
+		PatchSurface(42), nil)
+	if reply.ParentCommentID == nil || *reply.ParentCommentID != 900 {
+		t.Errorf("reply parent = %v", reply.ParentCommentID)
+	}
+}
+
+func TestResourceSurfaceCarriesBothIDs(t *testing.T) {
+	item := buildItem(communityclient.PostView{ID: 900}, ResourceSurface(678, 42), nil)
+	if item.GalgameID != 42 {
+		t.Errorf("galgame_id = %d, want 42", item.GalgameID)
+	}
+	if item.ResourceID == nil || *item.ResourceID != 678 {
+		t.Errorf("resource_id = %v, want 678", item.ResourceID)
+	}
+	if got := buildItem(communityclient.PostView{ID: 900}, PatchSurface(42), nil).ResourceID; got != nil {
+		t.Errorf("game wall claims resource_id %v", got)
+	}
+}
+
+// Every permalink anchors on `#post-<id>`. `#comment-<n>` is the pre-cutover
+// comment id and still resolves through the import's map, so the two shapes
+// must never be the same — a post id and an old comment id can be equal.
+func TestPermalinkAnchorsOnThePostID(t *testing.T) {
+	game := permalink(anchor.Target{Link: "/galgame/42?tab=comment"}, 900)
+	if game != "/galgame/42?tab=comment#post-900" {
+		t.Errorf("game permalink = %q", game)
+	}
+	res := permalink(anchor.Target{Link: "/resource/678", ResourceID: 678}, 901)
+	if res != "/resource/678#post-901" {
+		t.Errorf("resource permalink = %q", res)
+	}
+	if strings.Contains(game, "#comment-") || strings.Contains(res, "#comment-") {
+		t.Error("a permalink used the legacy anchor shape")
+	}
+}
+
+// Without the window a long comment shows its opening and highlights nothing,
+// because the match is a thousand characters further down.
+func TestSnippetWindowsOnTheHit(t *testing.T) {
+	body := strings.Repeat("前", 400) + "汉化补丁" + strings.Repeat("后", 400)
+	got := snippet(body, "汉化")
+	if !strings.Contains(got, "汉化") {
+		t.Fatalf("snippet lost the hit: %q", got)
+	}
+	if !strings.HasPrefix(got, "…") {
+		t.Errorf("a windowed snippet should say it was cut: %q", got)
+	}
+	if n := len([]rune(got)); n > snippetLen+1 {
+		t.Errorf("snippet is %d runes, cap is %d", n, snippetLen)
+	}
+
+	short := "短评论"
+	if snippet(short, "短") != short {
+		t.Error("a short comment was cut")
+	}
+}
+
+// The like count and the viewer's own flag are read off the post the primitive
+// answers with; this site keeps no mirror of either.
+func TestBuildItemCarriesUpstreamReactions(t *testing.T) {
+	item := buildItem(communityclient.PostView{
+		ID: 900, ReactionCount: 4, ViewerReacted: true,
+	}, PatchSurface(42), nil)
+	if item.LikeCount != 4 || !item.IsLiked {
+		t.Errorf("item = %+v", item)
+	}
+}
+
+func TestModeratorNoticeCarriesTheReason(t *testing.T) {
+	if got := moderatorNotice("编辑", ""); got != "您发布的评论已被版主编辑。如有疑问可联系管理员。" {
+		t.Errorf("moderatorNotice(编辑, empty) = %q", got)
+	}
+	if got := moderatorNotice("删除", "广告"); got != "您发布的评论已被版主删除。原因：广告" {
+		t.Errorf("moderatorNotice(删除, 广告) = %q", got)
+	}
+}
+
+func TestMentionUserIDsDropsAuthorAndCapsAt20(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("[@self](/user/99) ")
+	for i := 1; i <= 21; i++ {
+		fmt.Fprintf(&b, "[@u](/user/%d) ", i)
+	}
+	got := mentionUserIDs(b.String(), 99)
+	if len(got) != 20 {
+		t.Fatalf("len = %d, want 20: %v", len(got), got)
+	}
+	for i := 0; i < 20; i++ {
+		if got[i] != int64(i+1) {
+			t.Fatalf("got[%d] = %d, want %d", i, got[i], i+1)
+		}
+	}
+}
+
+func TestAddedMentionIDs(t *testing.T) {
+	old := "[@a](/user/1) [@b](/user/2)"
+	fresh := "[@a](/user/1) [@c](/user/3) [@self](/user/9)"
+	got := addedMentionIDs(old, fresh, 9)
+	if len(got) != 1 || got[0] != 3 {
+		t.Errorf("addedMentionIDs = %v, want [3]", got)
+	}
+	if got := addedMentionIDs(old, old, 9); len(got) != 0 {
+		t.Errorf("re-save notified %v", got)
+	}
+}
+
+func TestPostLinkExtendsTheWallLink(t *testing.T) {
+	var s Service
+	game := PatchSurface(42)
+	if got := s.postLink(game, 900); got != wallLink(game)+"#post-900" {
+		t.Errorf("game postLink = %q, wallLink = %q", got, wallLink(game))
+	}
+	if got := s.postLink(game, 900); got != "/galgame/42?tab=comment#post-900" {
+		t.Errorf("game postLink = %q", got)
+	}
+	res := ResourceSurface(678, 42)
+	if got := s.postLink(res, 901); got != wallLink(res)+"#post-901" {
+		t.Errorf("resource postLink = %q, wallLink = %q", got, wallLink(res))
+	}
+	if got := s.postLink(res, 901); got != "/resource/678#post-901" {
+		t.Errorf("resource postLink = %q", got)
+	}
+}

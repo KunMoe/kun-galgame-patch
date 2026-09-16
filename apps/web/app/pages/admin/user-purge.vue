@@ -13,7 +13,6 @@ interface UserPurgePreview {
   user_exists: boolean
   comments: number
   resources: number
-  comment_likes: number
   resource_likes: number
   contributes: number
   following: number
@@ -23,7 +22,6 @@ interface UserPurgePreview {
   private_messages: number
   owned_patches: number
   owned_patch_resources: number
-  owned_patch_comments: number
   misc_traces: number
   catalog_folders: number
   catalog_folder_items: number
@@ -34,6 +32,7 @@ interface UserPurgeResult {
   user_id: number
   user_row_deleted: boolean
   sessions_revoked: number
+  comments_purged: number
 }
 
 const uid = ref('')
@@ -84,7 +83,7 @@ const rows = computed<{ label: string; value: number; hint?: string }[]>(() => {
   return [
     { label: '评论', value: p.comments },
     { label: '补丁资源', value: p.resources },
-    { label: '点赞 (评论 / 资源)', value: p.comment_likes + p.resource_likes },
+    { label: '点赞 (资源)', value: p.resource_likes },
     { label: '贡献', value: p.contributes },
     { label: '关注 / 粉丝', value: p.following + p.followers },
     { label: '聊天室成员 / 消息', value: p.chat_memberships + p.chat_messages },
@@ -106,7 +105,7 @@ const execute = async () => {
   const p = preview.value
   if (!p || !uidValid.value) return
   const collateral = forcePurgePatches.value
-    ? `并强删其创建的 ${p.owned_patches} 个补丁（连带 ${p.owned_patch_resources} 个资源、${p.owned_patch_comments} 条评论，含其他用户的内容）。`
+    ? `并强删其创建的 ${p.owned_patches} 个补丁（连带 ${p.owned_patch_resources} 个资源，含其他用户的内容）。`
     : ''
   const ok = await useKunAlert({
     title: '⚠️ 清除用户全部痕迹',
@@ -219,15 +218,15 @@ const execute = async () => {
 
         <div class="border-default-200 space-y-3 rounded-lg border p-3">
           <KunCheckBox v-model="forcePurgePatches" color="danger">
-            强删该用户创建的补丁 (连带其下全部资源 / 评论，含其他用户的内容)
+            强删该用户创建的补丁 (连带其下全部资源，含其他用户的内容)
           </KunCheckBox>
 
           <p
             v-if="preview.owned_patches > 0 && forcePurgePatches"
             class="text-danger text-xs"
           >
-            将额外删除 {{ preview.owned_patch_resources }} 个资源与
-            {{ preview.owned_patch_comments }} 条评论 —— 其中可能包含其他用户的内容。
+            将额外删除 {{ preview.owned_patch_resources }} 个资源 —— 其中可能包含其他用户的内容。
+            这些补丁下的评论区属于社区原语, 不随补丁删除, 会留在原锚点上。
           </p>
           <p
             v-else-if="preview.owned_patches > 0 && !forcePurgePatches"

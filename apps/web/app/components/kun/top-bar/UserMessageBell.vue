@@ -10,10 +10,7 @@ const hasUnread = computed(() =>
 </script>
 
 <template>
-  <KunTooltip
-    :text="hasUnread ? '您有新消息!' : '我的消息'"
-    position="bottom"
-  >
+  <KunTooltip :text="hasUnread ? '您有新消息!' : '我的消息'" position="bottom">
     <KunButton
       is-icon-only
       variant="light"

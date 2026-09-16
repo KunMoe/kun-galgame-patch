@@ -14,11 +14,18 @@ import (
 	"gorm.io/gorm"
 )
 
+type NotificationSync interface {
+	Configured() bool
+	Sync(ctx context.Context) (int, error)
+}
+
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
 	mp *moemoepoint.Client,
 	img *imageclient.Client,
+	comments CommentImages,
+	notifications NotificationSync,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -100,7 +107,7 @@ func Start(
 		if _, err := c.AddFunc("0 4 * * *", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			updated, notFound, err := RunReferencePing(ctx, db, img)
+			updated, notFound, err := RunReferencePing(ctx, db, img, comments)
 			if err != nil {
 				slog.Error("image ref-ping 失败", "error", err)
 				return
@@ -108,6 +115,24 @@ func Start(
 			slog.Info("image ref-ping 完成", "updated", updated, "not_found", notFound)
 		}); err != nil {
 			slog.Error("注册 image ref-ping 任务失败", "error", err)
+		}
+	}
+
+	if notifications != nil && notifications.Configured() {
+		job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			n, err := notifications.Sync(ctx)
+			if err != nil {
+				slog.Error("社区通知同步失败", "error", err)
+				return
+			}
+			if n > 0 {
+				slog.Info("社区通知同步完成", "applied", n)
+			}
+		}))
+		if _, err := c.AddJob("@every 20s", job); err != nil {
+			slog.Error("注册社区通知同步任务失败", "error", err)
 		}
 	}
 

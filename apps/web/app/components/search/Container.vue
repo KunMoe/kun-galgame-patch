@@ -157,6 +157,11 @@ watch(
           :keywords="keywords"
         />
 
+        <SearchComments
+          v-else-if="currentType === 'comment'"
+          :keywords="keywords"
+        />
+
         <SearchList
           v-else
           :key="currentType"

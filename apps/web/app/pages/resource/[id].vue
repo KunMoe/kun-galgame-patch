@@ -107,16 +107,18 @@ const commentTarget = computed<CommentTarget>(() => ({
 }))
 
 const {
-  items: commentItems,
+  groups: commentGroups,
   total: commentTotal,
-  totalPages: commentTotalPages,
+  subscription: commentSubscription,
+  setLevel: setCommentLevel,
+  hasMore: hasMoreComments,
+  loadMore: loadMoreComments,
+  loadingMore: loadingMoreComments,
   pending: commentsPending,
-  page: commentPage,
   expandedRoots,
   toggleExpand,
   onLiked,
   onCommentAdded,
-  onReplyAdded,
   onEdited: onCommentEdited,
   onRemoved
 } = useCommentList(commentTarget)
@@ -433,20 +435,22 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
               scale="h2"
             />
             <CommentSection
-              v-model:page="commentPage"
               :target="commentTarget"
-              :items="commentItems"
-              :total-pages="commentTotalPages"
+              :groups="commentGroups"
               :expanded-roots="expandedRoots"
+              :subscription="commentSubscription"
+              :has-more="hasMoreComments"
+              :loading-more="loadingMoreComments"
               :pending="commentsPending"
               :can-moderate="userStore.isModerator"
               :mention-user="resource.user"
               @comment-added="onCommentAdded"
               @liked="onLiked"
-              @reply-added="onReplyAdded"
               @edited="onCommentEdited"
               @removed="onRemoved"
               @toggle-expand="toggleExpand"
+              @load-more="loadMoreComments"
+              @set-level="setCommentLevel"
             />
           </section>
         </div>

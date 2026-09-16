@@ -81,6 +81,13 @@ func ErrCatalogUnavailable(msg string) *AppError {
 	return New(50320, msg, fiber.StatusServiceUnavailable)
 }
 
+func ErrCommunityUnavailable(msg string) *AppError {
+	if msg == "" {
+		msg = "评论服务暂不可用，请稍后再试"
+	}
+	return New(50321, msg, fiber.StatusServiceUnavailable)
+}
+
 func ErrConflict(msg string) *AppError {
 	return New(40900, msg, fiber.StatusConflict)
 }

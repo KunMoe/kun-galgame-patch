@@ -8,22 +8,6 @@ type PatchUpdateRequest struct {
 	VndbID string `json:"vndb_id" validate:"required,max=20"`
 }
 
-type GetPatchCommentRequest struct {
-	Page  int `query:"page" validate:"required,min=1"`
-	Limit int `query:"limit" validate:"required,min=1,max=30"`
-}
-
-type PatchCommentCreateRequest struct {
-	GalgameID int    `json:"galgame_id" validate:"omitempty,min=1"`
-	ParentID  *int   `json:"parent_id" validate:"omitempty,min=1"`
-	Content   string `json:"content" validate:"required,min=1,max=10007"`
-	Captcha   string `json:"captcha" validate:"max=10"`
-}
-
-type PatchCommentUpdateRequest struct {
-	Content string `json:"content" validate:"required,min=1,max=10007"`
-}
-
 type PatchResourceCreateRequest struct {
 	GalgameID    int      `json:"galgame_id" validate:"required,min=1"`
 	Storage      string   `json:"storage" validate:"required"`

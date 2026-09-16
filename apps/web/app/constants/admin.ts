@@ -17,16 +17,14 @@ export const ADMIN_LOG_TYPE_MAP: Record<string, string> = {
 export const ADMIN_STATS_SUM_MAP: Record<string, string> = {
   user_count: '用户总数',
   galgame_count: 'Galgame 总数',
-  resource_count: 'Galgame 补丁总数',
-  comment_count: '评论总数'
+  resource_count: 'Galgame 补丁总数'
 }
 
 export const ADMIN_STATS_MAP: Record<string, string> = {
   new_user: '新注册用户',
   new_active_user: '新活跃用户',
   new_galgame: '新发布 Galgame',
-  new_resource: '新发布补丁',
-  new_comment: '新发布评论'
+  new_resource: '新发布补丁'
 }
 
 // User management (/admin/user) and creator-application approvals

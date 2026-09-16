@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { commentPermalink } from '~/shared/utils/commentTarget'
-
 interface Props {
   comment: PatchComment
 }
@@ -17,7 +15,9 @@ const patchName = computed(() =>
 )
 
 const isResourceComment = computed(() => !!props.comment.resource_id)
-const target = computed(() => commentPermalink(props.comment))
+// The permalink is the server's: only the post's anchor says which of the two
+// walls the comment is on, and the id alone cannot be turned back into one.
+const target = computed(() => props.comment.link)
 
 const handleCardClick = async (event: MouseEvent) => {
   const el = event.target as HTMLElement | null

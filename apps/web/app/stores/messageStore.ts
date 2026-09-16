@@ -15,6 +15,9 @@ export const useMessageStore = defineStore('message', {
     setUnread(types: string[]) {
       this.unreadTypes = types ?? []
     },
+    // Marking notifications read does not touch a comment wall's read state —
+    // that receipt is per wall and is made by opening it, not by visiting the
+    // notice page.
     clear() {
       this.unreadTypes = []
     }

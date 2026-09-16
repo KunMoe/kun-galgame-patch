@@ -24,33 +24,6 @@ func New(db *gorm.DB) *AdminRepository {
 	return &AdminRepository{db: db}
 }
 
-func (r *AdminRepository) GetComments(search, status string, offset, limit int) ([]patchModel.PatchComment, int64, error) {
-	var comments []patchModel.PatchComment
-	var total int64
-
-	base := r.db.Model(&patchModel.PatchComment{})
-	if search != "" {
-		base = base.Where("content ILIKE ?", "%"+search+"%")
-	}
-	switch status {
-	case "pending":
-		base = base.Where("status <> 0")
-	case "approved":
-		base = base.Where("status = 0")
-	}
-	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	err := base.Session(&gorm.Session{}).Order("created DESC, id DESC").Offset(offset).Limit(limit).
-		Find(&comments).Error
-	return comments, total, err
-}
-
-func (r *AdminRepository) UpdateComment(commentID int, content string) error {
-	return r.db.Model(&patchModel.PatchComment{}).Where("id = ?", commentID).
-		Update("content", content).Error
-}
-
 func (r *AdminRepository) GetResources(search string, offset, limit int) ([]patchModel.PatchResource, int64, error) {
 	var resources []patchModel.PatchResource
 	var total int64
@@ -84,20 +57,22 @@ func (r *AdminRepository) DeleteResource(resourceID int) error {
 	})
 }
 
-func (r *AdminRepository) GetStats(since time.Time) (newUser, newActive, newGalgame, newResource, newComment int64) {
+// Comment totals are gone from both of these. They are posts in the community
+// primitive, which counts per author and per thread but has no site-wide total
+// and no "created since" face, so the dashboard prints the counts it can still
+// answer rather than the frozen table's snapshot.
+func (r *AdminRepository) GetStats(since time.Time) (newUser, newActive, newGalgame, newResource int64) {
 	r.db.Model(&authModel.User{}).Where("created >= ?", since).Count(&newUser)
 	r.db.Model(&authModel.User{}).Where("last_login_time >= ?", since.Format(time.RFC3339)).Count(&newActive)
 	r.db.Model(&patchModel.Patch{}).Where("created >= ?", since).Count(&newGalgame)
 	r.db.Model(&patchModel.PatchResource{}).Where("created >= ?", since).Count(&newResource)
-	r.db.Model(&patchModel.PatchComment{}).Where("created >= ?", since).Count(&newComment)
 	return
 }
 
-func (r *AdminRepository) GetStatsSum() (userCount, galgameCount, resourceCount, commentCount int64) {
+func (r *AdminRepository) GetStatsSum() (userCount, galgameCount, resourceCount int64) {
 	r.db.Model(&authModel.User{}).Count(&userCount)
 	r.db.Model(&patchModel.Patch{}).Count(&galgameCount)
 	r.db.Model(&patchModel.PatchResource{}).Count(&resourceCount)
-	r.db.Model(&patchModel.PatchComment{}).Count(&commentCount)
 	return
 }
 
@@ -210,7 +185,6 @@ type PurgePreviewCounts struct {
 	UserExists          bool
 	Comments            int64
 	Resources           int64
-	CommentLikes        int64
 	ResourceLikes       int64
 	Contributes         int64
 	Following           int64
@@ -220,7 +194,6 @@ type PurgePreviewCounts struct {
 	PrivateMessages     int64
 	OwnedPatches        int64
 	OwnedPatchResources int64
-	OwnedPatchComments  int64
 	MiscTraces          int64
 }
 
@@ -247,9 +220,11 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 		}
 	}
 
-	count(&c.Comments, r.db.Model(&patchModel.PatchComment{}).Where("user_id = ?", userID))
+	// Comments are not counted here — they live in the community primitive and
+	// the service fills that number from its author face. Neither are the likes
+	// a user gave a comment: those are community reactions, and the primitive
+	// has no face that counts one user's, only the purge's own report afterwards.
 	count(&c.Resources, r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID))
-	count(&c.CommentLikes, r.db.Model(&patchModel.UserPatchCommentLikeRelation{}).Where("user_id = ?", userID))
 	count(&c.ResourceLikes, r.db.Model(&patchModel.UserPatchResourceLikeRelation{}).Where("user_id = ?", userID))
 	count(&c.Contributes, r.db.Model(&patchModel.UserPatchContributeRelation{}).Where("user_id = ?", userID))
 	count(&c.Following, r.db.Model(&userModel.UserFollowRelation{}).Where("follower_id = ?", userID))
@@ -265,7 +240,6 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 
 	if includeOwnedPatches {
 		count(&c.OwnedPatchResources, r.db.Model(&patchModel.PatchResource{}).Where("galgame_id IN (?)", r.ownedPatchIDsSubquery(userID)))
-		count(&c.OwnedPatchComments, r.db.Model(&patchModel.PatchComment{}).Where("galgame_id IN (?)", r.ownedPatchIDsSubquery(userID)))
 	}
 
 	if firstErr != nil {
@@ -321,10 +295,6 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 			err := tx.Table(table).Where(where, args...).Distinct().Pluck(col, &ids).Error
 			return ids, err
 		}
-		pc, err := distinctInts("patch_comment", "galgame_id", "user_id = ?", userID)
-		if err != nil {
-			return err
-		}
 		pr, err := distinctInts("patch_resource", "galgame_id", "user_id = ?", userID)
 		if err != nil {
 			return err
@@ -333,12 +303,8 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		if err != nil {
 			return err
 		}
-		affectedPatchIDs := unionInts(pc, pr, pco)
+		affectedPatchIDs := unionInts(pr, pco)
 
-		likedCommentIDs, err := distinctInts("user_patch_comment_like_relation", "comment_id", "user_id = ?", userID)
-		if err != nil {
-			return err
-		}
 		likedResourceIDs, err := distinctInts("user_patch_resource_like_relation", "resource_id", "user_id = ?", userID)
 		if err != nil {
 			return err
@@ -406,18 +372,14 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		// user_patch_favorite_relation rolled every affected game back to its
 		// snapshot value and threw away every heart since.
 		if len(affectedPatchIDs) > 0 {
+			// comment_count is deliberately absent. Comments live in the
+			// community primitive, so this query would reset every affected game
+			// to the frozen patch_comment's snapshot and throw away every comment
+			// since the cutover. PurgeAuthor settles it per wall instead.
 			if err := tx.Exec(`UPDATE patch SET
-				comment_count    = (SELECT COUNT(*) FROM patch_comment WHERE patch_comment.galgame_id = patch.id),
 				resource_count   = (SELECT COUNT(*) FROM patch_resource WHERE patch_resource.galgame_id = patch.id),
 				contribute_count = (SELECT COUNT(*) FROM user_patch_contribute_relation WHERE user_patch_contribute_relation.galgame_id = patch.id)
 				WHERE id IN ?`, affectedPatchIDs).Error; err != nil {
-				return err
-			}
-		}
-		if len(likedCommentIDs) > 0 {
-			if err := tx.Exec(`UPDATE patch_comment SET like_count =
-				(SELECT COUNT(*) FROM user_patch_comment_like_relation WHERE user_patch_comment_like_relation.comment_id = patch_comment.id)
-				WHERE id IN ?`, likedCommentIDs).Error; err != nil {
 				return err
 			}
 		}

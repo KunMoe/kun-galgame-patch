@@ -77,6 +77,70 @@ The active authoritative contract docs are synced as **read-only mirrors** under
 
 For active vendored contracts see `docs/oauth/`, `docs/image_service/`, and `docs/artifact/`; for catalog and the galgame retirement tombstone use the infra-owned source/portal.
 
+## Comment walls live in the community primitive, not in this database
+
+Every comment on this site is a post in NextMoe's community primitive
+(`kun_community`), read and written over `KUN_COMMUNITY_API_BASE` by
+`pkg/communityclient`. `patch_comment` and `user_patch_comment_like_relation`
+are FROZEN — the import's source and the rollback site — and nothing reads them.
+moyu-side notes and the trade-offs are in
+`docs/proj/community-comments-cutover.md`; the contract, the importer and the
+deployment order live in infra's `docs/community/`.
+
+- **The community tenant is `moyu`, and it is NOT `catalog_site`.** It comes from
+  `oauth_clients.community_site` (empty falls back to `catalog_site`, which is
+  how the forum, letmoe and sticker keep working). moyu's `catalog_site` stays
+  `kungal` because the catalog claim link needs it — reading either column for
+  the other is what put this site's walls in the forum's tenant until
+  2026-09-16, where one account purge blanked a user's FORUM comments. Anchors
+  are therefore this site's own bare ids: `<patch.id>` (kind 1) and
+  `<resource.id>` (kind 2), no prefix. A game wall's anchor is also the catalog
+  work id (铁律 3), which is what lets infra's `cmd/retire-merged-comments` sweep
+  a wall a merge stranded.
+- `internal/community/anchor` is still the only place that decides what is
+  moyu's, and an anchor it does not recognise is dropped from a feed rather than
+  linked. That is not dead code under one tenant: `GET /posts` and
+  `GET /search/posts` answer this site's threads **plus** every catalog-anchored
+  one, which are a network-wide conversation by design.
+- A comment id in a URL is a **community post id**. `#post-<id>` is the anchor;
+  `#comment-<n>` is a pre-cutover comment id and resolves ONLY through
+  `patch_comment_community_map` (`GET /patch/comment/locate?legacy_id=`). The two
+  id spaces overlap, which is why the shapes differ.
+- **Never read a wall with `POST /comments/resolve`** — it is get-or-create, and
+  because three sites called it to render a page it had minted 110,918 empty
+  threads upstream by 2026-09-15. Read `GET /comments` (no thread until the first
+  comment), write `POST /comments`.
+- **No local like mirror.** Every face that returns a post carries
+  `reaction_count`, and `viewer_reacted` for the named viewer (`viewer_id` on a
+  read, the acting `author_id` on `PATCH /posts/{id}`), and the like toggle
+  answers the new count. The edit face answered 0 until infra cce5b4a8 and the
+  toggle carried no count until c12737ae; with the notification faces this build
+  needs a community at or past ea0baba4 (#219).
+- **Comment notifications are written by community, not by the write path.**
+  Replies, mentions (`mention_user_ids` on `POST /comments`, at most 20), new
+  comments on a followed wall and likes come out of community's outbox;
+  `internal/community/inbox` polls `GET /notifications/feed` every 20s into
+  `user_message` (upsert on `community_notification_id`, migration 041) and
+  forwards the reads users make. Writing a reply / mention / like notice locally
+  again sends every one twice. The one local exception is a mention an *edit*
+  adds, which community does not notify.
+- **Following a wall is an anchor subscription** (`POST /anchors/notification`),
+  so a wall can be followed before its first comment. Unfollow is level 1
+  (normal), never 0: muted also drops the replies and mentions addressed to the
+  reader. Community's unread `total` counts normal rows, so it is not a red dot —
+  the bell reads `user_message`, where `commentWatch` is the followed-wall signal.
+- `patch.comment_count` is a display counter only the write path can keep true;
+  no SQL can recompute it. `merge.Fold` no longer moves comments and logs the
+  stranded wall instead. Community-side moderation (a review-queue reject) drifts
+  it, the same class of drift favourites already accept.
+- Pre-moderation is gone (the primitive has none; `site_setting` never carried an
+  enabled `comment_verify`), reporting is the primitive's weighted flag +
+  review queue, and `enforce.Registry` keeps only `patch_resource`.
+- The reference-ping cron cannot see comment bodies any more. It sweeps
+  `GET /posts` for `/image/<hash>` tokens instead, and a failed sweep must fail
+  the whole run: half a sweep leaves the other half of the images unreferenced
+  and collectable.
+
 ## This Repo's Key Points
 
 - **Minimal post-migration auth**: no local login / 2FA, **issues no tokens** (identity belongs entirely to OAuth, this service only verifies signatures). The session itself is a **BFF opaque session** (`moyu_session` cookie + Redis storing the OAuth token, see `internal/middleware/auth.go`), with **90-day sliding renewal** (active users no longer get logged out every week) — for the model and the 2026-06 fix see `docs/proj/session-lifetime.md`.
