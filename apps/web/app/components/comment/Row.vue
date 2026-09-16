@@ -33,8 +33,7 @@ const { requireLogin } = useAuthModal()
 const surface = commentSurface(props.target)
 
 const isAuthor = computed(() => userStore.user.id === props.comment.user?.id)
-const canEdit = computed(() => isAuthor.value)
-const canDelete = computed(() => isAuthor.value || props.canModerate)
+const canManage = computed(() => isAuthor.value || props.canModerate)
 const isEdited = computed(() => !!props.comment.edited)
 
 const liked = ref(props.comment.is_liked)
@@ -217,6 +216,9 @@ const reportComment = () => {
         :content="comment.content_html"
       />
       <div v-else class="mt-2 space-y-2">
+        <p v-if="!isAuthor" class="text-warning text-xs">
+          正在以管理身份编辑他人的评论，保存后会标注「已编辑（管理）」并记入管理日志
+        </p>
         <KunMarkdownEditor
           :key="`edit-${editKey}`"
           :model-value="editContent"
@@ -281,7 +283,7 @@ const reportComment = () => {
 
           <div class="flex w-44 flex-col gap-2 p-2">
             <KunButton
-              v-if="canEdit"
+              v-if="canManage"
               variant="light"
               color="default"
               size="sm"
@@ -305,7 +307,7 @@ const reportComment = () => {
             </KunButton>
 
             <KunButton
-              v-if="canDelete"
+              v-if="canManage"
               variant="light"
               color="danger"
               size="sm"
