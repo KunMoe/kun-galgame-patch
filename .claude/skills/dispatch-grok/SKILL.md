@@ -79,7 +79,20 @@ repo. Useful extra args: `--effort low|medium|high|xhigh` (config default `xhigh
 ## 4. Browser tests
 
 grok's Playwright is **headed** Chromium on the user's desktop — say so before dispatching.
-The orchestrator starts the stack first:
+
+**A browser run cannot use the workspace sandbox.** Playwright MCP writes an instance lock
+under `~/.cache/ms-playwright/b/`, outside the writable area, and every `browser_*` call then
+fails with `async initializeServer: EACCES: permission denied, open
+'/home/kun/.cache/ms-playwright/b/browser@<guid>'` (2026-09-16, two runs). Setting
+`PLAYWRIGHT_BROWSERS_PATH` does not help — grok does not pass it to the MCP server. Dispatch a
+browser task with `GROK_SANDBOX_PROFILE=off`, only with a task book that writes nothing but its
+report; the deny list still applies, and `status.before`/`status.after` still has to match.
+
+Check the stack is listening **immediately** before dispatching (`ss -ltnp`), not earlier in the
+session: the infra services belong to another session, which may stop them. A run against a dead
+OAuth burns $0.3–0.7 and reports every step blocked.
+
+The orchestrator starts the moyu side first:
 
 - infra from source: OAuth API :9277, image :9278, artifact :9279, catalog :9281,
   community :9282, trust :9283, OAuth web :9420.
