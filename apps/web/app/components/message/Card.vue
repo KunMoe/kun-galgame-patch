@@ -6,11 +6,15 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const router = useRouter()
 
+// A system notice has no sender, and sending every one of those to `/` threw
+// away the link each moderator notice carries. The route check is for the
+// historic `/apply/success` links, whose page no longer exists.
 const cardHref = computed(() => {
-  if (!props.msg.sender) return '/'
-  if (!props.msg.link) return `/user/${props.msg.sender.id}/resource`
-  return props.msg.link
+  const { link, sender } = props.msg
+  if (link && router.resolve(link).matched.length) return link
+  return sender ? `/user/${sender.id}/resource` : '/'
 })
 
 const iconName = computed(
