@@ -39,11 +39,13 @@ catalog id」的站点表，所以合并遗留的墙它扫得动。
 
 - `pkg/communityclient`：S2S 客户端（Basic auth，房子信封）。
 - `internal/community/anchor`：锚点的铸造与反解。
-- `internal/community/engagement` + handler：已读回执 / 订阅等级 / 未读列表 / 红点。
+- `internal/community/engagement` + handler：已读回执 / 关注（锚点订阅）/ 未读列表。
+- `internal/community/inbox`：把社区的通知流镜像进 `user_message`（见 §3「通知」）。
 - `internal/comment/{model,repository,service,handler}`：两面墙的读写、站内流、
   搜索、维护。本地只留 `patch_comment_community_map`（旧深链），**没有点赞镜像**：
   读面直接带 `reaction_count` / `viewer_reacted`。
-- 迁移 `040_community_comments`（只建那张映射表）。
+- 迁移 `040_community_comments`（只建那张映射表）、`041_community_notification_mirror`
+  （`user_message` 加三列 + 两个部分索引，给通知镜像用）。
 - 前端：`useCommentList` 改成游标 + 客户端组树；新增 `useCommentFeed`、
   `CommentSubscribe`、`CommentFlagModal`、`SearchComments`、`/message/comment`。
 
@@ -55,8 +57,8 @@ catalog id」的站点表，所以合并遗留的墙它扫得动。
 | `GET /patch/comment/locate?legacy_id=` | 旧 id → post id（走映射表） |
 | `GET /search/comment` | 站内评论搜索 |
 | `GET /admin/comment?q=` / `GET /admin/comment/recent` | 管理队列 |
-| `GET /community/unread` `/unread/count` | 未读评论区 + 红点 |
-| `POST /community/thread/:id/read` `/notification` | 已读回执 / 订阅 |
+| `GET /community/unread` | 关注的评论区里有未读的那些 |
+| `POST /community/wall/read` `/wall/notification` | 已读回执 / 关注，按墙（`{kind, id, thread_id}`）寻址 |
 
 **退役的路由**：`PUT /admin/comment/:id/approve`、
 `GET|PUT /admin/setting/comment-verify`。
@@ -90,6 +92,21 @@ catalog id」的站点表，所以合并遗留的墙它扫得动。
 - **编辑面依赖 infra cce5b4a8**。`PATCH /posts/{id}` 原来不 hydrate 反应、恒答
   `reaction_count` 0，moyu 曾用编辑前 resolve 的计数回填；infra #215 修好后绕行已
   删，所以 community 必须先部署到这个提交，否则编辑完赞数显示 0（刷新即恢复）。
-- **红点可能比列表多**。未读的 total 和列表查同一批行，而列表会丢掉别站的
-  catalog 锚串，红点照算。生产目前 0 条 catalog 锚串（2026-09-16），暂不可达；
-  真出现时要么 infra 给未读面加锚点过滤，要么 moyu 能把这类串链到别处。
+- **通知由社区生成，moyu 只镜像**（infra #219 `ea0baba4`，生产已部署）。回复、@（发帖时带
+  `mention_user_ids`，≤20）、关注的墙有新评论（按墙折叠）、点赞（按帖折叠）都由社区的 outbox
+  写出；`internal/community/inbox` 每 20 秒拉 `GET /notifications/feed`，按通知 id upsert 进
+  `user_message`（游标在 `cron_state` 的 `community_notification_feed`），类型沿用
+  `comment` / `mention` / `likeComment`，新增 `commentWatch`（「关注的评论区」）。写路径**不再**
+  自己写这三类通知，否则每条都发两遍。唯一的本地例外是**编辑时新增的 @**：社区不管编辑，
+  moyu 只通知编辑前正文里没有的人。
+- **已读双向同步**。用户在站内标已读（进通知页）时，把镜像行的社区 id 回传
+  `POST /users/{id}/notifications/read`，否则折叠行不会重置；社区在读串回执和发帖时把该串的
+  回复 / @ / 新评论通知标已读，moyu 在同一时刻把本地镜像的同批行标掉（点赞不在其内，和社区一致）。
+- **被 @ 的人在本站没有用户行就不投递**。`user_message.recipient_id` 是外键，从 OAuth 搜出来、
+  从没登录过本站的用户没有行；这类通知被跳过，游标照常前进。发送者没有行则 `sender_id` 置空。
+- **关注 = 锚点订阅**，所以还没有评论的墙也能关注。取消关注是等级 1（普通），**不是 0（静音）**：
+  社区的静音连回复和 @ 都不发。社区的未读 total 把普通行也算进去，所以它**不再**当红点用，
+  铃铛只看 `user_message`（`commentWatch` 就是关注墙的信号）；「关注的评论区」列表丢掉普通行。
+- **先关注、后有第一条评论的墙，要打开一次才进「关注的评论区」列表**。那个列表只列有串行的墙，
+  而串是第一条评论才建的；这之前的新评论照样以 `commentWatch` 通知到达，打开墙时 moyu 为锚点
+  关注者补发已读回执，社区据此建出 watching 的串行。

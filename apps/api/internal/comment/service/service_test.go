@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -131,6 +132,35 @@ func TestModeratorNoticeCarriesTheReason(t *testing.T) {
 	}
 	if got := moderatorNotice("删除", "广告"); got != "您发布的评论已被版主删除。原因：广告" {
 		t.Errorf("moderatorNotice(删除, 广告) = %q", got)
+	}
+}
+
+func TestMentionUserIDsDropsAuthorAndCapsAt20(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("[@self](/user/99) ")
+	for i := 1; i <= 21; i++ {
+		fmt.Fprintf(&b, "[@u](/user/%d) ", i)
+	}
+	got := mentionUserIDs(b.String(), 99)
+	if len(got) != 20 {
+		t.Fatalf("len = %d, want 20: %v", len(got), got)
+	}
+	for i := 0; i < 20; i++ {
+		if got[i] != int64(i+1) {
+			t.Fatalf("got[%d] = %d, want %d", i, got[i], i+1)
+		}
+	}
+}
+
+func TestAddedMentionIDs(t *testing.T) {
+	old := "[@a](/user/1) [@b](/user/2)"
+	fresh := "[@a](/user/1) [@c](/user/3) [@self](/user/9)"
+	got := addedMentionIDs(old, fresh, 9)
+	if len(got) != 1 || got[0] != 3 {
+		t.Errorf("addedMentionIDs = %v, want [3]", got)
+	}
+	if got := addedMentionIDs(old, old, 9); len(got) != 0 {
+		t.Errorf("re-save notified %v", got)
 	}
 }
 

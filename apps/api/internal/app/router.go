@@ -176,15 +176,14 @@ func (a *App) RegisterRoutes() {
 	userRoutes.Put("/:id/follow", auth, a.UserHandler.Follow)
 	userRoutes.Delete("/:id/follow", auth, a.UserHandler.Unfollow)
 
-	// The comment walls a reader follows, addressed by thread id. A read receipt
-	// is a POST the reader makes and is never inferred from the wall's GET: a
-	// read face with a write side effect cannot be cached, retried or
-	// prefetched safely.
+	// The comment walls a reader follows, addressed by the wall's anchor. A
+	// read receipt is a POST the reader makes and is never inferred from the
+	// wall's GET: a read face with a write side effect cannot be cached,
+	// retried or prefetched safely.
 	communityRoutes := api.Group("/community", auth)
 	communityRoutes.Get("/unread", a.CommunityHandler.Unread)
-	communityRoutes.Get("/unread/count", a.CommunityHandler.UnreadCount)
-	communityRoutes.Post("/thread/:id/read", a.CommunityHandler.MarkRead)
-	communityRoutes.Post("/thread/:id/notification", a.CommunityHandler.SetNotification)
+	communityRoutes.Post("/wall/read", a.CommunityHandler.ReadWall)
+	communityRoutes.Post("/wall/notification", a.CommunityHandler.SetWallNotification)
 
 	msgRoutes := api.Group("/message", auth)
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)

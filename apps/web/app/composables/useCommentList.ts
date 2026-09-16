@@ -23,9 +23,7 @@ export interface CommentGroup {
   replies: PatchPageComment[]
 }
 
-export const useCommentList = (
-  target: Ref<CommentTarget> | CommentTarget
-) => {
+export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
   const api = useApi()
   const route = useRoute()
   const userStore = useUserStore()
@@ -33,7 +31,7 @@ export const useCommentList = (
   const resolved = computed(() => unref(target))
   const surface = computed(() => commentSurface(resolved.value))
 
-  const subscription = ref<CommentThreadState | null>(null)
+  const subscription = ref<CommentWallState | null>(null)
   const loadingMore = ref(false)
 
   const emptyPage = (): PatchCommentPage => ({
@@ -82,23 +80,35 @@ export const useCommentList = (
   //
   // Declared above the watcher that calls it during setup: declared below it,
   // every wall 500'd with "Cannot access 'reportRead' before initialization".
+  const wallBody = () => {
+    const t = resolved.value
+    return {
+      kind: t.kind,
+      id: t.kind === 'resource' ? t.resourceId : t.galgameId,
+      thread_id: threadId.value
+    }
+  }
+
   const reportRead = async () => {
-    if (!userStore.user.id || !threadId.value || import.meta.server) return
+    if (!userStore.user.id || import.meta.server) return
+    const body = wallBody()
+    if (!body.id) return
     const res = await api
-      .post<CommentThreadState>(`/community/thread/${threadId.value}/read`)
+      .post<CommentWallState>('/community/wall/read', body)
       .catch(() => null)
     if (res?.code === 0 && res.data) {
       subscription.value = res.data
     }
   }
 
-  watch(threadId, reportRead, { immediate: true })
+  watch([() => surface.value.listUrl, threadId], reportRead, {
+    immediate: true
+  })
 
   const setLevel = async (level: CommentNotificationLevel) => {
-    if (!threadId.value) return
-    const res = await api.post<CommentThreadState>(
-      `/community/thread/${threadId.value}/notification`,
-      { level }
+    const res = await api.post<CommentWallState>(
+      '/community/wall/notification',
+      { ...wallBody(), level }
     )
     if (res.code === 0 && res.data) {
       subscription.value = res.data
@@ -169,9 +179,7 @@ export const useCommentList = (
     page.posts = [...page.posts, comment]
     page.total += 1
     expandedRoots.value.add(comment.root_comment_id ?? comment.id)
-    // Writing subscribes the author upstream, and on an empty wall this comment
-    // is also what created the thread — so the follow control only becomes real
-    // here. A new thread id reaches reportRead through its watcher.
+    // A new thread id reaches reportRead through its watcher.
     if (!page.thread_id && comment.thread_id) {
       page.thread_id = comment.thread_id
     } else {

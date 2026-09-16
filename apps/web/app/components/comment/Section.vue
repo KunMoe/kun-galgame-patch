@@ -8,8 +8,7 @@ const props = withDefaults(
     target: CommentTarget
     groups: CommentGroup[]
     expandedRoots: Set<number>
-    threadId: number
-    subscription: CommentThreadState | null
+    subscription: CommentWallState | null
     hasMore?: boolean
     loadingMore?: boolean
     pending?: boolean
@@ -102,9 +101,8 @@ const composerSeed = computed(() => {
       后发表评论
     </div>
 
-    <div v-if="threadId" class="flex justify-end">
+    <div v-if="userStore.user.id" class="flex justify-end">
       <CommentSubscribe
-        :thread-id="threadId"
         :subscription="subscription"
         @set-level="(l) => emit('setLevel', l)"
       />

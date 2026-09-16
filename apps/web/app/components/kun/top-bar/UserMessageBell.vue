@@ -2,20 +2,15 @@
 const userStore = useUserStore()
 const messageStore = useMessageStore()
 
-const hasUnread = computed(
-  () =>
-    messageStore.commentUnread > 0 ||
-    messageStore.unreadTypes.some(
-      (type) => !userStore.user.muted_message_types?.includes(type)
-    )
+const hasUnread = computed(() =>
+  messageStore.unreadTypes.some(
+    (type) => !userStore.user.muted_message_types?.includes(type)
+  )
 )
 </script>
 
 <template>
-  <KunTooltip
-    :text="hasUnread ? '您有新消息!' : '我的消息'"
-    position="bottom"
-  >
+  <KunTooltip :text="hasUnread ? '您有新消息!' : '我的消息'" position="bottom">
     <KunButton
       is-icon-only
       variant="light"

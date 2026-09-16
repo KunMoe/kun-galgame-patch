@@ -109,7 +109,6 @@ const commentTarget = computed<CommentTarget>(() => ({
 const {
   groups: commentGroups,
   total: commentTotal,
-  threadId: commentThreadId,
   subscription: commentSubscription,
   setLevel: setCommentLevel,
   hasMore: hasMoreComments,
@@ -439,7 +438,6 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
               :target="commentTarget"
               :groups="commentGroups"
               :expanded-roots="expandedRoots"
-              :thread-id="commentThreadId"
               :subscription="commentSubscription"
               :has-more="hasMoreComments"
               :loading-more="loadingMoreComments"

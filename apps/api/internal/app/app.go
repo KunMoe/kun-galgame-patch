@@ -22,6 +22,7 @@ import (
 	communityAnchor "kun-galgame-patch-api/internal/community/anchor"
 	communityEngagement "kun-galgame-patch-api/internal/community/engagement"
 	communityHandler "kun-galgame-patch-api/internal/community/handler"
+	communityInbox "kun-galgame-patch-api/internal/community/inbox"
 	docHandler "kun-galgame-patch-api/internal/doc/handler"
 	docRepository "kun-galgame-patch-api/internal/doc/repository"
 	docService "kun-galgame-patch-api/internal/doc/service"
@@ -78,8 +79,8 @@ type App struct {
 	PatchHandler   *patchHandler.PatchHandler
 	CommentHandler *commentHandler.Handler
 	// CommunityHandler is the read-receipt / subscription face. It is separate
-	// from CommentHandler because it is addressed by THREAD id: a wall the
-	// reader follows, not a comment they wrote.
+	// from CommentHandler because it is addressed by the wall's anchor, not by
+	// a comment the reader wrote.
 	CommunityHandler *communityHandler.EngagementHandler
 	UserHandler      *userHandler.UserHandler
 	MessageHandler   *messageHandler.MessageHandler
@@ -192,16 +193,17 @@ func New(cfg *config.Config) *App {
 	}
 	commentRepository := commentRepo.New(db)
 	commentAnchors := communityAnchor.New(galgame, commentRepository)
-	commentSvc := commentService.New(communityCli, commentRepository, commentAnchors, usrCli, galgame, db, mpAwarder, adminRepository)
+	communityInboxSvc := communityInbox.New(communityCli, commentAnchors, db)
+	commentSvc := commentService.New(communityCli, commentRepository, commentAnchors, usrCli, galgame, db, mpAwarder, adminRepository, communityInboxSvc)
 	commentHdl := commentHandler.New(commentSvc, galgame, db)
-	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors))
+	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors, communityInboxSvc))
 
 	userRepository := userRepo.New(db)
 	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder, commentSvc)
 	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
 	messageRepository := messageRepo.New(db)
-	messageSvc := messageService.New(messageRepository)
+	messageSvc := messageService.New(messageRepository, communityInboxSvc)
 	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
 
 	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame, commentSvc)
@@ -301,7 +303,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli, commentSvc)
+	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli, commentSvc, communityInboxSvc)
 	stopBackground := func() {
 		cronStop()
 		storeStop()

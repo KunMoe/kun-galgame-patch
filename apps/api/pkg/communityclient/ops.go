@@ -196,3 +196,35 @@ func (c *Client) ListUnread(ctx context.Context, userID int64, cursor string, li
 	err := c.do(ctx, http.MethodGet, "/users/"+itoa(userID)+"/unread"+query(q), nil, &out)
 	return &out, err
 }
+
+func (c *Client) NotificationFeed(ctx context.Context, after int64, limit int) (*NotificationFeedResponse, error) {
+	var out NotificationFeedResponse
+	q := map[string]string{"after": itoa(after)}
+	if limit > 0 {
+		q["limit"] = itoa(int64(limit))
+	}
+	err := c.do(ctx, http.MethodGet, "/notifications/feed"+query(q), nil, &out)
+	return &out, err
+}
+
+func (c *Client) SetAnchorNotification(ctx context.Context, userID int64, anchorKind int32, anchorID string, level int32) (*AnchorStateView, error) {
+	var out AnchorStateView
+	req := AnchorNotificationRequest{UserID: userID, AnchorKind: anchorKind, AnchorID: anchorID, Level: level}
+	err := c.do(ctx, http.MethodPost, "/anchors/notification", req, &out)
+	return &out, err
+}
+
+func (c *Client) AnchorStates(ctx context.Context, userID int64, anchors []AnchorRef) (*AnchorStatesResponse, error) {
+	if len(anchors) == 0 {
+		return &AnchorStatesResponse{States: []AnchorStateView{}}, nil
+	}
+	var out AnchorStatesResponse
+	err := c.do(ctx, http.MethodPost, "/anchors/states", AnchorStatesRequest{UserID: userID, Anchors: anchors}, &out)
+	return &out, err
+}
+
+func (c *Client) MarkNotificationsRead(ctx context.Context, userID int64, ids []int64) (*MarkNotificationsReadResult, error) {
+	var out MarkNotificationsReadResult
+	err := c.do(ctx, http.MethodPost, "/users/"+itoa(userID)+"/notifications/read", MarkNotificationsReadRequest{IDs: ids}, &out)
+	return &out, err
+}

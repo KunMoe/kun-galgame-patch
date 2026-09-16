@@ -173,7 +173,7 @@ func (h *MessageHandler) MarkAsRead(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.MarkAsRead(user.ID, req.Type); err != nil {
+	if err := h.service.MarkAsRead(c.Context(), user.ID, req.Type); err != nil {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 

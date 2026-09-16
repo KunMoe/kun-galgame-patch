@@ -29,10 +29,21 @@ const (
 )
 
 const (
-	NotificationMuted    = 0
-	NotificationNormal   = 1
-	NotificationTracking = 2
-	NotificationWatching = 3
+	NotificationMuted             = 0
+	NotificationNormal            = 1
+	NotificationTracking          = 2
+	NotificationWatching          = 3
+	NotificationWatchingFirstPost = 4
+)
+
+const (
+	NotificationKindReplied        = 1
+	NotificationKindMentioned      = 2
+	NotificationKindPosted         = 3
+	NotificationKindThreadCreated  = 4
+	NotificationKindLiked          = 5
+	NotificationKindAnswerAccepted = 6
+	NotificationKindFeedbackStatus = 7
 )
 
 const (
@@ -92,14 +103,15 @@ type CommentsPage struct {
 }
 
 type CommentRequest struct {
-	AnchorKind    int32  `json:"anchor_kind"`
-	AnchorID      string `json:"anchor_id"`
-	ContentRating int32  `json:"content_rating"`
-	AuthorID      int64  `json:"author_id"`
-	Body          string `json:"body"`
-	RootPostID    int64  `json:"root_post_id,omitempty"`
-	ReplyToPostID int64  `json:"reply_to_post_id,omitempty"`
-	TargetUserID  int64  `json:"target_user_id,omitempty"`
+	AnchorKind     int32   `json:"anchor_kind"`
+	AnchorID       string  `json:"anchor_id"`
+	ContentRating  int32   `json:"content_rating"`
+	AuthorID       int64   `json:"author_id"`
+	Body           string  `json:"body"`
+	RootPostID     int64   `json:"root_post_id,omitempty"`
+	ReplyToPostID  int64   `json:"reply_to_post_id,omitempty"`
+	TargetUserID   int64   `json:"target_user_id,omitempty"`
+	MentionUserIDs []int64 `json:"mention_user_ids,omitempty"`
 }
 
 type ThreadWithPost struct {
@@ -161,14 +173,13 @@ type ReactionToggleRequest struct {
 	Kind   int32 `json:"kind"`
 }
 
-// ReactionToggleResult carries the post's context so the caller can fan out its
-// like notification without a second read.
 type ReactionToggleResult struct {
-	Added      bool   `json:"added"`
-	AuthorID   int64  `json:"author_id"`
-	ThreadID   int64  `json:"thread_id"`
-	AnchorKind int32  `json:"anchor_kind"`
-	AnchorID   string `json:"anchor_id"`
+	Added         bool   `json:"added"`
+	AuthorID      int64  `json:"author_id"`
+	ThreadID      int64  `json:"thread_id"`
+	AnchorKind    int32  `json:"anchor_kind"`
+	AnchorID      string `json:"anchor_id"`
+	ReactionCount int32  `json:"reaction_count"`
 }
 
 type FlagRequest struct {
@@ -229,4 +240,66 @@ type UnreadListResponse struct {
 	Threads    []UnreadThreadView `json:"threads"`
 	NextCursor string             `json:"next_cursor"`
 	Total      int64              `json:"total"`
+}
+
+type NotificationView struct {
+	ID              int64  `json:"id"`
+	UserID          int64  `json:"user_id"`
+	Kind            int32  `json:"kind"`
+	ThreadID        int64  `json:"thread_id"`
+	AnchorKind      int32  `json:"anchor_kind"`
+	AnchorID        string `json:"anchor_id"`
+	BoardID         int64  `json:"board_id"`
+	PostID          *int64 `json:"post_id"`
+	PostNumber      *int32 `json:"post_number"`
+	FirstPostNumber *int32 `json:"first_post_number"`
+	ActorID         *int64 `json:"actor_id"`
+	ActorCount      int32  `json:"actor_count"`
+	ItemCount       int32  `json:"item_count"`
+	ReadAt          string `json:"read_at"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+	Seq             int64  `json:"seq"`
+}
+
+type NotificationFeedResponse struct {
+	Notifications []NotificationView `json:"notifications"`
+	NextAfter     int64              `json:"next_after"`
+}
+
+type AnchorRef struct {
+	AnchorKind int32  `json:"anchor_kind"`
+	AnchorID   string `json:"anchor_id"`
+}
+
+type AnchorNotificationRequest struct {
+	UserID     int64  `json:"user_id"`
+	AnchorKind int32  `json:"anchor_kind"`
+	AnchorID   string `json:"anchor_id"`
+	Level      int32  `json:"level"`
+}
+
+type AnchorStateView struct {
+	UserID            int64  `json:"user_id"`
+	AnchorKind        int32  `json:"anchor_kind"`
+	AnchorID          string `json:"anchor_id"`
+	NotificationLevel int32  `json:"notification_level"`
+}
+
+type AnchorStatesRequest struct {
+	UserID  int64       `json:"user_id"`
+	Anchors []AnchorRef `json:"anchors"`
+}
+
+type AnchorStatesResponse struct {
+	States []AnchorStateView `json:"states"`
+}
+
+type MarkNotificationsReadRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+type MarkNotificationsReadResult struct {
+	Marked      int64 `json:"marked"`
+	UnreadCount int64 `json:"unread_count"`
 }

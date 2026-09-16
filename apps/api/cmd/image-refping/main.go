@@ -59,7 +59,7 @@ func main() {
 	}
 	commentRepository := commentRepo.New(db)
 	commentSvc := commentService.New(communityCli, commentRepository,
-		communityAnchor.New(nil, commentRepository), nil, nil, db, nil, nil)
+		communityAnchor.New(nil, commentRepository), nil, nil, db, nil, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()

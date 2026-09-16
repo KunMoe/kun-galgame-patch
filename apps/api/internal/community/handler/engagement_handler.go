@@ -1,8 +1,7 @@
 package handler
 
 import (
-	"strconv"
-
+	"kun-galgame-patch-api/internal/community/anchor"
 	"kun-galgame-patch-api/internal/community/engagement"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
@@ -20,31 +19,38 @@ func NewEngagementHandler(service *engagement.Service) *EngagementHandler {
 	return &EngagementHandler{service: service}
 }
 
-// MarkRead is a POST and not a side effect of the wall's GET: a read face that
-// writes cannot be cached, retried or prefetched safely.
-func (h *EngagementHandler) MarkRead(c fiber.Ctx) error {
-	threadID, appErr := threadIDParam(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
-	}
-	user := middleware.MustGetUser(c)
-	return response.OK(c, h.service.MarkRead(c.Context(), user.ID, threadID))
+type wallRequest struct {
+	Kind     string `json:"kind" validate:"required,oneof=patch resource"`
+	ID       int    `json:"id" validate:"required,min=1"`
+	ThreadID int64  `json:"thread_id" validate:"min=0"`
 }
 
-func (h *EngagementHandler) SetNotification(c fiber.Ctx) error {
-	threadID, appErr := threadIDParam(c)
-	if appErr != nil {
-		return response.Error(c, appErr)
+type wallNotificationRequest struct {
+	wallRequest
+	Level int32 `json:"level"`
+}
+
+// ReadWall is a POST and not a side effect of the wall's GET: a read face that
+// writes cannot be cached, retried or prefetched safely.
+func (h *EngagementHandler) ReadWall(c fiber.Ctx) error {
+	var req wallRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	var req struct {
-		Level int32 `json:"level" validate:"min=0,max=3"`
-	}
+	user := middleware.MustGetUser(c)
+	kind, id := wallAnchor(req.Kind, req.ID)
+	return response.OK(c, h.service.ReadWall(c.Context(), user.ID, kind, id, req.ThreadID))
+}
+
+func (h *EngagementHandler) SetWallNotification(c fiber.Ctx) error {
+	var req wallNotificationRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	user := middleware.MustGetUser(c)
-	state, appErr := h.service.SetLevel(c.Context(), user.ID, threadID, req.Level)
+	kind, id := wallAnchor(req.Kind, req.ID)
+	state, appErr := h.service.SetWallLevel(c.Context(), user.ID, kind, id, req.ThreadID, req.Level)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
@@ -68,15 +74,9 @@ func (h *EngagementHandler) Unread(c fiber.Ctx) error {
 	return response.OK(c, res)
 }
 
-func (h *EngagementHandler) UnreadCount(c fiber.Ctx) error {
-	user := middleware.MustGetUser(c)
-	return response.OK(c, fiber.Map{"total": h.service.Count(c.Context(), user.ID)})
-}
-
-func threadIDParam(c fiber.Ctx) (int64, *errors.AppError) {
-	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, errors.ErrBadRequest("评论区 ID 不正确")
+func wallAnchor(kind string, id int) (int32, string) {
+	if kind == "resource" {
+		return anchor.ResourceAnchor(id)
 	}
-	return id, nil
+	return anchor.PatchAnchor(id)
 }

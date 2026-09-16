@@ -2,7 +2,6 @@
 useKunDisableSeo('关注的评论区')
 
 const api = useApi()
-const messageStore = useMessageStore()
 
 // The walls this reader follows that have posts they have not read. Following
 // one is what creates the row at all: a wall merely opened carries no state, so
@@ -11,22 +10,10 @@ const { data, pending } = await useAsyncData<CommentUnreadResult>(
   'community-unread',
   async () => {
     const res = await api.get<CommentUnreadResult>('/community/unread?limit=50')
-    return res.code === 0 ? res.data : { items: [], next_cursor: '', total: 0 }
+    return res.code === 0 ? res.data : { items: [], next_cursor: '' }
   },
-  { default: () => ({ items: [], next_cursor: '', total: 0 }) }
+  { default: () => ({ items: [], next_cursor: '' }) }
 )
-
-// The red dot is the upstream total, and it only drops when the reader opens a
-// wall and its read receipt is reported — not by visiting this page.
-//
-// After mount only: on the server the top bar has rendered before this setup
-// resolves, so a store write here shipped a dot in the payload that the server
-// HTML never drew, and the bell failed hydration.
-onMounted(() => {
-  watch(data, (value) => value && messageStore.setCommentUnread(value.total), {
-    immediate: true
-  })
-})
 </script>
 
 <template>

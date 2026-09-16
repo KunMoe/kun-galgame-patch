@@ -13,20 +13,9 @@ const fetchUnread = async () => {
   }
 }
 
-// Best-effort: a community service that blinks must not blank the bell the rest
-// of the site fills, so a failure leaves the count at zero rather than throwing.
-const fetchCommentUnread = async () => {
-  const res = await api
-    .get<{ total: number }>('/community/unread/count')
-    .catch(() => null)
-  if (res?.code === 0) {
-    messageStore.setCommentUnread(res.data.total)
-  }
-}
-
 onMounted(async () => {
   if (userStore.user.id) {
-    await Promise.all([refreshMe(), fetchUnread(), fetchCommentUnread()])
+    await Promise.all([refreshMe(), fetchUnread()])
   }
 })
 </script>

@@ -79,10 +79,10 @@ interface PatchCommentPage {
   total: number
 }
 
-// 0=muted 1=normal 2=tracking 3=watching, as the community service numbers them.
-type CommentNotificationLevel = 0 | 1 | 2 | 3
+// 0=muted 1=normal 2=tracking 3=watching, 4=watching first post (anchor-level only).
+type CommentNotificationLevel = 0 | 1 | 2 | 3 | 4
 
-interface CommentThreadState {
+interface CommentWallState {
   thread_id: number
   subscribed: boolean
   notification_level: CommentNotificationLevel
@@ -104,7 +104,6 @@ interface CommentUnreadItem {
 interface CommentUnreadResult {
   items: CommentUnreadItem[]
   next_cursor: string
-  total: number
 }
 
 type HomeComment = PatchComment

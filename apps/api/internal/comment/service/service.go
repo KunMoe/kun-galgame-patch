@@ -12,6 +12,7 @@ import (
 
 	"kun-galgame-patch-api/internal/comment/repository"
 	"kun-galgame-patch-api/internal/community/anchor"
+	"kun-galgame-patch-api/internal/community/inbox"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
@@ -37,6 +38,7 @@ type Service struct {
 	db        *gorm.DB
 	mp        *moemoepoint.Awarder
 	audit     AuditLogger
+	inbox     *inbox.Inbox
 }
 
 func New(
@@ -48,10 +50,12 @@ func New(
 	db *gorm.DB,
 	mp *moemoepoint.Awarder,
 	audit AuditLogger,
+	notifications *inbox.Inbox,
 ) *Service {
 	return &Service{
 		community: community, repo: repo, anchors: anchors,
 		users: users, galgame: galgame, db: db, mp: mp, audit: audit,
+		inbox: notifications,
 	}
 }
 
@@ -59,7 +63,7 @@ func (s *Service) Configured() bool { return s.community.Configured() }
 
 // Surface addresses one comment wall. moyu has two, and everything that differs
 // between them is decided here: the anchor, the page a comment lives on, and
-// who the site notifies when somebody writes.
+// the game whose counters a comment moves.
 type Surface struct {
 	AnchorKind int32
 	AnchorID   string

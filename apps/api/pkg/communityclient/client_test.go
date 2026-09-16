@@ -315,3 +315,207 @@ func errorsAs(err error, target **communityclient.APIError) bool {
 	}
 	return ok
 }
+
+func TestNotificationFeedDecodesNullAndAbsentFields(t *testing.T) {
+	var gotQuery string
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/notifications/feed" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{
+			"notifications": []any{
+				map[string]any{
+					"id": 11, "user_id": 3, "kind": 1, "thread_id": 7,
+					"anchor_kind": 1, "anchor_id": "42",
+					"actor_id": nil, "post_id": nil, "read_at": nil,
+					"actor_count": 1, "item_count": 1, "seq": 4,
+					"created_at": "2026-09-16T00:00:00Z",
+					"updated_at": "2026-09-16T00:00:00Z",
+				},
+				map[string]any{
+					"id": 12, "user_id": 3, "kind": 5, "thread_id": 7,
+					"anchor_kind": 1, "anchor_id": "42",
+					"actor_count": 2, "item_count": 2, "seq": 5,
+					"created_at": "2026-09-16T00:00:00Z",
+					"updated_at": "2026-09-16T00:00:00Z",
+				},
+			},
+			"next_after": 5,
+		})
+	})
+
+	page, err := c.NotificationFeed(context.Background(), 0, 500)
+	if err != nil {
+		t.Fatalf("NotificationFeed: %v", err)
+	}
+	for _, want := range []string{"after=0", "limit=500"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query %q missing %q", gotQuery, want)
+		}
+	}
+	if page.NextAfter != 5 || len(page.Notifications) != 2 {
+		t.Fatalf("page = %+v", page)
+	}
+	first := page.Notifications[0]
+	if first.ActorID != nil || first.PostID != nil || first.ReadAt != "" {
+		t.Errorf("null fields decoded as %+v", first)
+	}
+	second := page.Notifications[1]
+	if second.ActorID != nil || second.PostID != nil || second.ReadAt != "" {
+		t.Errorf("absent fields decoded as %+v", second)
+	}
+}
+
+func TestAnchorStatesSendsTheDocumentedBody(t *testing.T) {
+	var body communityclient.AnchorStatesRequest
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/anchors/states" {
+			t.Errorf("wrote to %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		envelope(w, map[string]any{"states": []any{
+			map[string]any{"user_id": 3, "anchor_kind": 1, "anchor_id": "42", "notification_level": 3},
+		}})
+	})
+
+	res, err := c.AnchorStates(context.Background(), 3, []communityclient.AnchorRef{
+		{AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42"},
+	})
+	if err != nil {
+		t.Fatalf("AnchorStates: %v", err)
+	}
+	if body.UserID != 3 || len(body.Anchors) != 1 || body.Anchors[0].AnchorID != "42" {
+		t.Errorf("body = %+v", body)
+	}
+	if len(res.States) != 1 || res.States[0].NotificationLevel != communityclient.NotificationWatching {
+		t.Errorf("states = %+v", res.States)
+	}
+}
+
+func TestAnchorStatesSkipsTheCallOnAnEmptyList(t *testing.T) {
+	called := false
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		envelope(w, map[string]any{"states": []any{}})
+	})
+	if _, err := c.AnchorStates(context.Background(), 3, nil); err != nil {
+		t.Fatalf("AnchorStates: %v", err)
+	}
+	if called {
+		t.Error("an empty anchor list still reached the network")
+	}
+}
+
+func TestSetAnchorNotificationSendsTheDocumentedBody(t *testing.T) {
+	var body communityclient.AnchorNotificationRequest
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/anchors/notification" {
+			t.Errorf("wrote to %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		envelope(w, map[string]any{
+			"user_id": 3, "anchor_kind": 2, "anchor_id": "678", "notification_level": 3,
+		})
+	})
+
+	view, err := c.SetAnchorNotification(context.Background(), 3, communityclient.AnchorSiteResource, "678", communityclient.NotificationWatching)
+	if err != nil {
+		t.Fatalf("SetAnchorNotification: %v", err)
+	}
+	if body.UserID != 3 || body.AnchorKind != 2 || body.AnchorID != "678" || body.Level != 3 {
+		t.Errorf("body = %+v", body)
+	}
+	if view.NotificationLevel != communityclient.NotificationWatching {
+		t.Errorf("view = %+v", view)
+	}
+}
+
+func TestMarkNotificationsReadSendsIDs(t *testing.T) {
+	var gotPath string
+	var body communityclient.MarkNotificationsReadRequest
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		envelope(w, map[string]any{"marked": 2, "unread_count": 4})
+	})
+
+	res, err := c.MarkNotificationsRead(context.Background(), 3, []int64{11, 12})
+	if err != nil {
+		t.Fatalf("MarkNotificationsRead: %v", err)
+	}
+	if gotPath != "/users/3/notifications/read" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if len(body.IDs) != 2 || body.IDs[0] != 11 || body.IDs[1] != 12 {
+		t.Errorf("body = %+v", body)
+	}
+	if res.Marked != 2 || res.UnreadCount != 4 {
+		t.Errorf("result = %+v", res)
+	}
+}
+
+func TestCommentOnAnchorSerialisesMentionUserIDs(t *testing.T) {
+	var raw map[string]any
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		envelope(w, map[string]any{
+			"thread": map[string]any{"id": 7},
+			"post":   map[string]any{"id": 900},
+		})
+	})
+
+	if _, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{
+		AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
+		AuthorID: 3, Body: "hi", MentionUserIDs: []int64{2, 5},
+	}); err != nil {
+		t.Fatalf("CommentOnAnchor: %v", err)
+	}
+	ids, _ := raw["mention_user_ids"].([]any)
+	if len(ids) != 2 || ids[0] != float64(2) || ids[1] != float64(5) {
+		t.Errorf("mention_user_ids = %v", raw["mention_user_ids"])
+	}
+}
+
+func TestCommentOnAnchorOmitsEmptyMentionUserIDs(t *testing.T) {
+	var raw map[string]any
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		envelope(w, map[string]any{
+			"thread": map[string]any{"id": 7},
+			"post":   map[string]any{"id": 900},
+		})
+	})
+
+	if _, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{
+		AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
+		AuthorID: 3, Body: "hi",
+	}); err != nil {
+		t.Fatalf("CommentOnAnchor: %v", err)
+	}
+	if _, ok := raw["mention_user_ids"]; ok {
+		t.Errorf("empty mention_user_ids was sent: %v", raw["mention_user_ids"])
+	}
+}
+
+func TestToggleReactionDecodesReactionCount(t *testing.T) {
+	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/posts/900/reaction" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		envelope(w, map[string]any{
+			"added": true, "author_id": 3, "thread_id": 7,
+			"anchor_kind": 1, "anchor_id": "42", "reaction_count": 5,
+		})
+	})
+
+	res, err := c.ToggleReaction(context.Background(), 900, communityclient.ReactionToggleRequest{
+		UserID: 8, Kind: communityclient.ReactionLike,
+	})
+	if err != nil {
+		t.Fatalf("ToggleReaction: %v", err)
+	}
+	if !res.Added || res.ReactionCount != 5 {
+		t.Errorf("result = %+v", res)
+	}
+}

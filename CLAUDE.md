@@ -112,12 +112,23 @@ deployment order live in infra's `docs/community/`.
   comment), write `POST /comments`.
 - **No local like mirror.** Every face that returns a post carries
   `reaction_count`, and `viewer_reacted` for the named viewer (`viewer_id` on a
-  read, the acting `author_id` on `PATCH /posts/{id}`). The edit face answered 0
-  until infra cce5b4a8, so this build needs a community deployed past it.
-- The unread `total` counts the same rows as the unread list, including other
-  sites' catalog-anchored threads the list drops, so the red dot can exceed the
-  list. Unreachable while production has no catalog-anchored thread (0 on
-  2026-09-16).
+  read, the acting `author_id` on `PATCH /posts/{id}`), and the like toggle
+  answers the new count. The edit face answered 0 until infra cce5b4a8 and the
+  toggle carried no count until c12737ae; with the notification faces this build
+  needs a community at or past ea0baba4 (#219).
+- **Comment notifications are written by community, not by the write path.**
+  Replies, mentions (`mention_user_ids` on `POST /comments`, at most 20), new
+  comments on a followed wall and likes come out of community's outbox;
+  `internal/community/inbox` polls `GET /notifications/feed` every 20s into
+  `user_message` (upsert on `community_notification_id`, migration 041) and
+  forwards the reads users make. Writing a reply / mention / like notice locally
+  again sends every one twice. The one local exception is a mention an *edit*
+  adds, which community does not notify.
+- **Following a wall is an anchor subscription** (`POST /anchors/notification`),
+  so a wall can be followed before its first comment. Unfollow is level 1
+  (normal), never 0: muted also drops the replies and mentions addressed to the
+  reader. Community's unread `total` counts normal rows, so it is not a red dot —
+  the bell reads `user_message`, where `commentWatch` is the followed-wall signal.
 - `patch.comment_count` is a display counter only the write path can keep true;
   no SQL can recompute it. `merge.Fold` no longer moves comments and logs the
   stranded wall instead. Community-side moderation (a review-queue reject) drifts

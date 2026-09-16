@@ -23,14 +23,14 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 	content = markdown.NormalizeContentImageURLs(content)
 
 	req := communityclient.CommentRequest{
-		AnchorKind:    surface.AnchorKind,
-		AnchorID:      surface.AnchorID,
-		ContentRating: communityclient.RatingAll,
-		AuthorID:      int64(userID),
-		Body:          content,
+		AnchorKind:     surface.AnchorKind,
+		AnchorID:       surface.AnchorID,
+		ContentRating:  communityclient.RatingAll,
+		AuthorID:       int64(userID),
+		Body:           content,
+		MentionUserIDs: mentionUserIDs(content, userID),
 	}
 
-	parentAuthor := 0
 	if replyToPostID != nil && *replyToPostID > 0 {
 		parent, parentSurface, appErr := s.resolvePost(ctx, *replyToPostID, 0)
 		if appErr != nil {
@@ -44,7 +44,6 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 		}
 		req.ReplyToPostID = parent.ID
 		req.TargetUserID = parent.AuthorID
-		parentAuthor = int(parent.AuthorID)
 	}
 
 	res, err := s.community.CommentOnAnchor(ctx, req)
@@ -52,7 +51,8 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 		return nil, mapError(err)
 	}
 
-	s.afterCreate(ctx, surface, userID, parentAuthor, content, &res.Post)
+	s.afterCreate(ctx, surface, userID, &res.Post)
+	s.inbox.MarkThreadRead(userID, res.Thread.ID, res.Post.PostNumber)
 
 	item := buildItem(res.Post, surface, briefToUser(s.brief(ctx, userID)))
 	item.ThreadID = res.Thread.ID
@@ -60,10 +60,10 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 }
 
 // afterCreate is everything moyu still owns once the post is committed upstream:
-// the cached counters, the contributor row, the moemoepoint award and the
-// notifications. All of it is best-effort — the comment is already published and
-// a failed counter must not fail the request.
-func (s *Service) afterCreate(ctx context.Context, surface Surface, userID, parentAuthor int, content string, post *communityclient.PostView) {
+// the cached counters, the contributor row and the moemoepoint award. All of it
+// is best-effort — the comment is already published and a failed counter must
+// not fail the request.
+func (s *Service) afterCreate(ctx context.Context, surface Surface, userID int, post *communityclient.PostView) {
 	s.repo.BumpCommentCount(surface.PatchID, 1)
 	s.repo.EnsureContributor(userID, surface.PatchID)
 
@@ -74,12 +74,6 @@ func (s *Service) afterCreate(ctx context.Context, surface Surface, userID, pare
 		s.mp.Award(ctx, owner, 1, "liked",
 			fmt.Sprintf("comment:%d", post.ID),
 			fmt.Sprintf("moyu:comment_post:%d", post.ID))
-	}
-
-	link := s.postLink(surface, post.ID)
-	s.notifyMentions(userID, content, link)
-	if parentAuthor != 0 && parentAuthor != userID {
-		s.notifyDedup(userID, parentAuthor, "comment", "回复了您的评论", link)
 	}
 }
 
@@ -112,9 +106,10 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 			})
 		}
 	} else {
-		// An edit can introduce a mention that was not there before; it cannot
-		// un-notify one that was, and the dedup keeps a re-save from repeating it.
-		s.notifyMentions(userID, content, link)
+		// Community has no edit-time mention notice. Diffing against the pre-edit
+		// body is what keeps this from duplicating the one community sent when
+		// the post was created.
+		s.notifyMentions(userID, addedMentionIDs(post.ContentRaw, content, userID), content, link)
 	}
 
 	return buildItem(*updated, surface, briefToUser(s.brief(ctx, int(updated.AuthorID)))), nil
@@ -154,14 +149,13 @@ func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModera
 }
 
 // ToggleLike drives the community reaction. The count it answers is the one the
-// resolve below already read, stepped by this toggle: community is authoritative
-// for both, and a second read to confirm its own write buys nothing.
+// toggle returns: community is authoritative for both, and a second read to
+// confirm its own write buys nothing.
 func (s *Service) ToggleLike(ctx context.Context, postID int64, userID int) (*LikeResult, *errors.AppError) {
 	// Resolved BEFORE the toggle, not after. A post id is global, so a crafted id
 	// would otherwise have its reaction written upstream and only then be refused
 	// here.
-	post, surface, appErr := s.resolvePost(ctx, postID, userID)
-	if appErr != nil {
+	if _, _, appErr := s.resolvePost(ctx, postID, userID); appErr != nil {
 		return nil, appErr
 	}
 
@@ -170,13 +164,6 @@ func (s *Service) ToggleLike(ctx context.Context, postID int64, userID int) (*Li
 	})
 	if err != nil {
 		return nil, mapError(err)
-	}
-
-	count := int(post.ReactionCount)
-	if res.Added {
-		count++
-	} else {
-		count = max(count-1, 0)
 	}
 
 	if res.AuthorID != int64(userID) {
@@ -191,13 +178,9 @@ func (s *Service) ToggleLike(ctx context.Context, postID int64, userID int) (*Li
 		s.mp.Award(ctx, int(res.AuthorID), delta, "liked",
 			fmt.Sprintf("comment:%d", postID),
 			fmt.Sprintf("moyu:%s:%d:%d", event, postID, userID))
-		if res.Added {
-			s.notifyDedup(userID, int(res.AuthorID), "likeComment",
-				"赞了您的评论", s.postLink(surface, postID))
-		}
 	}
 
-	return &LikeResult{Liked: res.Added, LikeCount: count}, nil
+	return &LikeResult{Liked: res.Added, LikeCount: int(res.ReactionCount)}, nil
 }
 
 // Flag reports a post. The weight a report carries is the reporter's, computed
@@ -248,12 +231,46 @@ func (s *Service) notifyModeratorAction(ownerID int, content, link string) {
 	}
 }
 
-func (s *Service) notifyMentions(senderID int, content, link string) {
-	excerpt := truncate(content, 233)
-	for _, uid := range markdown.ExtractMentionedUserIDs(content) {
-		if uid != senderID {
-			s.notifyDedup(senderID, uid, "mention", excerpt, link)
+const maxMentionUserIDs = 20
+
+func mentionUserIDs(content string, authorID int) []int64 {
+	ids := markdown.ExtractMentionedUserIDs(content)
+	out := make([]int64, 0, min(len(ids), maxMentionUserIDs))
+	for _, id := range ids {
+		if id == authorID {
+			continue
 		}
+		out = append(out, int64(id))
+		if len(out) == maxMentionUserIDs {
+			break
+		}
+	}
+	return out
+}
+
+func addedMentionIDs(oldBody, newBody string, authorID int) []int {
+	had := make(map[int]struct{})
+	for _, id := range markdown.ExtractMentionedUserIDs(oldBody) {
+		had[id] = struct{}{}
+	}
+	var added []int
+	for _, id := range markdown.ExtractMentionedUserIDs(newBody) {
+		if id == authorID {
+			continue
+		}
+		if _, ok := had[id]; ok {
+			continue
+		}
+		had[id] = struct{}{}
+		added = append(added, id)
+	}
+	return added
+}
+
+func (s *Service) notifyMentions(senderID int, ids []int, content, link string) {
+	excerpt := truncate(content, 233)
+	for _, uid := range ids {
+		s.notifyDedup(senderID, uid, "mention", excerpt, link)
 	}
 }
 

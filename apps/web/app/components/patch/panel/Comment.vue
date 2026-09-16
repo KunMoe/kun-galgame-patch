@@ -14,7 +14,6 @@ const emit = defineEmits<{ 'update:loading': [boolean] }>()
 
 const {
   groups,
-  threadId,
   subscription,
   setLevel,
   hasMore,
@@ -37,7 +36,6 @@ watch(pending, (value) => emit('update:loading', value), { immediate: true })
     :target="target"
     :groups="groups"
     :expanded-roots="expandedRoots"
-    :thread-id="threadId"
     :subscription="subscription"
     :has-more="hasMore"
     :loading-more="loadingMore"
