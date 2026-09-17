@@ -12,14 +12,13 @@ func TestValidateBotResource(t *testing.T) {
 		langs []string
 		plats []string
 	}{
-		{"crack", []string{"crack"}, zh, win},
 		{"decensor", []string{"decensor"}, zh, win},
 		{"r18", []string{"r18"}, zh, win},
 		{"mod", []string{"mod"}, zh, win},
 		{"image", []string{"image"}, zh, win},
 		{"other", []string{"other"}, zh, win},
 		{"unknown type", []string{"nope"}, zh, win},
-		{"one bad type among good", []string{"manual", "crack"}, zh, win},
+		{"one bad type among good", []string{"manual", "decensor"}, zh, win},
 		{"unknown language", []string{"manual"}, []string{"jp"}, win},
 		{"unknown platform", []string{"manual"}, zh, []string{"zh-Hans"}},
 	}
@@ -40,6 +39,7 @@ func TestValidateBotResource(t *testing.T) {
 		{"ai + machine_polishing", []string{"ai", "machine_polishing"}, zh, win},
 		{"machine android", []string{"machine"}, zh, []string{"android"}},
 		{"save", []string{"save"}, zh, win},
+		{"crack", []string{"crack"}, zh, win},
 	}
 	for _, c := range accepted {
 		if msg := validateBotResource(c.types, c.langs, c.plats); msg != "" {

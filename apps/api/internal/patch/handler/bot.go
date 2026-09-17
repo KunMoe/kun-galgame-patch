@@ -15,10 +15,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// The lane is 汉化 / 修正 / 存档. Refusing crack alone would still let a
-// key meant for the forge publish decensor / r18 / mod resources, which
-// are the categories a human moderator is supposed to weigh.
-var botSubmittableTypes = []string{"manual", "ai", "machine_polishing", "machine", "fix", "save"}
+// The lane is 汉化 / 修正 / 存档 / 破解. decensor / r18 / mod stay human-only.
+var botSubmittableTypes = []string{"manual", "ai", "machine_polishing", "machine", "fix", "save", "crack"}
 
 type botResourceRequest struct {
 	Name         string   `json:"name" validate:"required,max=300"`
