@@ -301,6 +301,22 @@ const handleOAuthRegister = async () => {
 
 如果将来接入第三方应用（比如某社区合作伙伴），新建的 client 默认 `auto_consent=false`，会渲染同意页让用户明确授权——这是 OAuth 协议的正确语义。
 
+**例外：一方原生 App 保持 `false`。** auto_consent 的前提是「授权码只会落回我们自己手里」，https 回调靠域名保证这一点。原生 App 的回调做不到：
+
+- 环回回调（`http://127.0.0.1/...`）本机任何进程都能监听；
+- 自定义 scheme 任何应用都能抢注。
+
+开着 auto_consent 时，恶意程序可以拿我们的 client_id 自己发起授权。已登录的用户不会看到任何页面，授权码就交出去了，而 PKCE 防不住发起方本人（RFC 8252 §8.6）。所以这类 client 即使是一方的，也要渲染同意页。OP 不记忆同意，关掉 auto_consent 后**每次登录**都会出现一次同意页。
+
+| client_id | name | 回调 | 说明 |
+|---|---|---|---|
+| `kungal-app` | 鲲 Galgame App | `com.kungal.app://oauth2redirect`、`https://www.kungal.com/app/oauth/callback`、`com.kungal.app://logout` | 移动端。第三条只为登出后跳回：登出跳转要求与某条已登记回调同 scheme + host |
+| `kungal-app-desktop` | 鲲 Galgame App（桌面端） | `http://127.0.0.1/oauth/callback`（端口无关） | 桌面端。环回回调单独成一个 client，不与移动端共用 |
+
+两者都是 public client + 强制 PKCE，site 为 `www.kungal.com`，`catalog_site=kungal`，refresh token 90 天滑动过期。自定义 scheme 的豁免范围见 [developer-platform 10 §18.2](../../developer-platform/10-native-app-integration.md)。
+
+2026-09-18 出于同一原因，关掉了 `galgame-wiki-admin` 的 auto_consent 并摘掉它的环回回调（该 client 在生产上零会话）。
+
 ---
 
 ## 未来扩展（L2+）

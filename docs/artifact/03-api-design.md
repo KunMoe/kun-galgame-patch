@@ -12,7 +12,7 @@
 - **Content-Type**：全部 `application/json`（API 不接收文件字节；字节直传 B2）
 - **鉴权**（与图床同款 `ClientAuth`，两条路径）：
   1. **后端 S2S**：`Authorization: Basic base64(client_id:client_secret)`，要求 client `artifact_enabled=true`。
-  2. **前端直传**：`Authorization: Bearer <user_jwt>` + `X-Kun-Artifact-Client-Id: <client_id>`。要求 JWT 含 `artifact:upload` scope，且 JWT 的 `site_id` 与 client 的 site 匹配（fail-closed）。
+  2. **前端直传**：`Authorization: Bearer <user_jwt>` + `X-Kun-Artifact-Client-Id: <client_id>`。要求 JWT 含 `artifact:upload` scope，且 JWT 的 `site_id` 与 client 的 site 匹配（fail-closed）。**用户令牌只能上传**：`init` 任意发起，`resume` / `complete` 只对**自己发起的**上传有效（别人的上传按不存在处理，404）；`list` / `get` / `download` / `delete` 作用于全站制品，只收后端 S2S 凭证，用户令牌一律 `403 / 50016`。
 - **站点作用域**：所有端点按调用方解析出的 `site_key` 作用域；跨站访问一律按「不存在」处理（404，不泄露跨站存在性）。
 - **上传总开关**：`POST /artifacts` 与 `POST /artifacts/:uuid/complete` 受 `KUN_ARTIFACT_UPLOAD_ENABLED` 门控，关闭时返回 `503 / 50014`。其余端点照常服务。
 
@@ -36,7 +36,8 @@
 | 401 | 50006 | `ErrArtifactUnauthorized` | 缺失/无效凭证 |
 | 401 | 50007 / 50008 | `ErrArtifactBadClient` / `ErrArtifactBadSecret` | client id / secret 错误 |
 | 403 | 50009 / 50010 | `ErrArtifactSiteDisabled` / `ErrArtifactSiteUnconfigured` | 站点未开启 / 缺 `artifact_site_key` |
-| 404 | 50001 | `ErrArtifactNotFound` | 不存在 / 非本站 / 未就绪 |
+| 403 | 50016 | `ErrArtifactForbidden` | 用户令牌调用全站操作（列表 / 详情 / 下载 / 删除）|
+| 404 | 50001 | `ErrArtifactNotFound` | 不存在 / 非本站 / 未就绪 / 用户令牌续传或完成别人的上传 |
 | 413 | 50004 | `ErrArtifactTooBig` | 超过站点单文件上限 |
 | 429 | 50012 | `ErrArtifactQuotaExceeded` | 超出站点日配额（文件数或字节数）|
 | 500 | 50013 | `ErrArtifactStoreFailed` | 存储 / 处理失败 |
@@ -293,12 +294,12 @@
 | Method | Path | 鉴权 | 里程碑 |
 |--------|------|------|--------|
 | POST | `/api/v1/artifacts` | client + `artifact:upload`(JWT) | Phase 1（门控）|
-| POST | `/api/v1/artifacts/:uuid/complete` | 同上 | Phase 1（门控）|
-| GET | `/api/v1/artifacts/:uuid/resume` | 同上 | 续传（门控）|
-| GET | `/api/v1/artifacts` | client | Phase 1 |
-| GET | `/api/v1/artifacts/:uuid` | client | Phase 1 |
-| GET | `/api/v1/artifacts/:uuid/download` | client | Phase 1 |
-| DELETE | `/api/v1/artifacts/:uuid` | client | Phase 1 |
+| POST | `/api/v1/artifacts/:uuid/complete` | 同上（JWT 仅限本人发起的上传）| Phase 1（门控）|
+| GET | `/api/v1/artifacts/:uuid/resume` | 同上（JWT 仅限本人发起的上传）| 续传（门控）|
+| GET | `/api/v1/artifacts` | client（仅 Basic）| Phase 1 |
+| GET | `/api/v1/artifacts/:uuid` | client（仅 Basic）| Phase 1 |
+| GET | `/api/v1/artifacts/:uuid/download` | client（仅 Basic）| Phase 1 |
+| DELETE | `/api/v1/artifacts/:uuid` | client（仅 Basic）| Phase 1 |
 | GET | `/healthz` | — | Phase 1 |
 
 ## 没有的端点（v1 故意不提供）

@@ -27,7 +27,8 @@ artifact 不引入新凭证，沿用 OAuth Client 作「站点」。给你的站
 | `Authorization` | `Basic base64(client_id:secret)` | `Bearer <用户 JWT>` |
 | 额外头 | — | `X-Kun-Artifact-Client-Id: <client_id>` |
 | 要求 | client `artifact_enabled` | JWT 含 `artifact:upload` scope 且 site 匹配 |
-| 适用 | 服务器代用户上传 / 后台任务 | 浏览器直接发起（推荐，省一跳带宽）|
+| 能调用 | 全部端点 | 只有上传三步（`init` / `resume` / `complete`），且 `resume` / `complete` 只对本人发起的上传有效 |
+| 适用 | 服务器代用户上传 / 后台任务；列表、详情、下载链接、删除 | 浏览器直接发起（推荐，省一跳带宽）|
 
 > 无论哪种，**文件字节都直传 B2**，不经过 artifact 服务，也不经过你的后端（前端直传时）。
 
@@ -142,6 +143,7 @@ await api(`/api/v1/artifacts?page=1&page_size=20`, { method: 'GET' }) // 本站�
 | 50015 | 完成时大小不符 | 重新 init 重传 |
 | 50017 | 文件类型不允许 | 提示支持的类型 |
 | 50014 | 上传未开放 | 功能灰度中 |
+| 50016 | 用户令牌调用了列表 / 详情 / 下载 / 删除 | 改由后端用 S2S 凭证调用 |
 | 401/403 | 鉴权 / 站点配置 | 检查 client / scope / `artifact_enabled` |
 
 ## 7. 注意事项
