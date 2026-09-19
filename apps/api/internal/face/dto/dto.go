@@ -37,6 +37,7 @@ type User struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	AvatarURL string `json:"avatar_url"`
+	WebURL    string `json:"web_url"`
 }
 
 // Patch is one game page on this site: the thing resources hang off, not the
