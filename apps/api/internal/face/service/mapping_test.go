@@ -7,6 +7,7 @@ import (
 	"time"
 
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/userclient"
 )
 
 func TestResourceDTOCarriesNoWayToDownload(t *testing.T) {
@@ -121,5 +122,17 @@ func TestMissingAnchorsEchoesTheCallersSpelling(t *testing.T) {
 	// would have to special-case against the empty list.
 	if m := missingAnchors(&PatchQuery{}, rows); m == nil || len(m) != 0 {
 		t.Errorf("missing = %v, want an empty list", m)
+	}
+}
+
+func TestUserDTOCarriesWebURL(t *testing.T) {
+	svc := New(nil, nil, nil, "https://www.moyu.moe")
+	for name, brief := range map[string]*userclient.Brief{
+		"resolved":            {Name: "鲲"},
+		"profile unavailable": nil,
+	} {
+		if got := svc.userDTO(brief, 1207).WebURL; got != "https://www.moyu.moe/user/1207" {
+			t.Errorf("%s: web_url = %q, want the user's page", name, got)
+		}
 	}
 }

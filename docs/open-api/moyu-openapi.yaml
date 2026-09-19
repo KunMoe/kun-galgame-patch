@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.1.0
+  version: 1.2.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -553,12 +553,13 @@ components:
       description: |
         Who published it. The profile itself belongs to the NextMoe identity
         service; this is a display copy.
-      required: [object, id, name, avatar_url]
+      required: [object, id, name, avatar_url, web_url]
       properties:
         object: { type: string, const: user }
         id: { type: string, pattern: '^[0-9]+$' }
         name: { type: string }
         avatar_url: { type: string }
+        web_url: { type: string, format: uri }
     PatchType:
       type: string
       enum: [manual, ai, machine_polishing, machine, save, crack, fix, mod, r18, decensor, image, other]

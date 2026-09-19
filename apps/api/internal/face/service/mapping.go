@@ -148,7 +148,8 @@ func (s *Service) resourceDTO(r *patchModel.PatchResource) dto.Resource {
 // an id and a blank name is still a usable answer, a 503 for the whole page is
 // not.
 func (s *Service) userDTO(b *userclient.Brief, fallbackID int) *dto.User {
-	item := &dto.User{Object: "user", ID: strconv.Itoa(fallbackID)}
+	id := strconv.Itoa(fallbackID)
+	item := &dto.User{Object: "user", ID: id, WebURL: s.siteURL + "/user/" + id}
 	if b == nil {
 		return item
 	}
