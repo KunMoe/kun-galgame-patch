@@ -293,6 +293,9 @@ func (h *PatchHandler) CreateResource(c fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	if msg := validateResourceVocab(&req); msg != "" {
+		return response.Error(c, errors.ErrBadRequest(msg))
+	}
 
 	user := middleware.MustGetUser(c)
 	resource := &model.PatchResource{
@@ -329,6 +332,9 @@ func (h *PatchHandler) UpdateResource(c fiber.Ctx) error {
 	var req dto.PatchResourceUpdateRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	if msg := validateResourceVocab(&req.PatchResourceCreateRequest); msg != "" {
+		return response.Error(c, errors.ErrBadRequest(msg))
 	}
 
 	user := middleware.MustGetUser(c)

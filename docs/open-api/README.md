@@ -86,3 +86,21 @@ CORS 白名单（18 个合作方域名）和 Nitro 代理都保留：合作方�
 闸门自己的 401 / 429 走的是平台的 `{code, message}` 信封（实测 `{"code":10001,"message":"未授权，请先登录"}`，中文），而同一条 `/v2` 路径上其它所有回答都是 RFC 9457 problem+json。第三方在同一个前缀下仍然要解两种错误格式，而这正是下游面统一用 problem+json 想避免的事。契约里已如实写明，但值得 infra 考虑让 ForwardAuth 的拒绝也回 problem 文档。
 
 **已采纳**（infra `fc0d7c29`，2026-09-18）：闸门改回同一份注册表的 problem 文档——401 `MISSING_CREDENTIAL` / `INVALID_CREDENTIAL`，429 `RATE_LIMITED` / `QUOTA_EXCEEDED`，状态码不变。契约的顶部说明、`RateLimited` 响应与 `Problem.code` 枚举已同步改写。
+
+## 7. 词表（spec 1.1.0，2026-09-19）
+
+能穷举的都已穷举，线上格式一字未变：
+
+- 筛选参数 `type` / `language` / `platform` / `include` 从裸 `string` 改为 `style: form, explode: false` 的枚举数组，逗号分隔的写法照旧。`include` 原先列的是组合（`'resources,publisher'`），漏了 `publisher,resources` 这个顺序，解析器其实接受。
+- 三套词表收成具名 schema `PatchType` / `PatchLanguage` / `PatchPlatform`，筛选参数和响应共用。
+- `ids` / `refs` 的元素带 pattern，`refs` 的来源只能是 `vndb` 或 `catalog`；`missing` 同理。
+- `FieldError.parameter` 是本面参数名的枚举（每个参数都可能出现在 `errors[]` 里）。`Problem.type` 的域只能是 `moyu` 或 `platform`（网关自己写的 401/429/503 在 `platform` 域）。`hash` 是 64 位小写 hex 或空串。`Cache-Control` 是常量。
+
+有意保留为自由文本：`name`、`note`、`model_name`、`localization_group_name`、`size`（发布者手填，线上有 `＜1MB`、`0.002mb` 这种写法）、`vndb_id`（占位页是 `wiki-<n>` / `pending-<n>`，而且站内可编辑为任意 ≤20 字符）、`avatar_url`，以及 problem 的 `title` / `detail` / `instance`。
+
+两道闸：
+
+- **写入侧**：用户发布或编辑资源时，`type` / `language` / `platform` 按同一套词表校验，`storage` 只收 `s3` / `user`。此前只校验了个数，响应里声明的枚举只是碰巧成立。2026-09-19 实测线上全部数据都落在词表内。
+- **spec 与解析器**：`internal/face/service/spec_test.go` 读这份 YAML，比对三套词表、`sort`、各操作的 `include`，以及 `FieldError.parameter` 与实际声明的参数集合。spec 是手写的，任何一边单独加值都会让这个测试红。
+
+infra 侧：门户 `apps/developer/scripts/sync-specs.mjs` 的 `buildParams` 只读参数 schema 顶层的 `enum`，数组参数要读 `items.enum`，并解开 `items.$ref`，否则参考页上这几个参数只显示 `array`，看不到取值。

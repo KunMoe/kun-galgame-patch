@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.0.0
+  version: 1.1.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -100,26 +100,38 @@ paths:
         - name: include
           in: query
           description: Comma-separated relations to attach.
+          style: form
+          explode: false
           schema:
-            type: string
-            enum: [resources, publisher, 'resources,publisher']
-          example: resources
+            type: array
+            items: { type: string, enum: [resources, publisher] }
+          example: [resources]
         - name: ids
           in: query
           description: |
             Up to 100 moyu patch ids. Mutually exclusive with `refs`.
+          style: form
+          explode: false
           schema:
-            type: string
-          example: '223309,11617'
+            type: array
+            minItems: 1
+            maxItems: 100
+            items: { type: string, pattern: '^[0-9]+$' }
+          example: ['223309', '11617']
         - name: refs
           in: query
           description: |
             Up to 100 foreign anchors as `source:external_id`. Sources are
             `vndb` (a VNDB id such as `v65869`) and `catalog` (a NextMoe catalog
             work id). Mutually exclusive with `ids`.
+          style: form
+          explode: false
           schema:
-            type: string
-          example: 'vndb:v65869,catalog:61311'
+            type: array
+            minItems: 1
+            maxItems: 100
+            items: { type: string, pattern: '^(vndb:.+|catalog:[0-9]+)$' }
+          example: ['vndb:v65869', 'catalog:61311']
         - name: sort
           in: query
           description: |
@@ -132,21 +144,30 @@ paths:
         - name: type
           in: query
           description: Comma-separated patch kinds; any of them matches.
+          style: form
+          explode: false
           schema:
-            type: string
-          example: 'ai,manual'
+            type: array
+            items: { $ref: '#/components/schemas/PatchType' }
+          example: [ai, manual]
         - name: language
           in: query
           description: Comma-separated languages; any of them matches.
+          style: form
+          explode: false
           schema:
-            type: string
-          example: zh-Hans
+            type: array
+            items: { $ref: '#/components/schemas/PatchLanguage' }
+          example: [zh-Hans]
         - name: platform
           in: query
           description: Comma-separated platforms; any of them matches.
+          style: form
+          explode: false
           schema:
-            type: string
-          example: windows
+            type: array
+            items: { $ref: '#/components/schemas/PatchPlatform' }
+          example: [windows]
         - name: has_resources
           in: query
           description: |
@@ -181,10 +202,12 @@ paths:
             including the resources — `resource_count` tells you whether there
             is anything to ask for, and `/patches/{id}/resources` pages them
             when there are many.
+          style: form
+          explode: false
           schema:
-            type: string
-            enum: [resources, publisher, 'resources,publisher']
-          example: 'resources,publisher'
+            type: array
+            items: { type: string, enum: [resources, publisher] }
+          example: [resources, publisher]
       responses:
         '200':
           description: The patch page.
@@ -215,9 +238,11 @@ paths:
         - $ref: '#/components/parameters/includeTotal'
         - name: include
           in: query
+          style: form
+          explode: false
           schema:
-            type: string
-            enum: [publisher]
+            type: array
+            items: { type: string, enum: [publisher] }
       responses:
         '200':
           description: A page of resources.
@@ -246,9 +271,11 @@ paths:
           example: '10463'
         - name: include
           in: query
+          style: form
+          explode: false
           schema:
-            type: string
-            enum: [publisher]
+            type: array
+            items: { type: string, enum: [publisher] }
       responses:
         '200':
           description: The resource.
@@ -283,7 +310,7 @@ components:
       schema: { type: string }
     CacheControl:
       description: '`public, max-age=300, s-maxage=1800, stale-while-revalidate=3600`'
-      schema: { type: string }
+      schema: { type: string, const: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=3600' }
   parameters:
     patchId:
       name: id
@@ -365,7 +392,7 @@ components:
           description: |
             Only on the `ids`/`refs` lane. The anchors that matched nothing, in
             the spelling you sent.
-          items: { type: string }
+          items: { type: string, pattern: '^([0-9]+|vndb:.+|catalog:[0-9]+)$' }
     Patch:
       type: object
       description: A game page on moyu — the thing resources hang off, not the game.
@@ -414,15 +441,13 @@ components:
         type:
           type: array
           description: What kinds of patch the page's resources are.
-          items:
-            type: string
-            enum: [manual, ai, machine_polishing, machine, save, crack, fix, mod, r18, decensor, image, other]
+          items: { $ref: '#/components/schemas/PatchType' }
         language:
           type: array
-          items: { type: string, enum: [zh-Hans, zh-Hant, ja, en, other] }
+          items: { $ref: '#/components/schemas/PatchLanguage' }
         platform:
           type: array
-          items: { type: string, enum: [windows, android, macos, ios, linux, other] }
+          items: { $ref: '#/components/schemas/PatchPlatform' }
         resource_count: { type: integer }
         download_count: { type: integer }
         view_count: { type: integer }
@@ -493,6 +518,7 @@ components:
         size: { type: string, examples: ['0.571 MB'] }
         hash:
           type: string
+          pattern: '^([0-9a-f]{64})?$'
           description: |
             BLAKE3 of the file, empty on rows uploaded before it was recorded.
             The only stable identity of the bytes themselves.
@@ -507,15 +533,13 @@ components:
           description: Markdown source, with image tokens already resolved to absolute URLs.
         type:
           type: array
-          items:
-            type: string
-            enum: [manual, ai, machine_polishing, machine, save, crack, fix, mod, r18, decensor, image, other]
+          items: { $ref: '#/components/schemas/PatchType' }
         language:
           type: array
-          items: { type: string, enum: [zh-Hans, zh-Hant, ja, en, other] }
+          items: { $ref: '#/components/schemas/PatchLanguage' }
         platform:
           type: array
-          items: { type: string, enum: [windows, android, macos, ios, linux, other] }
+          items: { $ref: '#/components/schemas/PatchPlatform' }
         download_count: { type: integer }
         like_count: { type: integer }
         web_url: { type: string, format: uri }
@@ -535,12 +559,24 @@ components:
         id: { type: string, pattern: '^[0-9]+$' }
         name: { type: string }
         avatar_url: { type: string }
+    PatchType:
+      type: string
+      enum: [manual, ai, machine_polishing, machine, save, crack, fix, mod, r18, decensor, image, other]
+    PatchLanguage:
+      type: string
+      enum: [zh-Hans, zh-Hant, ja, en, other]
+    PatchPlatform:
+      type: string
+      enum: [windows, android, macos, ios, linux, other]
     Problem:
       type: object
       description: RFC 9457 problem details, same shape as catalog `/v2`.
       required: [type, title, status, detail, instance, code, request_id, errors]
       properties:
-        type: { type: string, format: uri }
+        type:
+          type: string
+          format: uri
+          pattern: '^https://developer\.nextmoe\.dev/problems/(moyu|platform)/[a-z0-9-]+$'
         title: { type: string }
         status: { type: integer, minimum: 400, maximum: 599 }
         detail: { type: string }
@@ -575,7 +611,22 @@ components:
       type: object
       required: [reason, detail]
       properties:
-        parameter: { type: string }
+        parameter:
+          type: string
+          enum:
+            - id
+            - limit
+            - cursor
+            - include_total
+            - include
+            - nsfw
+            - ids
+            - refs
+            - sort
+            - type
+            - language
+            - platform
+            - has_resources
         header: { type: string }
         reason:
           type: string
