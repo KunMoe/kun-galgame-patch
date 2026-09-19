@@ -11,9 +11,9 @@
 // proxyRequest forwards the inbound `Origin` request header (so the Go API's
 // HikariCORS allowlist can match it) and copies the upstream response headers
 // back (so ACAO reaches the browser). It also preserves the status/body, so the
-// legacy {success,message,data} envelope and the 400/404 cases pass through
-// verbatim. All methods are proxied — the OPTIONS preflight is answered by the
-// Go API's HikariCORS (204).
+// retirement notice (410, legacy {success,message,data} envelope) reaches a
+// partner page that still calls this URL. All methods are proxied — the OPTIONS
+// preflight is answered by the Go API's HikariCORS (204).
 export default defineEventHandler((event) => {
   const config = useRuntimeConfig(event)
   // Server-side hop: prefer the in-container base (apiBaseSsr → the moyu-api

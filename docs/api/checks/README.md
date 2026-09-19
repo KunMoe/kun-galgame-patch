@@ -60,7 +60,6 @@
 - 嵌套"回复的回复"删除时 `comment_count` 可能少减（前端无多级回复 UI，潜在）。
 - `PUT /admin/comment/:id` `PUT /admin/resource/:id`：DB 错误映射成 400、改不存在 id 静默成功（可选硬化）。
 - `GET /tag/:name` 降级卡 `created` 为零值时间（前端应做哨兵判断）。
-- `GET /hikari`（外部 API）：仅对 `s3` 存储清 `content`，netdisk 的 `content/code/password` 仍下发（疑为对老 moyu 的有意共享面）。
 - 未匹配路由（如已删的 `POST /message`）经全局 error handler 统一返回 500（非 404）——
   这是 `globalErrorHandler` 对所有未注册路由的既有行为，无前端调用方受影响。
 

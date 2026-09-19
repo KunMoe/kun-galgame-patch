@@ -13,7 +13,7 @@ import (
 // touches GORM or the catalog client, so a regression shows up as a panic
 // rather than a 500 nobody reads.
 func newSearchTestApp() *fiber.App {
-	h := NewHandler(nil, nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil)
 	app := fiber.New()
 	app.Get("/search", h.SiteSearch)
 	app.Get("/search/overview", h.SiteSearchOverview)

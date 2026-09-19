@@ -47,7 +47,7 @@ func TestCatalogLibrary_DoesNotSendClaimState(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	h := NewHandler(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil, nil, nil)
+	h := NewHandler(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil, nil)
 	app := fiber.New()
 	app.Get("/galgame", h.GetGalgameList)
 

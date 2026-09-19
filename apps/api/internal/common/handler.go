@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	commentService "kun-galgame-patch-api/internal/comment/service"
 	"kun-galgame-patch-api/internal/favorite"
@@ -19,7 +18,6 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/errors"
-	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
@@ -33,7 +31,6 @@ type CommonHandler struct {
 	galgame *galgameClient.Client
 	users   *userclient.Client
 	art     *artifactclient.Client
-	img     *imageclient.Client
 	// comments answers the two things this file still needs from the comment
 	// walls now that they live in the community primitive: the home page's
 	// newest rows, and how many comments a listed user has written.
@@ -48,8 +45,8 @@ type CommentSource interface {
 	AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
 }
 
-func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, img *imageclient.Client, comments CommentSource) *CommonHandler {
-	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, img: img, comments: comments}
+func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, comments CommentSource) *CommonHandler {
+	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, comments: comments}
 }
 
 func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
@@ -350,151 +347,6 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 		"patch":             patchCard,
 		"recommendations":   recs,
 		"patch_is_favorite": patchFavorited,
-	})
-}
-
-type hikariEnvelope struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    any    `json:"data"`
-}
-
-type hikariUser struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Avatar string `json:"avatar"`
-}
-
-type hikariResource struct {
-	ID         int                  `json:"id"`
-	Storage    string               `json:"storage"`
-	Name       string               `json:"name"`
-	ModelName  string               `json:"model_name"`
-	Size       string               `json:"size"`
-	Note       string               `json:"note"`
-	Hash       string               `json:"hash"`
-	Type       patchModel.JSONArray `json:"type"`
-	Language   patchModel.JSONArray `json:"language"`
-	Platform   patchModel.JSONArray `json:"platform"`
-	Download   int                  `json:"download"`
-	Status     int                  `json:"status"`
-	UpdateTime time.Time            `json:"update_time"`
-	UserID     int                  `json:"user_id"`
-	PatchID    int                  `json:"patch_id"`
-	Created    time.Time            `json:"created"`
-	User       hikariUser           `json:"user"`
-}
-
-type hikariPatch struct {
-	ID                 int                  `json:"id"`
-	VndbID             string               `json:"vndb_id"`
-	Released           string               `json:"released"`
-	Status             int                  `json:"status"`
-	Download           int                  `json:"download"`
-	View               int                  `json:"view"`
-	ResourceUpdateTime time.Time            `json:"resource_update_time"`
-	Type               patchModel.JSONArray `json:"type"`
-	Language           patchModel.JSONArray `json:"language"`
-	Platform           patchModel.JSONArray `json:"platform"`
-	UserID             int                  `json:"user_id"`
-	Created            time.Time            `json:"created"`
-	Updated            time.Time            `json:"updated"`
-	User               hikariUser           `json:"user"`
-	Resource           []hikariResource     `json:"resource"`
-}
-
-func hikariFail(c fiber.Ctx, status int, message string) error {
-	return c.Status(status).JSON(hikariEnvelope{Success: false, Message: message, Data: nil})
-}
-
-func (h *CommonHandler) hikariAvatarURL(b *userclient.Brief) string {
-	if b == nil {
-		return ""
-	}
-	if b.AvatarImageHash != "" && h.img != nil {
-		if u := h.img.MainURL(b.AvatarImageHash); u != "" {
-			return u
-		}
-	}
-	return b.Avatar
-}
-
-func (h *CommonHandler) GetHikari(c fiber.Ctx) error {
-	vndbID := c.Query("vndb_id")
-	if vndbID == "" {
-		return hikariFail(c, fiber.StatusBadRequest, "Missing required parameter: vndb_id")
-	}
-
-	var patch patchModel.Patch
-	if err := h.db.Where("vndb_id = ?", vndbID).First(&patch).Error; err != nil {
-		return hikariFail(c, fiber.StatusNotFound, "No patch found for VNDB ID: "+vndbID)
-	}
-
-	var resources []patchModel.PatchResource
-	h.db.Where("galgame_id = ? AND status = 0", patch.ID).Find(&resources)
-
-	uids := make([]int, 0, len(resources)+1)
-	uids = append(uids, patch.UserID)
-	for i := range resources {
-		uids = append(uids, resources[i].UserID)
-	}
-	briefs := userclient.BriefMapByInt(c.Context(), h.users, uids)
-	toUser := func(uid int) hikariUser {
-		if b := briefs[uid]; b != nil {
-			return hikariUser{ID: int(b.ID), Name: b.Name, Avatar: h.hikariAvatarURL(b)}
-		}
-		return hikariUser{ID: uid}
-	}
-
-	out := make([]hikariResource, 0, len(resources))
-	for i := range resources {
-		r := &resources[i]
-		out = append(out, hikariResource{
-			ID:         r.ID,
-			Storage:    r.Storage,
-			Name:       r.Name,
-			ModelName:  r.ModelName,
-			Size:       r.Size,
-			Note:       markdown.ResolveContentImageTokens(r.Note),
-			Hash:       r.Blake3,
-			Type:       r.Type,
-			Language:   r.Language,
-			Platform:   r.Platform,
-			Download:   r.Download,
-			Status:     r.Status,
-			UpdateTime: r.UpdateTime,
-			UserID:     r.UserID,
-			PatchID:    r.GalgameID,
-			Created:    r.Created,
-			User:       toUser(r.UserID),
-		})
-	}
-
-	released := ""
-	if patch.ReleaseDate != nil {
-		released = patch.ReleaseDate.Format("2006-01-02")
-	}
-
-	return c.JSON(hikariEnvelope{
-		Success: true,
-		Message: "Patch found successfully",
-		Data: hikariPatch{
-			ID:                 patch.ID,
-			VndbID:             patch.VndbID,
-			Released:           released,
-			Status:             patch.Status,
-			Download:           patch.Download,
-			View:               patch.View,
-			ResourceUpdateTime: patch.ResourceUpdateTime,
-			Type:               patch.Type,
-			Language:           patch.Language,
-			Platform:           patch.Platform,
-			UserID:             patch.UserID,
-			Created:            patch.Created,
-			Updated:            patch.Updated,
-			User:               toUser(patch.UserID),
-			Resource:           out,
-		},
 	})
 }
 

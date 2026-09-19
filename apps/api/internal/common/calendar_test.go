@@ -67,7 +67,7 @@ func TestCalendarUpstreamFailureMapping(t *testing.T) {
 			}))
 			t.Cleanup(upstream.Close)
 
-			h := NewHandler(nil, galgameClient.NewWithKey(upstream.URL, "nm_test_key"), nil, nil, nil, nil)
+			h := NewHandler(nil, galgameClient.NewWithKey(upstream.URL, "nm_test_key"), nil, nil, nil)
 			app := fiber.New()
 			app.Get("/galgame/calendar", h.GetGalgameCalendar)
 
