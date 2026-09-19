@@ -10,7 +10,7 @@ type PatchUpdateRequest struct {
 
 type PatchResourceCreateRequest struct {
 	GalgameID    int      `json:"galgame_id" validate:"required,min=1"`
-	Storage      string   `json:"storage" validate:"required"`
+	Storage      string   `json:"storage" validate:"required,oneof=s3 user"`
 	Name         string   `json:"name" validate:"max=300"`
 	ModelName    string   `json:"model_name" validate:"max=1007"`
 	ArtifactUUID string   `json:"artifact_uuid" validate:"max=64"`

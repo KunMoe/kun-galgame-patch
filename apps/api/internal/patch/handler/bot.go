@@ -2,10 +2,8 @@ package handler
 
 import (
 	stderrors "errors"
-	"slices"
 	"strings"
 
-	"kun-galgame-patch-api/internal/face/service"
 	"kun-galgame-patch-api/internal/patch/model"
 	patchsvc "kun-galgame-patch-api/internal/patch/service"
 	"kun-galgame-patch-api/pkg/errors"
@@ -92,20 +90,5 @@ func (h *PatchHandler) BotCreateResource(c fiber.Ctx, userID int) error {
 }
 
 func validateBotResource(types, langs, plats []string) string {
-	if msg := closedVocab("type", types, botSubmittableTypes); msg != "" {
-		return msg
-	}
-	if msg := closedVocab("language", langs, service.PatchLanguages); msg != "" {
-		return msg
-	}
-	return closedVocab("platform", plats, service.PatchPlatforms)
-}
-
-func closedVocab(kind string, got, allowed []string) string {
-	for _, g := range got {
-		if !slices.Contains(allowed, g) {
-			return "unknown " + kind + " " + g + " (bot accepts: " + strings.Join(allowed, ", ") + ")"
-		}
-	}
-	return ""
+	return validateVocab(types, langs, plats, botSubmittableTypes)
 }
