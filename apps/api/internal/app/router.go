@@ -280,7 +280,7 @@ func (a *App) RegisterRoutes() {
 	api.Get("/search/quick", a.CommonHandler.SiteSearchQuick)
 
 	api.Use("/hikari", middleware.HikariCORS())
-	api.Get("/hikari", middleware.RateLimit(a.RDB, "hikari", 10000, time.Minute), a.CommonHandler.GetHikari)
+	api.Get("/hikari", a.CommonHandler.HikariRetired)
 	api.Get("/moyu/patch/has-patch", a.CommonHandler.GetMoyuHasPatch)
 
 	api.Get("/doc/posts", a.DocHandler.ListPosts)

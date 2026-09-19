@@ -265,7 +265,7 @@ func New(cfg *config.Config) *App {
 		ClientSecret: imgCfg.ClientSecret,
 	})
 
-	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, imgCli, commentSvc)
+	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 

@@ -69,11 +69,17 @@ infra 侧全部就位（2026-09-08 实测）：
   - 正常 JSON（`{"object":"list",…}`）→ 通了
 - [ ] spec 进门户 docs-model + oasdiff 破坏门 + operation-count 守卫（4 op）+ kungal-docs 登记
 
-## 5. hikari 不要在同一次改动里退役
+## 5. hikari 已退役（2026-09-19）
 
-`/api/v1/hikari` 的 CORS 白名单里有 18 个合作方域名，还有一条 `/api/hikari` 的 Nitro 兼容代理。平台面**浏览器直连用不了**——ForwardAuth 对所有方法生效，`OPTIONS` 预检不带 key 必被 401，这是有意的（`nmk_` key 不该进浏览器）。所以任何在前端 fetch hikari 的合作方，切过去会直接碎。
+`/api/v1/hikari` 与 `/api/hikari`（Nitro 兼容代理）现在对任何请求都回 **410**，body 仍是旧信封 `{success:false, message, data:null}`，`message` 指向 developer.nextmoe.dev 申请 key、改用 `/v2/moyu/patches?refs=vndb:<id>&nsfw=true&include=resources`。旧 hikari 不看 NSFW，所以等价查询要带 `nsfw=true`。
 
-顺序：先上面 → 通知合作方改服务端调用 → 再谈弃用。
+退役而不是修，是因为它已经在给错链接：合作方用 `data.resource[].patch_id` 拼 `https://www.moyu.moe/patch/<patch_id>/resource`，而 037 之后 `patch_id` 是 catalog work id、`/patch/<n>` 仍解析改号前的旧页号（铁律 3）。2026-09-19 实测它能回答的 11,096 个页面里 8,486 个链到别的游戏、1,590 个 404，只有 1,020 个正确。`/v2/moyu` 每行给 `web_url`，不再让调用方拼地址。
+
+CORS 白名单（18 个合作方域名）和 Nitro 代理都保留：合作方页面是在浏览器里 fetch 的，没有 ACAO 它们只会看到 CORS 错误，读不到这条 `message`。已知的两个前端调用方（touchgal、kungal）都按 `success` 分支，拿到 410 会把 moyu 补丁区渲染成空。
+
+平台面**浏览器直连用不了**——ForwardAuth 对所有方法生效，`OPTIONS` 预检不带 key 必被 401，这是有意的（`nmk_` key 不该进浏览器）。迁移的合作方必须改成服务端调用。
+
+`/api/v1/moyu/patch/has-patch` 没有一起退役。
 
 ## 6. 一条给 infra 的观察
 

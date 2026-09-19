@@ -14,7 +14,7 @@ func TestResourceDetailRejectsANonNumericIDBeforeTheDB(t *testing.T) {
 		t.Run(id, func(t *testing.T) {
 			// db is nil on purpose: the guard has to answer before anything
 			// touches GORM, so a regression shows up as a panic, not a 404.
-			h := NewHandler(nil, nil, nil, nil, nil, nil)
+			h := NewHandler(nil, nil, nil, nil, nil)
 			app := fiber.New()
 			app.Get("/resource/:id", h.GetResourceDetail)
 

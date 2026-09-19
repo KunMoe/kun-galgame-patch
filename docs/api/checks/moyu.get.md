@@ -185,7 +185,7 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `GET /api/v1/hikari` | 公开 | `commonH.GetHikari` | 保持 | 外部接口；仅 s3 清 content，netdisk content/code/password 仍下发（疑有意共享，见 README 遗留）|
+| `GET /api/v1/hikari` | 公开 | `commonH.HikariRetired` | 已退役 | 2026-09-19 起恒 410 + 旧信封 `{success:false,message,data:null}`，`message` 指向 developer.nextmoe.dev 与 `/v2/moyu`（见 `docs/open-api/README.md` §5）|
 | `GET /api/v1/moyu/patch/has-patch` | 公开 | `commonH.GetMoyuHasPatch` | 对齐 | 裸 vndb_id 数组（有补丁资源的）；无敏感字段 |
 
 ## 11. 关于 / 文档（静态 .mdx）
