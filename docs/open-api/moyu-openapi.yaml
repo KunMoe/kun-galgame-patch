@@ -54,9 +54,10 @@ info:
     - failures are RFC 9457 `application/problem+json` with a `code` from the
       platform's closed registry.
 
-    One exception worth knowing: `401` and `429` are written by the gateway
-    before this service is reached, and they carry the platform's own
-    `{code, message}` body rather than a problem document.
+    `401` and `429` are written by the gateway before this service is reached,
+    and they are problem documents from the same registry: `code` is
+    `MISSING_CREDENTIAL` or `INVALID_CREDENTIAL` on a `401`, `RATE_LIMITED` or
+    `QUOTA_EXCEEDED` on a `429`.
   contact:
     name: www.moyu.moe
     url: https://www.moyu.moe
@@ -333,9 +334,12 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     RateLimited:
       description: |
-        The key's rate limit or quota is spent. Written by the gateway, so the
-        body is the platform's `{code, message}` rather than a problem document.
-        `Retry-After` says when to come back.
+        The key's rate limit or quota is spent. Written by the gateway as a
+        problem document from the same registry: `code` is `RATE_LIMITED` or
+        `QUOTA_EXCEEDED`. `Retry-After` says when to come back.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     ServiceUnavailable:
       description: A dependency is unavailable. The request may be retried.
       content:
@@ -551,8 +555,12 @@ components:
             - INVALID_CURSOR
             - UNKNOWN_INCLUDE
             - UNKNOWN_SORT
+            - MISSING_CREDENTIAL
+            - INVALID_CREDENTIAL
             - NOT_FOUND
             - METHOD_NOT_ALLOWED
+            - RATE_LIMITED
+            - QUOTA_EXCEEDED
             - INTERNAL_ERROR
             - SERVICE_UNAVAILABLE
         request_id:
