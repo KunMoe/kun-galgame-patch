@@ -78,3 +78,5 @@ infra 侧全部就位（2026-09-08 实测）：
 ## 6. 一条给 infra 的观察
 
 闸门自己的 401 / 429 走的是平台的 `{code, message}` 信封（实测 `{"code":10001,"message":"未授权，请先登录"}`，中文），而同一条 `/v2` 路径上其它所有回答都是 RFC 9457 problem+json。第三方在同一个前缀下仍然要解两种错误格式，而这正是下游面统一用 problem+json 想避免的事。契约里已如实写明，但值得 infra 考虑让 ForwardAuth 的拒绝也回 problem 文档。
+
+**已采纳**（infra `fc0d7c29`，2026-09-18）：闸门改回同一份注册表的 problem 文档——401 `MISSING_CREDENTIAL` / `INVALID_CREDENTIAL`，429 `RATE_LIMITED` / `QUOTA_EXCEEDED`，状态码不变。契约的顶部说明、`RateLimited` 响应与 `Problem.code` 枚举已同步改写。
