@@ -47,8 +47,8 @@ func TestCalendarIsServedFromCacheOnTheSecondRead(t *testing.T) {
 	if len(mr.Keys()) != 1 {
 		t.Fatalf("cache keys = %v", mr.Keys())
 	}
-	if ttl := mr.TTL(mr.Keys()[0]); ttl != 60*time.Second {
-		t.Fatalf("list TTL = %v, want 60s", ttl)
+	if ttl := mr.TTL(mr.Keys()[0]); ttl != time.Hour {
+		t.Fatalf("calendar TTL = %v, want 1h", ttl)
 	}
 }
 

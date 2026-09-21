@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	readCacheKeyPrefix = "nmcache:moyu:v2:"
-	readCacheMaxBody   = 512 << 10
-	readCacheDetailTTL = 15 * time.Second
-	readCacheListTTL   = 60 * time.Second
+	readCacheKeyPrefix   = "nmcache:moyu:v2:"
+	readCacheMaxBody     = 512 << 10
+	readCacheDetailTTL   = 15 * time.Second
+	readCacheListTTL     = 60 * time.Second
+	readCacheCalendarTTL = time.Hour
 )
 
 // The public read faces, and only those. An allowlist rather than a list of
@@ -57,6 +58,9 @@ func readCacheable(path string) bool {
 
 func readCacheTTL(path string) time.Duration {
 	route, _, _ := strings.Cut(path, "?")
+	if route == "/v2/catalog/calendar" || strings.HasPrefix(route, "/v2/catalog/calendar/") {
+		return readCacheCalendarTTL
+	}
 	for _, seg := range strings.Split(route, "/") {
 		if isNumericSegment(seg) {
 			return readCacheDetailTTL
