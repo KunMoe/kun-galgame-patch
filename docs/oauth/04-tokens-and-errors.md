@@ -123,6 +123,21 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
 | 10018 | 400 | 第三方登录已过期，请重新发起 | 联邦补全页的 pending token 过期 / 无效（TTL 30 分钟） |
 | 10019 | 400 | 该第三方账号的绑定关系存在冲突 | 同一第三方账号已绑定其他用户，或该用户已绑定同 provider 的另一账号 |
 
+### 内容分级与云端偏好 (18xxx)
+
+完整语义见 [15-content-preferences.md](./15-content-preferences.md)。
+
+| Code | HTTP | 消息 | 说明 |
+|------|------|------|------|
+| 18001 | 403 | 缺少 preferences 权限范围 | OAuth token 的 scope 里没有 `preferences`（空 scope 也不算数）；一方会话不触发 |
+| 18002 | 400 | 命名空间格式不合法 | `{namespace}` 不匹配 `^[a-z0-9_-]{1,64}$` |
+| 18003 | 403 | 无权访问该命名空间 | OAuth token 访问了 `client_id` 与 `global` 之外的命名空间；或用 OAuth token 调了仅限一方会话的 `GET /auth/me/preferences` |
+| 18004 | 400 | doc 必须是 JSON 对象 | `doc` 缺失，或是 `null` / 数组 / 字符串 / 数字 |
+| 18005 | 413 | 偏好文档超过 64 KB 上限 | 压紧后的文档超限 |
+| **18006** | **412** | 偏好文档版本冲突 | `If-Match` 的版本与当前不符——重读后重试，文档未被修改 |
+| 18007 | 400 | 成人内容显示方式必须是 hide / blur / show | `PUT /auth/me/nsfw` 的 `nsfw_display` 取值非法 |
+| 18008 | 400 | 请先完成年龄确认 | 想把 `nsfw_display` 设成 `blur` / `show`，但 `adult_confirmed_at` 还是 null |
+
 ### 通用错误
 
 | Code | 消息 | 触发场景示例 |

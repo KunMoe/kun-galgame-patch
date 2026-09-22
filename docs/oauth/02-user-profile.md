@@ -52,6 +52,9 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 改显示名 | `PATCH /auth/me { name }` | 全局唯一，OAuth 后端拒重 |
 | 改头像（URL 或 hash） | `PATCH /auth/me` 或 `POST /auth/me/avatar` | 后者一步走完上传 + 写库 |
 | 改简介 | `PATCH /auth/me { bio }` | 纯展示，无安全性 |
+| 读写云端偏好 | `/auth/me/preferences/*` | 每个 client 一个命名空间 + 共享的 `global`，见 [15-content-preferences.md](./15-content-preferences.md) |
+
+**年龄确认（`POST /auth/me/adult-confirmation`）属于身份层**——下游不要自己做确认弹窗，跳转 `https://account.nextmoe.com/settings`。成人向内容显示方式（`PUT /auth/me/nsfw`）技术上可代理，但和年龄确认一起放在账号中心更一致。
 
 这些可以站内提供 UI（"代理模式"），也可以跳转（"跳转模式"，更一致），任选。`PATCH /auth/me` 和 `POST /auth/me/avatar` 要求带终端用户 JWT，**不是** OAuth Client Basic Auth。
 
@@ -67,6 +70,9 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | `/auth/email/send-code` | POST | 身份 | Bearer（仅 OAuth 前端） | 发送邮箱变更验证码到**旧**邮箱 |
 | `/auth/email` | PUT | 身份 | Bearer（仅 OAuth 前端） | 用验证码确认改邮箱 |
 | `/auth/password` | PUT | 身份 | Bearer（仅 OAuth 前端） | 改密码（需旧密码） |
+| `/auth/me/adult-confirmation` | POST | 身份 | Bearer | 年龄确认，幂等、不可撤销（见 [15](./15-content-preferences.md)） |
+| `/auth/me/nsfw` | PUT | 展示 | Bearer | 成人向内容显示方式（见 [15](./15-content-preferences.md)） |
+| `/auth/me/preferences[/{ns}]` | GET/PUT/DELETE | 展示 | Bearer | 云端偏好 KV（见 [15](./15-content-preferences.md)） |
 
 ---
 
@@ -102,10 +108,20 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
     "moemoepoint": 1234,
     "status": 0,
     "roles": ["user", "admin"],
-    "created_at": "2024-01-01T00:00:00Z"
+    "created_at": "2024-01-01T00:00:00Z",
+    "adult_confirmed_at": "2026-09-22T08:30:00Z",
+    "nsfw_display": "blur"
   }
 }
 ```
+
+> **2026-09-22 新增 `adult_confirmed_at` / `nsfw_display`**（见 [15-content-preferences.md](./15-content-preferences.md)）。`adult_confirmed_at` 未确认时**整个键缺失**；`nsfw_display` 是账号存着的值，生效值 = `adult_confirmed_at != null ? nsfw_display : 'hide'`。
+>
+> 这两个字段**只出现在 `GET /auth/me` 与 `PATCH /auth/me` 的响应里**。`/auth/login`、`/auth/register`、`/auth/federation/complete` 返回的是同一个 `UserResponse` 结构，但三条路径拿到的用户记录不一样：登录是整行读出来的，注册答的是刚 INSERT 的那条记录（`nsfw_display` 没进 INSERT、走的是 DB 默认值，所以在内存里是空串）。与其让三条会话建立路径各答各的，这三条一律省略这两个键。**登录后想要这两个值，读一次 `/auth/me`。**
+>
+> 这两个字段在 `/auth/me` 上**不受 scope 门控**（与 `name` / `bio` / `moemoepoint` / `status` / `roles` 同一条规则，只有 `email` 被门控）。`/oauth/userinfo` 上的同名 claim 则跟着 `profile`——两边不对称是 `/auth/me` 既有的「展示字段一律不门控」策略造成的，不是遗漏。
+>
+> `GET /auth/me` 与 `PATCH /auth/me` 自 2026-09-22 起返回 `Cache-Control: no-store`。
 
 ---
 

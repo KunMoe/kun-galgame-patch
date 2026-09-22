@@ -37,7 +37,7 @@
 | # | 文件 | 内容 |
 |---|------|------|
 | 01 | [oauth-endpoints.md](./01-oauth-endpoints.md) | OAuth 2.0 协议端点：`/oauth/token`、`/oauth/authorize`、`/oauth/userinfo`、`/oauth/revoke` |
-| 02 | [user-profile.md](./02-user-profile.md) | 用户自助：`GET/PATCH /auth/me` + `POST /auth/me/avatar`（含头像上传） |
+| 02 | [user-profile.md](./02-user-profile.md) | 用户自助：`GET/PATCH /auth/me` + `POST /auth/me/avatar`（含头像上传） + 内容分级/偏好端点索引 |
 | 03 | [cross-service.md](./03-cross-service.md) | 服务到服务：`/users/batch`、`/users/search`（OAuth Client Basic Auth） |
 | 04 | [tokens-and-errors.md](./04-tokens-and-errors.md) | JWT Access Token claims + 完整错误码速查（OAuth 15xxx / 认证 10xxx / 通用） |
 | 05 | [registration.md](./05-registration.md) | 用户注册流程：跳转 OAuth 注册 + 邮箱验证码 + 自动 SSO 回跳；`POST /auth/register/send-code` + `POST /auth/register`、`GET /oauth/client-info`；下游 PKCE 跳转示例。含**第三方登录（联邦，Google/GitHub/Hikarinagi ID）**：`/auth/federation/*` 五端点，OP 侧实现，下游零改动 |
@@ -50,6 +50,7 @@
 | 12 | [site-roles.md](./12-site-roles.md) | 🧩 **站点域角色（site-scoped roles，权威定义，Tier A）**：让账号**只在某一个站点**持职（如「letmoe 的 moderator」），是 11 五角色契约的**加法扩展**（不改其语义）。`site_roles` claim = 按签发 client 站点定界的扁平角色名数组（access token / userinfo / `/users/batch` 三处出现）；下游**并入**既有角色集喂能力函数；名策略禁 `user`/`admin`/`ren`（安全不变量）+ 允许自定义捆名；授予/撤销仅 OAuth 后台（`admin`/`ren`）|
 | 13 | [standard-wire-migration.md](./13-standard-wire-migration.md) | 🚨 **协议端点线格式标准化迁移指南（第三方必读）**：`/oauth/{token,userinfo,revoke}` 的响应从自家 `{code,message,data}` 信封改为 RFC 6749 / RFC 6750 标准裸 JSON。含前后对照、**零停机双格式兼容读取器**（TS / Go / Kotlin 示例）、可离线自测的 fixture，以及三个必须做对的错误判定（`invalid_token` 视为凭据已死、只有 5xx 与未知错误算瞬态、封禁是 HTTP 403）|
 | 14 | [settings.md](./14-settings.md) | **平台配置下发(settings 读面,Tier A)**:`GET /settings`(OAuth Client Basic Auth)返回调用方站点必须遵守的公开策略键(`platform.read_only` 维护只读、`platform.notice` 全站公告、两个上传开关),强 `ETag` + `If-None-Match` → 304;站点每 30–60 秒轮询、fail-open 沿用上一份快照;含 Go 参考客户端。下游**只走此端点**,永远不读共享表 |
+| 15 | [content-preferences.md](./15-content-preferences.md) | 🔞 **内容分级与云端偏好（Tier A）**：账号级的年龄确认（`POST /auth/me/adult-confirmation`，幂等且不可撤销）+ 成人向显示方式 `hide`/`blur`/`show`（`PUT /auth/me/nsfw`），生效值 = `adult_confirmed ? nsfw_display : 'hide'`（**下游必须自己套，存量行全是 `blur` + 未确认**）；`/oauth/userinfo` 随 `profile` 多两个 claim；每 client 一个命名空间的云端偏好 KV（`/auth/me/preferences/*`，`If-Match` 乐观锁 → 412、64 KB 上限、`global` 共享空间），写侧需新 scope `preferences`；全部 `no-store` |
 
 ### 完整接入指南
 
@@ -101,6 +102,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 ---
 
 ## 变更摘要
+
+> **2026-09-22 内容分级与云端偏好**：新增 [15-content-preferences.md](./15-content-preferences.md)。① 账号级**年龄确认**（`POST /auth/me/adult-confirmation`，幂等、写下去就不可撤销）+ **成人向内容显示方式** `hide`/`blur`/`show`（`PUT /auth/me/nsfw`，未确认年龄只接受 `hide`）。**生效值 = `adult_confirmed ? nsfw_display : 'hide'`，下游必须自己套这条**——存量账号迁移后全是 `nsfw_display='blur'` + 未确认，只读 `nsfw_display` 等于给全站没确认过年龄的用户直接放出成人向内容。② `/oauth/userinfo` 随既有 `profile` scope 多出 `adult_confirmed` / `nsfw_display` 两个 claim（**刻意复用 `profile`，读侧下游零改动、无需重新授权**；两者都不进 id_token）。③ **每 client 一个命名空间的云端偏好 KV** `/auth/me/preferences/*`：JSON 文档 + 单调 `version`，可选 `If-Match` 乐观锁（冲突 412），压紧后 64 KB 上限，另有跨应用共享的 `global` 命名空间；OAuth token 只能碰自己的 `client_id` 与 `global`，命名空间**列表仅限账号中心自己**。写侧需要新 scope **`preferences`**（已进 `scopes_supported`，**没有**进空 `allowed_scopes` 的兜底，要用须在后台勾选并重走一次授权码流程）。④ 本波所有端点 + `GET/PATCH /auth/me` 一律 `Cache-Control: no-store`。
 
 > **2026-09-02 平台配置下发读面**:新增 [14-settings.md](./14-settings.md)。配置中心(OAuth 控制台 `/settings`)里声明为公开的键通过 `GET /settings`(Client Basic Auth,ETag/304)下发到各站。首批四个键:`platform.read_only`(为 infra 整机搬迁的只读窗口准备,站点收到 `true` 必须拒绝写操作)、`platform.notice`(顶部公告)、`image.upload_enabled` / `artifact.upload_enabled`(隐藏上传入口)。前两个可按站点单独覆盖。**下游 kungal / moyu / letmoe 需接入**:启动拉一次 + 30–60 秒轮询,内存快照,读共享表属违规。
 

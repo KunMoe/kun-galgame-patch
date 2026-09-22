@@ -97,7 +97,7 @@
 | redirect_uri | 是 | 回调地址，必须与注册时一致 |
 | response_type | 是 | 固定 `code` |
 | state | 是 | 随机字符串，防 CSRF |
-| scope | 否 | 权限范围，空格分隔。常用 `openid profile email`；**要邮箱就必须带 `email`**（client 的 `allowed_scopes` 勾了只代表允许申请），要昵称 / 头像必须带 `profile`。请求了不在 `allowed_scopes` 内的 scope → 15006 |
+| scope | 否 | 权限范围，空格分隔。常用 `openid profile email`；**要邮箱就必须带 `email`**（client 的 `allowed_scopes` 勾了只代表允许申请），要昵称 / 头像必须带 `profile`，要读写云端偏好必须带 `preferences`（见 [15](./15-content-preferences.md)）。请求了不在 `allowed_scopes` 内的 scope → 15006 |
 | code_challenge | 否 | PKCE code challenge |
 | code_challenge_method | 否 | `S256`（默认）或 `plain` |
 | prompt | 否 | `login` = 强制重新登录（即使 OP 仍有会话也不静默放行）；见 [07-logout.md](./07-logout.md) |
@@ -124,6 +124,8 @@
   "email": "kun@kungal.com",
   "picture": "https://...",
   "roles": ["user", "admin"],
+  "adult_confirmed": true,
+  "nsfw_display": "blur",
   "updated_at": 1234567890
 }
 ```
@@ -141,11 +143,13 @@
 | picture | 头像 URL（仅 `profile` scope 或空 scope 时返回，可能为空） |
 | roles | 角色名称数组，与 JWT `roles` claim 一致 |
 | site_roles | 站点域角色数组（按调用所用 token 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
+| adult_confirmed | 是否完成过年龄确认（仅 `profile` scope 或空 scope 时返回）。见 [15-content-preferences.md](./15-content-preferences.md) |
+| nsfw_display | 成人向内容显示方式 `hide`/`blur`/`show`（仅 `profile` scope 或空 scope 时返回）。**这是账号存着的值，不是生效值** —— 生效值 = `adult_confirmed ? nsfw_display : 'hide'`，下游必须自己套这条规则 |
 | updated_at | 最后更新时间（Unix 时间戳） |
 
 **关于 scope 与字段过滤**：
 
-`id`、`sub`、`roles` 始终返回（不被 scope 过滤）—— 因为这三项已经在 JWT 里，调用方既然能用这个 JWT 调 /userinfo，就已经拿到了这些信息，再隐藏没有意义。`name`、`email`、`picture` 按 OIDC 标准受 `profile` / `email` scope 控制。
+`id`、`sub`、`roles` 始终返回（不被 scope 过滤）—— 因为这三项已经在 JWT 里，调用方既然能用这个 JWT 调 /userinfo，就已经拿到了这些信息，再隐藏没有意义。`name`、`email`、`picture` 按 OIDC 标准受 `profile` / `email` scope 控制，`adult_confirmed` / `nsfw_display` 一并跟着 `profile`（刻意复用既有 scope，理由见 [15](./15-content-preferences.md#userinfo-的两个新-claim)）。
 
 > **⚠️ 没授权的字段是「整个键不存在」，不是空字符串**
 >
