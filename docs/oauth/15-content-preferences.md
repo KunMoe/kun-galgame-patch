@@ -239,7 +239,19 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 
 判别「一方会话」还是「OAuth token」用的是 token 的 `client_id` claim：一方登录签出的 token 没有它。
 
-> **开发者平台的自助应用暂时申请不到 `preferences`**：`devapi` 的 `selfServiceUserScopes` 白名单没有收录它，所以目前只有运营在 OAuth 后台手工勾选的 client 能拿到。要不要向第三方自助开放是一个单独的策略决定。
+### 2026-09-23：自助开放（裁定）
+
+本节此前写着「开发者平台的自助应用暂时申请不到 `preferences`」，并把它留成一个单独的策略决定。**该决定已作出：开放。** `preferences` 自 2026-09-23 起进入 `devapi` 的 `selfServiceUserScopes`，门户「用户登录」卡片上多一个勾选项，第三方自助注册的应用可以直接在同意页上向用户索取它——不再需要运营在 OAuth 后台代勾。
+
+之所以能开，是因为代价早在面上收讫，不靠白名单兜底：
+
+- **命名空间绑定**把每个 client 关在**自己 `client_id` 的命名空间 + `global`** 两格里（`PreferenceNamespaceAllowed`）。一个第三方应用读不到别家写的那份，越格是 403 / 18003。
+- **64 KB 配额**是单份文档压紧后的硬上限（413 / 18005），拿不成对象存储。
+- **同意页有措辞**：这个 scope 在 `/oauth/authorize` 上有自己的一行说明，用户看得见自己授出的是什么。
+
+> **它确实也覆盖 `PUT /auth/me/nsfw`**——那是一次**账号级**写，不是本应用命名空间里的一格。这一点是明知并接受的：边界是 `/oauth/authorize` 上那一次用户同意，不是 scope 白名单。年龄确认已于 2026-09-23 退役，于是这条端点如今只是一次普通的偏好写入，没有任何身份前置条件（见[一、内容分级](#一内容分级)）。
+
+`POST /auth/me/adult-confirmation` 不在此列改动之内：它退役后已无作用，开不开自助都是同一件事。
 
 ---
 
