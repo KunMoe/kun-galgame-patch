@@ -117,9 +117,9 @@ func upstreamCode(raw []byte) int {
 	return env.Code
 }
 
-// Everything else — 18006 on a version clash, 18008 when the account never
-// attested its age, 18007 on a bad value — reaches the browser verbatim,
-// because each of those is a different thing for the page to say.
+// Everything else — 18006 on a version clash, 18007 on a bad value — reaches
+// the browser verbatim, because each of those is a different thing for the page
+// to say.
 func sendUpstream(c fiber.Ctx, status int, raw []byte) error {
 	c.Set("Content-Type", "application/json")
 	c.Set("Cache-Control", "no-store")
