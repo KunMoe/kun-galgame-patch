@@ -50,7 +50,7 @@
 | 12 | [site-roles.md](./12-site-roles.md) | 🧩 **站点域角色（site-scoped roles，权威定义，Tier A）**：让账号**只在某一个站点**持职（如「letmoe 的 moderator」），是 11 五角色契约的**加法扩展**（不改其语义）。`site_roles` claim = 按签发 client 站点定界的扁平角色名数组（access token / userinfo / `/users/batch` 三处出现）；下游**并入**既有角色集喂能力函数；名策略禁 `user`/`admin`/`ren`（安全不变量）+ 允许自定义捆名；授予/撤销仅 OAuth 后台（`admin`/`ren`）|
 | 13 | [standard-wire-migration.md](./13-standard-wire-migration.md) | 🚨 **协议端点线格式标准化迁移指南（第三方必读）**：`/oauth/{token,userinfo,revoke}` 的响应从自家 `{code,message,data}` 信封改为 RFC 6749 / RFC 6750 标准裸 JSON。含前后对照、**零停机双格式兼容读取器**（TS / Go / Kotlin 示例）、可离线自测的 fixture，以及三个必须做对的错误判定（`invalid_token` 视为凭据已死、只有 5xx 与未知错误算瞬态、封禁是 HTTP 403）|
 | 14 | [settings.md](./14-settings.md) | **平台配置下发(settings 读面,Tier A)**:`GET /settings`(OAuth Client Basic Auth)返回调用方站点必须遵守的公开策略键(`platform.read_only` 维护只读、`platform.notice` 全站公告、两个上传开关),强 `ETag` + `If-None-Match` → 304;站点每 30–60 秒轮询、fail-open 沿用上一份快照;含 Go 参考客户端。下游**只走此端点**,永远不读共享表 |
-| 15 | [content-preferences.md](./15-content-preferences.md) | 🔞 **内容分级与云端偏好（Tier A）**：账号级的年龄确认（`POST /auth/me/adult-confirmation`，幂等且不可撤销）+ 成人向显示方式 `hide`/`blur`/`show`（`PUT /auth/me/nsfw`），生效值 = `adult_confirmed ? nsfw_display : 'hide'`（**下游必须自己套，存量行全是 `blur` + 未确认**）；`/oauth/userinfo` 随 `profile` 多两个 claim；每 client 一个命名空间的云端偏好 KV（`/auth/me/preferences/*`，`If-Match` 乐观锁 → 412、64 KB 上限、`global` 共享空间），写侧需新 scope `preferences`；全部 `no-store` |
+| 15 | [content-preferences.md](./15-content-preferences.md) | 🔞 **内容分级与云端偏好（Tier A）**：成人向显示方式 `hide`/`blur`/`show`（`PUT /auth/me/nsfw`，三值无条件接受），生效值 = `adult_confirmed ? nsfw_display : 'hide'`（**公式不变，但 `adult_confirmed` 自 2026-09-23 恒为 `true`**——年龄确认已退役，账号一律视为成年账号，18008 不再返回）；`/oauth/userinfo` 随 `profile` 多两个 claim；每 client 一个命名空间的云端偏好 KV（`/auth/me/preferences/*`，`If-Match` 乐观锁 → 412、64 KB 上限、`global` 共享空间），写侧需新 scope `preferences`；全部 `no-store` |
 
 ### 完整接入指南
 
@@ -102,6 +102,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 ---
 
 ## 变更摘要
+
+> **2026-09-23 年龄确认退役（下游无需改动）**：账号一律视为成年账号——`adult_confirmed_at` 在账号创建时自动写入，存量账号已全部回填。**生效公式 `adult_confirmed ? nsfw_display : 'hide'` 一个字都没改，已经按它发版的下游继续原样工作**，只是左半边恒为 `true`。变动只有三处：① `PUT /auth/me/nsfw` 的年龄前置条件取消，`hide`/`blur`/`show` 三值无条件接受，**错误码 18008 退役**（不再被返回，号不回收，老下游映射表里那条分支成为死路）；② `POST /auth/me/adult-confirmation` 保留在线且幂等，但已无作用，新接入不必调用；③ `users.nsfw_display` 的列默认值从 `'blur'` 改为 `'hide'`。存量数据处理见 [15](./15-content-preferences.md#一内容分级)：13 万未确认账号在补确认时间**之前**先把 `'blur'` 翻成 `'hide'`，所以没有任何账号的观感发生变化。
 
 > **2026-09-22 内容分级与云端偏好**：新增 [15-content-preferences.md](./15-content-preferences.md)。① 账号级**年龄确认**（`POST /auth/me/adult-confirmation`，幂等、写下去就不可撤销）+ **成人向内容显示方式** `hide`/`blur`/`show`（`PUT /auth/me/nsfw`，未确认年龄只接受 `hide`）。**生效值 = `adult_confirmed ? nsfw_display : 'hide'`，下游必须自己套这条**——存量账号迁移后全是 `nsfw_display='blur'` + 未确认，只读 `nsfw_display` 等于给全站没确认过年龄的用户直接放出成人向内容。② `/oauth/userinfo` 随既有 `profile` scope 多出 `adult_confirmed` / `nsfw_display` 两个 claim（**刻意复用 `profile`，读侧下游零改动、无需重新授权**；两者都不进 id_token）。③ **每 client 一个命名空间的云端偏好 KV** `/auth/me/preferences/*`：JSON 文档 + 单调 `version`，可选 `If-Match` 乐观锁（冲突 412），压紧后 64 KB 上限，另有跨应用共享的 `global` 命名空间；OAuth token 只能碰自己的 `client_id` 与 `global`，命名空间**列表仅限账号中心自己**。写侧需要新 scope **`preferences`**（已进 `scopes_supported`，**没有**进空 `allowed_scopes` 的兜底，要用须在后台勾选并重走一次授权码流程）。④ 本波所有端点 + `GET/PATCH /auth/me` 一律 `Cache-Control: no-store`。
 

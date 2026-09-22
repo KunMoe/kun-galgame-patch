@@ -143,7 +143,7 @@
 | picture | 头像 URL（仅 `profile` scope 或空 scope 时返回，可能为空） |
 | roles | 角色名称数组，与 JWT `roles` claim 一致 |
 | site_roles | 站点域角色数组（按调用所用 token 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
-| adult_confirmed | 是否完成过年龄确认（仅 `profile` scope 或空 scope 时返回）。见 [15-content-preferences.md](./15-content-preferences.md) |
+| adult_confirmed | 账号是否成年（仅 `profile` scope 或空 scope 时返回）。**自 2026-09-23 年龄确认退役起恒为 `true`**，键仍然返回、含义不变。见 [15-content-preferences.md](./15-content-preferences.md) |
 | nsfw_display | 成人向内容显示方式 `hide`/`blur`/`show`（仅 `profile` scope 或空 scope 时返回）。**这是账号存着的值，不是生效值** —— 生效值 = `adult_confirmed ? nsfw_display : 'hide'`，下游必须自己套这条规则 |
 | updated_at | 最后更新时间（Unix 时间戳） |
 

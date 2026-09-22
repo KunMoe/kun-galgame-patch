@@ -6,13 +6,15 @@
 
 返回 [README](./README.md)
 
-> **2026-09-22 新增。** 账号级的两件事：①**年龄确认 + 成人向内容显示方式**（一份，跟着账号走全站）；②**每应用一份的云端偏好 KV**（`user_preferences`），让下游把「用户的界面偏好」存到账号里而不是自己建表 / 塞 localStorage。
+> **2026-09-22 新增。** 账号级的两件事：①**成人向内容显示方式**（一份，跟着账号走全站）；②**每应用一份的云端偏好 KV**（`user_preferences`），让下游把「用户的界面偏好」存到账号里而不是自己建表 / 塞 localStorage。
+>
+> **2026-09-23 年龄确认退役**：账号一律视为成年人（adult by construction）。生效规则、字段、claim、端点**全部原样保留**，下游已上线的实现一行都不用改——详见[下面这一节](#一内容分级)。
 
 ## 端点速览
 
 | 端点 | 方法 | 鉴权 | scope | 用途 |
 |------|------|------|------|------|
-| `/auth/me/adult-confirmation` | POST | Bearer | 一方会话 或 `preferences` | 记录「我已年满 18 岁」，幂等 |
+| `/auth/me/adult-confirmation` | POST | Bearer | 一方会话 或 `preferences` | **已无作用**，仍在线且幂等（2026-09-23 退役） |
 | `/auth/me/nsfw` | PUT | Bearer | 一方会话 或 `preferences` | 改成人向内容显示方式 |
 | `/auth/me/preferences` | GET | **仅一方会话** | — | 列出该账号所有命名空间 |
 | `/auth/me/preferences/{namespace}` | GET | Bearer | 一方会话 或 `preferences` | 读一份偏好文档 |
@@ -27,26 +29,38 @@
 
 ## 一、内容分级
 
-### 两列，不是一列
+> ### 2026-09-23：年龄确认退役
+>
+> **每个账号都是成年账号。** `adult_confirmed_at` 由 `User.BeforeCreate` 在账号创建时写入——注册、第三方登录首次建号、任何导入路径都经过同一条 `UserRepository.Create`，所以这一列**恒非 null**。`PUT /auth/me/nsfw` 上的年龄前置条件（错误码 18008）**已被移除**，账号中心的年龄确认弹窗也一并下线。
+>
+> **`nsfw_display` 这一列和三态模型一个字都没改**，下面的生效公式也没改——下游已上线的实现继续原样工作，只是公式左半边恒为真。
 
-账号上有两个独立的值：
+### 两列，仍然是两列
 
 | 列 | 类型 | 谁能写 |
 |------|------|------|
-| `adult_confirmed_at` | `timestamptz?` | `POST /auth/me/adult-confirmation` 置为当前时间。**没有任何 API 能把它清回 null。** |
-| `nsfw_display` | `hide` \| `blur` \| `show` | `PUT /auth/me/nsfw`。未完成年龄确认时只接受 `hide` |
+| `adult_confirmed_at` | `timestamptz`（**恒非 null**） | 账号创建时自动写入。`POST /auth/me/adult-confirmation` 仍在线但已无作用。**没有任何 API 能把它清回 null。** |
+| `nsfw_display` | `hide` \| `blur` \| `show` | `PUT /auth/me/nsfw`，**三个值无条件接受**。列默认值自 2026-09-23 起是 `'hide'`（原为 `'blur'`） |
 
-### 生效规则（下游必须自己套这一条）
+### 生效规则（保持不变，下游不用改）
 
 ```
 effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 ```
 
+**这条规则仍然是正确的**，刻意一个字都没改：`adult_confirmed` 恒为 `true`，于是 `effective == nsfw_display`。已经按它发版的下游站点不需要重新部署，这正是保留该列而不是删掉它的理由。
+
 **没有 `effective_nsfw_display` 这样的派生字段，也不会有。** 原因是这条规则必须能随时改口径，而一个存下来的派生列改口径就要回填全表。
 
-⚠️ **只读 `nsfw_display` 是错的**：这一列的存量行在迁移时统一回填成 `'blur'`，而 `adult_confirmed_at` 保持 `null`——也就是说**今天绝大多数账号的 `nsfw_display` 都是 `blur`，但实际效果是 `hide`**。漏掉前半个条件 = 给全站没做过年龄确认的用户直接放出成人向内容。
+### 存量账号怎么处理的（2026-09-23 已在生产执行）
 
-### POST /auth/me/adult-confirmation
+- **130,292 个未确认账号**：`adult_confirmed_at = now()`，并且**先**把它们的 `nsfw_display` 从 `'blur'` 翻成 `'hide'`。这一翻是关键：未确认账号带着 09-22 回填的 `'blur'`、实际渲染出来是 `'hide'`，只补确认时间而不翻这一列，等于凭空给 13 万人解除模糊。翻完之后每个账号看到的东西和前一天完全一样。
+- **33 个真正做过年龄确认的账号**：保留它们自己选的值，一个字段都没动。
+- `go run ./cmd/migrate` 幂等地重做这两步，覆盖手工回填之后、本次发版之前注册的账号，以及所有没跑过手工回填的 dev / staging 库。
+
+### POST /auth/me/adult-confirmation（保留，已无作用）
+
+端点仍然在线、仍然幂等、仍然返回一个时间戳——现在那个时间戳就是账号的创建时间。**2026-09-23 之前发版的下游继续调它不会报错**，新接入不需要调。
 
 **请求体**：无。
 
@@ -55,8 +69,6 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 ```json
 { "code": 0, "data": { "adult_confirmed_at": "2026-09-22T08:30:00Z" } }
 ```
-
-**幂等**：重复调用返回**第一次**的时间戳，不会把时间往后推。
 
 **错误响应**：403 / 18001（OAuth token 没有 `preferences` scope）、401 / 10001-10003（token 缺失 / 无效 / 过期）。
 
@@ -84,7 +96,7 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 }
 ```
 
-`adult_confirmed_at` 未确认时为 `null`。
+`adult_confirmed_at` 恒非 `null`（类型仍是可空的 `string | null`，不必改下游的类型定义）。
 
 **错误响应**：
 
@@ -92,10 +104,11 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 |------|------|----------|
 | 400 | 1 | JSON 格式错误 |
 | 400 | 18007 | `nsfw_display` 不是三个值之一 |
-| 400 | 18008 | 想设成 `blur` / `show`，但账号还没完成年龄确认 |
 | 403 | 18001 | OAuth token 没有 `preferences` scope |
 
-设成 `hide` **永远**被接受，不需要先确认年龄。
+**三个值一律被接受**，没有任何前置条件。
+
+> **18008（「请先完成年龄确认」）已退役**，2026-09-23 起不再被任何代码路径返回。错误码本身不回收——2026-09-23 之前发版的下游错误映射表里还留着它，换个含义复用会让它们把一个别的失败读成年龄问题。老下游里的那条分支现在是一条永远走不到的死路，删不删都行。
 
 ### userinfo 的两个新 claim
 
@@ -103,7 +116,7 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 
 | claim | 类型 | 说明 |
 |------|------|------|
-| adult_confirmed | bool | 等价于 `adult_confirmed_at != null` |
+| adult_confirmed | bool | 等价于 `adult_confirmed_at != null`，**自 2026-09-23 起恒为 `true`** |
 | nsfw_display | string | 账号存着的那个值，**不是生效值** |
 
 没有 `profile` scope 时**两个键整个不存在**（与 `name` / `picture` 同一条规则）。
@@ -232,8 +245,8 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 
 ## 四、下游接入建议
 
-- **读分级**：登录回调里已经在调 `/oauth/userinfo`，顺手读 `adult_confirmed` + `nsfw_display`，按上面的 effective 公式算一次存本地会话即可；**不要**自己再存一份「用户确认过年龄」的状态——年龄确认的唯一真源在 OAuth。
-- **让用户改分级**：跳转 `https://account.nextmoe.com/settings`，不要在自己站内做年龄确认弹窗。分级属于身份层（见 [02](./02-user-profile.md#身份操作-vs-展示操作)）。
+- **读分级**：登录回调里已经在调 `/oauth/userinfo`，顺手读 `adult_confirmed` + `nsfw_display`，按上面的 effective 公式算一次存本地会话即可。公式没变，已经这么写的不用动。
+- **让用户改分级**：跳转 `https://account.nextmoe.com/settings`。分级属于身份层（见 [02](./02-user-profile.md#身份操作-vs-展示操作)）。**不要在自己站内做年龄确认弹窗**——年龄确认已在 2026-09-23 退役，账号一律视为成年账号。
 - **存偏好**：把原来塞在 localStorage 的界面偏好整包写进自己 client_id 的命名空间即可；跨站要共享的（例如语言）写 `global`。
 - **并发**：多标签页同时写同一份文档时，读 → 改 → 带 `If-Match` 写 → 遇 412 就重读重试。不需要强一致的场景（例如「上次看的 tab」）直接不带 `If-Match`。
 - **配额**：单份 64 KB 是硬上限，不要拿它当对象存储。大文件走 [artifact](../../artifact/)。

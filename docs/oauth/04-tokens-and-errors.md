@@ -136,7 +136,7 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
 | 18005 | 413 | 偏好文档超过 64 KB 上限 | 压紧后的文档超限 |
 | **18006** | **412** | 偏好文档版本冲突 | `If-Match` 的版本与当前不符——重读后重试，文档未被修改 |
 | 18007 | 400 | 成人内容显示方式必须是 hide / blur / show | `PUT /auth/me/nsfw` 的 `nsfw_display` 取值非法 |
-| 18008 | 400 | 请先完成年龄确认 | 想把 `nsfw_display` 设成 `blur` / `show`，但 `adult_confirmed_at` 还是 null |
+| ~~18008~~ | — | ~~请先完成年龄确认~~ | **已退役（2026-09-23）**，任何代码路径都不再返回它：年龄确认随[内容分级的政策变更](./15-content-preferences.md#一内容分级)一并取消，`PUT /auth/me/nsfw` 三个取值无条件接受。错误码不回收，老下游错误映射表里的那条分支现在永远走不到 |
 
 ### 通用错误
 
