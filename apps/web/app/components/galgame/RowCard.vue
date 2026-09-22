@@ -48,6 +48,8 @@ const updatedAt = computed(
 
 const isNoPatch = computed(() => (props.patch.count?.resource ?? 0) === 0)
 
+const isNsfw = computed(() => props.patch.content_limit !== 'sfw')
+
 const MAX_TYPE_BADGES = 3
 
 // Same ranking the poster card uses: patch.type is the union of every
@@ -92,41 +94,47 @@ const NARROW_TAG_LIMIT = 3
 
 <template>
   <div class="@container/row flex h-full gap-3">
-    <NuxtLink
-      :to="patchHref"
-      :aria-label="galgameName"
-      tabindex="-1"
-      class="relative block w-24 shrink-0 self-start overflow-hidden rounded-md sm:w-28"
-      :class="!coverSrc && 'bg-default-100'"
+    <KunNsfwMask
+      :nsfw="isNsfw"
+      rounded="rounded-md"
+      class="w-24 shrink-0 self-start sm:w-28"
     >
-      <!-- The zoom rides the wrapper: on image-class-name tailwind-merge
+      <NuxtLink
+        :to="patchHref"
+        :aria-label="galgameName"
+        tabindex="-1"
+        class="relative block overflow-hidden rounded-md"
+        :class="!coverSrc && 'bg-default-100'"
+      >
+        <!-- The zoom rides the wrapper: on image-class-name tailwind-merge
            replaces KunUI's own transition-opacity on the <img> and the
            thumbhash blur-up stops fading in. -->
-      <KunImage
-        v-if="coverSrc"
-        :src="coverSrc"
-        :alt="galgameName"
-        aspect-ratio="5 / 7"
-        :thumbhash="resolvePortraitThumbhash(props.patch)"
-        class-name="transition-transform duration-300 hover:scale-105"
-      />
-      <div
-        v-else
-        class="text-default-400 flex items-center justify-center"
-        style="aspect-ratio: 5 / 7"
-      >
-        <KunIcon name="lucide:image-off" class="size-6" />
-      </div>
+        <KunImage
+          v-if="coverSrc"
+          :src="coverSrc"
+          :alt="galgameName"
+          aspect-ratio="5 / 7"
+          :thumbhash="resolvePortraitThumbhash(props.patch)"
+          class-name="transition-transform duration-300 hover:scale-105"
+        />
+        <div
+          v-else
+          class="text-default-400 flex items-center justify-center"
+          style="aspect-ratio: 5 / 7"
+        >
+          <KunIcon name="lucide:image-off" class="size-6" />
+        </div>
 
-      <div
-        v-if="showNsfwBadge"
-        class="absolute top-0 right-0 size-5 [clip-path:polygon(100%_0,100%_100%,0_0)]"
-        :class="
-          props.patch.content_limit === 'sfw' ? 'bg-success' : 'bg-danger'
-        "
-        :title="props.patch.content_limit.toLocaleUpperCase()"
-      />
-    </NuxtLink>
+        <div
+          v-if="showNsfwBadge"
+          class="absolute top-0 right-0 size-5 [clip-path:polygon(100%_0,100%_100%,0_0)]"
+          :class="
+            props.patch.content_limit === 'sfw' ? 'bg-success' : 'bg-danger'
+          "
+          :title="props.patch.content_limit.toLocaleUpperCase()"
+        />
+      </NuxtLink>
+    </KunNsfwMask>
 
     <div class="flex min-w-0 flex-1 flex-col gap-1.5">
       <div class="min-w-0">

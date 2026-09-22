@@ -37,6 +37,9 @@ func (a *App) RegisterRoutes() {
 	authRoutes.Get("/me", auth, a.AuthHandler.Me)
 	authRoutes.Patch("/me", auth, a.AuthHandler.UpdateMe)
 	authRoutes.Post("/me/avatar", auth, a.AuthHandler.UploadAvatar)
+	authRoutes.Put("/me/nsfw", auth, a.AuthHandler.UpdateNsfwDisplay)
+	authRoutes.Get("/me/preferences", auth, a.AuthHandler.GetPreferences)
+	authRoutes.Put("/me/preferences", auth, a.AuthHandler.UpdatePreferences)
 
 	if a.Config.BotSubmit.Configured() {
 		botUser := a.Config.BotSubmit.UserID

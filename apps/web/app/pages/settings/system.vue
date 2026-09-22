@@ -9,7 +9,7 @@ useKunDisableSeo('系统设置')
 const route = useRoute()
 const settingStore = useSettingStore()
 
-const { theme, contentLimit } = useKunDisplayPreference()
+const { theme, contentStance } = useKunDisplayPreference()
 
 const galgameListLayout = computed({
   get: () => settingStore.data.galgameListLayout ?? 'poster',
@@ -84,11 +84,12 @@ onMounted(() => {
             <div class="min-w-0">
               <p class="text-sm font-medium">内容显示</p>
               <p class="text-default-500 text-xs">
-                是否显示 R18 等成人内容（切换后会刷新页面以立即生效）
+                R18 等成人内容的显示方式：隐藏 / 模糊 /
+                直接显示。登录后该设置保存在 NextMoe 账号上，全站通用
               </p>
             </div>
             <KunRadioGroup
-              v-model="contentLimit"
+              v-model="contentStance"
               :options="KUN_CONTENT_LIMIT_RADIO_OPTIONS"
               variant="pill"
               orientation="horizontal"

@@ -69,13 +69,25 @@ const creatorDescription = computed(
   () => `已发布 ${chipUserInfo.value?.resource_count ?? 0} 个游戏补丁`
 )
 
+const { stance } = useKunNsfwStance()
+
 const shouldShowNsfwConfirm = computed(() => {
   if (patch.value) return false
   if (userStore.user.id > 0) return false
-  if (settingStore.data.kunNsfwEnable !== 'sfw') return false
+  if (stance.value !== 'hide') return false
   if (settingStore.isNsfwAcked(galgameId.value)) return false
   return true
 })
+
+// A signed-in reader has no per-page ack: their stance is an account setting,
+// so the fix is one switch away rather than a confirm on this page. Like the
+// anonymous branch above, this cannot tell "hidden by the gate" from "does not
+// exist" — the API answers the same 404 for both — so the wording hedges.
+const shouldShowStancePrompt = computed(
+  () => !patch.value && userStore.user.id > 0 && stance.value === 'hide'
+)
+
+const isNsfwPatch = computed(() => patch.value?.content_limit !== 'sfw')
 
 const confirmNsfw = () => {
   settingStore.ackNsfw(galgameId.value)
@@ -259,26 +271,32 @@ const commentLoading = ref(false)
   <div v-if="patch" class="mx-auto w-full max-w-7xl space-y-6 px-3 py-4">
     <div class="flex flex-col gap-6 sm:flex-row">
       <div class="mx-auto w-40 shrink-0 space-y-2 sm:mx-0 sm:w-44 lg:w-52">
-        <KunLightboxGallery>
-          <KunLightboxGalleryItem
-            :src="heroSrc"
-            :alt="displayName"
-            as="div"
-            class="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg"
-          >
-            <KunImage
+        <KunNsfwMask
+          :nsfw="isNsfwPatch"
+          rounded="rounded-2xl"
+          label="封面含成人向内容"
+        >
+          <KunLightboxGallery>
+            <KunLightboxGalleryItem
               :src="heroSrc"
               :alt="displayName"
-              loading="eager"
-              fetchpriority="high"
-              aspect-ratio="3/4"
-              object-fit="cover"
-              :thumbhash="heroThumbhash"
-              class-name="block w-full"
-              image-class-name="transition-transform duration-300 hover:scale-[1.03]"
-            />
-          </KunLightboxGalleryItem>
-        </KunLightboxGallery>
+              as="div"
+              class="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg"
+            >
+              <KunImage
+                :src="heroSrc"
+                :alt="displayName"
+                loading="eager"
+                fetchpriority="high"
+                aspect-ratio="3/4"
+                object-fit="cover"
+                :thumbhash="heroThumbhash"
+                class-name="block w-full"
+                image-class-name="transition-transform duration-300 hover:scale-[1.03]"
+              />
+            </KunLightboxGalleryItem>
+          </KunLightboxGallery>
+        </KunNsfwMask>
 
         <KunButton
           variant="light"
@@ -411,6 +429,34 @@ const commentLoading = ref(false)
       <KunButton color="danger" size="md" @click="confirmNsfw">
         我已知晓，仍要查看
       </KunButton>
+      <NuxtLink to="/">
+        <KunButton variant="light" color="default" size="md">
+          返回首页
+        </KunButton>
+      </NuxtLink>
+    </div>
+  </div>
+
+  <div
+    v-else-if="shouldShowStancePrompt"
+    class="mx-auto flex w-full max-w-xl flex-col items-center gap-6 px-4 py-16 text-center"
+  >
+    <div
+      class="bg-warning/10 text-warning flex size-16 items-center justify-center rounded-full"
+    >
+      <KunIcon name="lucide:eye-off" class="size-8" />
+    </div>
+    <div class="space-y-2">
+      <h1 class="text-2xl font-bold">该页面可能含有成人向内容</h1>
+      <p class="text-default-500 text-sm leading-relaxed">
+        您的账号当前设置为隐藏成人向内容。<br />
+        在右上角或系统设置中切换为 "模糊" 或 "直接显示" 后即可查看。
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row">
+      <NuxtLink to="/settings/system">
+        <KunButton color="primary" size="md">前往设置</KunButton>
+      </NuxtLink>
       <NuxtLink to="/">
         <KunButton variant="light" color="default" size="md">
           返回首页

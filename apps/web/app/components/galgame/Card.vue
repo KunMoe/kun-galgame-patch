@@ -51,6 +51,8 @@ const updatedAt = computed(
 
 const isNoPatch = computed(() => (props.patch.count?.resource ?? 0) === 0)
 
+const isNsfw = computed(() => props.patch.content_limit !== 'sfw')
+
 const MAX_TYPE_BADGES = 3
 
 // patch.type is the union of every resource's type in publish order, so the
@@ -72,90 +74,92 @@ const typeBadges = computed(() => {
 
 <template>
   <div class="flex h-full flex-col">
-    <NuxtLink
-      :to="patchHref"
-      :aria-label="galgameName"
-      tabindex="-1"
-      class="relative block overflow-hidden rounded-lg"
-    >
-      <!-- The zoom rides the wrapper: on image-class-name tailwind-merge
+    <KunNsfwMask :nsfw="isNsfw" rounded="rounded-lg">
+      <NuxtLink
+        :to="patchHref"
+        :aria-label="galgameName"
+        tabindex="-1"
+        class="relative block overflow-hidden rounded-lg"
+      >
+        <!-- The zoom rides the wrapper: on image-class-name tailwind-merge
            replaces KunUI's own transition-opacity on the <img> and the
            thumbhash blur-up stops fading in. -->
-      <KunImage
-        v-if="coverSrc"
-        :src="coverSrc"
-        :alt="galgameName"
-        aspect-ratio="5 / 7"
-        :thumbhash="resolvePortraitThumbhash(props.patch)"
-        class-name="transition-transform duration-300 hover:scale-105"
-      />
-      <div
-        v-else
-        class="bg-default-100 text-default-400 flex items-center justify-center"
-        style="aspect-ratio: 5 / 7"
-      >
-        <KunIcon name="lucide:image-off" class="size-6" />
-      </div>
+        <KunImage
+          v-if="coverSrc"
+          :src="coverSrc"
+          :alt="galgameName"
+          aspect-ratio="5 / 7"
+          :thumbhash="resolvePortraitThumbhash(props.patch)"
+          class-name="transition-transform duration-300 hover:scale-105"
+        />
+        <div
+          v-else
+          class="bg-default-100 text-default-400 flex items-center justify-center"
+          style="aspect-ratio: 5 / 7"
+        >
+          <KunIcon name="lucide:image-off" class="size-6" />
+        </div>
 
-      <div
-        class="absolute top-1.5 left-1.5 flex flex-wrap gap-1"
-        :class="showNsfwBadge ? 'right-7' : 'right-1.5'"
-      >
-        <KunChip v-if="isNoPatch" color="default" variant="solid" size="xs">
-          暂无补丁
-        </KunChip>
-        <template v-else>
-          <KunChip
-            v-for="label in typeBadges.shown"
-            :key="label"
-            color="primary"
-            variant="solid"
-            size="xs"
-          >
-            {{ label }}
+        <div
+          class="absolute top-1.5 left-1.5 flex flex-wrap gap-1"
+          :class="showNsfwBadge ? 'right-7' : 'right-1.5'"
+        >
+          <KunChip v-if="isNoPatch" color="default" variant="solid" size="xs">
+            暂无补丁
           </KunChip>
-          <KunChip
-            v-if="typeBadges.rest"
-            color="default"
-            variant="solid"
-            size="xs"
-          >
-            +{{ typeBadges.rest }}
-          </KunChip>
-        </template>
-      </div>
+          <template v-else>
+            <KunChip
+              v-for="label in typeBadges.shown"
+              :key="label"
+              color="primary"
+              variant="solid"
+              size="xs"
+            >
+              {{ label }}
+            </KunChip>
+            <KunChip
+              v-if="typeBadges.rest"
+              color="default"
+              variant="solid"
+              size="xs"
+            >
+              +{{ typeBadges.rest }}
+            </KunChip>
+          </template>
+        </div>
 
-      <div
-        v-if="showNsfwBadge"
-        class="absolute top-0 right-0 size-5 [clip-path:polygon(100%_0,100%_100%,0_0)]"
-        :class="
-          props.patch.content_limit === 'sfw' ? 'bg-success' : 'bg-danger'
-        "
-        :title="props.patch.content_limit.toLocaleUpperCase()"
-      />
+        <div
+          v-if="showNsfwBadge"
+          class="absolute top-0 right-0 size-5 [clip-path:polygon(100%_0,100%_100%,0_0)]"
+          :class="
+            props.patch.content_limit === 'sfw' ? 'bg-success' : 'bg-danger'
+          "
+          :title="props.patch.content_limit.toLocaleUpperCase()"
+        />
 
-      <!-- SANCTIONED EXCEPTION to 铁律 #1 (no gradients): a bottom-to-top black
+        <!-- SANCTIONED EXCEPTION to 铁律 #1 (no gradients): a bottom-to-top black
            scrim so the counts stay legible over an arbitrary cover. Same one
            the forum card carries; listed in CLAUDE.md. Do NOT remove it in a
            no-gradient sweep. -->
-      <div
-        v-if="!isNoPatch"
-        class="absolute right-0 bottom-0 left-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5 text-xs text-white"
-      >
-        <span class="flex shrink-0 items-center gap-1">
-          <KunIcon name="lucide:eye" class="size-3.5 text-inherit" />
-          {{ formatNumber(props.patch.view) }}
-        </span>
-        <span class="flex shrink-0 items-center gap-1">
-          <KunIcon name="lucide:download" class="size-3.5 text-inherit" />
-          {{ formatNumber(props.patch.download) }}
-        </span>
-        <span class="ml-auto flex shrink-0 items-center gap-1">
-          <KunIcon name="lucide:puzzle" class="size-3.5 text-inherit" />
-          {{ formatNumber(props.patch.count.resource) }}
-        </span>
-      </div>
-    </NuxtLink>
+        <div
+          v-if="!isNoPatch"
+          class="absolute right-0 bottom-0 left-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pt-4 pb-1.5 text-xs text-white"
+        >
+          <span class="flex shrink-0 items-center gap-1">
+            <KunIcon name="lucide:eye" class="size-3.5 text-inherit" />
+            {{ formatNumber(props.patch.view) }}
+          </span>
+          <span class="flex shrink-0 items-center gap-1">
+            <KunIcon name="lucide:download" class="size-3.5 text-inherit" />
+            {{ formatNumber(props.patch.download) }}
+          </span>
+          <span class="ml-auto flex shrink-0 items-center gap-1">
+            <KunIcon name="lucide:puzzle" class="size-3.5 text-inherit" />
+            {{ formatNumber(props.patch.count.resource) }}
+          </span>
+        </div>
+      </NuxtLink>
+    </KunNsfwMask>
 
     <div class="flex flex-auto flex-col pt-1.5">
       <h2 class="line-clamp-2 text-sm font-medium">

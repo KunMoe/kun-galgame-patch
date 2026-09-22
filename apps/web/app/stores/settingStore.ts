@@ -1,14 +1,20 @@
 import { defineStore } from 'pinia'
 
-// NSFW preference. Forwarded verbatim by useApi as the content_limit query
-// parameter every moyu list endpoint reads:
-//   'sfw' — only SFW games (the safe-by-default; also what we send on
-//            SSR fallback / signed-out / cookie missing)
-//   'all' — both
-export type KunNsfwPreference = 'sfw' | 'all'
+// How this browser wants adult content shown. Three states, not two:
+//   'hide' — NSFW games never leave the API (content_limit=sfw)
+//   'blur' — they come back and render masked, revealed per item on click
+//   'show' — they come back and render plainly
+// Only the first bit reaches the wire: stanceToContentLimit folds blur and show
+// together, because masking is presentation and the opt-in is the same one.
+//
+// This is the ANONYMOUS store. A logged-in reader's stance lives on the NextMoe
+// account (userStore.adult_confirmed + nsfw_display) and this cookie is not
+// mirrored from it — otherwise logging out would leave the account's stance
+// behind on a shared browser.
+export type KunNsfwStance = 'hide' | 'blur' | 'show'
 
 export interface KunSettingData {
-  kunNsfwEnable: KunNsfwPreference
+  kunNsfwEnable: KunNsfwStance
   // Per-patch NSFW acknowledgements for anonymous callers.
   //
   // Background: anonymous + 'sfw' callers get a 404 from the game page when the
@@ -22,10 +28,9 @@ export interface KunSettingData {
   // current request — exactly that patch (and its sub-endpoints sharing
   // :id) becomes visible, others stay gated.
   //
-  // Logged-in users bypass this entirely via useApi's userStore.id > 0
-  // check, so this array is essentially anonymous-only state; clearing it
-  // on logout would be incorrect (an anonymous browser that logged in then
-  // out should keep its prior NSFW acks).
+  // Anonymous-only state: a logged-in reader is gated by their account stance
+  // instead. Clearing it on logout would be incorrect (an anonymous browser
+  // that logged in then out should keep its prior NSFW acks).
   nsfwAckedIds: number[]
 
   // ── Galgame card display preferences (the /galgame "显示设置" panel) ──
@@ -63,7 +68,7 @@ export interface KunSettingData {
 }
 
 const initialState: KunSettingData = {
-  kunNsfwEnable: 'sfw',
+  kunNsfwEnable: 'hide',
   nsfwAckedIds: [],
   galgameListLayout: 'poster',
   titleLanguage: 'ja-jp',
@@ -83,7 +88,7 @@ export const useSettingStore = defineStore('setting', {
     setData(data: Partial<KunSettingData>) {
       this.data = { ...this.data, ...data }
     },
-    setNsfwPreference(v: KunNsfwPreference) {
+    setNsfwStance(v: KunNsfwStance) {
       this.data.kunNsfwEnable = v
     },
     ackNsfw(id: number) {
@@ -125,18 +130,26 @@ export const useSettingStore = defineStore('setting', {
   persist: {
     key: 'kun-patch-setting-store',
     storage: piniaPluginPersistedstate.cookies(),
-    // 'nsfw' (NSFW-only) was a third mode until it was removed. Narrowing the
-    // type above does nothing to a cookie already holding that string, and
-    // useApi forwards kunNsfwEnable verbatim whenever it is not 'sfw' — such a
-    // reader would stay locked in a mode no button can leave, behind a top-bar
-    // label that resolves to undefined and renders blank. 'all' rather than
-    // 'sfw': they did opt in to NSFW, and 'all' is its superset.
+    // Narrowing the type above does nothing to a cookie already holding an old
+    // string, and every reader of this field would then fall through to a label
+    // that resolves to undefined and renders blank — a mode no button can
+    // leave. So rewrite the value in place on hydrate, exactly as the removal of
+    // the 'nsfw' (NSFW-only) mode already had to.
+    //
+    // 'all' → 'show', not 'blur': those readers had opted in to seeing NSFW and
+    // a silent downgrade to masked covers would read as a site regression.
+    // Anything unrecognised lands on 'hide', the safe default.
     afterHydrate: ({ store }) => {
       const data = (store as unknown as { data: KunSettingData }).data
-      if ((data.kunNsfwEnable as string) === 'nsfw') {
-        data.kunNsfwEnable = 'all'
-        store.$persist()
+      const legacy: Record<string, KunNsfwStance> = {
+        sfw: 'hide',
+        all: 'show',
+        nsfw: 'show'
       }
+      const current = data.kunNsfwEnable as string
+      if (current === 'hide' || current === 'blur' || current === 'show') return
+      data.kunNsfwEnable = legacy[current] ?? 'hide'
+      store.$persist()
     }
   }
 })

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { KunNsfwStance } from '~/stores/settingStore'
 
 // Mirrors GET /api/v1/auth/me (and /oauth/callback) MeResponse. Keys are
 // snake_case to match the wire format verbatim; no client-side remapping.
@@ -34,6 +35,15 @@ export interface UserState {
   daily_upload_size: number
 
   muted_message_types: string[]
+
+  // The NextMoe account's content stance, straight off /oauth/userinfo. These
+  // two are STORED values, not the effective one — fold them with
+  // resolveAccountNsfwStance and nowhere else. Age attestation happens only at
+  // the account centre; no moyu surface may set adult_confirmed on its own.
+  adult_confirmed: boolean
+  // '' means "the backend could not read it this time", which is why setUser
+  // keeps the old pair rather than merging a blank over a good stance.
+  nsfw_display: KunNsfwStance | ''
 }
 
 const initialUserState: UserState = {
@@ -49,7 +59,9 @@ const initialUserState: UserState = {
   daily_check_in: 1,
   daily_image_count: 0,
   daily_upload_size: 0,
-  muted_message_types: []
+  muted_message_types: [],
+  adult_confirmed: false,
+  nsfw_display: ''
 }
 
 // effectiveRoles is the set every capability getter runs against — the union of
@@ -76,8 +88,24 @@ export const useUserStore = defineStore('user', {
         // SSR. Coerce to an array so we never persist null.
         roles: user.roles ?? this.user.roles ?? [],
         site_roles: user.site_roles ?? this.user.site_roles ?? [],
-        muted_message_types: this.user.muted_message_types
+        muted_message_types: this.user.muted_message_types,
+        // The two stance fields move together or not at all. A response that
+        // omits nsfw_display means OAuth was unreachable, and merging its
+        // zero values would silently flip a 'show' reader back to hidden for
+        // the next minute of SWR.
+        adult_confirmed: user.nsfw_display
+          ? !!user.adult_confirmed
+          : this.user.adult_confirmed,
+        nsfw_display: user.nsfw_display || this.user.nsfw_display || ''
       }
+    },
+    setNsfwStance(stance: KunNsfwStance, adultConfirmed?: boolean) {
+      this.user.nsfw_display = stance
+      if (adultConfirmed !== undefined)
+        this.user.adult_confirmed = adultConfirmed
+    },
+    setMutedMessageTypes(types: string[]) {
+      this.user.muted_message_types = [...types]
     },
     toggleMutedMessageType(type: string) {
       const muted = this.user.muted_message_types

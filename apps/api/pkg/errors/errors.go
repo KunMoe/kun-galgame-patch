@@ -74,6 +74,25 @@ func ErrCatalogReauthRequired(msg string) *AppError {
 	return New(40399, msg, fiber.StatusForbidden)
 }
 
+// Same 40399 the catalog scope gap uses, so the client's existing "log out and
+// back in" handler covers this too — only the wording names the other scope.
+func ErrPreferencesReauthRequired(msg string) *AppError {
+	if msg == "" {
+		msg = "登录凭证尚未包含内容偏好权限，请退出登录后重新登录一次即可继续"
+	}
+	return New(40399, msg, fiber.StatusForbidden)
+}
+
+// Deliberately NOT 40399: the cloud preference store is a convenience the site
+// works without, so a session that cannot reach it degrades to the local cookie
+// in silence instead of nagging the reader on every settings change.
+func ErrPreferencesUnavailable(msg string) *AppError {
+	if msg == "" {
+		msg = "偏好云端同步暂不可用，当前设置仅保存在本机"
+	}
+	return New(40398, msg, fiber.StatusForbidden)
+}
+
 func ErrCatalogUnavailable(msg string) *AppError {
 	if msg == "" {
 		msg = "资料库服务暂不可用，请稍后再试"

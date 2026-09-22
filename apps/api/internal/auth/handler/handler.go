@@ -85,7 +85,8 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 
-	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles, userInfo.SiteRoles))
+	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles, userInfo.SiteRoles,
+		contentStance{adultConfirmed: userInfo.AdultConfirmed, nsfwDisplay: userInfo.NsfwDisplay}))
 }
 
 func (h *AuthHandler) Logout(c fiber.Ctx) error {
@@ -116,7 +117,31 @@ func (h *AuthHandler) Me(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrNotFound("user not found"))
 	}
 
-	return response.OK(c, h.composeMe(c, &local, user.Sub, roles, middleware.GetSiteRoles(c)))
+	return response.OK(c, h.composeMe(c, &local, user.Sub, roles, middleware.GetSiteRoles(c),
+		h.readContentStance(c)))
+}
+
+type contentStance struct {
+	adultConfirmed bool
+	nsfwDisplay    string
+}
+
+// The stance is re-read from OAuth on every /auth/me rather than cached in the
+// session, because the only place a reader can attest their age is the account
+// centre — a session-cached stance would make them log out and back in to see
+// the setting they just changed there.
+func (h *AuthHandler) readContentStance(c fiber.Ctx) contentStance {
+	token := middleware.GetAccessToken(c)
+	if token == "" {
+		return contentStance{}
+	}
+	info, err := h.service.GetUserInfo(token)
+	if err != nil {
+		slog.Warn("OAuth userinfo lookup failed; leaving the content stance unreported",
+			"userID", middleware.GetUserID(c), "error", err)
+		return contentStance{}
+	}
+	return contentStance{adultConfirmed: info.AdultConfirmed, nsfwDisplay: info.NsfwDisplay}
 }
 
 func (h *AuthHandler) UpdateMe(c fiber.Ctx) error {
@@ -151,7 +176,7 @@ func (h *AuthHandler) proxyUserOAuth(c fiber.Ctx, method, path string) error {
 	return c.Status(status).Send(raw)
 }
 
-func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles, siteRoles []string) dto.MeResponse {
+func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles, siteRoles []string, stance contentStance) dto.MeResponse {
 	if roles == nil {
 		roles = []string{}
 	}
@@ -169,6 +194,8 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		DailyUploadSize: local.DailyUploadSize,
 		FollowerCount:   local.FollowerCount,
 		FollowingCount:  local.FollowingCount,
+		AdultConfirmed:  stance.adultConfirmed,
+		NsfwDisplay:     stance.nsfwDisplay,
 	}
 
 	h.users.Invalidate(uint(local.ID))

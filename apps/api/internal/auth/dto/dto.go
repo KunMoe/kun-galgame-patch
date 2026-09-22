@@ -20,4 +20,12 @@ type MeResponse struct {
 	DailyUploadSize int64    `json:"daily_upload_size"`
 	FollowerCount   int      `json:"follower_count"`
 	FollowingCount  int      `json:"following_count"`
+
+	// The account's stored content stance, verbatim from OAuth. It is NOT the
+	// effective one: the client must fold it as
+	// `adult_confirmed ? nsfw_display : 'hide'`. NsfwDisplay is omitempty and an
+	// absent key means "we could not read it this time" — the client keeps the
+	// stance it already had rather than falling back and flipping the reader.
+	AdultConfirmed bool   `json:"adult_confirmed"`
+	NsfwDisplay    string `json:"nsfw_display,omitempty"`
 }

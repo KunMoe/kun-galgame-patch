@@ -57,18 +57,18 @@ export const useApi = () => {
   // unknown params, and the moyu backend only reads it where applicable.
   //
   // Resolution priority (first match wins):
-  //   1. Explicit cookie preference != 'sfw' — user picked 'all' in the
-  //      top-bar switcher, honour it verbatim. This is the ONLY way
-  //      listing pages (home / galgame / resource / ranking / user-tabs /
-  //      taxonomy) ever return NSFW content; just being logged-in does
-  //      NOT flip lists to all — per product rule, "页面上的各种游戏列表
-  //      只有用户打开显示全部内容才会显示". The logged-in convenience
-  //      only applies to (2) below — directly opening a NSFW detail URL.
-  //   2. Detail-page routes (/galgame/<id> or /resource/<id>) AND
-  //      (logged-in OR per-patch ack present) → 'all'. Logged-in users
-  //      who land on a NSFW patch's detail URL see the content directly,
-  //      no confirm step. Anonymous + ack'd is the "I already confirmed"
-  //      branch from pages/galgame/[id]/index.vue.
+  //   1. The reader's content stance — their NextMoe account's when signed in,
+  //      this browser's cookie when not. 'blur' and 'show' both send 'all':
+  //      masking a cover is something the browser does to a row it already has.
+  //      This is the ONLY way listing pages (home / galgame / resource /
+  //      ranking / user-tabs / taxonomy) ever return NSFW content; being
+  //      logged-in does NOT flip lists on by itself — per product rule,
+  //      "页面上的各种游戏列表只有用户打开显示全部内容才会显示".
+  //   2. Detail-page routes (/galgame/<id> or /resource/<id>) for an ANONYMOUS
+  //      reader who already confirmed this patch → 'all'. That is the ack
+  //      branch from pages/galgame/[id]/index.vue. A signed-in reader has no
+  //      such bypass any more: their stance is an account setting that follows
+  //      them everywhere, so 'hide' means hidden on a detail URL too.
   //   3. Default 'sfw' — SEO safe-by-default for anonymous crawlers, and
   //      the default for every list/index/tool surface regardless of
   //      login state.
@@ -80,9 +80,9 @@ export const useApi = () => {
   // detail faces filter server-side under the same nsfw gate.
   //
   // Captured at setup time so a single request closure sees one snapshot;
-  // toggling NSFW mode after the request has started doesn't retroactively
-  // mutate the in-flight URL. The NSFWSwitcher / confirm flow both
-  // location.reload() to make new state take effect.
+  // toggling the stance after the request has started doesn't retroactively
+  // mutate the in-flight URL. useKunNsfwStance reloads the page when a switch
+  // changes this value, and the per-patch confirm flow does the same.
   const setting = useSettingStore()
   const userStore = useUserStore()
   const route = useRoute()
@@ -90,9 +90,9 @@ export const useApi = () => {
   const isDetailRoute = /^\/(galgame|resource)\/\d+/.test(route.path)
 
   const contentLimit = (() => {
-    if (setting.data.kunNsfwEnable !== 'sfw') return setting.data.kunNsfwEnable
-    if (isDetailRoute) {
-      if (userStore.user.id > 0) return 'all'
+    const stance = resolveNsfwStance(setting.data, userStore.user)
+    if (stance !== 'hide') return stanceToContentLimit(stance)
+    if (isDetailRoute && userStore.user.id <= 0) {
       const routeId = Number(route.params.id)
       if (routeId > 0 && setting.isNsfwAcked(routeId)) return 'all'
     }

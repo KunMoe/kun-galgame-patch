@@ -18,5 +18,7 @@
     <AuthLoginModal />
 
     <LogoutModal />
+
+    <KunNsfwAttestationModal />
   </div>
 </template>
