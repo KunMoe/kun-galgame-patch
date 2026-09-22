@@ -40,7 +40,7 @@
 | 列 | 类型 | 谁能写 |
 |------|------|------|
 | `adult_confirmed_at` | `timestamptz`（**恒非 null**） | 账号创建时自动写入。`POST /auth/me/adult-confirmation` 仍在线但已无作用。**没有任何 API 能把它清回 null。** |
-| `nsfw_display` | `hide` \| `blur` \| `show` | `PUT /auth/me/nsfw`，**三个值无条件接受**。列默认值自 2026-09-23 起是 `'hide'`（原为 `'blur'`） |
+| `nsfw_display` | `hide` \| `blur` \| `show` | `PUT /auth/me/nsfw`，**三个值无条件接受**。列默认值自 2026-09-23 第二次终裁起是 `'show'`（此前依次为 `'blur'` → `'hide'`）——新注册账号默认可见成人内容 |
 
 ### 生效规则（保持不变，下游不用改）
 
@@ -57,6 +57,15 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 - **130,292 个未确认账号**：`adult_confirmed_at = now()`，并且**先**把它们的 `nsfw_display` 从 `'blur'` 翻成 `'hide'`。这一翻是关键：未确认账号带着 09-22 回填的 `'blur'`、实际渲染出来是 `'hide'`，只补确认时间而不翻这一列，等于凭空给 13 万人解除模糊。翻完之后每个账号看到的东西和前一天完全一样。
 - **33 个真正做过年龄确认的账号**：保留它们自己选的值，一个字段都没动。
 - `go run ./cmd/migrate` 幂等地重做这两步，覆盖手工回填之后、本次发版之前注册的账号，以及所有没跑过手工回填的 dev / staging 库。
+
+### 2026-09-23 同日第二次终裁：全员默认可见
+
+同日晚些时候的第二次终裁把落点从「保持体验不变」推进到「全员可见」：
+
+- **生产已把所有账号**（上面保留自选值的 33 个也包括在内）的 `nsfw_display` 统一改为 `'show'`（一次性手工 SQL——这一步刻意**不进** `cmd/migrate`：全表翻转没有幂等守卫，进了部署链就会在每次 redeploy 时覆盖此后自选 `hide`/`blur` 的用户）。
+- **新注册账号默认 `'show'`**（模型 default tag + 列 DEFAULT 同步改掉）。
+- `cmd/migrate` 里未确认行的落点从 `'hide'` 改为 `'show'`（仍由 `adult_confirmed_at IS NULL` 守卫，迟到的库直接落在终态上）。此后用户在账号中心自选的任何值不会被任何自动步骤覆盖。
+- **各站未登录（匿名）态不受影响**：匿名默认 SFW 是设备本地态（cookie / localStorage / shared_preferences），与账号列无关——搜索引擎抓到的就是这一面，保持 SFW 是刻意的。
 
 ### POST /auth/me/adult-confirmation（保留，已无作用）
 
