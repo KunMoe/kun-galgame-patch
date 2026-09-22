@@ -1,7 +1,7 @@
 <script setup lang="ts">
-const settingStore = useSettingStore()
+const { stance } = useKunNsfwStance()
 
-const isSafeMode = computed(() => settingStore.data.kunNsfwEnable === 'sfw')
+const isSafeMode = computed(() => stance.value === 'hide')
 </script>
 
 <template>
@@ -15,6 +15,7 @@ const isSafeMode = computed(() => settingStore.data.kunNsfwEnable === 'sfw')
       name="lucide:shield-check"
       class="mr-1 inline size-3.5 align-text-bottom"
     />
-    当前为 SFW 模式，部分 R18 / NSFW 内容已隐藏 — 您可在右上角切换 "显示全部内容"
+    当前为全年龄模式，部分 R18 / NSFW 内容已隐藏 — 您可在右上角切换为 "模糊" 或
+    "直接显示"
   </div>
 </template>

@@ -6,6 +6,7 @@ import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 const route = useRoute()
 const api = useApi()
 const settingStore = useSettingStore()
+const { stance } = useKunNsfwStance()
 
 const galgameId = computed(() => Number(route.params.id))
 
@@ -57,7 +58,7 @@ const TAG_CATEGORY_TEXT_CLASS: Record<TagCategory, string> = {
   sexual: 'text-danger-600'
 }
 
-const isSafeMode = computed(() => settingStore.data.kunNsfwEnable === 'sfw')
+const isSafeMode = computed(() => stance.value === 'hide')
 const availableCategories = computed<TagCategory[]>(() =>
   isSafeMode.value ? ['content'] : ['content', 'sexual']
 )

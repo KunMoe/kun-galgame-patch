@@ -1,4 +1,4 @@
-import type { KunNsfwPreference } from '~/stores/settingStore'
+import type { KunNsfwStance } from '~/stores/settingStore'
 
 export interface KunNavItem {
   name: string
@@ -39,23 +39,26 @@ export const kunMobileAdminItem: KunNavItem[] = [
 ]
 
 export const KUN_CONTENT_LIMIT_MAP: Record<string, string> = {
-  sfw: '仅显示 SFW (内容安全) 的内容',
-  all: '同时显示 SFW 和 NSFW 的内容'
+  hide: '隐藏成人向内容',
+  blur: '模糊显示，点击单张即可查看',
+  show: '直接显示成人向内容'
 }
 
 export const KUN_CONTENT_LIMIT_LABEL: Record<string, string> = {
   '': '全年龄',
-  sfw: '全年龄',
-  all: 'R18模式'
+  hide: '全年龄',
+  blur: '模糊',
+  show: 'R18模式'
 }
 
 // The three surfaces that offer the switch (top bar, mobile menu, settings)
 // each kept their own copy of this list and had drifted in order, so dropping
 // the NSFW-only mode meant editing the same array three times.
 export const KUN_CONTENT_LIMIT_OPTIONS = [
-  { key: 'sfw', icon: 'lucide:shield-check' },
-  { key: 'all', icon: 'lucide:circle-slash' }
-] as const satisfies ReadonlyArray<{ key: KunNsfwPreference; icon: string }>
+  { key: 'hide', icon: 'lucide:shield-check' },
+  { key: 'blur', icon: 'lucide:eye-off' },
+  { key: 'show', icon: 'lucide:circle-slash' }
+] as const satisfies ReadonlyArray<{ key: KunNsfwStance; icon: string }>
 
 // Radio-shaped view of the switch above, for the surfaces that render it as a
 // pill group (mobile menu, 系统设置) rather than a button list.

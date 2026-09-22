@@ -4,19 +4,13 @@ import {
   KUN_CONTENT_LIMIT_MAP,
   KUN_CONTENT_LIMIT_OPTIONS
 } from '~/constants/top-bar'
-import type { KunNsfwPreference } from '~/stores/settingStore'
+import type { KunNsfwStance } from '~/stores/settingStore'
 
-const settingStore = useSettingStore()
+const { stance, setStance, pending } = useKunNsfwStance()
 
-const isDanger = computed(() => {
-  const v = settingStore.data.kunNsfwEnable
-  return !!v && v !== 'sfw'
-})
+const isDanger = computed(() => stance.value === 'show')
 
-const onSelect = (key: KunNsfwPreference) => {
-  settingStore.setNsfwPreference(key)
-  if (import.meta.client) location.reload()
-}
+const onSelect = (key: KunNsfwStance) => setStance(key)
 </script>
 
 <template>
@@ -26,10 +20,12 @@ const onSelect = (key: KunNsfwPreference) => {
         <KunButton
           size="sm"
           variant="flat"
-          :color="isDanger ? 'danger' : 'success'"
+          :color="
+            isDanger ? 'danger' : stance === 'blur' ? 'warning' : 'success'
+          "
           aria-label="内容限制"
         >
-          {{ KUN_CONTENT_LIMIT_LABEL[settingStore.data.kunNsfwEnable] }}
+          {{ KUN_CONTENT_LIMIT_LABEL[stance] }}
         </KunButton>
       </KunTooltip>
     </template>
@@ -38,12 +34,13 @@ const onSelect = (key: KunNsfwPreference) => {
       <KunButton
         v-for="opt in KUN_CONTENT_LIMIT_OPTIONS"
         :key="opt.key"
-        :variant="settingStore.data.kunNsfwEnable === opt.key ? 'flat' : 'light'"
-        :color="settingStore.data.kunNsfwEnable === opt.key ? 'primary' : 'default'"
+        :variant="stance === opt.key ? 'flat' : 'light'"
+        :color="stance === opt.key ? 'primary' : 'default'"
         size="sm"
         full-width
         rounded="md"
         class-name="justify-start"
+        :disabled="pending"
         @click="onSelect(opt.key)"
       >
         <KunIcon :name="opt.icon" class="size-5" />

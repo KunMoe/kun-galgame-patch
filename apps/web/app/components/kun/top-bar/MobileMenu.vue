@@ -18,7 +18,7 @@ const closeMenu = () => emit('update:isOpen', false)
 
 const userStore = useUserStore()
 
-const { theme, contentLimit } = useKunDisplayPreference()
+const { theme, contentStance } = useKunDisplayPreference()
 
 const ICON_BY_HREF: Record<string, string> = {
   '/galgame': 'lucide:gamepad-2',
@@ -298,7 +298,7 @@ onUnmounted(() => {
             >
               <p class="text-sm font-medium">内容显示</p>
               <KunRadioGroup
-                v-model="contentLimit"
+                v-model="contentStance"
                 :options="KUN_CONTENT_LIMIT_RADIO_OPTIONS"
                 variant="pill"
                 orientation="horizontal"

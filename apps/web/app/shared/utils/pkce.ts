@@ -115,7 +115,13 @@ const prepareAuthorizeUrl = async (
     // in the catalog rather than in user_patch_favorite_relation. Same fixed
     // grant as catalog:edit above: a session minted before this line is 403
     // SCOPE_REQUIRED on every folder call and must log in again.
-    scope: 'openid profile catalog:edit folder:read folder:write',
+    // `preferences` is the WRITE side of the account content stance and of the
+    // cloud preferences KV. Reading the stance needs nothing new — both claims
+    // ride `profile` on /oauth/userinfo — so a pre-existing session still shows
+    // the right stance and only fails when it tries to change it. The client
+    // must also carry `preferences` in its allowed_scopes upstream, or the
+    // authorize call simply drops it.
+    scope: 'openid profile preferences catalog:edit folder:read folder:write',
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'

@@ -116,6 +116,13 @@ type OAuthUserInfo struct {
 	Picture   string   `json:"picture"`
 	Roles     []string `json:"roles"`
 	SiteRoles []string `json:"site_roles"`
+	// Both claims ride the `profile` scope moyu already holds, so reading the
+	// account's content stance needs no new grant. AdultConfirmed is the half a
+	// reader forgets: the migration backfilled nsfw_display='blur' on accounts
+	// that never attested, so NsfwDisplay alone says "blur" for almost everyone
+	// while the effective stance is "hide".
+	AdultConfirmed bool   `json:"adult_confirmed"`
+	NsfwDisplay    string `json:"nsfw_display"`
 }
 
 func (s *AuthService) ExchangeCode(code, codeVerifier string) (*OAuthTokenResponse, error) {
@@ -242,10 +249,27 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
+// PreferencesNamespace is moyu's slot in the account-wide preferences KV. It is
+// this app's OAuth client_id and nothing else: an OAuth token may only touch the
+// namespace named by its own client_id (or the literal `global`), so a
+// hand-written name is a 403/18003 from upstream.
+func (s *AuthService) PreferencesNamespace() string {
+	return s.oauthCfg.ClientID
+}
+
 func (s *AuthService) ProxyUserToOAuth(
 	method, path, accessToken string,
 	body []byte,
 	contentType string,
+) (status int, raw []byte, err error) {
+	return s.ProxyUserToOAuthWithHeaders(method, path, accessToken, body, contentType, nil)
+}
+
+func (s *AuthService) ProxyUserToOAuthWithHeaders(
+	method, path, accessToken string,
+	body []byte,
+	contentType string,
+	headers map[string]string,
 ) (status int, raw []byte, err error) {
 	var rdr io.Reader
 	if len(body) > 0 {
@@ -261,6 +285,9 @@ func (s *AuthService) ProxyUserToOAuth(
 			contentType = "application/json"
 		}
 		req.Header.Set("Content-Type", contentType)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {

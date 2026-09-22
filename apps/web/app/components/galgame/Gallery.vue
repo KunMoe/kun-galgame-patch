@@ -9,8 +9,12 @@ const props = defineProps<{
 }>()
 
 const settingStore = useSettingStore()
+const { stance } = useKunNsfwStance()
 
-const showNsfw = computed(() => settingStore.data.kunNsfwEnable !== 'sfw')
+// Under 'blur' the rated shots still pass this gate — they are masked below
+// rather than filtered out, which is the whole difference between the two
+// stances. The per-level opt-in keeps its own job for the 'hide' reader.
+const showNsfw = computed(() => stance.value !== 'hide')
 const sexualLevels = computed(() => settingStore.data.gallerySexualLevels ?? [])
 const violenceLevels = computed(
   () => settingStore.data.galleryViolenceLevels ?? []
@@ -109,21 +113,27 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
           as="figure"
           class="border-default/20 block overflow-hidden rounded-lg border"
         >
-          <div class="relative">
-            <KunImage
-              :src="imgSrc(s)"
-              :alt="s.caption || s.image_hash.slice(0, 8)"
-              loading="lazy"
-              :aspect-ratio="imageAspectRatio(s.width, s.height)"
-              :thumbhash="s.thumbhash"
-              class-name="bg-default-100"
-            />
-            <div
-              v-if="s.sexual >= 1 || s.violence >= 1"
-              class="pointer-events-none absolute inset-0"
-              :style="ratingRing(s)"
-            />
-          </div>
+          <KunNsfwMask
+            :nsfw="s.sexual >= 1 || s.violence >= 1"
+            rounded="rounded-none"
+            label="该截图带有分级"
+          >
+            <div class="relative">
+              <KunImage
+                :src="imgSrc(s)"
+                :alt="s.caption || s.image_hash.slice(0, 8)"
+                loading="lazy"
+                :aspect-ratio="imageAspectRatio(s.width, s.height)"
+                :thumbhash="s.thumbhash"
+                class-name="bg-default-100"
+              />
+              <div
+                v-if="s.sexual >= 1 || s.violence >= 1"
+                class="pointer-events-none absolute inset-0"
+                :style="ratingRing(s)"
+              />
+            </div>
+          </KunNsfwMask>
           <figcaption
             v-if="s.caption"
             class="text-default-500 px-2 py-1 text-xs"
