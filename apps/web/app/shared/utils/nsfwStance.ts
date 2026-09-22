@@ -6,11 +6,11 @@ const STANCES: readonly string[] = ['hide', 'blur', 'show']
 export const isNsfwStance = (v: unknown): v is KunNsfwStance =>
   typeof v === 'string' && STANCES.includes(v)
 
-// The one fold of the account's two columns, per the OAuth content-preferences
-// contract. `adult_confirmed` is NOT optional decoration: the upstream migration
-// backfilled `nsfw_display = 'blur'` onto every existing account while leaving
-// `adult_confirmed_at` null, so reading `nsfw_display` alone hands NSFW covers
-// to nearly everyone who has never attested their age.
+// The one fold of the account's two columns, and still exactly the OAuth
+// content-preferences formula `adult_confirmed ? nsfw_display : 'hide'`. Age
+// attestation retired on 2026-09-23, so upstream now sends `adult_confirmed`
+// true for every account — the contract kept the formula rather than the gate,
+// and so does this.
 export const resolveAccountNsfwStance = (
   user: Pick<UserState, 'adult_confirmed' | 'nsfw_display'>
 ): KunNsfwStance =>

@@ -101,20 +101,20 @@ func TestNsfwDisplayScopeDenialLandsOnTheRelogInCode(t *testing.T) {
 	}
 }
 
-// Age attestation happens only in the account centre, so 18008 must arrive at
-// the page intact — rewriting it to a generic failure would leave the reader
-// with no way to learn what to do next.
-func TestNsfwDisplayAttestationRefusalPassesThrough(t *testing.T) {
+// 18001 is the only upstream code this lane rewrites. Every other refusal keeps
+// its own code and message, or the page reports a generic failure for something
+// the reader could have fixed.
+func TestNsfwDisplayOtherRefusalsPassThrough(t *testing.T) {
 	fake := &oauthPrefFake{
 		status: http.StatusBadRequest,
-		reply:  `{"code":18008,"message":"请先完成年龄确认"}`,
+		reply:  `{"code":18007,"message":"成人内容显示方式必须是 hide / blur / show"}`,
 	}
 	ta, session := newPrefApp(t, fake, moyuClientID)
 
-	resp := ta.Request(t, http.MethodPut, "/auth/me/nsfw", `{"nsfw_display":"show"}`, session)
+	resp := ta.Request(t, http.MethodPut, "/auth/me/nsfw", `{"nsfw_display":"maybe"}`, session)
 	r := testutil.ParseResponse(t, resp)
-	if resp.StatusCode != http.StatusBadRequest || r.Code != 18008 {
-		t.Fatalf("got %d/%d, want 400/18008", resp.StatusCode, r.Code)
+	if resp.StatusCode != http.StatusBadRequest || r.Code != 18007 {
+		t.Fatalf("got %d/%d, want 400/18007", resp.StatusCode, r.Code)
 	}
 }
 
