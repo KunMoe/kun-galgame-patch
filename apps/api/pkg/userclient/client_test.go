@@ -128,6 +128,33 @@ func TestUsers_SingleflightCoalescesConcurrentMiss(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "concurrent misses for the same id should be coalesced")
 }
 
+func TestUsers_CosmeticsDecodeAndSurviveCache(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"data":{"users":[
+			{"id":1,"name":"alice","cosmetics":{
+				"avatar_frame":{"item_id":3,"name":"sakura","static_url":"https://img/d/a.png","animated_url":"https://img/d/a.webp"},
+				"profile_background":{"item_id":9,"name":"stars","static_url":"https://img/d/b.jpg"},
+				"name_plate":{"item_id":12,"static_url":"https://img/d/c.png"}}},
+			{"id":2,"name":"bob"}
+		],"not_found":[]}}`))
+	}))
+	defer srv.Close()
+
+	cli := New(Config{BaseURL: srv.URL, ClientID: "x", ClientSecret: "y"})
+	for range 2 {
+		out, err := cli.Users(context.Background(), []uint{1, 2})
+		require.NoError(t, err)
+		require.NotNil(t, out[1].Cosmetics)
+		assert.Equal(t, &Decoration{ItemID: 3, Name: "sakura", StaticURL: "https://img/d/a.png", AnimatedURL: "https://img/d/a.webp"}, out[1].Cosmetics.AvatarFrame)
+		assert.Equal(t, &Decoration{ItemID: 9, Name: "stars", StaticURL: "https://img/d/b.jpg"}, out[1].Cosmetics.ProfileBackground)
+		assert.Nil(t, out[2].Cosmetics)
+	}
+	assert.Equal(t, int32(1), hits.Load())
+}
+
 func TestUser_ReturnsNilOnNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeBatchResp(w, nil, []uint{42})

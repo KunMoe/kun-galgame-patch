@@ -36,7 +36,7 @@ const userDescription = computed(() => {
     <div class="flex flex-col justify-between space-y-2">
       <div class="flex">
         <KunUserChip
-          :user="props.resource.user"
+          :user="toKunUser(props.resource.user)"
           :description="userDescription"
           :is-navigation="false"
         />

@@ -4,6 +4,7 @@ interface FollowItem {
   id: number
   name: string
   avatar: string
+  cosmetics?: UserCosmetics
   is_followed: boolean
 }
 
@@ -125,7 +126,7 @@ const goToProfile = (id: number) => {
             @click="goToProfile(row.id)"
           >
             <KunAvatar
-              :user="{ id: row.id, name: row.name, avatar: row.avatar }"
+              :user="toKunUser(row)"
               :is-navigation="false"
               size="sm"
             />

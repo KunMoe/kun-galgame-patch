@@ -111,14 +111,7 @@ func (h *MessageHandler) attachSenders(ctx context.Context, msgs []userModel.Use
 			continue
 		}
 		if b := briefs[*msgs[i].SenderID]; b != nil {
-			msgs[i].Sender = &patchModel.PatchUser{
-				ID:              int(b.ID),
-				Name:            b.Name,
-				Avatar:          b.Avatar,
-				AvatarImageHash: b.AvatarImageHash,
-				Roles:           b.Roles,
-				SiteRoles:       b.SiteRoles,
-			}
+			msgs[i].Sender = patchModel.NewPatchUser(b)
 		}
 	}
 }

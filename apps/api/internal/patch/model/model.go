@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
+	"kun-galgame-patch-api/pkg/userclient"
 )
 
 type PatchSummary struct {
@@ -111,12 +112,28 @@ type Patch struct {
 func (Patch) TableName() string { return "patch" }
 
 type PatchUser struct {
-	ID              int      `json:"id"`
-	Name            string   `json:"name"`
-	Avatar          string   `json:"avatar"`
-	AvatarImageHash string   `json:"avatar_image_hash"`
-	Roles           []string `json:"roles,omitempty"`
-	SiteRoles       []string `json:"site_roles,omitempty"`
+	ID              int                   `json:"id"`
+	Name            string                `json:"name"`
+	Avatar          string                `json:"avatar"`
+	AvatarImageHash string                `json:"avatar_image_hash"`
+	Roles           []string              `json:"roles,omitempty"`
+	SiteRoles       []string              `json:"site_roles,omitempty"`
+	Cosmetics       *userclient.Cosmetics `json:"cosmetics,omitempty"`
+}
+
+func NewPatchUser(b *userclient.Brief) *PatchUser {
+	if b == nil {
+		return nil
+	}
+	return &PatchUser{
+		ID:              int(b.ID),
+		Name:            b.Name,
+		Avatar:          b.Avatar,
+		AvatarImageHash: b.AvatarImageHash,
+		Roles:           b.Roles,
+		SiteRoles:       b.SiteRoles,
+		Cosmetics:       b.Cosmetics,
+	}
 }
 
 func RenderResourceNotes(rs []PatchResource) {

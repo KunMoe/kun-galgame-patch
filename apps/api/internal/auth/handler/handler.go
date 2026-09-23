@@ -210,6 +210,7 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		resp.Name = brief.Name
 		resp.Avatar = brief.Avatar
 		resp.AvatarImageHash = brief.AvatarImageHash
+		resp.Cosmetics = brief.Cosmetics
 		resp.Bio = brief.Bio
 		if len(brief.Roles) > 0 {
 			resp.Roles = brief.Roles

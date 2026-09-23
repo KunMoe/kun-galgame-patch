@@ -96,7 +96,11 @@ const handleCheckIn = async () => {
         aria-label="账号菜单"
         class="flex cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <KunAvatar :user="userStore.user" :is-navigation="false" size="md" />
+        <KunAvatar
+          :user="toKunUser(userStore.user)"
+          :is-navigation="false"
+          size="md"
+        />
       </button>
     </template>
 
@@ -147,7 +151,7 @@ const handleCheckIn = async () => {
           class="hover:bg-default-100 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
           @click="onSwitchAccount(acc)"
         >
-          <KunAvatar :user="acc" :is-navigation="false" size="sm" />
+          <KunAvatar :user="toKunUser(acc)" :is-navigation="false" size="sm" />
           <span class="min-w-0 flex-1">
             <span class="block truncate">{{ acc.name }}</span>
             <span

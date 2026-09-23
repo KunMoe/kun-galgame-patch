@@ -171,9 +171,9 @@ func (s *Service) render(ctx context.Context, surface Surface, viewerID int, pos
 		if !visibleTo(p.Status, p.AuthorID, viewerID) {
 			continue
 		}
-		item := buildItem(p, surface, briefToUser(briefs[int(p.AuthorID)]))
+		item := buildItem(p, surface, patchModel.NewPatchUser(briefs[int(p.AuthorID)]))
 		if p.TargetUserID != 0 {
-			item.TargetUser = briefToUser(briefs[int(p.TargetUserID)])
+			item.TargetUser = patchModel.NewPatchUser(briefs[int(p.TargetUserID)])
 		}
 		out = append(out, item)
 	}
@@ -297,16 +297,6 @@ func (s *Service) surfaceFor(anchorKind int32, anchorID string) (Surface, bool) 
 		return ResourceSurface(target.ResourceID, target.PatchID), true
 	}
 	return PatchSurface(target.PatchID), true
-}
-
-func briefToUser(b *userclient.Brief) *patchModel.PatchUser {
-	if b == nil {
-		return nil
-	}
-	return &patchModel.PatchUser{
-		ID: int(b.ID), Name: b.Name, Avatar: b.Avatar,
-		AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles,
-	}
 }
 
 func nonZero(id int64) *int64 {

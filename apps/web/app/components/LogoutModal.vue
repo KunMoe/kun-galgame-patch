@@ -43,7 +43,11 @@ const chooseLocal = async () => {
       <div class="space-y-3">
         <h3 class="text-foreground text-lg font-semibold">退出登录</h3>
         <div class="bg-default-100 flex items-center gap-3 rounded-xl px-3 py-2">
-          <KunAvatar :user="userStore.user" :is-navigation="false" size="sm" />
+          <KunAvatar
+            :user="toKunUser(userStore.user)"
+            :is-navigation="false"
+            size="sm"
+          />
           <div class="min-w-0">
             <p class="text-foreground truncate text-sm font-medium">
               {{ userStore.user.name }}

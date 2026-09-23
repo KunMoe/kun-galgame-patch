@@ -39,7 +39,7 @@ func (h *AdminHandler) attachResourceUsers(ctx context.Context, rs []patchModel.
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
-			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			rs[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }
@@ -73,7 +73,7 @@ func (h *AdminHandler) attachLogUsers(ctx context.Context, ls []adminModel.Admin
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range ls {
 		if b := briefs[ls[i].UserID]; b != nil {
-			ls[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			ls[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }

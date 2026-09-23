@@ -63,7 +63,7 @@ const handleDelete = async (id: number) => {
     <div v-else class="space-y-3">
       <KunCard v-for="c in items" :key="c.id" :bordered="true">
         <div class="flex items-start gap-3">
-          <KunAvatar v-if="c.user" :user="c.user" size="sm" />
+          <KunAvatar v-if="c.user" :user="toKunUser(c.user)" size="sm" />
           <div class="min-w-0 flex-1 space-y-1">
             <div class="flex flex-wrap items-center gap-2 text-sm">
               <span class="font-semibold">{{ c.user?.name ?? '未知用户' }}</span>

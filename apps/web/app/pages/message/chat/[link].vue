@@ -381,7 +381,7 @@ onBeforeUnmount(() => pause())
             >
               <KunAvatar
                 v-if="m.sender_id !== myUserId"
-                :user="m.sender"
+                :user="toKunUser(m.sender)"
                 size="sm"
               />
               <div
@@ -457,7 +457,7 @@ onBeforeUnmount(() => pause())
               </div>
               <KunAvatar
                 v-if="m.sender_id === myUserId"
-                :user="m.sender"
+                :user="toKunUser(m.sender)"
                 size="sm"
                 :is-navigation="false"
               />

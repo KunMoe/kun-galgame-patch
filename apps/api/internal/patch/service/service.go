@@ -343,13 +343,6 @@ func (s *PatchService) GetResourcePatchID(resourceID int) (int, error) {
 	return s.repo.GetResourcePatchID(resourceID)
 }
 
-func briefToPatchUser(b *userclient.Brief) *model.PatchUser {
-	if b == nil {
-		return nil
-	}
-	return &model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
-}
-
 func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int) ([]model.PatchResource, error) {
 	resources, err := s.repo.GetResources(patchID)
 	if err != nil {
@@ -414,7 +407,7 @@ func attachUsersToResources(ctx context.Context, users *userclient.Client, rs []
 	}
 	briefs := userclient.BriefMapByInt(ctx, users, uids)
 	for i := range rs {
-		rs[i].User = briefToPatchUser(briefs[rs[i].UserID])
+		rs[i].User = model.NewPatchUser(briefs[rs[i].UserID])
 	}
 }
 

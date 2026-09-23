@@ -19,15 +19,28 @@ import (
 
 // OAuth owns these profile fields; moyu stores user IDs, not profile truth.
 type Brief struct {
-	ID              uint     `json:"id"`
-	UUID            string   `json:"uuid"`
-	Name            string   `json:"name"`
-	Avatar          string   `json:"avatar"`
-	AvatarImageHash string   `json:"avatar_image_hash"`
-	Bio             string   `json:"bio"`
-	Status          int      `json:"status"`
-	Roles           []string `json:"roles"`
-	SiteRoles       []string `json:"site_roles"`
+	ID              uint       `json:"id"`
+	UUID            string     `json:"uuid"`
+	Name            string     `json:"name"`
+	Avatar          string     `json:"avatar"`
+	AvatarImageHash string     `json:"avatar_image_hash"`
+	Bio             string     `json:"bio"`
+	Status          int        `json:"status"`
+	Roles           []string   `json:"roles"`
+	SiteRoles       []string   `json:"site_roles"`
+	Cosmetics       *Cosmetics `json:"cosmetics,omitempty"`
+}
+
+type Cosmetics struct {
+	AvatarFrame       *Decoration `json:"avatar_frame,omitempty"`
+	ProfileBackground *Decoration `json:"profile_background,omitempty"`
+}
+
+type Decoration struct {
+	ItemID      int64  `json:"item_id"`
+	Name        string `json:"name"`
+	StaticURL   string `json:"static_url"`
+	AnimatedURL string `json:"animated_url,omitempty"`
 }
 
 const (

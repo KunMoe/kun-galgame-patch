@@ -8,6 +8,7 @@ interface UserInfo {
   id: number
   name: string
   avatar: string
+  cosmetics?: UserCosmetics
   bio: string
   roles: string[]
   site_roles: string[]

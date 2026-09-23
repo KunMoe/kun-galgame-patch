@@ -37,7 +37,7 @@ func (h *ChatHandler) attachMessageSenders(ctx context.Context, msgs []chatModel
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range msgs {
 		if b := briefs[msgs[i].SenderID]; b != nil {
-			msgs[i].Sender = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			msgs[i].Sender = patchModel.NewPatchUser(b)
 		}
 	}
 }
@@ -50,7 +50,7 @@ func (h *ChatHandler) attachMemberUsers(ctx context.Context, ms []chatModel.Chat
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range ms {
 		if b := briefs[ms[i].UserID]; b != nil {
-			ms[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			ms[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }
@@ -60,7 +60,7 @@ func (h *ChatHandler) attachOneSender(ctx context.Context, msg *chatModel.ChatMe
 		return
 	}
 	if b, _ := h.users.User(ctx, uint(msg.SenderID)); b != nil {
-		msg.Sender = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+		msg.Sender = patchModel.NewPatchUser(b)
 	}
 }
 
@@ -93,12 +93,8 @@ func (h *ChatHandler) enrichMessages(ctx context.Context, msgs []chatModel.ChatM
 		briefs := userclient.BriefMapByInt(ctx, h.users, ruids)
 		byMsg := make(map[int][]chatModel.ChatReactionView, len(msgs))
 		for _, r := range reactions {
-			var u *patchModel.PatchUser
-			if b := briefs[r.UserID]; b != nil {
-				u = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
-			}
 			byMsg[r.ChatMessageID] = append(byMsg[r.ChatMessageID], chatModel.ChatReactionView{
-				ID: r.ID, Emoji: r.Emoji, User: u,
+				ID: r.ID, Emoji: r.Emoji, User: patchModel.NewPatchUser(briefs[r.UserID]),
 			})
 		}
 		for i := range msgs {
