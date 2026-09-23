@@ -63,7 +63,7 @@
 | users[].status | 0=正常；非 0 时调用方应隐藏或脱敏渲染 |
 | users[].roles | 角色名称数组，如 `["admin"]` |
 | users[].site_roles | 站点域角色数组（按**请求方 client** 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
-| users[].cosmetics | 正在穿戴的装扮（按**请求方 client** 的站点解析，没有单独选择时取全站默认；什么都没戴时省略）。目前只有 `avatar_frame: {item_id, name, static_url, animated_url?}`，渲染规则见 [16-shop.md](./16-shop.md) §1 |
+| users[].cosmetics | 正在穿戴的装扮（按**请求方 client** 的站点解析，没有单独选择时取全站默认；什么都没戴时省略）。键是槽位：`avatar_frame`（头像框）、`profile_background`（主页背景），值都是 `{item_id, name, static_url, animated_url?}`；以后会有新的键，解码方要容忍未知键。渲染规则见 [16-shop.md](./16-shop.md) §1 |
 | users[].created_at | 用户 **OAuth 注册时间**，UTC RFC3339（如 `2023-10-29T10:41:34Z`）。渲染「注册 / 加入时间」**必须用此字段**——不要用下游本地行的 created（未登录过本站的用户根本没有本地行→空白；首次登录晚于注册的用户本地时间也是错的）。 |
 | not_found | 请求中存在但 OAuth 库里查不到的 ID 列表 |
 
@@ -112,6 +112,8 @@
   }
 }
 ```
+
+每个用户的字段与 `/users/batch` 相同，也带按请求方站点解析的 `cosmetics`（没戴东西时省略）；不带 `site_roles`。
 
 **错误响应**：
 
