@@ -124,6 +124,8 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 > 这两个字段在 `/auth/me` 上**不受 scope 门控**（与 `name` / `bio` / `moemoepoint` / `status` / `roles` 同一条规则，只有 `email` 被门控）。`/oauth/userinfo` 上的同名 claim 则跟着 `profile`——两边不对称是 `/auth/me` 既有的「展示字段一律不门控」策略造成的，不是遗漏。
 >
 > `GET /auth/me` 与 `PATCH /auth/me` 自 2026-09-22 起返回 `Cache-Control: no-store`。
+>
+> **2026-09-23 新增 `cosmetics`**：`GET /auth/me` 带上用户正在穿戴的装扮（第一方会话取全站默认，OAuth token 取签发 client 的站点），什么都没戴时省略；公开资料 `GET /users/:uuid` 同样带全站默认。字段形状与渲染规则见 [16-shop.md](./16-shop.md)。
 
 ---
 

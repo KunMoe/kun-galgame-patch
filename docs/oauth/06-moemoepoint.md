@@ -57,6 +57,7 @@
 | `liked` | + | 内容被点赞 |
 | `name_change` | − | 修改用户名（§3.4）；OAuth 内部，s2s 不可用 |
 | `spend` | − | 下游站点的付费动作（§3.2）|
+| `purchase` | − | 萌萌点商店购买（[16-shop.md](./16-shop.md)），`source_app="shop"`，进 sink `shop` 或 `shop:site:<id>`；退款是它的 `reversal` |
 | `reversal` | ± | 撤销某一笔转账（§3.3），金额与原转账相反 |
 
 ## 3. 服务到服务 API
