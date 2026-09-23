@@ -391,7 +391,7 @@ watch(histPage, loadHistory)
               {{ r.name || '补丁资源' }}
             </h3>
             <div class="text-default-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-              <KunAvatar :user="r.user" size="sm" />
+              <KunAvatar :user="toKunUser(r.user)" size="sm" />
               <span>
                 由
                 <NuxtLink

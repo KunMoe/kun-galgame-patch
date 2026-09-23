@@ -116,6 +116,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 		if b, _ := s.users.User(ctx, uint(userID)); b != nil {
 			resp.Name = b.Name
 			resp.Avatar = b.Avatar
+			resp.Cosmetics = b.Cosmetics
 			resp.Bio = b.Bio
 			resp.Roles = b.Roles
 			resp.SiteRoles = b.SiteRoles
@@ -208,6 +209,7 @@ func (s *UserService) briefsToFollowItems(ctx context.Context, ids []int, viewer
 				ID:         int(b.ID),
 				Name:       b.Name,
 				Avatar:     b.Avatar,
+				Cosmetics:  b.Cosmetics,
 				IsFollowed: followed[int(b.ID)],
 			})
 		}
@@ -377,7 +379,7 @@ func (s *UserService) attachResourceUsers(ctx context.Context, rs []patchModel.P
 	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
-			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			rs[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }

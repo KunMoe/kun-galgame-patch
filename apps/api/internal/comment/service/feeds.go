@@ -200,7 +200,7 @@ func (s *Service) renderFeed(ctx context.Context, rows []communityclient.AuthorP
 			ContentHTML: markdown.MustRender(content),
 			GalgameID:   target.PatchID,
 			ResourceID:  resourceID,
-			User:        briefToUser(briefs[int(row.Post.AuthorID)]),
+			User:        patchModel.NewPatchUser(briefs[int(row.Post.AuthorID)]),
 			LikeCount:   int(row.Post.ReactionCount),
 			Created:     row.Post.CreatedAt,
 			Status:      row.Post.Status,

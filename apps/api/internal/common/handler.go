@@ -60,7 +60,7 @@ func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel
 	briefs := userclient.BriefMapByInt(ctx, h.users, uids)
 	for i := range rs {
 		if b := briefs[rs[i].UserID]; b != nil {
-			rs[i].User = &patchModel.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles}
+			rs[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }
@@ -351,13 +351,14 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 }
 
 type rankingUser struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	Avatar        string `json:"avatar"`
-	Moemoepoint   int    `json:"moemoepoint"`
-	PatchCount    int64  `json:"patch_count"`
-	ResourceCount int64  `json:"resource_count"`
-	CommentCount  int64  `json:"comment_count"`
+	ID            int                   `json:"id"`
+	Name          string                `json:"name"`
+	Avatar        string                `json:"avatar"`
+	Cosmetics     *userclient.Cosmetics `json:"cosmetics,omitempty"`
+	Moemoepoint   int                   `json:"moemoepoint"`
+	PatchCount    int64                 `json:"patch_count"`
+	ResourceCount int64                 `json:"resource_count"`
+	CommentCount  int64                 `json:"comment_count"`
 }
 
 func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
@@ -433,6 +434,7 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 			}
 			ru.Name = b.Name
 			ru.Avatar = b.Avatar
+			ru.Cosmetics = b.Cosmetics
 		}
 		out = append(out, ru)
 	}

@@ -23,4 +23,17 @@ interface KunUser {
   // moyu site-scoped roles (never admin/ren) — pair with `roles` in
   // pickRoleBadge to render a "本站版主" badge. See docs/oauth/12-site-roles.md.
   site_roles?: string[]
+  cosmetics?: UserCosmetics | null
+}
+
+interface UserCosmetics {
+  avatar_frame?: UserDecoration
+  profile_background?: UserDecoration
+}
+
+interface UserDecoration {
+  item_id: number
+  name: string
+  static_url: string
+  animated_url?: string
 }

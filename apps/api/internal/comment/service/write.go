@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/errors"
 )
@@ -54,7 +55,7 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 	s.afterCreate(ctx, surface, userID, &res.Post)
 	s.inbox.MarkThreadRead(userID, res.Thread.ID, res.Post.PostNumber)
 
-	item := buildItem(res.Post, surface, briefToUser(s.brief(ctx, userID)))
+	item := buildItem(res.Post, surface, patchModel.NewPatchUser(s.brief(ctx, userID)))
 	item.ThreadID = res.Thread.ID
 	return item, nil
 }
@@ -112,7 +113,7 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 		s.notifyMentions(userID, addedMentionIDs(post.ContentRaw, content, userID), content, link)
 	}
 
-	return buildItem(*updated, surface, briefToUser(s.brief(ctx, int(updated.AuthorID)))), nil
+	return buildItem(*updated, surface, patchModel.NewPatchUser(s.brief(ctx, int(updated.AuthorID)))), nil
 }
 
 // Delete tombstones a post. Community keeps its post_number so the wall's

@@ -364,7 +364,7 @@ const commentLoading = ref(false)
             class="border-default/20 flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center"
           >
             <KunUserChip
-              :user="patch.creator ?? patch.user"
+              :user="toKunUser(patch.creator ?? patch.user)"
               :description="creatorDescription"
             />
             <KunCardStats

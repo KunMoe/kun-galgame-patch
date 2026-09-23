@@ -20,6 +20,7 @@ export interface KnownAccount {
   // list renders without re-resolving. avatar_image_hash is kept for parity.
   avatar: string
   avatar_image_hash: string
+  cosmetics?: UserCosmetics | null
   roles: string[]
 }
 
@@ -106,7 +107,13 @@ export const useKnownAccounts = () => {
   const rememberUser = (
     user: Pick<
       UserState,
-      'sub' | 'id' | 'name' | 'avatar' | 'avatar_image_hash' | 'roles'
+      | 'sub'
+      | 'id'
+      | 'name'
+      | 'avatar'
+      | 'avatar_image_hash'
+      | 'cosmetics'
+      | 'roles'
     >
   ) => {
     if (!user.sub || !user.id) return
@@ -124,6 +131,7 @@ export const useKnownAccounts = () => {
       // Resolve to a ready-to-render URL now; KunAvatar reads `avatar` verbatim.
       avatar: resolveAvatarUrl(user) || user.avatar || '',
       avatar_image_hash: user.avatar_image_hash || '',
+      cosmetics: user.cosmetics,
       roles: user.roles ?? []
     })
   }

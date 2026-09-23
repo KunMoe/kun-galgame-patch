@@ -75,7 +75,7 @@ const onChangeSort = async (v: string | string[] | null) => {
         <span class="text-default-500 w-8 text-right font-mono font-semibold">
           {{ index + 1 }}
         </span>
-        <KunAvatar :user="user" :is-navigation="false" size="md" />
+        <KunAvatar :user="toKunUser(user)" :is-navigation="false" size="md" />
         <div class="flex-1">
           <div class="font-semibold">{{ user.name }}</div>
           <div class="text-default-500 flex flex-wrap gap-3 text-xs">

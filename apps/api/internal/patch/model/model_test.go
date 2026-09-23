@@ -1,9 +1,11 @@
 package model_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,4 +83,18 @@ func TestPatchResource_TableName(t *testing.T) {
 
 func TestPatchComment_TableName(t *testing.T) {
 	assert.Equal(t, "patch_comment", model.PatchComment{}.TableName())
+}
+
+func TestNewPatchUser_CarriesCosmeticsOnTheWire(t *testing.T) {
+	assert.Nil(t, model.NewPatchUser(nil))
+
+	bare, err := json.Marshal(model.NewPatchUser(&userclient.Brief{ID: 1, Name: "alice"}))
+	require.NoError(t, err)
+	assert.NotContains(t, string(bare), "cosmetics")
+
+	worn, err := json.Marshal(model.NewPatchUser(&userclient.Brief{ID: 2, Name: "bob", Cosmetics: &userclient.Cosmetics{
+		AvatarFrame: &userclient.Decoration{ItemID: 3, Name: "sakura", StaticURL: "https://img/d/a.png"},
+	}}))
+	require.NoError(t, err)
+	assert.Contains(t, string(worn), `"cosmetics":{"avatar_frame":{"item_id":3,"name":"sakura","static_url":"https://img/d/a.png"}}`)
 }

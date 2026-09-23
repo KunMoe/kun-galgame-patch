@@ -46,7 +46,7 @@ const handleKeydown = async (event: KeyboardEvent) => {
     @keydown="handleKeydown"
   >
     <div class="flex gap-4">
-      <KunAvatar :user="safeUser" />
+      <KunAvatar :user="toKunUser(safeUser)" />
       <div class="min-w-0 flex-1 space-y-2">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="font-semibold">{{ displayName }}</h2>

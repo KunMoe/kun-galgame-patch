@@ -28,6 +28,8 @@ if (user.value && user.value.name) {
   useKunDisableSeo(`用户 ${userId.value}`)
 }
 
+const background = computed(() => user.value?.cosmetics?.profile_background)
+
 const isSelf = computed(
   () => user.value && user.value.id === userStore.user.id
 )
@@ -102,9 +104,25 @@ const toggleFollow = async () => {
     <div class="grid gap-4 lg:grid-cols-3">
       <div class="lg:col-span-1">
         <KunCard :bordered="true">
+          <picture
+            v-if="background"
+            class="block aspect-[3/1] overflow-hidden rounded-lg"
+          >
+            <source
+              v-if="background.animated_url"
+              media="(prefers-reduced-motion: reduce)"
+              :srcset="background.static_url"
+            />
+            <img
+              :src="background.animated_url ?? background.static_url"
+              alt=""
+              decoding="async"
+              class="size-full object-cover object-center"
+            />
+          </picture>
           <div class="flex items-center gap-4 pt-4">
             <KunAvatar
-              :user="user"
+              :user="toKunUser(user)"
               size="original-sm"
               :is-navigation="false"
               class-name="shrink-0"

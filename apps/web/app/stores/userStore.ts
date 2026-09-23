@@ -22,6 +22,7 @@ export interface UserState {
   // OAuth image_service hash for the avatar; preferred by resolveAvatarUrl
   // over `avatar` once the image_service is live. See docs/oauth/api-reference.md.
   avatar_image_hash: string
+  cosmetics: UserCosmetics | null
   bio: string
   moemoepoint: number
   roles: string[]
@@ -52,6 +53,7 @@ const initialUserState: UserState = {
   name: '',
   avatar: '',
   avatar_image_hash: '',
+  cosmetics: null,
   bio: '',
   moemoepoint: 0,
   roles: [],

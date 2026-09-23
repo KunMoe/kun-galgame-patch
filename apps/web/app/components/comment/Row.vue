@@ -176,7 +176,10 @@ const reportComment = () => {
 
 <template>
   <div :id="commentAnchorId(comment.id)" class="flex scroll-mt-24 gap-3">
-    <KunAvatar :user="comment.user" :size="depth === 0 ? 'md' : 'sm'" />
+    <KunAvatar
+      :user="toKunUser(comment.user)"
+      :size="depth === 0 ? 'md' : 'sm'"
+    />
 
     <div class="min-w-0 flex-1">
       <div

@@ -131,14 +131,7 @@ func attachUsersToCards(ctx context.Context, users *userclient.Client, patches [
 	briefs := userclient.BriefMapByInt(ctx, users, uids)
 	for i := range cards {
 		if b := briefs[patches[i].UserID]; b != nil {
-			cards[i].User = &patchModel.PatchUser{
-				ID:              int(b.ID),
-				Name:            b.Name,
-				Avatar:          b.Avatar,
-				AvatarImageHash: b.AvatarImageHash,
-				Roles:           b.Roles,
-				SiteRoles:       b.SiteRoles,
-			}
+			cards[i].User = patchModel.NewPatchUser(b)
 		}
 	}
 }
@@ -148,17 +141,7 @@ func resolveUser(ctx context.Context, users *userclient.Client, id int) *patchMo
 		return nil
 	}
 	b, _ := users.User(ctx, uint(id))
-	if b == nil {
-		return nil
-	}
-	return &patchModel.PatchUser{
-		ID:              int(b.ID),
-		Name:            b.Name,
-		Avatar:          b.Avatar,
-		AvatarImageHash: b.AvatarImageHash,
-		Roles:           b.Roles,
-		SiteRoles:       b.SiteRoles,
-	}
+	return patchModel.NewPatchUser(b)
 }
 
 func BuildPatchSummaryMap(ctx context.Context, galgame *galgameClient.Client, db PatchSummaryDB, patchIDs []int) map[int]patchModel.PatchSummary {

@@ -77,7 +77,11 @@ const composerSeed = computed(() => {
       v-if="userStore.user.id"
       class="border-default/20 bg-content1 shadow-kun-sm flex gap-3 rounded-2xl border p-4"
     >
-      <KunAvatar :user="userStore.user" size="md" :is-navigation="false" />
+      <KunAvatar
+        :user="toKunUser(userStore.user)"
+        size="md"
+        :is-navigation="false"
+      />
       <div class="min-w-0 flex-1">
         <CommentComposer
           :target="target"

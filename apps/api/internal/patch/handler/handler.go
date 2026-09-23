@@ -511,7 +511,7 @@ func (h *PatchHandler) GetContributors(c fiber.Ctx) error {
 	out := make([]model.PatchUser, 0, len(ids))
 	for _, userID := range ids {
 		if b := briefs[userID]; b != nil {
-			out = append(out, model.PatchUser{ID: int(b.ID), Name: b.Name, Avatar: b.Avatar, AvatarImageHash: b.AvatarImageHash, Roles: b.Roles, SiteRoles: b.SiteRoles})
+			out = append(out, *model.NewPatchUser(b))
 		}
 	}
 	return response.OK(c, out)

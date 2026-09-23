@@ -339,7 +339,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
               <div
                 class="border-default/20 flex items-center gap-2 border-t pt-4"
               >
-                <KunAvatar :user="resource.user" size="sm" />
+                <KunAvatar :user="toKunUser(resource.user)" size="sm" />
                 <div class="text-sm leading-tight">
                   <NuxtLink
                     v-if="resource.user?.id"

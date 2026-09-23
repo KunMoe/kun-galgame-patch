@@ -4,6 +4,7 @@ import (
 	"time"
 
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/userclient"
 )
 
 type UserFollowRelation struct {
@@ -40,8 +41,9 @@ type UserBasic struct {
 }
 
 type UserFollowItem struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	Avatar     string `json:"avatar"`
-	IsFollowed bool   `json:"is_followed"`
+	ID         int                   `json:"id"`
+	Name       string                `json:"name"`
+	Avatar     string                `json:"avatar"`
+	Cosmetics  *userclient.Cosmetics `json:"cosmetics,omitempty"`
+	IsFollowed bool                  `json:"is_followed"`
 }

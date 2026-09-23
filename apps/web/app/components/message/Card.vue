@@ -46,7 +46,7 @@ const displayContent = computed(() => {
     <div class="flex items-start gap-3">
       <KunAvatar
         v-if="props.msg.sender"
-        :user="props.msg.sender"
+        :user="toKunUser(props.msg.sender)"
         :is-navigation="false"
       />
       <KunImage

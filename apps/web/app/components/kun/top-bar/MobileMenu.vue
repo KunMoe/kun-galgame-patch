@@ -102,7 +102,7 @@ onUnmounted(() => {
             class="border-default/20 bg-default-50/40 flex items-center gap-3 rounded-2xl border p-3"
           >
             <KunAvatar
-              :user="userStore.user"
+              :user="toKunUser(userStore.user)"
               :is-navigation="false"
               size="md"
             />

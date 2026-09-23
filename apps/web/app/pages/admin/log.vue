@@ -56,7 +56,7 @@ const formatLogContent = (l: AdminLog): string => {
         :key="l.id"
         class="border-default/20 bg-content1 shadow-kun-sm flex items-start gap-3 rounded-lg border p-3"
       >
-        <KunAvatar v-if="l.user" :user="l.user" size="sm" />
+        <KunAvatar v-if="l.user" :user="toKunUser(l.user)" size="sm" />
         <div class="flex-1 space-y-1">
           <div class="flex flex-wrap items-center gap-2 text-sm">
             <span class="font-semibold">{{ l.user?.name ?? '系统' }}</span>
