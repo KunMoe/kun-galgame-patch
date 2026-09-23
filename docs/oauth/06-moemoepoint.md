@@ -2,79 +2,88 @@
      Source of truth: https://github.com/next-moe/nextmoe-infra/blob/main/docs/integration/oauth/06-moemoepoint.md
      Edit the source, then run `pnpm docs:sync` from nextmoe-docs. -->
 
-# 06 — 萌萌点（moemoepoint）统一货币（精简版）
+# 06 — 萌萌点（moemoepoint）统一货币
 
 返回 [README](./README.md)
 
-> **状态：已实现**。`moemoepoint_log` 表 + s2s 端点 `POST/GET /users/:id/moemoepoint`（`Adjust` 幂等 / `GetBalance`）+ 用户自助 `GET /auth/me/moemoepoint/log` 均已上线。实现见 `internal/platform/auth/handler/moemoepoint_handler.go`，路由注册见 `cmd/oauth/main.go`。
+> **状态：已实现**。2026-09-23 起萌萌点记在复式记账账本里（`ledger_accounts` / `ledger_transfers` / `ledger_entries`），取代了原来的单式流水 `moemoepoint_log`。s2s 端点 `POST/GET /users/:id/moemoepoint`、`POST /users/:id/moemoepoint/charges`、`POST /users/:id/moemoepoint/reversals`、`GET /users/:id/moemoepoint/log`，以及用户自助 `GET /auth/me/moemoepoint/log` 均已上线。实现见 `internal/platform/ledger`，路由注册见 `cmd/oauth/main.go`。
 
 ## 0. 决策与定位
 
-- **moemoepoint 全站统一**：一个用户在 kungal / moyu / 未来所有接入站点**共享一个余额**，**单一真源在 OAuth**（共享身份库）。
-- 本设计**刻意精简**：萌萌点是软性 karma（非货币、低频写入、出错最坏只是"数字不对"，不涉资损）。所以只保留三个真正有价值的属性 —— **幂等、审计、单源** —— 砍掉金融账本级的严谨度和多团队治理（详见 §9 与早期完整版的差异）。
+- **萌萌点全站统一**：一个用户在 kungal / moyu / 未来所有接入站点**共享一个余额**，**单一真源在 OAuth**（共享身份库 `kun_galgame_infra`）。
+- **萌萌点是货币**：它能被花掉（改名、论坛付费动作，以及之后的萌萌点商店）。最初的设计把它当成「只涨不花的软性积分」，所以只记了单边流水；有了消费场景，就必须回答「这笔点从哪来、花到哪去」，于是改成复式记账。
+- **永远不涉及真实金钱**：没有充值（用钱买萌萌点）接口，也没有提现接口，将来也不做。萌萌点只能由系统账户发放（§1.1），不能凭空出现在用户账户里。
+- 保留下来的三个核心属性不变：**幂等、审计、单源**。
 
 ## 1. 数据模型
 
-### 1.1 余额：`users.moemoepoint`（可变列，保留）
+### 1.1 账户：`ledger_accounts`
 
-仍是一个普通可变整型列，作为**当前余额**。每次调整在**同一事务**里 `moemoepoint += delta`。不把它变成"日志的派生值"——对 karma 来说没必要。
+每个账户是某一种资产（`asset`，目前只有 `moemoepoint`）的一个余额。
 
-### 1.2 审计日志：`moemoepoint_log`（只追加，不改不删）
+| kind | 标识 | 含义 |
+|---|---|---|
+| `user` | `user_id` | 用户钱包 |
+| `issuer` | `code` = client id（OAuth 自己是 `oauth`） | 该 client 发放的萌萌点从这里出，回收回到这里。余额为负，绝对值 = 该 client 净发放总额 |
+| `sink` | `code` = client id | 用户在该 client 上花掉的萌萌点进这里。余额 = 该 client 收到的消费总额 |
 
-```sql
-CREATE TABLE moemoepoint_log (
-  id              BIGSERIAL PRIMARY KEY,
-  user_id         INTEGER     NOT NULL,
-  delta           INTEGER     NOT NULL,              -- 有符号，非 0
-  reason          VARCHAR(40) NOT NULL,              -- 见 §2 小枚举
-  source_app      VARCHAR(32) NOT NULL,              -- 来源站点（服务端从认证 client 推导）
-  ref             VARCHAR(80),                       -- 触发实体，自由格式如 "galgame:1207"（可空）
-  actor_user_id   INTEGER     NOT NULL DEFAULT 0,    -- 谁导致：0=系统 / 管理员 id
-  idempotency_key VARCHAR(128) NOT NULL,             -- 防重放，全局唯一
-  note            VARCHAR(255),                       -- 备注（管理员操作填）
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+`(asset, kind, user_id, code)` 唯一；系统账户的 `user_id` 为 0，用户账户的 `code` 为空串。账户在第一次用到时自动创建。
 
-CREATE UNIQUE INDEX idx_mp_log_idem ON moemoepoint_log (idempotency_key);
-CREATE INDEX        idx_mp_log_user ON moemoepoint_log (user_id, id DESC);
-CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查看
-```
+### 1.2 转账与分录：`ledger_transfers` / `ledger_entries`
 
-- 日志**只追加**：发错了写一条反向记录（`delta` 取负），不改旧行。
-- "分类查看" = 按 `reason`（或 `source_app`）过滤 / 聚合。
+- 一次余额变动 = 一笔**转账**（transfer）+ 至少两条**分录**（entry），分录金额之和**恒为 0**。发放是「issuer → 用户」，扣费是「用户 → sink」。
+- 转账记录 `reason`、`source_app`、`ref`、`actor_user_id`、`note`、`idempotency_key`；撤销转账额外记 `reverses_id`（指向被撤销的那笔，唯一，所以每笔最多被撤销一次）。
+- 分录记 `account_id`、`amount`（有符号）和 `balance_after`（记账后的余额）。
+- **只追加，不改不删**：发错了用撤销（§3.3）或反向转账纠正，不修改旧行。
+- 两条不变式：每笔转账的分录之和为 0；每个账户的 `balance` 等于它全部分录之和。
 
-## 2. reason（一张小而稳的通用枚举，OAuth 拥有）
+### 1.3 `users.moemoepoint`
 
-扁平、通用、少。具体业务细节靠 `source_app` + `ref` 区分，**不为每个站点维护各自的枚举**（那是被砍掉的治理层）。
+保留，作为用户账户余额的**镜像**：只由账本在同一个事务里写入，所以不会和账户余额不一致。`/auth/me`、userinfo、管理端用户列表（及其按萌萌点排序）读的都是它。
+
+## 2. reason（OAuth 拥有的封闭枚举）
+
+扁平、通用、少。具体业务靠 `source_app` + `ref` 区分，不为每个站点维护各自的枚举。
 
 | reason | 方向 | 说明 |
 |---|---|---|
-| `admin_grant` / `admin_deduct` | ± | 管理员发放 / 扣除 |
-| `migration` | + | 迁移起始值（§6）|
-| `register_gift` | + | 注册欢迎礼（OAuth 注册成功时一次性发放，note=「鲲给予你的第一份礼物」）；OAuth 内部，s2s 不可用 |
+| `admin_grant` / `admin_deduct` | ± | 管理员发放 / 扣除；OAuth 内部，s2s 不可用 |
+| `migration` | + | 2026-06 合并各站本地余额时的起始值（§6）|
+| `opening_balance` | ± | 2026-09-23 导入账本时，流水解释不了的那部分余额（§6）|
+| `register_gift` | + | 注册欢迎礼（note=「NextMoe·未萌给予你的第一份礼物」）；OAuth 内部，s2s 不可用 |
 | `content_approved` | + | 产出被采纳（Wiki 投稿通过、补丁发布…，用 source_app+ref 区分）|
 | `content_removed` | − | 上述产出被删 / 撤回时回收（与发放同 `ref`）|
 | `daily_checkin` | + | 每日签到 |
 | `liked` | + | 内容被点赞 |
-| `name_change` | − | 修改用户名（OAuth 内部扣费，见 §3.3）；OAuth 内部，s2s 不可用 |
-
-约定：`delta` 禁止为 0；可回收的产出，回收用相同 `ref` 对账。新增一种来源 = 往这张表加一行（你一个人控制全部 client，一次小改即可，无需治理协调）。
+| `name_change` | − | 修改用户名（§3.4）；OAuth 内部，s2s 不可用 |
+| `spend` | − | 下游站点的付费动作（§3.2）|
+| `reversal` | ± | 撤销某一笔转账（§3.3），金额与原转账相反 |
 
 ## 3. 服务到服务 API
 
-**鉴权**：与 [`/users/batch`](./03-cross-service.md) 相同 —— **OAuth Client Basic Auth**。`source_app` 服务端从认证 client 推导，不信任请求体自报。
+**鉴权**：与 [`/users/batch`](./03-cross-service.md) 相同，用 **OAuth Client Basic Auth**。`source_app` 由服务端从认证的 client 推导，不信任请求体自报。
 
-**铸币白名单（POST 专属，2026-06-13 新增）**：**写入**（`POST` 调整余额）额外要求该 client `oauth_clients.moemoepoint_awarder = true`。萌萌点是**全生态共享的单一钱包**，只有合法发放方（论坛 / 补丁）在白名单内；其它任何已注册 client 默认 **fail-closed**（`awarder=false`），POST 返回 `403 / 16005`。**读取**（`GET` 余额 / 流水）不受影响，对任意已注册 client 开放。
+**写入白名单**：所有**写入**端点（发放、扣费、撤销）都要求该 client `oauth_clients.moemoepoint_awarder = true`，否则返回 `403 / 16005`。萌萌点是全生态共享的单一钱包，只有合法的第一方站点（论坛 / 补丁）在白名单内，其它已注册 client 默认 **fail-closed**。**读取**（余额 / 流水）不受影响，任意已注册 client 都能调用。
 
-> **为什么要白名单**：一个定位不同的站点（例如成人向资源站 letmoe）可能**读取**用户余额来**一次性 1:1 初始化自己的本地积分**——这没问题；但它**绝不能往共享钱包铸币**，否则会把自己的 provenance 戳进每个用户的全生态流水。"读取做种"放行，"铸币"按 **parent Site.Domain** 显式授权（`cmd/migrate` 按 `www.kungal.com` / `www.moyu.moe` 幂等回填，不硬编码 per-env `client_id`）。新增一个合法发放方 = 往该域名列表加一行；新增一个只读站点 = 什么都不用做（保持 fail-closed）。
+> **为什么要白名单**：一个定位不同的站点（例如成人向资源站 letmoe）可以**读取**用户余额，用来一次性 1:1 初始化自己的本地积分；但它**绝不能**往共享钱包里记账，否则会把自己的记录写进每个用户的全生态流水。白名单按 **parent Site.Domain** 显式授权（`cmd/migrate` 按 `www.kungal.com` / `www.moyu.moe` 幂等回填，不硬编码各环境的 `client_id`）。
 
 | 端点 | 方法 | 用途 |
 |------|------|------|
-| `/users/:id/moemoepoint` | POST | **调整**余额（发放 / 扣除），幂等 |
+| `/users/:id/moemoepoint` | POST | **发放 / 回收**，幂等 |
+| `/users/:id/moemoepoint/charges` | POST | **扣费**：服务端校验余额，幂等 |
+| `/users/:id/moemoepoint/reversals` | POST | **撤销**本 client 的一笔记录，幂等 |
 | `/users/:id/moemoepoint` | GET | 读当前余额 |
-| `/users/:id/moemoepoint/log` | GET | 分页拉流水（可选；用户"积分明细" / 排查）|
+| `/users/:id/moemoepoint/log` | GET | 分页拉流水 |
 
-### 3.1 POST /users/:id/moemoepoint
+所有写入端点的成功响应形状一致（首次执行与幂等重放相同）：
+
+```json
+{ "code": 0, "message": "成功", "data": { "user_id": 1207, "balance": 42, "applied": true } }
+```
+
+`applied=false` 表示命中了已有记录，这次没有重复执行；`balance` 是当前余额。
+
+### 3.1 POST /users/:id/moemoepoint（发放 / 回收）
 
 ```json
 {
@@ -89,77 +98,96 @@ CREATE INDEX        idx_mp_log_reason ON moemoepoint_log (reason);  -- 分类查
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| delta | 是 | 有符号整数，非 0，且 \|delta\| ≤ 1,000,000（防呆上限）|
-| reason | 是 | §2 枚举之一。**s2s 不可用** `admin_grant` / `admin_deduct` / `migration` / `register_gift`（OAuth 保留）|
+| delta | 是 | 有符号整数，非 0，且 \|delta\| ≤ 1,000,000。正数从本 client 的 issuer 发给用户，负数从用户收回到 issuer |
+| reason | 是 | 只接受 `content_approved` / `content_removed` / `daily_checkin` / `liked` |
 | ref | 否 | 触发实体（建议填，用于对账）|
-| actor_user_id | 否 | 默认 0（系统）；管理员操作填管理员 id |
-| idempotency_key | 是 | 全局唯一，**调用方生成稳定键**（见 §4）|
+| actor_user_id | 否 | 默认 0（系统）|
+| idempotency_key | 是 | 在本 client 内唯一，调用方生成稳定键（见 §4）|
 | note | 否 | 备注 |
 
-**成功响应**（首次执行 与 幂等重放 一致）：
+**回收允许余额变成负数**：拿回不该给的点，不能因为用户已经花掉了就失败，否则最需要纠正的账号反而纠正不了。
+
+**不要用负数 delta 表示消费**。花钱走 §3.2：负数发放不检查余额，会把余额扣成负数，而且会把消费记成「内容被下架」。
+
+### 3.2 POST /users/:id/moemoepoint/charges（扣费）
 
 ```json
-{ "code": 0, "message": "成功", "data": { "user_id": 1207, "balance": 42, "applied": true } }
+{ "amount": 10, "ref": "topic_upvote:123", "idempotency_key": "kungal:upvote:123:7", "note": "" }
 ```
 
-`applied=false` 表示幂等键命中、未重复执行。
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| amount | 是 | 正整数，≤ 1,000,000 |
+| ref | 否 | 被购买 / 被支付的实体 |
+| idempotency_key | 是 | 在本 client 内唯一 |
+| note | 否 | 备注 |
 
-**错误**（HTTP 400 + 对应 code，除非另注）：`16002` delta 为 0 或超 ±1,000,000；`16003` reason 非法 / 用了保留 reason；`16004` 幂等键已存在但请求体不一致；`403/16005` client 不在铸币白名单（`moemoepoint_awarder=false`）；`404/10005` 用户不存在；`401` Basic Auth 失败。s2s 调用**永远不会**收到 `16006`（见 §3.3）。
+- 服务端在锁住用户余额之后检查余额：余额不足返回 `400 / 16006`，**不扣任何点**。这个检查必须由服务端做——下游用本地缓存的余额先检查、再扣费，两个站同时扣时会把同一笔余额花两次。
+- 扣掉的点进入本 client 的 sink 账户，`reason=spend`，`actor_user_id` 是用户本人。
+- **推荐顺序**：先调扣费，成功后再执行付费动作；付费动作失败，就用 §3.3 撤销这笔扣费。不要先执行动作、事后再补扣。
 
-> 余额**允许为负**（精简取舍：不做非负约束，保证回收/反转永不被挡）。这条只约束**回收方向**：一笔*付费动作*（§3.3）可以逐笔要求扣完后不为负，扣不动就返回 `400/16006`「萌萌点不足」。两者不冲突——「不许花没有的钱」和「拿回不该给的钱」是两条规则，混成一条会让最需要纠正的用户反而纠正不了。
+### 3.3 POST /users/:id/moemoepoint/reversals（撤销）
 
-### 3.2 读取
+```json
+{ "idempotency_key": "kungal:upvote:123:7", "note": "点赞写入失败，退还" }
+```
 
-- `GET /users/:id/moemoepoint` → `{ "balance": 42 }`。
-- `GET /users/:id/moemoepoint/log?limit=20&before_id=&reason=` → 分页流水（`reason` 可选过滤）。**s2s 返回精简视图**：`{ id, delta, reason, source_app, source_name, ref, created_at }`，**不含** `note` / `actor_user_id`（这俩可能含管理处罚备注，下游可能渲染给终端用户，故不下发；管理端 `/admin/.../log` 返回完整视图，额外含 `note` / `actor_user_id`）。`source_name` = `source_app`（发放方 OAuth client id）经服务端 `LEFT JOIN oauth_clients` 解析出的该 client 展示名；`source_app="oauth"`（OAuth 内部发放）或未知 id 时为空串，由消费方回落到本地标签。
-- 也可在 `/auth/me` / userinfo 里直接返回 OAuth 的实时余额（替掉现在的冻结快照）。
-- **自助流水**：`GET /auth/me/moemoepoint/log?limit=&before_id=&reason=`（**用户 JWT**，`Auth` 鉴权，id 取自 token 非路径参——避免越权读他人）。返回与 s2s 同口径的**精简视图**（无 `note` / `actor_user_id`）。OAuth web 端 `/profile`「萌萌点记录」直接用它；下游站点若不想自己代理 s2s 端点，用户也可直连此端点查自己的流水。
+- 按**原转账的幂等键**找到本 client 自己记过的那一笔，把它的每条分录反向再记一次（`reason=reversal`、`ref` 与原转账相同）。撤销扣费就是退款，撤销发放就是回收，回收可以让余额变成负数（§3.1）。
+- 每笔转账**最多被撤销一次**：重复请求（note 不同也算）返回第一次的结果，`applied=false`。
+- 找不到这笔转账、它不是本 client 记的、或者路径里的用户不是它的当事人，都返回 `404 / 16007`。撤销记录本身不能再撤销，返回 `400 / 16008`。
 
-### 3.3 付费动作（OAuth 内部，无 s2s 入口）
+### 3.4 付费动作（OAuth 内部，无 s2s 入口）
 
 OAuth 自己也会**花**萌萌点。目前只有一种：**修改用户名**。
 
 - 入口：`PATCH /auth/me { name }`（论坛 `PUT /user/username` 是它的代理）。
 - 价格：配置中心 `auth.name_change_cost`，默认 **17**（论坛旧 Nitro 端点的历史价）；置 0 即免费。
-- reason `name_change`，`source_app="oauth"`，`actor_user_id` = 用户本人，`note` 记「旧名 → 新名」。
+- 用户 → `oauth` sink，`reason=name_change`，`actor_user_id` = 用户本人，`note` 记「旧名 → 新名」。
 - 幂等键 `oauth:name_change:<userId>:<第几次>`。**不能**按「用户 + 目标名」构键：那样 A→B→A→B 的第四次会命中第一次的键，白送一次改名。
 - 余额不足 → `400/16006`，且**改名不发生**：改名、其余 profile 字段与扣费在同一个事务里。
 - 改成与当前同名 = 不算一次改名，不扣费；重试同一个请求因此天然只扣一次。
 
 > 为什么扣费在 OAuth：用户名和余额都是 **OP 全局**属性。论坛旧后端曾在自己那边扣 17，Go 重写把该路由改成代理 `PATCH /auth/me` 之后这笔扣费**丢了数月无人察觉**——扣费和它所支付的那个动作只要不在同一个事务里，就迟早会走散。
 
-## 4. 幂等（唯一需要严谨的点）
+### 3.5 读取
 
-下游发放常由会重试 / 重放的路径触发（典型：moyu cron「Wiki 消息 → +3」），没有幂等就会重复加分。
+- `GET /users/:id/moemoepoint` → `{ "user_id": 1207, "balance": 42 }`。
+- `GET /users/:id/moemoepoint/log?limit=20&before_id=&reason=` → `{ items, has_more }`，按 `id` 倒序分页；`reason` 可选过滤。**s2s 返回精简视图**：`{ id, delta, balance_after, reason, source_app, source_name, ref, created_at }`，**不含** `note` / `actor_user_id`（这两个字段可能包含管理处罚备注，而下游可能把流水渲染给终端用户，所以不下发）。管理端 `/admin/users/:uuid/moemoepoint/log` 返回完整视图，额外包含 `note` / `actor_user_id`。
+  - `id` 是该用户账户上**分录**的 id，`before_id` 用它翻页。2026-09-23 账本上线时 id 重新编号，之前拿到的 `before_id` 不再有效。
+  - `source_name` 是 `source_app`（记账的 OAuth client id）经服务端 `LEFT JOIN oauth_clients` 查到的 client 展示名；`source_app="oauth"`（OAuth 内部记账）或未知 id 时为空串，由消费方回落到本地标签。
+- `/auth/me` 返回实时余额（`moemoepoint` 字段）。
+- **自助流水**：`GET /auth/me/moemoepoint/log?limit=&before_id=&reason=`（**用户 JWT**，`Auth` 鉴权，用户 id 取自 token 而不是路径参数，避免越权读取他人流水）。返回与 s2s 相同的**精简视图**。OAuth web 端 `/profile`「萌萌点记录」直接用它；下游站点如果不想自己代理 s2s 端点，也可以让用户直连这个端点查自己的流水。
+
+## 4. 幂等
+
+下游的发放常由会重试 / 重放的路径触发（典型：moyu cron「Wiki 消息 → +3」），没有幂等就会重复加分。
 
 - 调用方为**每个业务事件**生成**稳定**键，推荐 `<app>:<event>:<事件唯一id>`，如 `moyu:wiki_approved:1207`、`kungal:checkin:1207:2026-05-29`。
-- 服务端：`idempotency_key` 唯一索引。已存在 → 不重复执行，回原结果（`applied:false`）。请求体不一致 → `400/16004`。
-- 写入在单事务内对该用户行加锁（`SELECT … FOR UPDATE`）防并发竞态；唯一索引兜底。
+- 幂等键**按 client 隔离**：唯一约束是 `(source_app, idempotency_key)`。两个站点碰巧用了同一个字符串，是两笔不同的转账，不会互相冲突。
+- 同一 client 用同一个键重放：不重复执行，返回当前余额（`applied:false`）。同一个键但请求内容不同（金额、reason、ref、note、actor 任一不同）：`400/16004`。
+- 写入在单事务内先锁用户行、再按 id 顺序锁账户行，防止并发竞态；唯一索引兜底。
 
 ## 5. 管理端
 
-- 发放 / 扣除走**同一个 Adjust 入口**（`reason=admin_grant`/`admin_deduct`、`actor_user_id=管理员id`、`note` 填理由、幂等键用表单 token）→ 自动进同一审计日志。
-- OAuth admin（用户管理页）加：发放/扣除弹窗 + 流水查看。
-- **不要**给管理员开"直接编辑整型"的口子（绕过日志）。
+- 发放 / 扣除走同一个账本（`reason=admin_grant`/`admin_deduct`、`source_app="oauth"`、`actor_user_id=管理员id`、`note` 填理由、幂等键用表单 token），自动进入同一份审计记录。
+- OAuth admin（用户管理页）提供发放/扣除弹窗 + 流水查看。
+- **不要**给管理员开「直接编辑余额」的口子（绕过账本）。
 
-## 6. 迁移（一次性）
+## 6. 迁移历史
 
-1. 下游停止本地 `moemoepoint` 写入（或短期双写过渡）。
-2. 每个用户取各站本地值之和作为统一起始余额。**已落地**：`cmd/migrate-users` 在 ID 统一时已把 kungal + moyu 的本地值累加进 `users.moemoepoint`。
-3. 写一条 `reason=migration` 日志（`idempotency_key=oauth:migration:v1:<userId>`，可重复跑）。**已落地**：`go run ./cmd/migrate-moemoepoint`（支持 `-dry-run`）为每个有余额却无流水的用户回填一条 `reason=migration`、`note=「从 鲲 Galgame 论坛 和 鲲 Galgame 补丁 继承」` 的记录；delta = 当前余额 − 已有流水之和（取“未被解释的余额”，使账本严格对账），**不改 `users.moemoepoint`**（已是正确值），幂等可重跑。
-4. 下游删本地写逻辑，改：发放/扣除调 §3.1；显示余额回读 OAuth。
-
-> 注册欢迎礼：新账号在 OAuth 注册成功时自动 +7（`reason=register_gift`，`note=「鲲给予你的第一份礼物」`，`idempotency_key=oauth:register_gift:<userId>`，best-effort 不阻塞注册）。这是 OAuth 内部一次性发放，与上面的 `migration` 互不影响（新用户的余额由 `register_gift` 这条流水解释，不会被 §6 回填）。
+1. **2026-06 合并各站余额**：`cmd/migrate-users` 在统一用户 ID 时，已把 kungal + moyu 的本地值累加进 `users.moemoepoint`；随后 `cmd/migrate-moemoepoint`（已删除）为每个有余额却无流水的用户补了一条 `reason=migration` 记录，让流水与余额对得上。
+2. **2026-09-23 导入复式账本**：`moemoepoint_log` 的每一行变成一笔转账，交易对手是该 client 的 issuer（`name_change` 的交易对手是 `oauth` sink），`legacy_log_id` 记录原行 id。流水解释不了的余额记为一笔 `opening_balance` 转账（幂等键 `oauth:opening_balance:<userId>`）。导入由 `ledgerService.ImportLegacy` 完成，幂等、增量，会跑两次：`cmd/migrate` 先导入大部分（此时旧版服务还在写 `moemoepoint_log`，所以导入读的是一个可重复读快照），`cmd/oauth` 在开始对外服务之前再跑一次，补上旧版服务在这两次之间写入的行。`moemoepoint_log` 表保留、不再写入。
 
 ## 7. 下游接入
 
-| 现在 | 改成 |
+| 场景 | 做法 |
 |---|---|
-| 本地 `UPDATE user SET moemoepoint = moemoepoint + N` | 调 `POST /users/:id/moemoepoint`（Basic Auth + 稳定幂等键）|
-| cron 重放发放 | 同上，幂等键用业务事件唯一 id → 重放安全 |
-| 渲染余额读本地列 | 读 OAuth 实时余额（`/auth/me` 或 §3.2）|
+| 发放 / 回收 | 调 §3.1（Basic Auth + 稳定幂等键）|
+| 付费动作 | 先调 §3.2 扣费，动作失败再调 §3.3 撤销；**不要**用本地余额判断能不能付，也**不要**用负数发放代替扣费 |
+| cron 重放发放 | 同上，幂等键用业务事件的唯一 id → 重放安全 |
+| 渲染余额 | 读 OAuth 实时余额（`/auth/me` 或 §3.5）；本地缓存只用于展示 |
 
-> **可用性注意**：发放现在依赖 OAuth 可达。对**非关键**奖励（签到、点赞），调用失败应"记录待补 + 不阻塞用户主流程"，靠幂等键之后重试补发；不要让 OAuth 抖动卡住下游核心操作。
+> **可用性注意**：记账依赖 OAuth 可达。**非关键**的奖励（签到、点赞）调用失败时，应「记录待补 + 不阻塞用户主流程」，之后用同一个幂等键重试补发。**付费动作**则相反：扣费没有成功，动作就不能发生。
 
 OAuth **不发布 SDK**，每个 consumer 自己写薄客户端（同 `/users/batch` 的 Basic Auth）。
 
@@ -167,23 +195,19 @@ OAuth **不发布 SDK**，每个 consumer 自己写薄客户端（同 `/users/ba
 
 | code | 常量 | 含义 |
 |---|---|---|
-| 16002 | `ErrMoemoepointInvalidDelta` | delta 为 0 或 \|delta\| > 1,000,000 |
-| 16003 | `ErrMoemoepointInvalidReason` | reason 不在枚举内，或 s2s 用了保留 reason（admin_*/migration）|
-| 16004 | `ErrMoemoepointIdemConflict` | idempotency_key 已存在但请求体不一致 |
-| 16005 | `ErrMoemoepointNotAwarder` | client 无铸币权限（`moemoepoint_awarder=false`，仅 POST 调整，HTTP 403）|
-| 16006 | `ErrMoemoepointInsufficient` | 余额不足以支付一笔付费动作（§3.3；仅 OAuth 内部路径，s2s 收不到）|
+| 16002 | `ErrMoemoepointInvalidDelta` | delta / amount 为 0、为负（扣费）或 \|值\| > 1,000,000 |
+| 16003 | `ErrMoemoepointInvalidReason` | reason 不在该端点接受的范围内 |
+| 16004 | `ErrMoemoepointIdemConflict` | 幂等键已存在但请求内容不一致 |
+| 16005 | `ErrMoemoepointNotAwarder` | client 不在写入白名单（`moemoepoint_awarder=false`，HTTP 403）|
+| 16006 | `ErrMoemoepointInsufficient` | 余额不足以支付这笔扣费（没有扣任何点）|
+| 16007 | `ErrMoemoepointTransferNotFound` | 要撤销的转账不存在、不属于本 client，或路径里的用户不是它的当事人（HTTP 404）|
+| 16008 | `ErrMoemoepointNotReversible` | 撤销记录不能再被撤销 |
 
-> 已实现状态：上述 5 个码 + `moemoepoint_log` 表 + s2s/admin 端点 + 管理端 UI **均已落地**（待 oauth 后端重启生效）。铸币白名单（`16005` + `moemoepoint_awarder` 列 + `cmd/migrate` 按域名回填论坛/补丁）于 2026-06-13 落地。下游消费 + 数据合并迁移（§6/§7）仍待各站对接。
-> 并发同键竞态：唯一索引兜底（不会重复加分），极少数并发同键会得到一次性 500，调用方重试即转为 `applied:false`。
+## 9. 刻意没做的（将来需要时再加）
 
-## 9. 刻意没做的（将来需要时再升级）
-
-为对齐当前规模（~9 万用户的爱好社区、单人维护、karma 非货币），以下**故意省略**——等真有需求再加：
-
-| 砍掉的 | 完整账本版才需要 / 何时再加 |
+| 没做的 | 什么时候加 |
 |---|---|
-| 余额 = `SUM(delta)` 派生 + `balance_after` 快照 + 定时对账巡检 | 资损级系统 / 需要逐行可证一致性时 |
-| 两级 `category` 闭集 + `reason` 命名空间防伪 + per-app reason 清单模板 | 出现**多个独立团队**各自定义大量积分玩法、需要解耦发版时 |
-| per-client category 白名单、单次/单日累计上限 | 萌萌点可兑换实物、出现真实刷分/欺诈动机时 |
-
-升级是可逆且渐进的：日志表已记 `reason`/`source_app`/`ref`，将来要分两级或加约束都能在现有数据上演进，不必现在预付复杂度。
+| 用户之间转账 / 赠送 | 商店做赠送时再开，届时要有限额并接入 trust 风控——P2P 转账是站外用真钱倒卖最常见的渠道 |
+| 每个 client 的单次 / 单日发放上限 | 出现真实刷分时 |
+| 定时对账巡检（§1.2 两条不变式） | 账本上线后先人工抽查；有了第一次不一致再做成定时任务 |
+| 第二种资产 | 账户、转账都已经有 `asset` 字段；真有需要时加一种 asset，不必改表 |
