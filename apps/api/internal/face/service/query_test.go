@@ -232,7 +232,7 @@ func TestProblemIsWrittenAsProblemJSON(t *testing.T) {
 	if err := json.Unmarshal(body, &doc); err != nil {
 		t.Fatalf("body is not json: %v", err)
 	}
-	if doc.Type != problem.TypeBase+"limit-too-large" || doc.Code != problem.CodeLimitTooLarge {
+	if doc.Type != "https://developer.nextmoe.dev/problems/platform/limit-too-large" || doc.Code != problem.CodeLimitTooLarge {
 		t.Errorf("doc = %+v", doc)
 	}
 	if doc.Instance != "/x?limit=999" {
