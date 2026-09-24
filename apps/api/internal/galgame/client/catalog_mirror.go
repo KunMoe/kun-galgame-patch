@@ -45,7 +45,7 @@ func (c *Client) DisplayVerdictsByCatalogIDs(ctx context.Context, ids []int64) (
 		if it.ID <= 0 {
 			continue
 		}
-		cl, _ := contentAxisOf(it.ClaimedBy, it.ContentRating)
+		cl, _ := contentAxisOf(it.ContentLimit, it.ContentRating)
 		out = append(out, DisplayVerdict{GID: int(it.ID), ContentLimit: cl})
 	}
 	return out, nil

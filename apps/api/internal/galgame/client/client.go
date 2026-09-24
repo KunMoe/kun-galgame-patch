@@ -501,7 +501,7 @@ func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit str
 				continue
 			}
 			if contentLimit != "" {
-				cl, _ := contentAxisOf(it.ClaimedBy, it.ContentRating)
+				cl, _ := contentAxisOf(it.ContentLimit, it.ContentRating)
 				if !gateFor(contentLimit).allows(cl) {
 					continue
 				}
