@@ -2,8 +2,10 @@ package storelink
 
 import (
 	"testing"
+	"time"
 
 	"kun-galgame-patch-api/pkg/storeclient"
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 const tmpl = "https://dlaf.jp/soft/dlaf/=/t/s/link/work/aid/kungal/id/{workno}.html"
@@ -75,5 +77,33 @@ func TestEnqueue_IsANoOpWithoutTheStoreFace(t *testing.T) {
 	r.enqueue("RJ297925")
 	if len(r.queue) != 0 {
 		t.Errorf("queued %d worknos with no store client configured", len(r.queue))
+	}
+}
+
+func TestMintFailed_RateLimitPausesTheMinter(t *testing.T) {
+	now := time.Date(2026, 9, 24, 21, 30, 0, 0, time.UTC)
+	limited := func(code string, retryAfter time.Duration) error {
+		return &upstream.Error{Service: "store", Kind: upstream.RateLimited, Status: 429,
+			Code: code, RetryAfter: retryAfter, Cause: storeclient.ErrRateLimited}
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want time.Duration
+	}{
+		{"Retry-After wins", limited("QUOTA_EXCEEDED", 5*time.Hour), 5 * time.Hour},
+		{"a spent daily quota waits for the UTC day", limited("QUOTA_EXCEEDED", 0), 150 * time.Minute},
+		{"a rate limit waits a minute", limited("RATE_LIMITED", 0), time.Minute},
+		{"anything else keeps the pace", storeclient.ErrUpstream, mintInterval},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(Options{LinkTemplate: tmpl})
+			if got := r.mintFailed("RJ297925", tc.err, now); got != tc.want {
+				t.Errorf("wait = %v, want %v", got, tc.want)
+			}
+			if r.stopped() {
+				t.Error("a rate limit must pause the minter, not halt it")
+			}
+		})
 	}
 }

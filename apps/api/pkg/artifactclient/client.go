@@ -5,14 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
-	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"kun-galgame-patch-api/pkg/artifactclient/gen"
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 type (
@@ -21,44 +21,34 @@ type (
 	CompleteUploadRequest = gen.CompleteUploadRequest
 	ArtifactResponse      = gen.ArtifactResponse
 	DownloadResponse      = gen.DownloadResponse
+	ResumeUploadResponse  = gen.ResumeUploadResponse
 	CompletedPart         = gen.CompletedPart
+	UploadedPart          = gen.UploadedPart
 	PartURL               = gen.PartURL
 	ManifestInput         = gen.ManifestInput
 )
 
-type UploadedPart struct {
-	PartNumber int32  `json:"part_number"`
-	Etag       string `json:"etag"`
-	Size       int64  `json:"size"`
-}
+const service = "artifact"
 
-type ResumeUploadResponse struct {
-	Uuid          string          `json:"uuid"`
-	Multipart     bool            `json:"multipart"`
-	ExpiresAt     string          `json:"expires_at"`
-	PartSize      *int64          `json:"part_size,omitempty"`
-	PartUrls      *[]gen.PartURL  `json:"part_urls,omitempty"`
-	UploadUrl     *string         `json:"upload_url,omitempty"`
-	UploadedParts *[]UploadedPart `json:"uploaded_parts,omitempty"`
-}
-
+// The artifact service's house codes (infra pkg/errors/codes.go 50001-50017).
+// Everything not named here is classified by status: its credential and site
+// codes arrive as 401/403 and are moyu's own configuration.
 const (
-	codeArtifactNotFound       = 50001
-	codeArtifactTooBig         = 50004
-	codeArtifactUnauthorized   = 50006
-	codeArtifactQuotaExceeded  = 50012
-	codeArtifactUploadDisabled = 50014
-	codeArtifactSizeMismatch   = 50015
-	codeArtifactMIMEDenied     = 50017
+	codeNotFound       = 50001
+	codeTooBig         = 50004
+	codeBadRequest     = 50011
+	codeQuotaExceeded  = 50012
+	codeUploadDisabled = 50014
+	codeSizeMismatch   = 50015
+	codeMIMEDenied     = 50017
 )
 
 var (
 	ErrNotConfigured  = errors.New("artifactclient: not configured (empty base URL or credentials)")
-	ErrUnauthorized   = errors.New("artifactclient: unauthorized (check client_id/secret + artifact_enabled)")
-	ErrTooBig         = errors.New("artifactclient: file exceeds the per-site max size")
-	ErrQuotaExceeded  = errors.New("artifactclient: daily quota exceeded")
-	ErrMIMEDenied     = errors.New("artifactclient: file type not allowed for this site")
 	ErrNotFound       = errors.New("artifactclient: artifact not found")
+	ErrTooBig         = errors.New("artifactclient: file exceeds the per-site max size")
+	ErrQuotaExceeded  = errors.New("artifactclient: site daily quota exceeded")
+	ErrMIMEDenied     = errors.New("artifactclient: file type not allowed for this site")
 	ErrUploadDisabled = errors.New("artifactclient: upload disabled")
 	ErrSizeMismatch   = errors.New("artifactclient: uploaded size does not match declared size")
 )
@@ -73,14 +63,14 @@ type Config struct {
 const (
 	callTimeout         = 30 * time.Second
 	completeCallTimeout = 90 * time.Second
-	StatusReady         = 1
+	// Download runs on the resource page render, which must not wait out a
+	// write-sized timeout when the service hangs.
+	downloadTimeout = 5 * time.Second
+	StatusReady     = 1
 )
 
 type Client struct {
-	inner      *gen.ClientWithResponses
-	basicAuth  string
-	baseURL    string
-	httpClient *http.Client
+	inner *gen.ClientWithResponses
 }
 
 func New(cfg Config) *Client {
@@ -89,29 +79,25 @@ func New(cfg Config) *Client {
 		hc = &http.Client{}
 	}
 	base := strings.TrimRight(cfg.BaseURL, "/")
-
-	var ba string
-	if cfg.ClientID != "" && cfg.ClientSecret != "" {
-		ba = "Basic " + base64.StdEncoding.EncodeToString([]byte(cfg.ClientID+":"+cfg.ClientSecret))
+	if base == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
+		return &Client{}
 	}
-
-	c := &Client{basicAuth: ba, baseURL: base, httpClient: hc}
-	if base != "" && ba != "" {
-		inner, err := gen.NewClientWithResponses(base,
-			gen.WithHTTPClient(hc),
-			gen.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
-				req.Header.Set("Authorization", ba)
-				return nil
-			}),
-		)
-		if err == nil {
-			c.inner = inner
-		}
+	auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(cfg.ClientID+":"+cfg.ClientSecret))
+	inner, err := gen.NewClientWithResponses(base,
+		gen.WithHTTPClient(hc),
+		gen.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			req.Header.Set("Authorization", auth)
+			return nil
+		}),
+	)
+	if err != nil {
+		slog.Error("artifact client disabled: invalid base URL", "base_url", base, "error", err)
+		return &Client{}
 	}
-	return c
+	return &Client{inner: inner}
 }
 
-func (c *Client) Configured() bool { return c.inner != nil && c.basicAuth != "" }
+func (c *Client) Configured() bool { return c.inner != nil }
 
 func (c *Client) Get(ctx context.Context, uuid string) (*ArtifactResponse, error) {
 	if !c.Configured() {
@@ -121,12 +107,12 @@ func (c *Client) Get(ctx context.Context, uuid string) (*ArtifactResponse, error
 	defer cancel()
 	resp, err := c.inner.GetArtifactWithResponse(ctx, uuid)
 	if err != nil {
-		return nil, err
+		return nil, callErr("get", err)
 	}
 	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
 		return resp.JSON200.Data, nil
 	}
-	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+	return nil, failure("get", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) InitUpload(ctx context.Context, req InitUploadRequest) (*InitUploadResponse, error) {
@@ -137,12 +123,12 @@ func (c *Client) InitUpload(ctx context.Context, req InitUploadRequest) (*InitUp
 	defer cancel()
 	resp, err := c.inner.InitUploadWithResponse(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, callErr("init upload", err)
 	}
 	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
 		return resp.JSON200.Data, nil
 	}
-	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+	return nil, failure("init upload", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) CompleteUpload(ctx context.Context, uuid string, req CompleteUploadRequest) (*ArtifactResponse, error) {
@@ -153,12 +139,12 @@ func (c *Client) CompleteUpload(ctx context.Context, uuid string, req CompleteUp
 	defer cancel()
 	resp, err := c.inner.CompleteUploadWithResponse(ctx, uuid, req)
 	if err != nil {
-		return nil, err
+		return nil, callErr("complete upload", err)
 	}
 	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
 		return resp.JSON200.Data, nil
 	}
-	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+	return nil, failure("complete upload", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) Resume(ctx context.Context, uuid string) (*ResumeUploadResponse, error) {
@@ -167,48 +153,30 @@ func (c *Client) Resume(ctx context.Context, uuid string) (*ResumeUploadResponse
 	}
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	endpoint := c.baseURL + "/api/v1/artifacts/" + url.PathEscape(uuid) + "/resume"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	resp, err := c.inner.ResumeUploadWithResponse(ctx, uuid)
 	if err != nil {
-		return nil, err
+		return nil, callErr("resume upload", err)
 	}
-	req.Header.Set("Authorization", c.basicAuth)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
+	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
+		return resp.JSON200.Data, nil
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode == http.StatusOK {
-		var env struct {
-			Code int                   `json:"code"`
-			Data *ResumeUploadResponse `json:"data"`
-		}
-		if json.Unmarshal(body, &env) == nil && env.Code == 0 && env.Data != nil {
-			return env.Data, nil
-		}
-	}
-	var he gen.HouseError
-	_ = json.Unmarshal(body, &he)
-	return nil, mapErr(resp.StatusCode, &he)
+	return nil, failure("resume upload", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) Download(ctx context.Context, uuid string) (*DownloadResponse, error) {
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
-	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()
 	resp, err := c.inner.DownloadArtifactWithResponse(ctx, uuid)
 	if err != nil {
-		return nil, err
+		return nil, callErr("download", err)
 	}
 	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
 		return resp.JSON200.Data, nil
 	}
-	return nil, mapErr(resp.StatusCode(), resp.JSONDefault)
+	return nil, failure("download", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) Delete(ctx context.Context, uuid string) error {
@@ -219,42 +187,63 @@ func (c *Client) Delete(ctx context.Context, uuid string) error {
 	defer cancel()
 	resp, err := c.inner.DeleteArtifactWithResponse(ctx, uuid)
 	if err != nil {
-		return err
+		return callErr("delete", err)
 	}
 	if resp.JSON200 != nil && resp.JSON200.Code == 0 {
 		return nil
 	}
-	return mapErr(resp.StatusCode(), resp.JSONDefault)
+	return failure("delete", resp.HTTPResponse, resp.JSONDefault)
 }
 
-func mapErr(status int, he *gen.HouseError) error {
-	code := 0
-	msg := ""
-	if he != nil {
-		code = int(he.Code)
-		msg = he.Message
+// callErr separates a body the generated client could not decode, which is a
+// contract break on moyu's side, from the call never getting an answer.
+func callErr(op string, err error) error {
+	var syntax *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	if errors.As(err, &syntax) || errors.As(err, &typ) {
+		return &upstream.Error{Service: service, Op: op, Kind: upstream.Internal, Cause: err}
 	}
-	switch code {
-	case codeArtifactNotFound:
-		return ErrNotFound
-	case codeArtifactTooBig:
-		return ErrTooBig
-	case codeArtifactUnauthorized:
-		return ErrUnauthorized
-	case codeArtifactQuotaExceeded:
-		return ErrQuotaExceeded
-	case codeArtifactUploadDisabled:
-		return ErrUploadDisabled
-	case codeArtifactSizeMismatch:
-		return ErrSizeMismatch
-	case codeArtifactMIMEDenied:
-		return ErrMIMEDenied
+	return upstream.Transport(service, op, err)
+}
+
+func failure(op string, resp *http.Response, he *gen.HouseError) error {
+	e := &upstream.Error{Service: service, Op: op}
+	if resp != nil {
+		e.Status = resp.StatusCode
+		e.RequestID = resp.Header.Get("X-Request-ID")
+		e.RetryAfter = upstream.RetryAfter(resp.Header)
 	}
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
-		return ErrUnauthorized
+	if he == nil || he.Code == 0 {
+		e.Kind = upstream.Internal
+		if e.Status >= 500 {
+			e.Kind = upstream.Unavailable
+		}
+		return e
 	}
-	if msg == "" {
-		msg = http.StatusText(status)
+	e.Code = strconv.FormatInt(he.Code, 10)
+	e.Detail = he.Message
+	switch he.Code {
+	case codeNotFound:
+		e.Kind, e.Cause = upstream.NotFound, ErrNotFound
+	case codeTooBig:
+		e.Kind, e.Cause = upstream.Rejected, ErrTooBig
+	case codeMIMEDenied:
+		e.Kind, e.Cause = upstream.Rejected, ErrMIMEDenied
+	case codeSizeMismatch:
+		e.Kind, e.Cause = upstream.Rejected, ErrSizeMismatch
+	case codeQuotaExceeded:
+		e.Kind, e.Cause = upstream.RateLimited, ErrQuotaExceeded
+	case codeUploadDisabled:
+		e.Kind, e.Cause = upstream.Unavailable, ErrUploadDisabled
+	case codeBadRequest:
+		// 409 is resume on an upload that already completed or failed; a 400 is
+		// the part list or file metadata the reader's browser sent.
+		e.Kind = upstream.Rejected
+		if e.Status == http.StatusConflict {
+			e.Kind = upstream.Conflict
+		}
+	default:
+		e.Kind = upstream.ByStatus(e.Status)
 	}
-	return fmt.Errorf("artifactclient: request failed (code %d, http %d): %s", code, status, msg)
+	return e
 }

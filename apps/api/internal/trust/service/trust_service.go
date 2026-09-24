@@ -3,15 +3,15 @@ package service
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
-	"net/http"
+	"errors"
+	"log/slog"
 	"net/url"
 	"strconv"
 
 	"kun-galgame-patch-api/internal/trust"
 	"kun-galgame-patch-api/internal/trust/dto"
-	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/trustclient"
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 type TrustService struct {
@@ -23,31 +23,9 @@ func NewTrustService(trust *trustclient.Client, site string) *TrustService {
 	return &TrustService{trust: trust, site: site}
 }
 
-func mapAdminErr(err error) *errors.AppError {
-	if stderrors.Is(err, trustclient.ErrNotConfigured) {
-		return errors.ErrInternal("审核服务暂未启用")
-	}
-	var ae *trustclient.AdminError
-	if stderrors.As(err, &ae) {
-		switch ae.Status {
-		case http.StatusConflict:
-			return errors.ErrConflict("该条目状态已变化，请刷新后重试")
-		case http.StatusBadRequest:
-			return errors.ErrBadRequest("处置参数无效")
-		case http.StatusForbidden:
-			return errors.ErrForbidden()
-		case http.StatusUnauthorized:
-			return errors.ErrUnauthorized()
-		case http.StatusNotFound:
-			return errors.ErrNotFound("未找到该审核条目")
-		}
-	}
-	return errors.ErrInternal("审核服务请求失败")
-}
-
 func (s *TrustService) ListReviewItems(
 	ctx context.Context, token string, req *dto.ListReviewItemsRequest,
-) (json.RawMessage, *errors.AppError) {
+) (json.RawMessage, error) {
 	q := url.Values{}
 	if s.site != "" {
 		q.Set("site", s.site)
@@ -56,55 +34,79 @@ func (s *TrustService) ListReviewItems(
 	q.Set("source", strconv.Itoa(req.Source))
 	q.Set("page", strconv.Itoa(req.Page))
 	q.Set("limit", strconv.Itoa(req.Limit))
-
-	data, err := s.trust.ListReviewItems(ctx, token, q)
-	if err != nil {
-		return nil, mapAdminErr(err)
-	}
-	return data, nil
+	return s.trust.ListReviewItems(ctx, token, q)
 }
 
-func (s *TrustService) GetReviewItem(ctx context.Context, token string, id int64) (json.RawMessage, *errors.AppError) {
-	data, err := s.trust.GetReviewItem(ctx, token, id)
-	if err != nil {
-		return nil, mapAdminErr(err)
-	}
-	return data, nil
+func (s *TrustService) GetReviewItem(ctx context.Context, token string, id int64) (json.RawMessage, error) {
+	return s.trust.GetReviewItem(ctx, token, id)
 }
 
-func (s *TrustService) ClaimReviewItem(ctx context.Context, token string, id int64) (json.RawMessage, *errors.AppError) {
-	data, err := s.trust.ClaimReviewItem(ctx, token, id)
-	if err != nil {
-		return nil, mapAdminErr(err)
-	}
-	return data, nil
+func (s *TrustService) ClaimReviewItem(ctx context.Context, token string, id int64) (json.RawMessage, error) {
+	return s.trust.ClaimReviewItem(ctx, token, id)
 }
 
-func (s *TrustService) DecideReviewItem(ctx context.Context, token string, id int64, body []byte) (json.RawMessage, *errors.AppError) {
-	data, err := s.trust.DecideReviewItem(ctx, token, id, body)
-	if err != nil {
-		return nil, mapAdminErr(err)
-	}
-	return data, nil
+func (s *TrustService) DecideReviewItem(ctx context.Context, token string, id int64, body []byte) (json.RawMessage, error) {
+	return s.trust.DecideReviewItem(ctx, token, id, body)
 }
 
-func (s *TrustService) Reasons(ctx context.Context) []trust.ReportReason {
+// Reasons falls back to the seeded list only while the trust service is
+// unreachable or unconfigured. Any other failure is moyu's credential or
+// request and is returned, so it reaches the log instead of hiding behind a
+// list that looks healthy.
+func (s *TrustService) Reasons(ctx context.Context) ([]trust.ReportReason, error) {
 	views, err := s.trust.ListReportReasons(ctx)
-	if err != nil || len(views) == 0 {
-		return trust.GlobalReasons
+	switch {
+	case err == nil:
+	case errors.Is(err, trustclient.ErrNotConfigured):
+		return trust.GlobalReasons, nil
+	case upstream.KindOf(err) == upstream.Unavailable:
+		slog.Warn("trust report reasons unavailable; serving the seeded list", "error", err)
+		return trust.GlobalReasons, nil
+	default:
+		return nil, err
+	}
+	if len(views) == 0 {
+		return trust.GlobalReasons, nil
 	}
 	out := make([]trust.ReportReason, 0, len(views))
 	for _, v := range views {
 		out = append(out, trust.ReportReason{Key: v.Key, Label: v.NameCN, Severity: v.Severity})
 	}
-	return out
+	return out, nil
+}
+
+// RegisterSubjectKinds declares the kinds moyu reports on (the site comes from
+// the client binding): a tenant with none answers every report 422. With no
+// callback secret the kind gets no callback URL either, since moyu refuses an
+// unsigned callback.
+func (s *TrustService) RegisterSubjectKinds(ctx context.Context, callbackURL, callbackSecret string) {
+	resource := trustclient.SubjectKind{Key: "patch_resource", NotifyOnDismiss: new(true)}
+	if callbackSecret != "" {
+		resource.CallbackURL, resource.CallbackSecret = &callbackURL, &callbackSecret
+	}
+	results, err := s.trust.EnsureSubjectKinds(ctx, []trustclient.SubjectKind{resource, {Key: "user"}})
+	if err != nil {
+		attrs := []any{"error", err}
+		if e, ok := upstream.As(err); ok {
+			attrs = append(attrs, "status", e.Status, "request_id", e.RequestID)
+		}
+		slog.Error("trust subject kinds not registered; reports on them answer 422 until they are", attrs...)
+		return
+	}
+	for _, r := range results {
+		if r.Result == "deprecated_skipped" {
+			slog.Warn("trust subject kind is deprecated upstream and was not revived", "key", r.Key)
+			continue
+		}
+		slog.Info("trust subject kind registered", "key", r.Key, "result", r.Result)
+	}
 }
 
 func (s *TrustService) SubmitReport(
 	ctx context.Context,
 	reporterID int,
 	req *dto.SubmitReportRequest,
-) (*dto.SubmitReportResponse, *errors.AppError) {
+) (*dto.SubmitReportResponse, error) {
 	res, err := s.trust.SubmitReport(ctx, trustclient.ReportRequest{
 		SubjectKind: req.SubjectKind,
 		SubjectID:   req.SubjectID,
@@ -115,16 +117,7 @@ func (s *TrustService) SubmitReport(
 		SubjectURL:  req.SubjectURL,
 	})
 	if err != nil {
-		switch {
-		case stderrors.Is(err, trustclient.ErrValidation):
-			return nil, errors.ErrBadRequest("举报信息无效，或该内容暂不支持举报")
-		case stderrors.Is(err, trustclient.ErrRateLimited):
-			return nil, errors.ErrTooManyRequests("举报过于频繁，请稍后再试")
-		case stderrors.Is(err, trustclient.ErrNotConfigured):
-			return nil, errors.ErrInternal("举报服务暂未启用")
-		default:
-			return nil, errors.ErrInternal("举报提交失败，请稍后再试")
-		}
+		return nil, err
 	}
 	return &dto.SubmitReportResponse{ReportID: res.ReportID}, nil
 }

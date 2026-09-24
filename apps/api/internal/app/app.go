@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"time"
 
@@ -103,6 +104,20 @@ func validateConfig(cfg *config.Config) {
 	}
 }
 
+// credentialSource names where an integration's client credentials came from:
+// an empty dedicated id or secret falls back to moyu's OAuth client silently,
+// and a half-dedicated pair authenticates as neither.
+func credentialSource(id, secret string) string {
+	switch {
+	case id != "" && secret != "":
+		return "dedicated"
+	case id == "" && secret == "":
+		return "oauth client"
+	default:
+		return "mixed: one dedicated, one from the oauth client"
+	}
+}
+
 func New(cfg *config.Config) *App {
 	validateConfig(cfg)
 
@@ -143,6 +158,12 @@ func New(cfg *config.Config) *App {
 		ClientID:     artCfg.ClientID,
 		ClientSecret: artCfg.ClientSecret,
 	})
+	if artCli.Configured() {
+		slog.Info("artifact client configured", "base_url", artCfg.BaseURL,
+			"credentials", credentialSource(cfg.Artifact.ClientID, cfg.Artifact.ClientSecret))
+	} else {
+		slog.Warn("artifact client NOT configured; resource uploads and download links fail — set KUN_ARTIFACT_SERVICE_BASE_URL + client creds")
+	}
 
 	if galgame.V2().Configured() {
 		slog.Info("catalog v2 client configured", "base_url", cfg.NextMoeAPI.BaseURL)
@@ -219,6 +240,9 @@ func New(cfg *config.Config) *App {
 	} else {
 		slog.Warn("trust service client NOT configured; reporting returns 未启用 — set KUN_TRUST_BASE_URL + OAuth creds")
 	}
+	if cfg.Trust.BaseURL != "" && cfg.Trust.CallbackSecret == "" {
+		slog.Warn("KUN_TRUST_CALLBACK_SECRET is empty: reports and decisions work, but every enforcement callback is refused with 401 and infra dead-letters it")
+	}
 	// No patch_comment subject: a comment is a community post now, and the
 	// primitive runs its own reporting — weighted by the reporter's trust level
 	// and past accuracy — with its own review queue. A moyu-side subject would
@@ -229,7 +253,11 @@ func New(cfg *config.Config) *App {
 				return patchRepository.SetResourceStatus(id, 2)
 			},
 			Remove: func(_ context.Context, id int) error {
-				return patchSvc.DeleteResource(id, 0, true, "内容违规（审核处置）")
+				err := patchSvc.DeleteResource(id, 0, true, "内容违规（审核处置）")
+				if stderrors.Is(err, patchService.ErrResourceNotFound) {
+					return nil
+				}
+				return err
 			},
 			Restore: func(_ context.Context, id int) error {
 				return patchRepository.RestoreResourceFromModHide(id)
@@ -244,11 +272,15 @@ func New(cfg *config.Config) *App {
 		},
 	}
 	trustEnforce := enforce.NewService(db, trustRegistry, nil)
-	trustHdl := trustHandler.NewTrustHandler(
-		trustService.NewTrustService(trustCli, cfg.Trust.Site),
-		trustEnforce,
-		cfg.Trust.CallbackSecret,
-	)
+	trustSvc := trustService.NewTrustService(trustCli, cfg.Trust.Site)
+	if trustCli.Configured() {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			trustSvc.RegisterSubjectKinds(ctx, cfg.Site.BaseURL+"/api/v1/trust/callback", cfg.Trust.CallbackSecret)
+		}()
+	}
+	trustHdl := trustHandler.NewTrustHandler(trustSvc, trustEnforce, cfg.Trust.CallbackSecret)
 
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
 	imgCfg := cfg.ImageService
@@ -264,6 +296,12 @@ func New(cfg *config.Config) *App {
 		ClientID:     imgCfg.ClientID,
 		ClientSecret: imgCfg.ClientSecret,
 	})
+	if imgCli.Configured() {
+		slog.Info("image service client configured", "base_url", imgCfg.BaseURL, "cdn_base", imgCfg.CDNBase,
+			"credentials", credentialSource(cfg.ImageService.ClientID, cfg.ImageService.ClientSecret))
+	} else {
+		slog.Warn("image service client NOT configured; image uploads fail and content images lose their dimensions — set KUN_IMAGE_SERVICE_BASE_URL + client creds")
+	}
 
 	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
@@ -272,7 +310,7 @@ func New(cfg *config.Config) *App {
 	markdown.SetContentImageResolver(imgCli.VariantURL)
 	markdown.RegisterContentImageHost(imgCfg.CDNBase)
 
-	contentImageMeta := imgCli.NewMetaResolver(3 * time.Second)
+	contentImageMeta := imgCli.NewMetaResolver(1500 * time.Millisecond)
 	markdown.SetContentImageMetaResolver(func(hashes []string) map[string]markdown.ImageMeta {
 		got := contentImageMeta.Resolve(hashes)
 		out := make(map[string]markdown.ImageMeta, len(got))

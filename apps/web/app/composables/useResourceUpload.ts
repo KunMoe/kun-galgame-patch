@@ -25,6 +25,8 @@
 
 const GiB = 1024 * 1024 * 1024
 
+const notResumableCodes = [40000, 40300, 40400, 40900]
+
 // Upload concurrency scales with file size to trade throughput against resume
 // granularity. The window a resume must re-upload after an interrupt is
 // (parallel parts × 16 MB part size), so we keep that window a small fraction of
@@ -339,21 +341,23 @@ export const useResourceUpload = () => {
     abortUuid = artifactUuid
     activeStore = useResourceResumeUploads(galgameId)
 
-    let resume: ResumeResponse
-    try {
-      status.value = 'preparing'
-      const res = await api.post<ResumeResponse>('/upload/resume', {
-        artifact_uuid: artifactUuid
-      })
-      if (res.code !== 0 || !res.data) {
-        throw new Error(res.message || '续传初始化失败')
+    status.value = 'preparing'
+    const res = await api.post<ResumeResponse>('/upload/resume', {
+      artifact_uuid: artifactUuid
+    })
+    if (res.code !== 0 || !res.data) {
+      // Only an upload that is gone, finished or not this reader's starts over.
+      // A 5xx or 429 is the file service failing, and dropping the record then
+      // threw away parts that were still stored.
+      if (notResumableCodes.includes(res.code)) {
+        activeStore.remove(artifactUuid)
+        return upload(file, galgameId)
       }
-      resume = res.data
-    } catch {
-      // No longer resumable — drop the stale record and start over.
-      activeStore.remove(artifactUuid)
-      return upload(file, galgameId)
+      status.value = 'error'
+      errorMessage.value = res.message || '续传初始化失败'
+      throw new Error(errorMessage.value)
     }
+    const resume = res.data
 
     try {
       status.value = 'uploading'

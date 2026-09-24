@@ -2,60 +2,106 @@ package imageclient
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
+
+const (
+	metaCacheMax = 50_000
+	// An empty thumbhash is a backfill that has not run yet, not a stable answer:
+	// caching it forever kept blur-up from ever appearing once the backfill ran.
+	metaRetryAfter = 10 * time.Minute
+	// Every uncached render used to wait out the whole timeout while the image
+	// service was down; after one failure the resolver stops asking for a while.
+	metaOutagePause = 30 * time.Second
+)
+
+type metaEntry struct {
+	meta    ImageMeta
+	found   bool
+	expires time.Time
+}
 
 type MetaResolver struct {
 	client  *Client
 	timeout time.Duration
-	mu      sync.RWMutex
-	cache   map[string]ImageMeta
+	now     func() time.Time
+
+	mu          sync.Mutex
+	cache       map[string]metaEntry
+	pausedUntil time.Time
 }
 
 func (c *Client) NewMetaResolver(timeout time.Duration) *MetaResolver {
-	if timeout <= 0 {
-		timeout = 3 * time.Second
-	}
-	return &MetaResolver{client: c, timeout: timeout, cache: map[string]ImageMeta{}}
+	return &MetaResolver{client: c, timeout: timeout, now: time.Now, cache: map[string]metaEntry{}}
 }
 
 func (r *MetaResolver) Resolve(hashes []string) map[string]ImageMeta {
+	now := r.now()
 	out := make(map[string]ImageMeta, len(hashes))
 	var miss []string
 
-	r.mu.RLock()
-	for _, h := range hashes {
-		if m, ok := r.cache[h]; ok {
-			out[h] = m
-		} else {
+	r.mu.Lock()
+	for _, h := range dedupHashes(hashes) {
+		e, ok := r.cache[h]
+		if !ok || (!e.expires.IsZero() && !now.Before(e.expires)) {
 			miss = append(miss, h)
+			continue
+		}
+		if e.found {
+			out[h] = e.meta
 		}
 	}
-	r.mu.RUnlock()
+	paused := now.Before(r.pausedUntil)
+	r.mu.Unlock()
 
-	if len(miss) == 0 || !r.client.Configured() {
+	if len(miss) == 0 || paused || !r.client.Configured() {
 		return out
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
 	defer cancel()
-	fetched, err := r.client.MetaBatch(ctx, dedupHashes(miss))
-	if err != nil {
-		return out
-	}
+	fetched, err := r.client.MetaBatch(ctx, miss)
 
 	r.mu.Lock()
-	for h, m := range fetched {
-		out[h] = m
-		// Empty Thumbhash is an incomplete upstream backfill, not a stable miss;
-		// caching it forever prevents blur-up from appearing after the backfill.
-		if m.Thumbhash != "" {
-			r.cache[h] = m
+	defer r.mu.Unlock()
+	if err != nil {
+		r.pausedUntil = now.Add(metaOutagePause)
+		level := slog.LevelWarn
+		if upstream.KindOf(err) == upstream.Internal {
+			level = slog.LevelError
+		}
+		slog.Log(context.Background(), level, "image meta lookup failed; content images render without dimensions",
+			"hashes", len(miss), "paused_for", metaOutagePause, "error", err)
+		return out
+	}
+	r.makeRoom(len(miss))
+	for _, h := range miss {
+		m, ok := fetched[h]
+		switch {
+		case !ok:
+			r.cache[h] = metaEntry{expires: now.Add(metaRetryAfter)}
+		case m.Thumbhash == "":
+			out[h] = m
+			r.cache[h] = metaEntry{meta: m, found: true, expires: now.Add(metaRetryAfter)}
+		default:
+			out[h] = m
+			r.cache[h] = metaEntry{meta: m, found: true}
 		}
 	}
-	r.mu.Unlock()
 	return out
+}
+
+func (r *MetaResolver) makeRoom(n int) {
+	for h := range r.cache {
+		if len(r.cache)+n <= metaCacheMax {
+			return
+		}
+		delete(r.cache, h)
+	}
 }
 
 func dedupHashes(in []string) []string {

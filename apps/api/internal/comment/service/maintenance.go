@@ -15,9 +15,8 @@ var contentImageToken = regexp.MustCompile(`/image/([0-9a-f]{64})`)
 
 const (
 	sweepPageSize = 100
-	// A guard, not a budget: the whole corpus is ~11k posts at 100 a page, so a
-	// sweep that is still running after this many pages is a cursor that stopped
-	// advancing, not a big site.
+	// A guard on one author's posts, not a budget: 50k posts from one author
+	// is a cursor that stopped advancing, not a prolific user.
 	sweepMaxPages = 500
 )
 
@@ -35,9 +34,12 @@ func (s *Service) CollectImageHashes(ctx context.Context) ([]string, error) {
 	if !s.community.Configured() {
 		return nil, nil
 	}
+	// No page cap: the feed is network-wide, and a cap that ended the sweep
+	// early reported success with the later pages' images unpinged, which is
+	// how they get collected. The cron's deadline bounds the run instead.
 	seen := make(map[string]struct{})
 	cursor := ""
-	for page := 0; page < sweepMaxPages; page++ {
+	for {
 		res, err := s.community.ListSitePosts(ctx, communityclient.SitePostsQuery{
 			Kind:       communityclient.KindComments,
 			AnchorKind: communityclient.AnyKind,
@@ -57,6 +59,9 @@ func (s *Service) CollectImageHashes(ctx context.Context) ([]string, error) {
 		}
 		if res.NextCursor == "" {
 			break
+		}
+		if res.NextCursor == cursor {
+			return nil, fmt.Errorf("community post sweep: cursor %q did not advance", cursor)
 		}
 		cursor = res.NextCursor
 	}

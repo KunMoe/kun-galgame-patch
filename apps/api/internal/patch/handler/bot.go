@@ -56,10 +56,10 @@ func (h *PatchHandler) BotCreateResource(c fiber.Ctx, userID int) error {
 	// leave behind the page it had already minted, plus its moemoepoint award
 	// and contributor row, for a submission that never landed a resource.
 	if err := h.service.EnsureArtifactReady(c.Context(), artifactUUID); err != nil {
-		if stderrors.Is(err, patchsvc.ErrArtifactUnconfigured) {
-			return response.Error(c, errors.ErrInternal("制品服务未配置"))
+		if stderrors.Is(err, patchsvc.ErrArtifactNotReady) {
+			return response.Error(c, errors.ErrValidation(err.Error()))
 		}
-		return response.Error(c, errors.ErrValidation(err.Error()))
+		return response.Upstream(c, err, "")
 	}
 	if _, err := h.service.CreatePatchByGalgameID(c.Context(), userID, id); err != nil {
 		if stderrors.Is(err, patchsvc.ErrGalgameMissing) {

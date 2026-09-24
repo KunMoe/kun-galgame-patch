@@ -31,10 +31,11 @@ func (b BotSubmit) Configured() bool { return b.Key != "" && b.UserID > 0 }
 
 // SiteConfig is what this service knows about its own public address.
 //
-// Nothing in /api/v1 needs it -- the frontend prepends its own domains, so the
+// /api/v1 answers do not use it -- the frontend prepends its own domains, so the
 // API returns bare keys and hashes. The developer-platform face cannot: a third
 // party has no way to know that a patch id becomes www.moyu.moe/patch/<id>, so
-// every row it answers carries an absolute web_url built from this.
+// every row it answers carries an absolute web_url built from this. The trust
+// subject-kind registration builds its callback URL from it too.
 type SiteConfig struct {
 	BaseURL string
 }

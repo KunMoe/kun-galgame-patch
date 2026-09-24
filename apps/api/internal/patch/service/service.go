@@ -439,8 +439,11 @@ func (s *PatchService) EnsureArtifactReady(ctx context.Context, uuid string) err
 		return ErrArtifactUnconfigured
 	}
 	art, err := s.art.Get(ctx, uuid)
+	if errors.Is(err, artifactclient.ErrNotFound) {
+		return fmt.Errorf("%w: %s", ErrArtifactNotReady, uuid)
+	}
 	if err != nil {
-		return fmt.Errorf("%w: %s: %v", ErrArtifactNotReady, uuid, err)
+		return fmt.Errorf("check artifact %s: %w", uuid, err)
 	}
 	if art == nil || art.Status != artifactclient.StatusReady {
 		return fmt.Errorf("%w: %s", ErrArtifactNotReady, uuid)
@@ -626,14 +629,19 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 
 func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool, reason string) error {
 	resource, err := s.repo.GetResourceByID(resourceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrResourceNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("resource not found")
+		return fmt.Errorf("load resource %d: %w", resourceID, err)
 	}
 	if resource.UserID != userID && !isPrivileged {
 		return fmt.Errorf("can only delete your own resources")
 	}
 
-	if err := s.repo.DeleteResource(resourceID); err != nil {
+	if err := s.repo.DeleteResource(resourceID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrResourceNotFound
+	} else if err != nil {
 		return err
 	}
 
@@ -730,7 +738,7 @@ func (s *PatchService) ResolveDownloadURL(ctx context.Context, r *model.PatchRes
 	}
 	dl, err := s.art.Download(ctx, r.ArtifactUUID)
 	if err != nil {
-		return fmt.Errorf("获取下载地址失败: %w", err)
+		return fmt.Errorf("resolve download url for resource %d: %w", r.ID, err)
 	}
 	r.DownloadURL = dl.Url
 	return nil
