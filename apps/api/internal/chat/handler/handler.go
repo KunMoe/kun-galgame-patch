@@ -59,7 +59,7 @@ func (h *ChatHandler) attachOneSender(ctx context.Context, msg *chatModel.ChatMe
 	if msg == nil || msg.SenderID == 0 {
 		return
 	}
-	if b, _ := h.users.User(ctx, uint(msg.SenderID)); b != nil {
+	if b := userclient.BriefMapByInt(ctx, h.users, []int{msg.SenderID})[msg.SenderID]; b != nil {
 		msg.Sender = patchModel.NewPatchUser(b)
 	}
 }

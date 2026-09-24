@@ -3,6 +3,8 @@ package userclient
 import (
 	"context"
 	"log/slog"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 func BriefMapByInt(ctx context.Context, c *Client, ids []int) map[int]*Brief {
@@ -27,8 +29,7 @@ func BriefMapByInt(ctx context.Context, c *Client, ids []int) map[int]*Brief {
 	}
 	briefs, err := c.Users(ctx, clean)
 	if err != nil {
-		slog.Warn("oauth users/batch failed; user briefs unfilled",
-			"count", len(clean), "error", err)
+		LogFailure(ctx, "oauth users/batch failed; user briefs unfilled", err, "count", len(clean))
 		return map[int]*Brief{}
 	}
 	out := make(map[int]*Brief, len(briefs))
@@ -36,4 +37,15 @@ func BriefMapByInt(ctx context.Context, c *Client, ids []int) map[int]*Brief {
 		out[int(id)] = b
 	}
 	return out
+}
+
+// LogFailure is for a read that degrades instead of failing. An outage is a
+// WARN; moyu's own credential or request is an ERROR, because the reader only
+// ever sees blank names and the log is the one place it shows.
+func LogFailure(ctx context.Context, msg string, err error, attrs ...any) {
+	level := slog.LevelError
+	if k := upstream.KindOf(err); k == upstream.Unavailable || k == upstream.RateLimited {
+		level = slog.LevelWarn
+	}
+	slog.Log(ctx, level, msg, append(attrs, "error", err)...)
 }

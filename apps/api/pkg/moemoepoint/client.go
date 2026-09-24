@@ -11,9 +11,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 const defaultTimeout = 5 * time.Second
+
+// The ledger's house codes (nextmoe-infra pkg/errors/codes.go), as the s2s
+// faces in apps/api/internal/platform/ledger/handler/handler.go answer them.
+const (
+	codeUserNotFound = 10005
+	codeIdemConflict = 16004
+	codeInsufficient = 16006
+)
 
 type Config struct {
 	BaseURL      string
@@ -67,28 +77,13 @@ func (c *Client) Adjust(ctx context.Context, userID int, r AdjustRequest) (*Adju
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("oauth moemoepoint adjust: %w", err)
+	var out AdjustResult
+	if err := c.do(req, "moemoepoint adjust", &out); err != nil {
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	var env struct {
-		Code    int          `json:"code"`
-		Message string       `json:"message"`
-		Data    AdjustResult `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		return nil, fmt.Errorf("oauth moemoepoint adjust decode (status=%d): %w", resp.StatusCode, err)
-	}
-	if env.Code != 0 {
-		return nil, fmt.Errorf("oauth moemoepoint adjust: code=%d msg=%s", env.Code, env.Message)
-	}
-	return &env.Data, nil
+	return &out, nil
 }
 
 func (c *Client) Balance(ctx context.Context, userID int) (int, error) {
@@ -97,28 +92,13 @@ func (c *Client) Balance(ctx context.Context, userID int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Authorization", c.authHeader)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("oauth moemoepoint balance: %w", err)
+	var out struct {
+		Balance int `json:"balance"`
 	}
-	defer resp.Body.Close()
-
-	var env struct {
-		Code int `json:"code"`
-		Data struct {
-			Balance int `json:"balance"`
-		} `json:"data"`
+	if err := c.do(req, "moemoepoint balance", &out); err != nil {
+		return 0, err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		return 0, fmt.Errorf("oauth moemoepoint balance decode (status=%d): %w", resp.StatusCode, err)
-	}
-	if env.Code != 0 {
-		return 0, fmt.Errorf("oauth moemoepoint balance: code=%d", env.Code)
-	}
-	return env.Data.Balance, nil
+	return out.Balance, nil
 }
 
 type LogEntry struct {
@@ -151,33 +131,84 @@ func (c *Client) Log(ctx context.Context, userID, limit int, beforeID int64, rea
 	if err != nil {
 		return nil, false, err
 	}
+
+	var out struct {
+		Items   []LogEntry `json:"items"`
+		HasMore bool       `json:"has_more"`
+	}
+	if err := c.do(req, "moemoepoint log", &out); err != nil {
+		return nil, false, err
+	}
+	if out.Items == nil {
+		out.Items = []LogEntry{}
+	}
+	for i := range out.Items {
+		out.Items[i].IsLocal = out.Items[i].SourceApp == c.clientID
+	}
+	return out.Items, out.HasMore, nil
+}
+
+func (c *Client) do(req *http.Request, op string, out any) error {
 	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, false, fmt.Errorf("oauth moemoepoint log: %w", err)
+		return upstream.Transport("oauth", op, err)
 	}
 	defer resp.Body.Close()
+	body, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return upstream.Transport("oauth", op, err)
+	}
 
+	fail := func(code int, detail string, cause error) error {
+		return &upstream.Error{
+			Service:    "oauth",
+			Op:         op,
+			Kind:       ledgerKind(resp.StatusCode, code),
+			Status:     resp.StatusCode,
+			Code:       strconv.Itoa(code),
+			Detail:     detail,
+			RequestID:  resp.Header.Get("X-Request-ID"),
+			RetryAfter: upstream.RetryAfter(resp.Header),
+			Cause:      cause,
+		}
+	}
 	var env struct {
-		Code int `json:"code"`
-		Data struct {
-			Items   []LogEntry `json:"items"`
-			HasMore bool       `json:"has_more"`
-		} `json:"data"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		return nil, false, fmt.Errorf("oauth moemoepoint log decode (status=%d): %w", resp.StatusCode, err)
+	if err := json.Unmarshal(body, &env); err != nil {
+		return fail(0, "", fmt.Errorf("decode envelope: %w", err))
 	}
-	if env.Code != 0 {
-		return nil, false, fmt.Errorf("oauth moemoepoint log: code=%d", env.Code)
+	if resp.StatusCode != http.StatusOK || env.Code != 0 {
+		return fail(env.Code, env.Message, nil)
 	}
-	if env.Data.Items == nil {
-		env.Data.Items = []LogEntry{}
+	if err := json.Unmarshal(env.Data, out); err != nil {
+		return fail(0, "", fmt.Errorf("decode data: %w", err))
 	}
-	for i := range env.Data.Items {
-		env.Data.Items[i].IsLocal = env.Data.Items[i].SourceApp == c.clientID
+	return nil
+}
+
+// ledgerKind keeps a transient failure (Unavailable, RateLimited) apart from a
+// permanent one. Of the permanent ones only an unknown user is nobody's bug;
+// the rest are moyu's: a 401 is its Basic credential, 16005 an awarder flag
+// its client lacks, 16004 a key that already names a different award.
+func ledgerKind(status, code int) upstream.Kind {
+	switch {
+	case status >= 500:
+		return upstream.Unavailable
+	case status == http.StatusTooManyRequests:
+		return upstream.RateLimited
+	case code == codeUserNotFound:
+		return upstream.NotFound
+	case code == codeIdemConflict:
+		return upstream.Conflict
+	case code == codeInsufficient:
+		return upstream.Rejected
+	default:
+		return upstream.Internal
 	}
-	return env.Data.Items, env.Data.HasMore, nil
 }

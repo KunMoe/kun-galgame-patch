@@ -3,8 +3,11 @@ package common
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -84,6 +87,27 @@ func TestSiteSearchRejectsUnknownLaneFilters(t *testing.T) {
 		t.Run(tc.url, func(t *testing.T) {
 			assertSearchBadRequest(t, app, tc.url, tc.want)
 		})
+	}
+}
+
+// The box allows 107 runes and OAuth's /users/search refuses past 50, so a long
+// keyword was a 500 on the 用户 tab.
+func TestSiteSearchUserLaneTakesAKeywordLongerThanOAuthAllows(t *testing.T) {
+	h := NewHandler(nil, nil, userclient.NewMock(t, nil), nil, nil)
+	app := fiber.New()
+	app.Get("/search", h.SiteSearch)
+
+	keyword := url.QueryEscape(strings.Repeat("萌", 60))
+	req, _ := http.NewRequest(http.MethodGet,
+		"http://localhost/search?type=user&page=1&limit=12&keywords="+keyword, nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (body=%s)", resp.StatusCode, body)
 	}
 }
 

@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -10,6 +11,8 @@ import (
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/upstream"
+	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
 	"gorm.io/gorm"
@@ -302,6 +305,13 @@ func (h *CommonHandler) searchUserLane(
 	}
 	briefs, err := h.users.Search(ctx, raw, searchUserMax)
 	if err != nil {
+		userclient.LogFailure(ctx, "站内搜索 OAuth users/search failed", err)
+		switch upstream.KindOf(err) {
+		case upstream.Unavailable:
+			return nil, 0, errors.New(50300, "登录服务暂不可用，请稍后再试", http.StatusServiceUnavailable)
+		case upstream.RateLimited:
+			return nil, 0, errors.ErrTooManyRequests("操作过于频繁，请稍后再试")
+		}
 		return nil, 0, errors.ErrInternal("用户搜索失败")
 	}
 

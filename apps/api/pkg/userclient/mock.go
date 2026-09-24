@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 type MockServer struct {
@@ -44,6 +45,10 @@ func NewMock(t *testing.T, users map[uint]*Brief) *Client {
 
 func (m *MockServer) handleBatch(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Query().Get("ids"), ",")
+	if len(parts) > batchMaxIDs {
+		writeMockError(w, http.StatusBadRequest, 9, "ids: max 100 per request")
+		return
+	}
 	out := make([]*Brief, 0, len(parts))
 	notFound := make([]uint, 0)
 	m.mu.Lock()
@@ -70,8 +75,19 @@ func (m *MockServer) handleBatch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// The refusals mirror infra's UserBatchHandler.Search
+// (apps/api/internal/platform/auth/handler/user_batch_handler.go).
 func (m *MockServer) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := strings.ToLower(r.URL.Query().Get("q"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	switch {
+	case q == "":
+		writeMockError(w, http.StatusBadRequest, 9, "q is required")
+		return
+	case utf8.RuneCountInString(q) > 50:
+		writeMockError(w, http.StatusBadRequest, 9, "q: max 50 chars")
+		return
+	}
+	q = strings.ToLower(q)
 	limit := 20
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -100,6 +116,12 @@ func (m *MockServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 func writeMockJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeMockError(w http.ResponseWriter, status, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
 }
 
 func cloneUserMap(in map[uint]*Brief) map[uint]*Brief {

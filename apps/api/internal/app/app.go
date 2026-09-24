@@ -125,7 +125,7 @@ func New(cfg *config.Config) *App {
 
 	authRepository := authRepo.New(db)
 	authSvc := authService.New(authRepository, rdb, cfg.OAuth)
-	authHdl := authHandler.New(authSvc, rdb, db, usrCli)
+	authHdl := authHandler.New(authSvc, rdb, db, usrCli, mpAwarder)
 
 	settingSvc := settingService.New(db)
 

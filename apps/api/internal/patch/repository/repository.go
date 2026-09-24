@@ -235,12 +235,16 @@ func (r *PatchRepository) FindResourceLike(userID, resourceID int) (*model.UserP
 	return &rel, err
 }
 
-func (r *PatchRepository) CreateResourceLike(rel *model.UserPatchResourceLikeRelation) error {
-	return r.db.Create(rel).Error
+// CreateResourceLike and DeleteResourceLike report whether they changed a row,
+// which is how the loser of two racing toggles learns there is nothing to count.
+func (r *PatchRepository) CreateResourceLike(rel *model.UserPatchResourceLikeRelation) (bool, error) {
+	res := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(rel)
+	return res.RowsAffected > 0, res.Error
 }
 
-func (r *PatchRepository) DeleteResourceLike(id int) error {
-	return r.db.Delete(&model.UserPatchResourceLikeRelation{}, id).Error
+func (r *PatchRepository) DeleteResourceLike(id int) (bool, error) {
+	res := r.db.Delete(&model.UserPatchResourceLikeRelation{}, id)
+	return res.RowsAffected > 0, res.Error
 }
 
 func (r *PatchRepository) FindResourceFavorite(userID, resourceID int) (*model.UserPatchResourceFavoriteRelation, error) {

@@ -50,7 +50,7 @@ func newPrefApp(t *testing.T, fake *oauthPrefFake, clientID string) (*testutil.T
 	t.Cleanup(srv.Close)
 
 	svc := service.New(nil, nil, config.OAuthConfig{ServerURL: srv.URL, ClientID: clientID})
-	h := New(svc, nil, nil, nil)
+	h := New(svc, nil, nil, nil, nil)
 
 	ta := testutil.NewTestApp(t)
 	auth := middleware.Auth(ta.RDB, config.OAuthConfig{})
@@ -205,6 +205,42 @@ func TestPreferencesVersionClashPassesThrough(t *testing.T) {
 	r := testutil.ParseResponse(t, resp)
 	if resp.StatusCode != http.StatusPreconditionFailed || r.Code != 18006 {
 		t.Fatalf("got %d/%d, want 412/18006", resp.StatusCode, r.Code)
+	}
+}
+
+// Everything here is moyu's to fix, so none of it may reach the page as
+// OAuth's own code: 18002/18003 refuse the namespace moyu names (infra
+// preferenceGate), and a 401 refuses a token moyu has just judged live.
+func TestPreferencesMoyusOwnFaultsAreA500(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		reply  string
+	}{
+		{"namespace denied", http.StatusForbidden, `{"code":18003,"message":"无权访问该命名空间"}`},
+		{"namespace invalid", http.StatusBadRequest, `{"code":18002,"message":"命名空间格式不合法"}`},
+		{"token refused", http.StatusUnauthorized, `{"code":10003,"message":"令牌已过期，请重新登录"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &oauthPrefFake{status: tc.status, reply: tc.reply}
+			ta, session := newPrefApp(t, fake, moyuClientID)
+
+			resp := ta.Request(t, http.MethodGet, "/auth/me/preferences", "", session)
+			r := testutil.ParseResponse(t, resp)
+			if resp.StatusCode != http.StatusInternalServerError || r.Code != 50000 {
+				t.Fatalf("got %d/%d, want 500/50000", resp.StatusCode, r.Code)
+			}
+		})
+	}
+}
+
+func TestNsfwDisplayOutageIsA503(t *testing.T) {
+	fake := &oauthPrefFake{status: http.StatusInternalServerError, reply: `{"code":10,"message":"操作失败"}`}
+	ta, session := newPrefApp(t, fake, moyuClientID)
+
+	resp := ta.Request(t, http.MethodPut, "/auth/me/nsfw", `{"nsfw_display":"show"}`, session)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
 	}
 }
 
