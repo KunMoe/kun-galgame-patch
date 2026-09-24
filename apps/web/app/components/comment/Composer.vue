@@ -31,6 +31,16 @@ const resetToSeed = () => {
   editorKey.value++
 }
 
+// One press of 发布 keeps its key while it is retried with the same text, so a
+// retry after a timeout gets back the post the first try wrote.
+let pendingSubmit: { text: string; key: string } | null = null
+const submitKeyFor = (text: string) => {
+  if (pendingSubmit?.text !== text) {
+    pendingSubmit = { text, key: crypto.randomUUID() }
+  }
+  return pendingSubmit.key
+}
+
 watch(
   () => props.seed,
   (next) => {
@@ -53,12 +63,14 @@ const publish = async () => {
   try {
     const res = await api.post<PatchPageComment>(surface.createUrl, {
       content: text,
+      submit_key: submitKeyFor(text),
       ...(props.replyToPostId ? { reply_to_post_id: props.replyToPostId } : {})
     })
     if (res.code !== 0) {
       useKunMessage(res.message || '发布失败', 'error')
       return
     }
+    pendingSubmit = null
     resetToSeed()
 
     // A newcomer's first posts are HELD upstream: created hidden and queued for

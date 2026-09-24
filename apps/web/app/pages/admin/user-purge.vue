@@ -33,6 +33,7 @@ interface UserPurgeResult {
   user_row_deleted: boolean
   sessions_revoked: number
   comments_purged: number
+  warning?: string
 }
 
 const uid = ref('')
@@ -124,7 +125,13 @@ const execute = async () => {
     const res = await api.post<UserPurgeResult>(`/admin/user/${uidNum.value}/purge`, {
       purge_owned_patches: forcePurgePatches.value
     })
-    if (res.code === 0) {
+    if (res.code === 0 && !res.data.user_row_deleted) {
+      useKunMessage(
+        res.data.warning || '评论已清除，但本地数据清除失败，请重新执行清除',
+        'warn'
+      )
+      await loadPreview()
+    } else if (res.code === 0) {
       const r = res.data
       useKunMessage(
         `清除完成：账号已删除，撤销登录会话 ${r.sessions_revoked} 个`,

@@ -2,14 +2,17 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 type LikeResult struct {
@@ -20,7 +23,13 @@ type LikeResult struct {
 // Create posts to a wall. The thread is created upstream in the same
 // transaction when this is the wall's first comment, which is why the reply
 // path and the first comment are the same call.
-func (s *Service) Create(ctx context.Context, surface Surface, userID int, content string, replyToPostID *int64) (*Item, *errors.AppError) {
+//
+// submitKey is the page's id for one press of 发布, kept across its retries.
+// Community scopes an idempotency key to the whole site, so the page's value is
+// never forwarded as is: under another author's id it would replay their post.
+// No submitKey sends no key; one derived from the text would merge two comments
+// a reader meant to post twice.
+func (s *Service) Create(ctx context.Context, surface Surface, userID int, content string, replyToPostID *int64, submitKey string) (*Item, error) {
 	content = markdown.NormalizeContentImageURLs(content)
 
 	req := communityclient.CommentRequest{
@@ -33,9 +42,12 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 	}
 
 	if replyToPostID != nil && *replyToPostID > 0 {
-		parent, parentSurface, appErr := s.resolvePost(ctx, *replyToPostID, 0)
-		if appErr != nil {
+		parent, parentSurface, err := s.resolvePost(ctx, *replyToPostID, 0)
+		if stderrors.Is(err, errCommentNotFound) {
 			return nil, errors.ErrBadRequest("parent comment not found")
+		}
+		if err != nil {
+			return nil, err
 		}
 		// A post id is global and this site has two walls, so a reply has to be
 		// proved to be on THIS one — otherwise a crafted id hangs a comment off a
@@ -47,12 +59,18 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 		req.TargetUserID = parent.AuthorID
 	}
 
-	res, err := s.community.CommentOnAnchor(ctx, req)
+	key := ""
+	if submitKey != "" {
+		key = upstream.IdempotencyKey(strconv.Itoa(userID), "comment", submitKey)
+	}
+	res, err := s.community.CommentOnAnchor(ctx, req, key)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 
-	s.afterCreate(ctx, surface, userID, &res.Post)
+	if !res.Replayed {
+		s.afterCreate(ctx, surface, userID, &res.Post)
+	}
 	s.inbox.MarkThreadRead(userID, res.Thread.ID, res.Post.PostNumber)
 
 	item := buildItem(res.Post, surface, patchModel.NewPatchUser(s.brief(ctx, userID)))
@@ -81,10 +99,10 @@ func (s *Service) afterCreate(ctx context.Context, surface Surface, userID int, 
 // Update edits a post. A moderator edit is declared to community with
 // as_moderator so the post carries the "edited by a moderator" bit; an author
 // editing their own post never sets it.
-func (s *Service) Update(ctx context.Context, postID int64, userID int, isModerator bool, content, reason string) (*Item, *errors.AppError) {
-	post, surface, appErr := s.resolvePost(ctx, postID, 0)
-	if appErr != nil {
-		return nil, appErr
+func (s *Service) Update(ctx context.Context, postID int64, userID int, isModerator bool, content, reason string) (*Item, error) {
+	post, surface, err := s.resolvePost(ctx, postID, 0)
+	if err != nil {
+		return nil, err
 	}
 	asModerator := isModerator && post.AuthorID != int64(userID)
 
@@ -93,7 +111,7 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 		AuthorID: int64(userID), Body: content, AsModerator: asModerator,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 
 	link := s.postLink(surface, postID)
@@ -119,10 +137,10 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 // Delete tombstones a post. Community keeps its post_number so the wall's
 // numbering never collapses, which is why the reader sees a stub rather than a
 // gap.
-func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModerator bool, reason string) *errors.AppError {
-	post, surface, appErr := s.resolvePost(ctx, postID, 0)
-	if appErr != nil {
-		return appErr
+func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModerator bool, reason string) error {
+	post, surface, err := s.resolvePost(ctx, postID, 0)
+	if err != nil {
+		return err
 	}
 	owner := int(post.AuthorID)
 	asModerator := isModerator && owner != userID
@@ -131,7 +149,7 @@ func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModera
 	}
 
 	if err := s.community.DeletePost(ctx, postID, int64(userID), asModerator); err != nil {
-		return mapError(err)
+		return err
 	}
 
 	// One post, one counter step: a tombstoned reply keeps its own number and its
@@ -149,25 +167,28 @@ func (s *Service) Delete(ctx context.Context, postID int64, userID int, isModera
 	return nil
 }
 
-// ToggleLike drives the community reaction. The count it answers is the one the
-// toggle returns: community is authoritative for both, and a second read to
-// confirm its own write buys nothing.
-func (s *Service) ToggleLike(ctx context.Context, postID int64, userID int) (*LikeResult, *errors.AppError) {
-	// Resolved BEFORE the toggle, not after. A post id is global, so a crafted id
+// SetLike puts the reader's like in the state they asked for. It was a toggle,
+// and a click retried after a timeout undid itself. The count it answers is the
+// one community returns: community is authoritative for both, and a second read
+// to confirm its own write buys nothing.
+func (s *Service) SetLike(ctx context.Context, postID int64, userID int, liked bool) (*LikeResult, error) {
+	// Resolved BEFORE the write, not after. A post id is global, so a crafted id
 	// would otherwise have its reaction written upstream and only then be refused
 	// here.
-	if _, _, appErr := s.resolvePost(ctx, postID, userID); appErr != nil {
-		return nil, appErr
+	if _, _, err := s.resolvePost(ctx, postID, userID); err != nil {
+		return nil, err
 	}
 
-	res, err := s.community.ToggleReaction(ctx, postID, communityclient.ReactionToggleRequest{
-		UserID: int64(userID), Kind: communityclient.ReactionLike,
-	})
+	set := s.community.SetReaction
+	if !liked {
+		set = s.community.UnsetReaction
+	}
+	res, err := set(ctx, postID, int64(userID), communityclient.ReactionLike)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 
-	if res.AuthorID != int64(userID) {
+	if res.Changed && res.AuthorID != int64(userID) {
 		// Keyed on the pair, because the like row that used to key it lived in a
 		// local mirror this site no longer keeps. The cost is that liking again
 		// after an unlike does not award again; the alternative — a key carrying
@@ -187,19 +208,16 @@ func (s *Service) ToggleLike(ctx context.Context, postID int64, userID int) (*Li
 // Flag reports a post. The weight a report carries is the reporter's, computed
 // upstream from their trust level and their past accuracy; enough weight hides
 // the post and opens a review item. moyu decides nothing here.
-func (s *Service) Flag(ctx context.Context, postID int64, userID int, reason int32, note string) *errors.AppError {
+func (s *Service) Flag(ctx context.Context, postID int64, userID int, reason int32, note string) error {
 	if reason < communityclient.FlagReasonSpam || reason > communityclient.FlagReasonNsfwMislabel {
 		return errors.ErrValidation("非法的举报理由")
 	}
-	if _, _, appErr := s.resolvePost(ctx, postID, 0); appErr != nil {
-		return appErr
+	if _, _, err := s.resolvePost(ctx, postID, 0); err != nil {
+		return err
 	}
-	if err := s.community.SubmitFlag(ctx, postID, communityclient.FlagRequest{
+	return s.community.SubmitFlag(ctx, postID, communityclient.FlagRequest{
 		FlaggerID: int64(userID), Reason: reason, Note: note,
-	}); err != nil {
-		return mapError(err)
-	}
-	return nil
+	})
 }
 
 func wallLink(surface Surface) string {

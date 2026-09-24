@@ -5,9 +5,7 @@ package service
 
 import (
 	"context"
-	stderrors "errors"
 	"log/slog"
-	"net/http"
 	"strconv"
 
 	"kun-galgame-patch-api/internal/comment/repository"
@@ -19,6 +17,7 @@ import (
 	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/moemoepoint"
+	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
 
 	"gorm.io/gorm"
@@ -136,14 +135,17 @@ const (
 // and this says so — it does not create one. Its predecessor
 // POST /comments/resolve was get-or-create, and because every site called it to
 // RENDER a page it had minted 110,918 empty threads upstream by 2026-09-15.
-func (s *Service) Wall(ctx context.Context, surface Surface, viewerID int, after string, limit int) (*Page, *errors.AppError) {
+func (s *Service) Wall(ctx context.Context, surface Surface, viewerID int, after string, limit int) (*Page, error) {
+	if !s.community.Configured() {
+		return emptyPage(), nil
+	}
 	page, err := s.community.GetComments(ctx, surface.AnchorKind, surface.AnchorID,
 		after, clampLimit(limit), int64(viewerID))
 	if err != nil {
-		if isCommunityDown(err) {
+		if unavailable(ctx, err, "wall") {
 			return emptyPage(), nil
 		}
-		return nil, mapError(err)
+		return nil, err
 	}
 	if page.Thread == nil {
 		return emptyPage(), nil
@@ -224,13 +226,13 @@ func buildItem(p communityclient.PostView, surface Surface, author *patchModel.P
 // Markdown answers the editor with the post's source. It is read through the
 // id-addressed face rather than the wall, so opening the editor does not depend
 // on knowing which page the comment is on.
-func (s *Service) Markdown(ctx context.Context, postID int64) (string, *errors.AppError) {
-	post, _, appErr := s.resolvePost(ctx, postID, 0)
-	if appErr != nil {
-		return "", appErr
+func (s *Service) Markdown(ctx context.Context, postID int64) (string, error) {
+	post, _, err := s.resolvePost(ctx, postID, 0)
+	if err != nil {
+		return "", err
 	}
 	if post.Status == communityclient.PostDeleted {
-		return "", errors.ErrNotFound("comment not found")
+		return "", errCommentNotFound
 	}
 	return post.ContentRaw, nil
 }
@@ -264,39 +266,47 @@ func (s *Service) Locate(legacyID int) (*LocateResult, *errors.AppError) {
 	}, nil
 }
 
+var errCommentNotFound = errors.ErrNotFound("comment not found")
+
 // resolvePost answers a post plus the wall it belongs to, and refuses a post
 // whose anchor is not one of moyu's. The tenant guard upstream already 404s
 // another site's post; this is what turns a catalog-anchored one — network-wide
 // by design, and reachable by id — into the same clean refusal.
-func (s *Service) resolvePost(ctx context.Context, postID int64, viewerID int) (*communityclient.PostView, Surface, *errors.AppError) {
+func (s *Service) resolvePost(ctx context.Context, postID int64, viewerID int) (*communityclient.PostView, Surface, error) {
 	resolved, err := s.community.ResolvePosts(ctx, []int64{postID}, int64(viewerID))
 	if err != nil {
-		return nil, Surface{}, mapError(err)
+		return nil, Surface{}, err
 	}
 	for i := range resolved.Posts {
 		row := resolved.Posts[i]
 		if row.Post.ID != postID {
 			continue
 		}
-		surface, ok := s.surfaceFor(row.Thread.AnchorKind, row.Thread.AnchorID)
+		surface, ok, err := s.surfaceFor(row.Thread.AnchorKind, row.Thread.AnchorID)
+		if err != nil {
+			return nil, Surface{}, err
+		}
 		if !ok {
-			return nil, Surface{}, errors.ErrNotFound("comment not found")
+			return nil, Surface{}, errCommentNotFound
 		}
 		return &row.Post, surface, nil
 	}
-	return nil, Surface{}, errors.ErrNotFound("comment not found")
+	return nil, Surface{}, errCommentNotFound
 }
 
-func (s *Service) surfaceFor(anchorKind int32, anchorID string) (Surface, bool) {
-	targets := s.anchors.Resolve([]anchor.Ref{{Kind: anchorKind, ID: anchorID}})
+func (s *Service) surfaceFor(anchorKind int32, anchorID string) (Surface, bool, error) {
+	targets, err := s.anchors.Resolve([]anchor.Ref{{Kind: anchorKind, ID: anchorID}})
+	if err != nil {
+		return Surface{}, false, err
+	}
 	target, ok := targets[anchor.Ref{Kind: anchorKind, ID: anchorID}]
 	if !ok {
-		return Surface{}, false
+		return Surface{}, false, nil
 	}
 	if target.ResourceID > 0 {
-		return ResourceSurface(target.ResourceID, target.PatchID), true
+		return ResourceSurface(target.ResourceID, target.PatchID), true, nil
 	}
-	return PatchSurface(target.PatchID), true
+	return PatchSurface(target.PatchID), true, nil
 }
 
 func nonZero(id int64) *int64 {
@@ -315,37 +325,16 @@ func clampLimit(limit int) string {
 
 func emptyPage() *Page { return &Page{Posts: []*Item{}} }
 
-// isCommunityDown separates "the service could not be reached" from "the
-// service refused this request". The first degrades a read to an empty wall;
-// the second is an answer the reader has to see.
-func isCommunityDown(err error) bool {
-	if stderrors.Is(err, communityclient.ErrNotConfigured) || stderrors.Is(err, communityclient.ErrForbidden) {
-		return true
+// unavailable is the one failure a wall or feed read answers as empty. Every
+// other one — moyu's credential, its tenant binding, a malformed request — goes
+// back to the handler as a logged 500: this used to render every wall empty
+// without a log line, including for a 403 that meant moyu had lost its site.
+func unavailable(ctx context.Context, err error, read string) bool {
+	if upstream.KindOf(err) != upstream.Unavailable {
+		return false
 	}
-	var apiErr *communityclient.APIError
-	return err != nil && !stderrors.As(err, &apiErr) && !stderrors.Is(err, communityclient.ErrRateLimited)
-}
-
-func mapError(err error) *errors.AppError {
-	switch {
-	case stderrors.Is(err, communityclient.ErrRateLimited):
-		return errors.ErrTooManyRequests("发表过于频繁，请稍后再试（新人限制）")
-	case stderrors.Is(err, communityclient.ErrForbidden):
-		return errors.ErrForbidden()
-	case stderrors.Is(err, communityclient.ErrNotConfigured):
-		return errors.ErrCommunityUnavailable("")
-	}
-	var apiErr *communityclient.APIError
-	if stderrors.As(err, &apiErr) {
-		if apiErr.Status == http.StatusNotFound {
-			return errors.ErrNotFound("comment not found")
-		}
-		if apiErr.Status >= 400 && apiErr.Status < 500 {
-			return errors.New(apiErr.Code, apiErr.Msg, apiErr.Status)
-		}
-	}
-	slog.Error("community upstream error", "error", err)
-	return errors.ErrCommunityUnavailable("")
+	slog.WarnContext(ctx, "comment: "+read+" answered empty, community unavailable", "error", err)
+	return true
 }
 
 func (s *Service) brief(ctx context.Context, userID int) *userclient.Brief {

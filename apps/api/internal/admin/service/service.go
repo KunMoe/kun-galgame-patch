@@ -124,14 +124,18 @@ func (s *AdminService) catalogFolders(ctx context.Context, userID int, token str
 	return int64(len(folders)), items, ""
 }
 
+const ownsPatchesMsg = "该用户仍拥有补丁，必须勾选「强删该用户创建的补丁」才能删除其账号"
+
 func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
-	// Comments first, and not best-effort: the local rows are about to go and
-	// with them every trace of which posts were this user's, so a failure here
-	// after the SQL purge would leave orphaned comments nothing can find again.
-	commentsPurged, cErr := s.comments.PurgeAuthor(ctx, userID)
-	if cErr != nil {
-		slog.Error("PurgeUser: community 评论清除失败，已中止", "user_id", userID, "error", cErr)
-		return nil, errors.ErrCommunityUnavailable("评论服务不可用，用户清除已中止")
+	// Every check that can refuse runs before the community purge. The owned-patch
+	// check used to run after it, so the admin was told 400 while every comment
+	// the user wrote was already tombstoned upstream.
+	owned, err := s.repo.CountOwnedPatches(userID)
+	if err != nil {
+		return nil, err
+	}
+	if owned > 0 && !purgeOwnedPatches {
+		return nil, errors.ErrBadRequest(ownsPatchesMsg)
 	}
 
 	uuids, uErr := s.repo.CollectUserArtifactUUIDs(userID, purgeOwnedPatches)
@@ -140,20 +144,30 @@ func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatc
 		uuids = nil
 	}
 
-	if err := s.repo.PurgeUser(userID, purgeOwnedPatches); err != nil {
-		if stderrors.Is(err, repository.ErrUserOwnsPatches) {
-			return nil, errors.ErrBadRequest("该用户仍拥有补丁，必须勾选「强删该用户创建的补丁」才能删除其账号")
-		}
-		return nil, errors.ErrInternal("")
+	// Comments first, and not best-effort: the local rows are about to go and
+	// with them every trace of which posts were this user's, so a failure here
+	// after the SQL purge would leave orphaned comments nothing can find again.
+	commentsPurged, err := s.comments.PurgeAuthor(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
+
+	res := &dto.UserPurgeResult{UserID: userID, CommentsPurged: commentsPurged}
+	if err := s.repo.PurgeUser(userID, purgeOwnedPatches); err != nil {
+		slog.Error("PurgeUser: local purge failed after the community purge", "user_id", userID, "error", err)
+		res.Warning = "评论已清除，但本地数据清除失败，请重新执行清除"
+		if stderrors.Is(err, repository.ErrUserOwnsPatches) {
+			res.Warning = "评论已清除，但该用户刚刚创建了补丁，账号未删除：" + ownsPatchesMsg
+		}
+		return res, nil
+	}
+	res.UserRowDeleted = true
 
 	if len(uuids) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		s.patch.SoftDeleteArtifacts(ctx, uuids)
 	}
-
-	res := &dto.UserPurgeResult{UserID: userID, UserRowDeleted: true, CommentsPurged: commentsPurged}
 
 	if s.rdb != nil {
 		if n, rerr := middleware.RevokeUserSessions(context.Background(), s.rdb, userID); rerr != nil {

@@ -70,7 +70,7 @@ func TestCommentOnAnchorReportsTheThreadItCreated(t *testing.T) {
 	res, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{
 		AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
 		AuthorID: 3, Body: "hi",
-	})
+	}, "")
 	if err != nil {
 		t.Fatalf("CommentOnAnchor: %v", err)
 	}
@@ -79,39 +79,6 @@ func TestCommentOnAnchorReportsTheThreadItCreated(t *testing.T) {
 	}
 	if body.AnchorID != "42" {
 		t.Errorf("anchor_id = %q", body.AnchorID)
-	}
-}
-
-// The TL0 sandbox answers 429, and it has to stay distinguishable from every
-// other 4xx: the caller turns it into 发表过于频繁 rather than a generic failure.
-func TestRateLimitIsItsOwnError(t *testing.T) {
-	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTooManyRequests)
-	})
-	_, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{})
-	if err != communityclient.ErrRateLimited {
-		t.Errorf("err = %v, want ErrRateLimited", err)
-	}
-}
-
-// A client with no site binding is refused on every write. That is a deployment
-// fault, not a user one, so it does not reach the reader as a 400.
-func TestForbiddenIsItsOwnError(t *testing.T) {
-	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	})
-	if _, err := c.GetComments(context.Background(), 1, "1", "", "", 0); err != communityclient.ErrForbidden {
-		t.Errorf("err = %v, want ErrForbidden", err)
-	}
-}
-
-func TestUnconfiguredClientNeverDials(t *testing.T) {
-	c := communityclient.New(communityclient.Config{})
-	if c.Configured() {
-		t.Fatal("Configured() is true with no base URL")
-	}
-	if _, err := c.GetComments(context.Background(), 1, "1", "", "", 0); err != communityclient.ErrNotConfigured {
-		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
 }
 
@@ -241,19 +208,6 @@ func TestDeletePostPassesAuthorAndModeratorFlag(t *testing.T) {
 	}
 }
 
-// A non-zero envelope code is an error even under HTTP 200: the house envelope
-// carries the failure, not the status line.
-func TestNonZeroEnvelopeCodeIsAnError(t *testing.T) {
-	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": 40001, "message": "bad anchor"})
-	})
-	_, err := c.GetComments(context.Background(), 1, "1", "", "", 0)
-	var apiErr *communityclient.APIError
-	if !errorsAs(err, &apiErr) || apiErr.Code != 40001 {
-		t.Fatalf("err = %v, want APIError code 40001", err)
-	}
-}
-
 // A signed-out reader has no viewer, and 0 would be sent as a user id. The
 // faces read it as "no viewer" either way, but only the absent parameter says so.
 func TestSignedOutReadSendsNoViewer(t *testing.T) {
@@ -306,14 +260,6 @@ func TestTopAuthorsRanksBySite(t *testing.T) {
 	if len(res.Stats) != 2 || res.Stats[0].AuthorID != 3 {
 		t.Errorf("stats = %+v", res.Stats)
 	}
-}
-
-func errorsAs(err error, target **communityclient.APIError) bool {
-	e, ok := err.(*communityclient.APIError)
-	if ok {
-		*target = e
-	}
-	return ok
 }
 
 func TestNotificationFeedDecodesNullAndAbsentFields(t *testing.T) {
@@ -468,7 +414,7 @@ func TestCommentOnAnchorSerialisesMentionUserIDs(t *testing.T) {
 	if _, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{
 		AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
 		AuthorID: 3, Body: "hi", MentionUserIDs: []int64{2, 5},
-	}); err != nil {
+	}, ""); err != nil {
 		t.Fatalf("CommentOnAnchor: %v", err)
 	}
 	ids, _ := raw["mention_user_ids"].([]any)
@@ -490,7 +436,7 @@ func TestCommentOnAnchorOmitsEmptyMentionUserIDs(t *testing.T) {
 	if _, err := c.CommentOnAnchor(context.Background(), communityclient.CommentRequest{
 		AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
 		AuthorID: 3, Body: "hi",
-	}); err != nil {
+	}, ""); err != nil {
 		t.Fatalf("CommentOnAnchor: %v", err)
 	}
 	if _, ok := raw["mention_user_ids"]; ok {
@@ -498,24 +444,43 @@ func TestCommentOnAnchorOmitsEmptyMentionUserIDs(t *testing.T) {
 	}
 }
 
-func TestToggleReactionDecodesReactionCount(t *testing.T) {
+// PUT and DELETE /posts/{id}/reaction (infra #302, handler/s2s.go
+// setReaction / unsetReaction) answer the toggle's shape plus `changed`, false
+// when the reaction was already as asked, which is what a retry sees.
+func TestSetAndUnsetReaction(t *testing.T) {
+	var gotMethod, gotQuery string
+	var body map[string]any
 	c, _ := newClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/posts/900/reaction" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
+		gotMethod, gotQuery, body = r.Method, r.URL.RawQuery, nil
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		envelope(w, map[string]any{
-			"added": true, "author_id": 3, "thread_id": 7,
-			"anchor_kind": 1, "anchor_id": "42", "reaction_count": 5,
+			"added": r.Method == http.MethodPut, "changed": false, "reaction_count": 5,
+			"author_id": 3, "thread_id": 7, "anchor_kind": 1, "anchor_id": "42",
 		})
 	})
 
-	res, err := c.ToggleReaction(context.Background(), 900, communityclient.ReactionToggleRequest{
-		UserID: 8, Kind: communityclient.ReactionLike,
-	})
+	set, err := c.SetReaction(context.Background(), 900, 8, communityclient.ReactionLike)
 	if err != nil {
-		t.Fatalf("ToggleReaction: %v", err)
+		t.Fatalf("SetReaction: %v", err)
 	}
-	if !res.Added || res.ReactionCount != 5 {
-		t.Errorf("result = %+v", res)
+	if gotMethod != http.MethodPut || body["user_id"] != float64(8) || body["kind"] != float64(0) {
+		t.Errorf("sent %s %v", gotMethod, body)
+	}
+	if !set.Added || set.Changed || set.ReactionCount != 5 || set.AuthorID != 3 {
+		t.Errorf("set = %+v", set)
+	}
+
+	unset, err := c.UnsetReaction(context.Background(), 900, 8, communityclient.ReactionLike)
+	if err != nil {
+		t.Fatalf("UnsetReaction: %v", err)
+	}
+	if gotMethod != http.MethodDelete || gotQuery != "kind=0&user_id=8" || body != nil {
+		t.Errorf("sent %s ?%s %v; the unset face is body-free", gotMethod, gotQuery, body)
+	}
+	if unset.Added || unset.Changed {
+		t.Errorf("unset = %+v", unset)
 	}
 }

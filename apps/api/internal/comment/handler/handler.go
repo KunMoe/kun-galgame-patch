@@ -36,6 +36,7 @@ type wallRequest struct {
 type createRequest struct {
 	Content       string `json:"content" validate:"required,min=1,max=10007"`
 	ReplyToPostID *int64 `json:"reply_to_post_id"`
+	SubmitKey     string `json:"submit_key" validate:"omitempty,max=64"`
 }
 
 type updateRequest struct {
@@ -61,10 +62,10 @@ func (h *Handler) GetPatchComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, appErr := h.service.Wall(c.Context(), service.PatchSurface(patchID),
+	page, err := h.service.Wall(c.Context(), service.PatchSurface(patchID),
 		middleware.GetUserID(c), req.After, req.Limit)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	if err != nil {
+		return fail(c, err, onRead)
 	}
 	return response.OK(c, page)
 }
@@ -79,9 +80,9 @@ func (h *Handler) GetResourceComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, appErr := h.service.Wall(c.Context(), surface, middleware.GetUserID(c), req.After, req.Limit)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	page, err := h.service.Wall(c.Context(), surface, middleware.GetUserID(c), req.After, req.Limit)
+	if err != nil {
+		return fail(c, err, onRead)
 	}
 	return response.OK(c, page)
 }
@@ -100,9 +101,9 @@ func (h *Handler) CreatePatchComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	item, appErr := h.service.Create(c.Context(), service.PatchSurface(patchID), user.ID, req.Content, req.ReplyToPostID)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	item, err := h.service.Create(c.Context(), service.PatchSurface(patchID), user.ID, req.Content, req.ReplyToPostID, req.SubmitKey)
+	if err != nil {
+		return fail(c, err, onCreate)
 	}
 	return response.OK(c, item)
 }
@@ -118,9 +119,9 @@ func (h *Handler) CreateResourceComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	item, appErr := h.service.Create(c.Context(), surface, user.ID, req.Content, req.ReplyToPostID)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	item, err := h.service.Create(c.Context(), surface, user.ID, req.Content, req.ReplyToPostID, req.SubmitKey)
+	if err != nil {
+		return fail(c, err, onCreate)
 	}
 	return response.OK(c, item)
 }
@@ -136,9 +137,9 @@ func (h *Handler) UpdateComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	item, appErr := h.service.Update(c.Context(), postID, user.ID, middleware.IsModerator(c), req.Content, clampReason(req.Reason))
-	if appErr != nil {
-		return response.Error(c, appErr)
+	item, err := h.service.Update(c.Context(), postID, user.ID, middleware.IsModerator(c), req.Content, clampReason(req.Reason))
+	if err != nil {
+		return fail(c, err, onEdit)
 	}
 	return response.OK(c, item)
 }
@@ -149,21 +150,25 @@ func (h *Handler) DeleteComment(c fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	user := middleware.MustGetUser(c)
-	if appErr := h.service.Delete(c.Context(), postID, user.ID, middleware.IsModerator(c), deleteReason(c)); appErr != nil {
-		return response.Error(c, appErr)
+	if err := h.service.Delete(c.Context(), postID, user.ID, middleware.IsModerator(c), deleteReason(c)); err != nil {
+		return fail(c, err, onPost)
 	}
 	return response.OKMessage(c, "Comment deleted")
 }
 
-func (h *Handler) ToggleLike(c fiber.Ctx) error {
+func (h *Handler) LikeComment(c fiber.Ctx) error { return h.setLike(c, true) }
+
+func (h *Handler) UnlikeComment(c fiber.Ctx) error { return h.setLike(c, false) }
+
+func (h *Handler) setLike(c fiber.Ctx, liked bool) error {
 	postID, appErr := postIDParam(c)
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
 	user := middleware.MustGetUser(c)
-	res, appErr := h.service.ToggleLike(c.Context(), postID, user.ID)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	res, err := h.service.SetLike(c.Context(), postID, user.ID, liked)
+	if err != nil {
+		return fail(c, err, onPost)
 	}
 	return response.OK(c, res)
 }
@@ -179,8 +184,8 @@ func (h *Handler) FlagComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if appErr := h.service.Flag(c.Context(), postID, user.ID, req.Reason, req.Note); appErr != nil {
-		return response.Error(c, appErr)
+	if err := h.service.Flag(c.Context(), postID, user.ID, req.Reason, req.Note); err != nil {
+		return fail(c, err, onPost)
 	}
 	return response.OKMessage(c, "举报已提交")
 }
@@ -190,9 +195,9 @@ func (h *Handler) GetCommentMarkdown(c fiber.Ctx) error {
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
-	md, appErr := h.service.Markdown(c.Context(), postID)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	md, err := h.service.Markdown(c.Context(), postID)
+	if err != nil {
+		return fail(c, err, onPost)
 	}
 	return response.OK(c, fiber.Map{"markdown": md})
 }
@@ -224,10 +229,10 @@ func (h *Handler) GetGlobalComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, appErr := h.service.SiteFeed(c.Context(), req.Cursor, req.Limit,
+	page, err := h.service.SiteFeed(c.Context(), req.Cursor, req.Limit,
 		utils.ContentLimitForListBrowse(c), h.summaryDB())
-	if appErr != nil {
-		return response.Error(c, appErr)
+	if err != nil {
+		return fail(c, err, onRead)
 	}
 	return response.OK(c, page)
 }
@@ -242,10 +247,10 @@ func (h *Handler) SearchComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, appErr := h.service.Search(c.Context(), req.Q, req.Cursor, req.Limit,
+	page, err := h.service.Search(c.Context(), req.Q, req.Cursor, req.Limit,
 		utils.ContentLimitForListBrowse(c), h.summaryDB())
-	if appErr != nil {
-		return response.Error(c, appErr)
+	if err != nil {
+		return fail(c, err, onRead)
 	}
 	return response.OK(c, page)
 }
@@ -265,10 +270,10 @@ func (h *Handler) GetUserComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, appErr := h.service.AuthorFeed(c.Context(), userID, req.Cursor, req.Limit,
+	page, err := h.service.AuthorFeed(c.Context(), userID, req.Cursor, req.Limit,
 		utils.ContentLimitForListBrowse(c), h.summaryDB())
-	if appErr != nil {
-		return response.Error(c, appErr)
+	if err != nil {
+		return fail(c, err, onRead)
 	}
 	return response.OK(c, page)
 }

@@ -117,6 +117,9 @@ type CommentRequest struct {
 type ThreadWithPost struct {
 	Thread ThreadView `json:"thread"`
 	Post   PostView   `json:"post"`
+	// Replayed is an earlier request's answer, repeated for the same key: the
+	// post already existed and its side effects already ran.
+	Replayed bool `json:"-"`
 }
 
 type PostListResponse struct {
@@ -168,13 +171,14 @@ type EditPostRequest struct {
 	AsModerator bool   `json:"as_moderator,omitempty"`
 }
 
-type ReactionToggleRequest struct {
+type ReactionRequest struct {
 	UserID int64 `json:"user_id"`
 	Kind   int32 `json:"kind"`
 }
 
-type ReactionToggleResult struct {
+type ReactionResult struct {
 	Added         bool   `json:"added"`
+	Changed       bool   `json:"changed"`
 	AuthorID      int64  `json:"author_id"`
 	ThreadID      int64  `json:"thread_id"`
 	AnchorKind    int32  `json:"anchor_kind"`
