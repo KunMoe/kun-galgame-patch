@@ -76,13 +76,22 @@ func TestResolveWikiLabelDecodeBranches(t *testing.T) {
 	}
 }
 
-func TestCheckGalgameByVndbIDDecodeBranches(t *testing.T) {
-	s := &scripted{status: 200, body: v2List(
-		`{"object":"work","id":"900","claim":{"site":"galgame_wiki","site_work_id":"7","state":"live","content_limit":"sfw"}}`,
-	)}
-	exists, gid, err := s.client(t).CheckGalgameByVndbID(context.Background(), "v1")
-	if err != nil || !exists || gid != 7 {
-		t.Fatalf("CheckGalgameByVndbID = (%v, %d, %v), want (true, 7, nil)", exists, gid, err)
+func TestCheckGalgameByVndbIDAnswersThePageID(t *testing.T) {
+	cases := []struct {
+		name, work string
+		exists     bool
+		gid        int
+	}{
+		{"claimed by the forum", `{"object":"work","id":"900","claim":{"site":"kungal","site_work_id":"7","state":"live","content_limit":"sfw"}}`, true, 900},
+		{"unclaimed", `{"object":"work","id":"901","claim":null}`, true, 901},
+		{"hidden", `{"object":"work","id":"902","claim":{"site":"kungal","site_work_id":"8","state":"hidden","content_limit":"sfw"}}`, false, 0},
+	}
+	for _, tc := range cases {
+		s := &scripted{status: 200, body: v2List(tc.work)}
+		exists, gid, err := s.client(t).CheckGalgameByVndbID(context.Background(), "v1")
+		if err != nil || exists != tc.exists || gid != tc.gid {
+			t.Errorf("%s: CheckGalgameByVndbID = (%v, %d, %v), want (%v, %d, nil)", tc.name, exists, gid, err, tc.exists, tc.gid)
+		}
 	}
 }
 

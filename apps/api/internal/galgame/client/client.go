@@ -398,11 +398,11 @@ func (c *Client) CheckGalgameByVndbID(ctx context.Context, vndbID string) (exist
 		}
 		return false, 0, catalogErr(err)
 	}
-	claim := claimedFrom(w.Claim)
-	if claim == nil || !isGIDClaimSite(claim.Site) {
+	id, ok := catalogv2.ParseID(w.ID)
+	if !ok || !claimedFrom(w.Claim).renderable() {
 		return false, 0, nil
 	}
-	return true, int(claim.WorkID), nil
+	return true, int(id), nil
 }
 
 const BatchMaxIDs = 100
