@@ -101,9 +101,11 @@ func Start(
 		}
 	}
 
-	if img != nil && img.Configured() {
+	if img == nil || !img.Configured() {
+		slog.Warn("image ref-ping 未注册: image service 客户端未配置, 正文与评论里的图片不再续期, 过期后会被回收")
+	} else {
 		if _, err := c.AddFunc("0 4 * * *", func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 			updated, notFound, err := RunReferencePing(ctx, db, img, comments)
 			if err != nil {
