@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 var (
@@ -28,6 +30,7 @@ var (
 	ErrQuotaExceeded  = errors.New("storeclient: purchase-link quota exhausted for this application")
 	ErrInvalidProduct = errors.New("storeclient: product id rejected by the store face")
 	ErrUnavailable    = errors.New("storeclient: no link was issued")
+	ErrRateLimited    = errors.New("storeclient: the key's rate limit or daily quota is spent")
 	ErrUpstream       = errors.New("storeclient: store service error")
 )
 
@@ -142,7 +145,7 @@ func (c *Client) get(ctx context.Context, path string) (json.RawMessage, error) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUpstream, err)
+		return nil, upstream.Transport(service, "purchase links", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -150,38 +153,51 @@ func (c *Client) get(ctx context.Context, path string) (json.RawMessage, error) 
 	if resp.StatusCode == http.StatusOK {
 		return raw, nil
 	}
-	return nil, problemErr(resp.StatusCode, raw)
+	return nil, problemErr(resp, raw)
 }
 
-// The face answers problem+json, and its `code` is the only thing that
-// separates a permanent refusal from a retryable one: STORE_QUOTA_EXCEEDED is a
-// 403 like a missing scope, but re-sending it never turns into a link.
-func problemErr(status int, raw []byte) error {
+const service = "store"
+
+// The face answers problem+json (infra apiv2/problem/registry.go), and its
+// `code` is the only thing that separates a permanent refusal from a retryable
+// one: STORE_QUOTA_EXCEEDED is a 403 like a missing scope, but re-sending it
+// never turns into a link, while QUOTA_EXCEEDED is the key's daily quota and
+// comes back once Retry-After has passed.
+func problemErr(resp *http.Response, raw []byte) error {
 	var p struct {
 		Code   string `json:"code"`
 		Detail string `json:"detail"`
 	}
 	_ = json.Unmarshal(raw, &p)
-
-	switch p.Code {
-	case "STORE_QUOTA_EXCEEDED":
-		return fmt.Errorf("%w: %s", ErrQuotaExceeded, p.Detail)
-	case "STORE_LINK_UNAVAILABLE", "SERVICE_UNAVAILABLE":
-		return fmt.Errorf("%w: %s", ErrUnavailable, p.Detail)
-	case "VALIDATION_FAILED":
-		return fmt.Errorf("%w: %s", ErrInvalidProduct, p.Detail)
+	e := &upstream.Error{
+		Service:    service,
+		Op:         "purchase links",
+		Status:     resp.StatusCode,
+		Code:       p.Code,
+		Detail:     p.Detail,
+		RequestID:  resp.Header.Get("X-Request-ID"),
+		RetryAfter: upstream.RetryAfter(resp.Header),
 	}
 
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("%w (status %d)", ErrUnauthorized, status)
-	case http.StatusBadRequest, http.StatusUnprocessableEntity:
-		return fmt.Errorf("%w (status %d)", ErrInvalidProduct, status)
-	case http.StatusBadGateway, http.StatusServiceUnavailable:
-		return fmt.Errorf("%w (status %d)", ErrUnavailable, status)
+	switch {
+	case p.Code == "STORE_QUOTA_EXCEEDED":
+		e.Kind, e.Cause = upstream.Internal, ErrQuotaExceeded
+	case p.Code == "STORE_LINK_UNAVAILABLE", p.Code == "SERVICE_UNAVAILABLE":
+		e.Kind, e.Cause = upstream.Unavailable, ErrUnavailable
+	case p.Code == "VALIDATION_FAILED":
+		e.Kind, e.Cause = upstream.Rejected, ErrInvalidProduct
+	case resp.StatusCode == http.StatusTooManyRequests:
+		e.Kind, e.Cause = upstream.RateLimited, ErrRateLimited
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		e.Kind, e.Cause = upstream.Internal, ErrUnauthorized
+	case resp.StatusCode == http.StatusBadRequest, resp.StatusCode == http.StatusUnprocessableEntity:
+		e.Kind, e.Cause = upstream.Rejected, ErrInvalidProduct
+	case resp.StatusCode == http.StatusBadGateway, resp.StatusCode == http.StatusServiceUnavailable:
+		e.Kind, e.Cause = upstream.Unavailable, ErrUnavailable
 	default:
-		return fmt.Errorf("%w (status %d)", ErrUpstream, status)
+		e.Kind, e.Cause = upstream.ByStatus(resp.StatusCode), ErrUpstream
 	}
+	return e
 }
 
 func origin(raw string) string {

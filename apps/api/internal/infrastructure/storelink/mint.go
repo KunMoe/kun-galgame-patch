@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/pkg/storeclient"
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"gorm.io/gorm/clause"
 )
@@ -85,9 +86,7 @@ func (r *Resolver) run(ctx context.Context) {
 		case workno = <-r.queue:
 		}
 
-		r.mint(ctx, workno)
-
-		pace.Reset(mintInterval)
+		pace.Reset(r.mint(ctx, workno))
 		select {
 		case <-ctx.Done():
 			return
@@ -131,18 +130,17 @@ func (r *Resolver) stopped() bool {
 	return r.halted
 }
 
-func (r *Resolver) mint(ctx context.Context, workno string) {
+func (r *Resolver) mint(ctx context.Context, workno string) time.Duration {
 	defer r.release(workno)
 	if r.stopped() {
-		return
+		return mintInterval
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, mintTimeout)
 	defer cancel()
 	links, err := r.client.PurchaseLinks(ctx, workno)
 	if err != nil {
-		r.mintFailed(workno, err)
-		return
+		return r.mintFailed(workno, err, time.Now())
 	}
 
 	row := Link{ProductID: links.ProductID, ShortURL: links.PurchaseURL}
@@ -154,13 +152,14 @@ func (r *Resolver) mint(ctx context.Context, workno string) {
 		Columns: []clause.Column{{Name: "product_id"}}, DoNothing: true,
 	}).Create(&row).Error; err != nil {
 		slog.Error("写入 dlsite 短链失败", "workno", workno, "error", err)
-		return
+		return mintInterval
 	}
 	r.remember(row.ProductID, row.ShortURL)
 	r.setCampaign(links.Campaign, links.CouponURL)
+	return mintInterval
 }
 
-func (r *Resolver) mintFailed(workno string, err error) {
+func (r *Resolver) mintFailed(workno string, err error, now time.Time) time.Duration {
 	switch {
 	case errors.Is(err, storeclient.ErrQuotaExceeded), errors.Is(err, storeclient.ErrUnauthorized):
 		r.halt()
@@ -169,9 +168,30 @@ func (r *Resolver) mintFailed(workno string, err error) {
 	case errors.Is(err, storeclient.ErrInvalidProduct):
 		r.markBad(workno)
 		slog.Warn("store 面拒绝该 workno, 不再重试", "workno", workno, "error", err)
+	case errors.Is(err, storeclient.ErrRateLimited):
+		wait := rateLimitWait(err, now)
+		slog.Warn("dlsite 短链铸造被限流, 暂停到 Retry-After", "workno", workno, "resume_in", wait, "error", err)
+		return wait
 	default:
 		slog.Warn("dlsite 短链铸造失败, 下一次浏览会重试", "workno", workno, "error", err)
 	}
+	return mintInterval
+}
+
+// A spent daily quota used to count as a transient failure, so the minter
+// retried it every 1.5s until the UTC day rolled over. Infra sends Retry-After
+// on both limits; without it, a quota waits for the next UTC day and a rate
+// limit for the next minute.
+func rateLimitWait(err error, now time.Time) time.Duration {
+	e, _ := upstream.As(err)
+	if e != nil && e.RetryAfter > 0 {
+		return e.RetryAfter
+	}
+	if e != nil && e.Code == "QUOTA_EXCEEDED" {
+		u := now.UTC()
+		return time.Date(u.Year(), u.Month(), u.Day()+1, 0, 0, 0, 0, time.UTC).Sub(now)
+	}
+	return time.Minute
 }
 
 func (r *Resolver) halt() {

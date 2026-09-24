@@ -2,10 +2,15 @@ package storeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
@@ -62,32 +67,60 @@ func TestPurchaseLinks_Campaign(t *testing.T) {
 	}
 }
 
+// problem mirrors infra's apiv2 problem.New body for a registry code.
+func problem(status int, code, domain, detail string) string {
+	b, _ := json.Marshal(map[string]any{
+		"type":       "https://developer.nextmoe.dev/problems/" + domain + "/" + strings.ToLower(strings.ReplaceAll(code, "_", "-")),
+		"title":      "t",
+		"status":     status,
+		"detail":     detail,
+		"instance":   "/v2/store/purchase-links/RJ297925",
+		"code":       code,
+		"request_id": "req_01J8ZQ5W8Y3N2V6T4R7K9M0P1S",
+		"errors":     []any{},
+	})
+	return string(b)
+}
+
 func TestPurchaseLinks_ProblemCodes(t *testing.T) {
 	cases := []struct {
-		name   string
-		status int
-		body   string
-		want   error
+		name       string
+		status     int
+		body       string
+		retryAfter string
+		want       error
+		kind       upstream.Kind
+		wait       time.Duration
 	}{
 		// 403 is also what a missing scope answers, so only the code separates a
 		// refusal that retrying can fix from one it never will.
-		{"quota", http.StatusForbidden, `{"code":"STORE_QUOTA_EXCEEDED"}`, ErrQuotaExceeded},
-		{"shortener down", http.StatusBadGateway, `{"code":"STORE_LINK_UNAVAILABLE"}`, ErrUnavailable},
-		{"face off", http.StatusServiceUnavailable, `{"code":"SERVICE_UNAVAILABLE"}`, ErrUnavailable},
-		{"bad scope", http.StatusForbidden, `{"code":"INSUFFICIENT_SCOPE"}`, ErrUnauthorized},
-		{"no key", http.StatusUnauthorized, `{"code":"MISSING_CREDENTIAL"}`, ErrUnauthorized},
-		{"rejected id", http.StatusUnprocessableEntity, `{"code":"VALIDATION_FAILED"}`, ErrInvalidProduct},
-		{"rate limited", http.StatusTooManyRequests, `{"code":"RATE_LIMITED"}`, ErrUpstream},
+		{"lifetime link quota", 403, problem(403, "STORE_QUOTA_EXCEEDED", "store", ""), "", ErrQuotaExceeded, upstream.Internal, 0},
+		{"shortener down", 502, problem(502, "STORE_LINK_UNAVAILABLE", "store", ""), "", ErrUnavailable, upstream.Unavailable, 0},
+		{"face off", 503, problem(503, "SERVICE_UNAVAILABLE", "platform", ""), "", ErrUnavailable, upstream.Unavailable, 0},
+		{"bad scope", 403, problem(403, "SCOPE_REQUIRED", "platform", "store:read"), "", ErrUnauthorized, upstream.Internal, 0},
+		{"no key", 401, problem(401, "MISSING_CREDENTIAL", "platform", ""), "", ErrUnauthorized, upstream.Internal, 0},
+		{"rejected id", 422, problem(422, "VALIDATION_FAILED", "platform", ""), "", ErrInvalidProduct, upstream.Rejected, 0},
+		{"rate limited", 429, problem(429, "RATE_LIMITED", "platform", "Short-window rate limit exceeded."), "42", ErrRateLimited, upstream.RateLimited, 42 * time.Second},
+		{"daily quota spent", 429, problem(429, "QUOTA_EXCEEDED", "platform", "Daily quota exceeded."), "36000", ErrRateLimited, upstream.RateLimited, 10 * time.Hour},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.Header().Set("X-Request-ID", "req_01J8ZQ5W8Y3N2V6T4R7K9M0P1S")
+				if tc.retryAfter != "" {
+					w.Header().Set("Retry-After", tc.retryAfter)
+				}
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
 			})
 			_, err := c.PurchaseLinks(context.Background(), "RJ297925")
 			if !errors.Is(err, tc.want) {
 				t.Errorf("err = %v, want %v", err, tc.want)
+			}
+			e, ok := upstream.As(err)
+			if !ok || e.Kind != tc.kind || e.RetryAfter != tc.wait {
+				t.Errorf("upstream error = %+v, want kind %d wait %v", e, tc.kind, tc.wait)
 			}
 		})
 	}
