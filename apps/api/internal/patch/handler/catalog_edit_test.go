@@ -13,6 +13,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/internal/testutil"
 	"kun-galgame-patch-api/pkg/catalogv2"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 	"kun-galgame-patch-api/pkg/config"
 
 	"github.com/gofiber/fiber/v3"
@@ -33,8 +34,11 @@ type catalogEditFake struct {
 	createBody string
 	// Every include= the detail face was asked for, in order.
 	proposalIncludes []string
-	status           int
-	errBody          string
+	errCode          string
+	errDetail        string
+	errExtra         map[string]any
+	errHeader        map[string]string
+	schemaErrCode    string
 }
 
 func (f *catalogEditFake) handler() http.HandlerFunc {
@@ -49,12 +53,22 @@ func (f *catalogEditFake) handler() http.HandlerFunc {
 			for k, v := range r.URL.Query() {
 				f.lastQuery[k] = v[0]
 			}
-			if f.status != 0 {
-				w.Header().Set("Content-Type", "application/problem+json")
-				w.WriteHeader(f.status)
-				_, _ = w.Write([]byte(f.errBody))
+			if f.errCode != "" {
+				for k, v := range f.errHeader {
+					w.Header().Set(k, v)
+				}
+				if f.errCode == "BAD_GATEWAY_PAGE" {
+					w.WriteHeader(http.StatusBadGateway)
+					_, _ = w.Write([]byte("<html><body>502 Bad Gateway</body></html>"))
+					return
+				}
+				catalogv2test.Problem(w, r, f.errCode, f.errDetail, f.errExtra)
 				return
 			}
+		}
+		if p == "/v2/catalog/schemas/work" && f.schemaErrCode != "" {
+			catalogv2test.Problem(w, r, f.schemaErrCode, "this operation requires the catalog:read scope.", nil)
+			return
 		}
 
 		switch {
@@ -90,8 +104,7 @@ func (f *catalogEditFake) handler() http.HandlerFunc {
 		case strings.HasPrefix(p, "/v2/me/proposals/") && r.Method == http.MethodPatch:
 			_, _ = w.Write([]byte(`{"id":"32","state":"withdrawn"}`))
 		default:
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"code":"NOT_FOUND","status":404}`))
+			catalogv2test.Problem(w, r, "NOT_FOUND", "Nothing visible exists at this URL.", nil)
 		}
 	}
 }
@@ -301,8 +314,7 @@ func TestCatalogEditSubmitRefusesAnEmptyPatch(t *testing.T) {
 
 func TestCatalogEditScopeDenialLandsOnTheRelogInCode(t *testing.T) {
 	fake := newCatalogEditFake(t)
-	fake.status = http.StatusForbidden
-	fake.errBody = `{"code":"SCOPE_REQUIRED","status":403,"title":"Forbidden","detail":"the access token is missing the catalog:edit scope"}`
+	fake.errCode, fake.errDetail = "SCOPE_REQUIRED", "this operation requires the catalog:edit scope."
 	ta, session := newCatalogEditApp(t, fake)
 
 	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
@@ -312,30 +324,58 @@ func TestCatalogEditScopeDenialLandsOnTheRelogInCode(t *testing.T) {
 	}
 }
 
+// The schema is read with moyu's application key. A scope that key lacks is
+// fixed by an operator, not by the reader signing in again, which is what the
+// old mapping told them.
+func TestCatalogEditAppKeyScopeIsMoyusOwn500(t *testing.T) {
+	fake := newCatalogEditFake(t)
+	fake.schemaErrCode = "SCOPE_REQUIRED"
+	ta, session := newCatalogEditApp(t, fake)
+
+	resp := ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit", "", session)
+	r := testutil.ParseResponse(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError || r.Code != 50000 {
+		t.Fatalf("got %d/%d, want 500/50000 (%s)", resp.StatusCode, r.Code, r.Message)
+	}
+}
+
 func TestCatalogEditUpstreamStatusMapping(t *testing.T) {
 	cases := []struct {
 		name       string
-		status     int
-		body       string
+		code       string
+		detail     string
+		extra      map[string]any
+		header     map[string]string
 		wantStatus int
 		wantCode   int
 	}{
-		{"permission", http.StatusForbidden, `{"code":"FORBIDDEN","status":403,"detail":"编辑该条目需要更高的信任等级"}`,
+		{"permission", "PERMISSION_REQUIRED",
+			"only the proposer, or someone with review standing on this entity, may change this proposal.", nil, nil,
 			http.StatusForbidden, 40300},
-		{"validation", http.StatusUnprocessableEntity,
-			`{"code":"VALIDATION_FAILED","status":422,"detail":"element 0: kind must be 0 (official), 1 (alias) or 2 (abbreviation)"}`,
+		{"validation", "VALIDATION_FAILED",
+			"element 0: kind must be 0 (official), 1 (alias) or 2 (abbreviation)", nil, nil,
 			http.StatusUnprocessableEntity, 42200},
-		{"conflict", http.StatusConflict, `{"code":"CONFLICT","status":409,"detail":"rebase conflict"}`,
+		{"stale ETag", "PRECONDITION_FAILED", "If-Match did not match the current representation.", nil, nil,
 			http.StatusConflict, 40900},
-		{"token rejected", http.StatusUnauthorized, `{"code":"INVALID_CREDENTIAL","status":401,"detail":"token expired"}`,
+		{"decided already", "DECISION_ALREADY_MADE", "proposal 32 is not open.", nil, nil,
+			http.StatusConflict, 40900},
+		{"token rejected", "INVALID_CREDENTIAL", "Authorization Bearer token is invalid.", nil, nil,
 			http.StatusForbidden, 40399},
-		{"upstream down", http.StatusBadGateway, `{"code":"BAD_GATEWAY","status":502,"detail":"bad gateway"}`,
+		{"moyu's client has no site", "SITE_NOT_BOUND", "the access token's client is not bound to a catalog site.", nil, nil,
+			http.StatusInternalServerError, 50000},
+		{"an app key on the user face", "USER_IDENTITY_REQUIRED", "this operation requires a user access token.", nil, nil,
+			http.StatusInternalServerError, 50000},
+		{"rate limited", "RATE_LIMITED", "The short-window rate limit was exceeded.", nil,
+			map[string]string{"Retry-After": "12"}, http.StatusTooManyRequests, 42900},
+		{"catalog down", "SERVICE_UNAVAILABLE", "proposals are not bound.", nil, nil,
+			http.StatusServiceUnavailable, 50320},
+		{"a gateway page", "BAD_GATEWAY_PAGE", "", nil, nil,
 			http.StatusServiceUnavailable, 50320},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := newCatalogEditFake(t)
-			fake.status, fake.errBody = tc.status, tc.body
+			fake.errCode, fake.errDetail, fake.errExtra, fake.errHeader = tc.code, tc.detail, tc.extra, tc.header
 			ta, session := newCatalogEditApp(t, fake)
 
 			resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
@@ -343,8 +383,17 @@ func TestCatalogEditUpstreamStatusMapping(t *testing.T) {
 			if resp.StatusCode != tc.wantStatus || r.Code != tc.wantCode {
 				t.Fatalf("got %d/%d, want %d/%d (%s)", resp.StatusCode, r.Code, tc.wantStatus, tc.wantCode, r.Message)
 			}
-			if tc.name == "validation" && !strings.Contains(r.Message, "kind must be") {
-				t.Fatalf("a 422 must pass the engine's wording through: %s", r.Message)
+			if tc.name == "validation" {
+				if !strings.Contains(r.Message, "kind must be") {
+					t.Fatalf("a 422 must pass the engine's wording through: %s", r.Message)
+				}
+				return
+			}
+			if tc.detail != "" && strings.Contains(r.Message, tc.detail) {
+				t.Fatalf("catalog's English reached the reader: %s", r.Message)
+			}
+			if tc.header != nil && resp.Header.Get("Retry-After") != tc.header["Retry-After"] {
+				t.Fatalf("Retry-After = %q", resp.Header.Get("Retry-After"))
 			}
 		})
 	}
@@ -352,10 +401,12 @@ func TestCatalogEditUpstreamStatusMapping(t *testing.T) {
 
 func TestCatalogEditRelaysTheFieldLevelRejection(t *testing.T) {
 	fake := newCatalogEditFake(t)
-	fake.status = http.StatusUnprocessableEntity
-	fake.errBody = `{"code":"VALIDATION_FAILED","status":422,"detail":"editing: patch rejected","errors":[` +
-		`{"pointer":"/catalog.work.titles","reason":"UNKNOWN_VALUE","detail":"element 0: kind must be 0 (official), 1 (alias) or 2 (abbreviation)"},` +
-		`{"pointer":"/patch/catalog.work.olang","reason":"IMMUTABLE","detail":"field is locked"}]}`
+	fake.errCode, fake.errDetail = "VALIDATION_FAILED", "editing: patch rejected"
+	fake.errExtra = map[string]any{"errors": []any{
+		map[string]any{"pointer": "/catalog.work.titles", "reason": "UNKNOWN_VALUE",
+			"detail": "element 0: kind must be 0 (official), 1 (alias) or 2 (abbreviation)"},
+		map[string]any{"pointer": "/patch/catalog.work.olang", "reason": "IMMUTABLE", "detail": "field is locked"},
+	}}
 	ta, session := newCatalogEditApp(t, fake)
 
 	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"display_name":"新名"}`, session)
@@ -370,6 +421,30 @@ func TestCatalogEditRelaysTheFieldLevelRejection(t *testing.T) {
 	}
 	if data["detail"] != "editing: patch rejected" {
 		t.Fatalf("the top-level detail is the fallback for a refusal that names no field: %v", data)
+	}
+}
+
+// infra's proposalErr answers a field the proposer may not touch with
+// PERMISSION_REQUIRED and a NOT_PERMITTED row pointing at it
+// (apps/api/internal/platform/apiv2/handler/me_proposals.go), which the form
+// pins under that field.
+func TestCatalogEditKeepsTheFieldOfAPermissionRefusal(t *testing.T) {
+	fake := newCatalogEditFake(t)
+	fake.errCode, fake.errDetail = "PERMISSION_REQUIRED", "editing: catalog.work.olang needs review standing"
+	fake.errExtra = map[string]any{"errors": []any{
+		map[string]any{"pointer": "/patch/catalog.work.olang", "reason": "NOT_PERMITTED",
+			"detail": "editing: catalog.work.olang needs review standing"},
+	}}
+	ta, session := newCatalogEditApp(t, fake)
+
+	resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", `{"olang":"zh-Hans"}`, session)
+	r := testutil.ParseResponse(t, resp)
+	if resp.StatusCode != http.StatusForbidden || r.Code != 40300 {
+		t.Fatalf("got %d/%d, want 403/40300", resp.StatusCode, r.Code)
+	}
+	rows, _ := r.Data.(map[string]any)["errors"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["reason"] != "NOT_PERMITTED" {
+		t.Fatalf("the refused field did not travel: %v", r.Data)
 	}
 }
 

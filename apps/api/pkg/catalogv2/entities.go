@@ -223,11 +223,11 @@ func (c *Client) EntityByRef(ctx context.Context, object, source, externalID str
 		return 0, err
 	}
 	if len(page.Items) == 0 {
-		return 0, ErrNotFound
+		return 0, Absent("GET /v2/catalog/" + object + "s?refs")
 	}
 	n, ok := ParseID(page.Items[0].ID)
 	if !ok {
-		return 0, ErrNotFound
+		return 0, Absent("GET /v2/catalog/" + object + "s?refs")
 	}
 	return n, nil
 }

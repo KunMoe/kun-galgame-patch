@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"unicode/utf8"
 
@@ -30,20 +29,15 @@ type CreatorEligibility struct {
 	NeedMoemoepoint int   `json:"need_moemoepoint"`
 }
 
-func (s *UserService) mergedProposalTotal(ctx context.Context, userID int) int64 {
+func (s *UserService) mergedProposalTotal(ctx context.Context, userID int) (int64, error) {
 	if s.galgame == nil {
-		return 0
+		return 0, nil
 	}
 	v2 := s.galgame.V2()
 	if v2 == nil || !v2.Configured() {
-		return 0
+		return 0, nil
 	}
-	n, err := v2.MergedProposalTotal(ctx, userID, catalogv2.SiteKungal)
-	if err != nil {
-		slog.Warn("读取合并提案数失败，按 0 计", "user_id", userID, "error", err)
-		return 0
-	}
-	return n
+	return v2.MergedProposalTotal(ctx, userID, catalogv2.SiteKungal)
 }
 
 func (s *UserService) moemoepointBalance(ctx context.Context, userID int) int {
@@ -57,8 +51,13 @@ func (s *UserService) moemoepointBalance(ctx context.Context, userID int) int {
 	return balance
 }
 
-func (s *UserService) creatorEligibility(ctx context.Context, userID int) (*CreatorEligibility, *errors.AppError) {
-	mergedProposals := s.mergedProposalTotal(ctx, userID)
+// A catalog that cannot be read is an error, not a count of zero: counted as
+// zero it told contributors they were not eligible for as long as it was down.
+func (s *UserService) creatorEligibility(ctx context.Context, userID int) (*CreatorEligibility, error) {
+	mergedProposals, err := s.mergedProposalTotal(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	resources := s.repo.CountPublishedPatchResources(userID)
 	e := &CreatorEligibility{
 		MergedPRs:       mergedProposals,
@@ -74,10 +73,10 @@ func (s *UserService) creatorEligibility(ctx context.Context, userID int) (*Crea
 	return e, nil
 }
 
-func (s *UserService) CreatorStatus(ctx context.Context, userID int, token string) (*CreatorEligibility, *userclient.CreatorApplication, *errors.AppError) {
-	e, appErr := s.creatorEligibility(ctx, userID)
-	if appErr != nil {
-		return nil, nil, appErr
+func (s *UserService) CreatorStatus(ctx context.Context, userID int, token string) (*CreatorEligibility, *userclient.CreatorApplication, error) {
+	e, err := s.creatorEligibility(ctx, userID)
+	if err != nil {
+		return nil, nil, err
 	}
 	app, err := s.users.GetMyCreatorApplication(ctx, token)
 	if err != nil {
@@ -86,13 +85,13 @@ func (s *UserService) CreatorStatus(ctx context.Context, userID int, token strin
 	return e, app, nil
 }
 
-func (s *UserService) ApplyCreator(ctx context.Context, userID int, token, message string) (*userclient.CreatorApplication, *errors.AppError) {
+func (s *UserService) ApplyCreator(ctx context.Context, userID int, token, message string) (*userclient.CreatorApplication, error) {
 	if utf8.RuneCountInString(message) > userclient.CreatorMessageMaxRunes {
 		return nil, errors.ErrBadRequest("附言最多 1000 字")
 	}
-	e, appErr := s.creatorEligibility(ctx, userID)
-	if appErr != nil {
-		return nil, appErr
+	e, err := s.creatorEligibility(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 	if !e.Eligible {
 		return nil, errors.ErrBadRequest("尚不满足创作者申请条件")

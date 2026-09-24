@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 )
 
 func TestOriginStripsLegacySuffix(t *testing.T) {
@@ -62,30 +63,29 @@ func TestListWorksUsesBearerAndNoEnvelope(t *testing.T) {
 
 func TestGetWork404(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"code":"NOT_FOUND","status":404,"title":"Not found"}`)
+		catalogv2test.Problem(w, r, "NOT_FOUND", "No work with this id.", nil)
 	}))
 	t.Cleanup(srv.Close)
 	c := catalogv2.New(srv.URL, "nmk_test_x")
 	_, err := c.GetWork(context.Background(), 1, false)
-	if !errors.Is(err, catalogv2.ErrNotFound) {
+	if !catalogv2.IsNotFound(err) {
 		t.Fatalf("%v", err)
 	}
 }
 
 func TestMergedProblem(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"code":"ENTITY_MERGED","status":404,"current_id":"6935"}`)
+		catalogv2test.Problem(w, r, "ENTITY_MERGED", "company 13323 was merged into 6935.",
+			map[string]any{"object": "company", "current_id": "6935"})
 	}))
 	t.Cleanup(srv.Close)
 	c := catalogv2.New(srv.URL, "k")
 	_, err := c.GetCompany(context.Background(), 13323, true)
-	var p *catalogv2.Problem
-	if !errors.As(err, &p) || !p.Merged() || p.CurrentID != "6935" {
-		t.Fatalf("%v", err)
+	if to, ok := catalogv2.MergedInto(err); !ok || to != 6935 {
+		t.Fatalf("MergedInto = (%d, %v): %v", to, ok, err)
+	}
+	if catalogv2.IsNotFound(err) {
+		t.Fatal("a merged id has somewhere to go and must not read as a plain miss")
 	}
 }
 
@@ -118,7 +118,7 @@ func TestCreateClaimPostsWorkID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	out, err := catalogv2.New(srv.URL, "nmk_test_x").CreateClaim(context.Background(), "tok", 7, 7)
+	out, err := catalogv2.New(srv.URL, "nmk_test_x").CreateClaim(context.Background(), "tok", 42, 7, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestMintClaimSendsTheWizardMapAsFieldValues(t *testing.T) {
 		"catalog.work.olang":        "ja",
 		"catalog.work.titles":       []any{map[string]any{"lang": "zh-Hans", "title": "夏日口袋", "kind": 0}},
 	}
-	out, err := catalogv2.New(srv.URL, "nmk_test_x").MintClaim(context.Background(), "tok", fields)
+	out, err := catalogv2.New(srv.URL, "nmk_test_x").MintClaim(context.Background(), "tok", 42, fields)
 	if err != nil {
 		t.Fatal(err)
 	}

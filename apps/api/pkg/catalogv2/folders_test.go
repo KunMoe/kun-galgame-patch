@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 )
 
 type folderFace struct {
@@ -38,8 +40,7 @@ func (f *folderFace) server(t *testing.T) *httptest.Server {
 
 		bodies := f.pages[r.URL.Path]
 		if len(bodies) == 0 {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"code":"NOT_FOUND","status":404,"detail":"no"}`))
+			catalogv2test.Problem(w, r, "NOT_FOUND", "No such folder.", nil)
 			return
 		}
 		if n >= len(bodies) {
@@ -201,7 +202,7 @@ func TestFolderWritesAddressTheRightRoutes(t *testing.T) {
 	ctx := context.Background()
 	name := "n"
 
-	if _, err := c.CreateFolder(ctx, "tok", FolderWrite{Name: &name}); err != nil {
+	if _, err := c.CreateFolder(ctx, "tok", 42, FolderWrite{Name: &name}); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
 	if _, err := c.PatchFolder(ctx, "tok", 5, FolderWrite{Name: &name}); err != nil {
@@ -237,28 +238,18 @@ func TestFolderWritesAddressTheRightRoutes(t *testing.T) {
 
 // A grant minted before folder:write was requested comes back 403
 // SCOPE_REQUIRED. The only cure is signing in again, and the handler maps it to
-// the re-login this site already had for catalog:edit, so it has to survive as
-// a Problem carrying the code.
+// the re-login this site already had for catalog:edit.
 func TestFolderWriteSurfacesTheScopeRefusal(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"code":"SCOPE_REQUIRED","status":403,` +
-			`"detail":"this operation requires the folder:write scope."}`))
+		catalogv2test.Problem(w, r, "SCOPE_REQUIRED", "this operation requires the folder:write scope.", nil)
 	}))
 	t.Cleanup(srv.Close)
 	c := New(srv.URL, "k")
 
 	name := "x"
-	_, err := c.CreateFolder(context.Background(), "tok", FolderWrite{Name: &name})
-	if err == nil {
-		t.Fatal("a scope refusal returned no error")
-	}
-	p, ok := err.(*Problem)
-	if !ok {
-		t.Fatalf("got %T (%v), want *Problem", err, err)
-	}
-	if p.Code != "SCOPE_REQUIRED" {
-		t.Fatalf("code %q, want SCOPE_REQUIRED", p.Code)
+	_, err := c.CreateFolder(context.Background(), "tok", 42, FolderWrite{Name: &name})
+	if !ReauthRequired(err) {
+		t.Fatalf("a reader's token refused for a scope must ask for a new sign-in: %v", err)
 	}
 }
 
@@ -274,7 +265,7 @@ func TestFolderCreateOmitsUnsetFields(t *testing.T) {
 	c := New(srv.URL, "k")
 
 	name := "n"
-	if _, err := c.CreateFolder(context.Background(), "tok", FolderWrite{Name: &name}); err != nil {
+	if _, err := c.CreateFolder(context.Background(), "tok", 42, FolderWrite{Name: &name}); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
 	if strings.Contains(seen, "visibility") {

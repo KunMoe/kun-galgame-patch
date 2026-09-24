@@ -174,10 +174,7 @@ func (h *CommonHandler) catalogLibrary(c fiber.Ctx, req galgameListRequest, cl s
 
 	res, err := h.galgame.SearchGalgame(c.Context(), params)
 	if err != nil {
-		if gerr, ok := galgameClient.AsBadRequest(err); ok {
-			return response.Error(c, errors.ErrBadRequest(gerr.Message))
-		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
+		return response.Upstream(c, err, "")
 	}
 
 	ids := make([]int, 0, len(res.Items))

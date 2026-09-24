@@ -11,16 +11,18 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/internal/testutil"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 	"kun-galgame-patch-api/pkg/config"
 )
 
 const withdrawGID = 9000
 
 type withdrawFake struct {
-	mu    sync.Mutex
-	state string
-	calls []string
-	match string
+	mu          sync.Mutex
+	state       string
+	calls       []string
+	match       string
+	deleteFails bool
 }
 
 func (f *withdrawFake) handler() http.HandlerFunc {
@@ -42,17 +44,24 @@ func (f *withdrawFake) handler() http.HandlerFunc {
 			_, _ = fmt.Fprintf(w, `{"object":"claim","id":"%d","state":"draft"}`, withdrawGID)
 		case r.Method == http.MethodDelete:
 			f.calls = append(f.calls, "DELETE")
+			if f.deleteFails {
+				catalogv2test.Problem(w, r, "SERVICE_UNAVAILABLE", "claims are not bound.", nil)
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
 		default:
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"code":"NOT_FOUND","status":404}`))
+			catalogv2test.Problem(w, r, "NOT_FOUND", "No claim with this id.", nil)
 		}
 	}
 }
 
 func withdraw(t *testing.T, state string) *withdrawFake {
 	t.Helper()
-	fake := &withdrawFake{state: state}
+	return withdrawWith(t, &withdrawFake{state: state})
+}
+
+func withdrawWith(t *testing.T, fake *withdrawFake) *withdrawFake {
+	t.Helper()
 	srv := httptest.NewServer(fake.handler())
 	t.Cleanup(srv.Close)
 
@@ -92,5 +101,15 @@ func TestWithdrawFinishesADraftLeftByAnInterruptedDelete(t *testing.T) {
 	fake := withdraw(t, "draft")
 	if got := strings.Join(fake.calls, ","); got != "GET,DELETE" {
 		t.Fatalf("calls = %s; a draft cannot be withdrawn again, only deleted", got)
+	}
+}
+
+// The withdraw has landed by the time the delete runs, and the submission is
+// already off its author's list; answering 5xx there reported a withdraw that
+// had happened as one that had not.
+func TestWithdrawThatLandedIsNotUndoneByAFailedDelete(t *testing.T) {
+	fake := withdrawWith(t, &withdrawFake{state: "pending", deleteFails: true})
+	if got := strings.Join(fake.calls, ","); got != "GET,PATCH,DELETE" {
+		t.Fatalf("calls = %s", got)
 	}
 }

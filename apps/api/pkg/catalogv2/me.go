@@ -97,9 +97,9 @@ func (c *Client) Snapshot(ctx context.Context, accessToken, object string, id in
 	return &out, nil
 }
 
-func (c *Client) CreateProposal(ctx context.Context, accessToken, entityType string, entityID int64, patch map[string]any, note string) (*ProposalRecord, error) {
+func (c *Client) CreateProposal(ctx context.Context, accessToken string, actor int, entityType string, entityID int64, patch map[string]any, note string) (*ProposalRecord, error) {
 	var out ProposalRecord
-	_, err := c.userDo(ctx, "POST", "/v2/me/proposals", accessToken, map[string]any{
+	err := c.userPost(ctx, "/v2/me/proposals", accessToken, actor, map[string]any{
 		"entity_type": entityType,
 		"entity_id":   FormatID(entityID),
 		"patch":       patch,
@@ -146,8 +146,10 @@ func (c *Client) WithdrawProposal(ctx context.Context, accessToken string, id in
 	if err != nil {
 		return nil, err
 	}
+	// infra's cond.go treats only a bare * as the wildcard; the quoted one it
+	// used to send matched nothing, so this fallback answered 412 every time.
 	if etag == "" {
-		etag = `"*"`
+		etag = "*"
 	}
 	var out ProposalRecord
 	if _, err := c.do(ctx, "PATCH", "/v2/me/proposals/"+FormatID(id), accessToken, etag,

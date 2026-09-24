@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -15,8 +16,8 @@ import (
 func TestResolveTaxonomyIDStatusCodes(t *testing.T) {
 	const (
 		labelHit  = `{"object":"list","items":[{"id":"8801","display_name":"Brand"}]}`
-		labelMiss = `{"object":"list","items":[],"missing":["galgame_wiki:31"]}`
-		routeGone = `{"code":"NOT_FOUND","status":404,"title":"Not found"}`
+		labelMiss = `{"object":"list","items":[],"missing":["curated:31"]}`
+		routeGone = "NOT_FOUND"
 	)
 
 	cases := []struct {
@@ -51,7 +52,7 @@ func TestResolveTaxonomyIDStatusCodes(t *testing.T) {
 		{
 			name:           "an official the registry has no anchor for is a 404",
 			path:           "/taxonomy/resolve/official/31",
-			upstreamStatus: http.StatusNotFound, upstreamBody: labelMiss,
+			upstreamStatus: http.StatusOK, upstreamBody: labelMiss,
 			wantStatus: http.StatusNotFound,
 		},
 		{
@@ -74,11 +75,12 @@ func TestResolveTaxonomyIDStatusCodes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				if tc.upstreamStatus != 0 {
-					w.WriteHeader(tc.upstreamStatus)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.upstreamStatus >= 400 {
+					catalogv2test.Problem(w, r, tc.upstreamBody, "No company with this ref.", nil)
+					return
 				}
+				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(tc.upstreamBody))
 			}))
 			t.Cleanup(upstream.Close)

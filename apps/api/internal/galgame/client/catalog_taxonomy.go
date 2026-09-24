@@ -158,12 +158,12 @@ func preferredIntro(rows []catalogIntroRow) string {
 func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "tag not found"}
+		return nil, catalogv2.Absent("GET /v2/catalog/tags/{id}")
 	}
 	gate := gateFor(q.Get("content_limit"))
 	rec, err := c.v2.GetTag(ctx, id, true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	members, total, err := c.taxonomyMembers(ctx, "tag_id", id, q, gate)
 	if err != nil {
@@ -190,12 +190,12 @@ func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Value
 func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "series not found"}
+		return nil, catalogv2.Absent("GET /v2/catalog/series/{id}")
 	}
 	gate := gateFor(q.Get("content_limit"))
 	rec, err := c.v2.GetSeries(ctx, id, true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	members, total, err := c.taxonomyMembers(ctx, "series_id", id, q, gate)
 	if err != nil {
@@ -218,12 +218,12 @@ func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Va
 func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "official not found"}
+		return nil, catalogv2.Absent("GET /v2/catalog/companies/{id}")
 	}
 	gate := gateFor(q.Get("content_limit"))
 	rec, err := c.v2.GetCompany(ctx, id, true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	roster, err := c.companyMembers(ctx, id, q, gate)
 	if err != nil {
@@ -272,7 +272,7 @@ func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64
 	}
 	data, err := c.v2.ListWorks(ctx, query)
 	if err != nil {
-		return nil, 0, catalogErr(err)
+		return nil, 0, err
 	}
 	out := make([]GalgameBrief, 0, len(data.Items))
 	for i := range data.Items {

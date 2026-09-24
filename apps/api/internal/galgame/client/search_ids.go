@@ -23,7 +23,7 @@ func (c *Client) SearchGalgameIDs(ctx context.Context, q, contentLimit string, l
 		ContentLimit: gateFor(contentLimit).contentLimit,
 	})
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	ids := make([]int, 0, len(page.Items))
 	for i := range page.Items {

@@ -5,59 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"github.com/redis/go-redis/v9"
 )
 
 var (
 	ErrNotConfigured = errors.New("catalogv2: not configured")
-	ErrNotFound      = errors.New("catalogv2: not found")
-	ErrUnauthorized  = errors.New("catalogv2: unauthorized")
-	ErrForbidden     = errors.New("catalogv2: forbidden")
 	ErrNoAccessToken = errors.New("catalogv2: no access token on the session")
 )
-
-type Problem struct {
-	Type      string         `json:"type"`
-	Title     string         `json:"title"`
-	Status    int            `json:"status"`
-	Detail    string         `json:"detail"`
-	Code      string         `json:"code"`
-	Object    string         `json:"object"`
-	CurrentID string         `json:"current_id"`
-	Errors    []ProblemField `json:"errors"`
-}
-
-// Exactly one of Pointer / Parameter / Header is set. The pointer prefix is not
-// consistent — a validation failure emits "/<key>", an unknown or locked field
-// emits "/patch/<key>" — which is why the browser side parses it rather than
-// this one.
-type ProblemField struct {
-	Pointer   string `json:"pointer,omitempty"`
-	Parameter string `json:"parameter,omitempty"`
-	Header    string `json:"header,omitempty"`
-	Reason    string `json:"reason"`
-	Detail    string `json:"detail"`
-}
-
-func (p *Problem) Error() string {
-	if p == nil {
-		return ""
-	}
-	if p.Detail != "" {
-		return p.Detail
-	}
-	return p.Title
-}
-
-func (p *Problem) Merged() bool {
-	return p != nil && p.Code == "ENTITY_MERGED" && p.CurrentID != ""
-}
 
 type Client struct {
 	http   *http.Client
@@ -96,8 +58,8 @@ func (c *Client) Configured() bool {
 // Every S2S read goes through here, so this is where the shared read cache
 // belongs; user-token reads take userDo and are never cached. Decoding into a
 // json.RawMessage is what makes one body serve both the cache and the caller:
-// do() hands the verbatim bytes back without a second request, and a 204 or an
-// empty body leaves raw nil, exactly as before.
+// send() hands the verbatim bytes back without a second request, and a 204 or
+// an empty body leaves raw nil, exactly as before.
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	if body, ok := c.cacheGet(ctx, path); ok {
 		return json.Unmarshal(body, out)
@@ -113,42 +75,64 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	return json.Unmarshal(raw, out)
 }
 
+type call struct {
+	method  string
+	path    string
+	token   string
+	ifMatch string
+	idemKey string
+	body    []byte
+}
+
 func (c *Client) do(ctx context.Context, method, path, userToken, ifMatch string, body any, out any) (string, error) {
-	if !c.Configured() {
-		return "", ErrNotConfigured
-	}
-	var rdr io.Reader
+	var raw []byte
 	if body != nil {
-		raw, err := json.Marshal(body)
+		b, err := json.Marshal(body)
 		if err != nil {
 			return "", err
 		}
-		rdr = bytes.NewReader(raw)
+		raw = b
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.origin+path, rdr)
+	return c.send(ctx, call{method: method, path: path, token: userToken, ifMatch: ifMatch, body: raw}, out)
+}
+
+func (c *Client) send(ctx context.Context, in call, out any) (string, error) {
+	if !c.Configured() {
+		return "", ErrNotConfigured
+	}
+	route, _, _ := strings.Cut(in.path, "?")
+	op := in.method + " " + route
+	var rdr io.Reader
+	if in.body != nil {
+		rdr = bytes.NewReader(in.body)
+	}
+	req, err := http.NewRequestWithContext(ctx, in.method, c.origin+in.path, rdr)
 	if err != nil {
 		return "", err
 	}
-	if userToken != "" {
-		req.Header.Set("Authorization", "Bearer "+userToken)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	bearer := c.apiKey
+	if in.token != "" {
+		bearer = in.token
 	}
-	if ifMatch != "" {
-		req.Header.Set("If-Match", ifMatch)
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Accept", "application/json, application/problem+json")
+	if in.ifMatch != "" {
+		req.Header.Set("If-Match", in.ifMatch)
 	}
-	if body != nil {
+	if in.idemKey != "" {
+		req.Header.Set("Idempotency-Key", in.idemKey)
+	}
+	if in.body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("catalog v2 request: %w", err)
+		return "", upstream.Transport(service, op, err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := upstream.ReadBody(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("catalog v2 read: %w", err)
+		return "", upstream.Transport(service, op, err)
 	}
 	etag := strings.TrimSpace(resp.Header.Get("ETag"))
 	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
@@ -159,31 +143,12 @@ func (c *Client) do(ctx context.Context, method, path, userToken, ifMatch string
 			return etag, nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
-			return etag, fmt.Errorf("catalog v2 decode: %w", err)
+			return etag, &upstream.Error{Service: service, Op: op, Kind: upstream.Internal,
+				Status: resp.StatusCode, RequestID: resp.Header.Get("X-Request-ID"), Cause: err}
 		}
 		return etag, nil
 	}
-	var p Problem
-	_ = json.Unmarshal(raw, &p)
-	if p.Status == 0 {
-		p.Status = resp.StatusCode
-	}
-	if p.Detail == "" {
-		p.Detail = strings.TrimSpace(string(raw))
-	}
-	if p.Merged() {
-		return etag, &p
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		return etag, ErrNotFound
-	}
-	if p.Code == "" && resp.StatusCode == http.StatusUnauthorized {
-		return etag, ErrUnauthorized
-	}
-	if p.Code == "" && resp.StatusCode == http.StatusForbidden {
-		return etag, ErrForbidden
-	}
-	return etag, &p
+	return etag, failure(op, in.method, in.token != "", resp, raw)
 }
 
 func (c *Client) userDo(ctx context.Context, method, path, accessToken string, body, out any) (string, error) {
@@ -191,4 +156,25 @@ func (c *Client) userDo(ctx context.Context, method, path, accessToken string, b
 		return "", ErrNoAccessToken
 	}
 	return c.do(ctx, method, path, accessToken, "", body, out)
+}
+
+// userPost is every POST that creates something. The key is the actor, the
+// route and the exact bytes sent, plus whatever else the caller says makes
+// this write distinct; catalog replays the first answer to a repeat of it for
+// 24h, so a reader who retries a submit that timed out gets back the record
+// the first attempt made instead of a second one.
+func (c *Client) userPost(ctx context.Context, path, accessToken string, actor int, body, out any, scope ...string) error {
+	if accessToken == "" {
+		return ErrNoAccessToken
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	parts := append([]string{strconv.Itoa(actor), http.MethodPost + " " + path, string(raw)}, scope...)
+	_, err = c.send(ctx, call{
+		method: http.MethodPost, path: path, token: accessToken,
+		idemKey: upstream.IdempotencyKey(parts...), body: raw,
+	}, out)
+	return err
 }

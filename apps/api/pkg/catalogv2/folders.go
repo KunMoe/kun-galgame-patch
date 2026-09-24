@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // Mirrors the catalog's own caps. Both are refused upstream with 422; they are
@@ -27,6 +28,8 @@ const folderPageMax = 100
 // small — production p50 is 5 folders per person and 2 items per folder, p99
 // is 370 items — so sorting locally costs one request in the ordinary case.
 const folderWalkPages = FolderItemsMax/folderPageMax + 1
+
+const folderWalkBudget = 20 * time.Second
 
 type Folder struct {
 	ID          int64  `json:"id"`
@@ -88,11 +91,13 @@ type FolderWrite struct {
 	IsDefault   *bool   `json:"is_default,omitempty"`
 }
 
-func walkFolderPages[T any](ctx context.Context, fetch func(cursor string) (List[T], error)) ([]T, error) {
+func walkFolderPages[T any](ctx context.Context, fetch func(ctx context.Context, cursor string) (List[T], error)) ([]T, error) {
+	ctx, cancel := context.WithTimeout(ctx, folderWalkBudget)
+	defer cancel()
 	var out []T
 	cursor := ""
 	for page := 0; page < folderWalkPages; page++ {
-		got, err := fetch(cursor)
+		got, err := fetch(ctx, cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +123,7 @@ func folderQuery(cursor string, extra url.Values) string {
 }
 
 func (c *Client) MyFolders(ctx context.Context, accessToken string) ([]Folder, error) {
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderWire], error) {
 		var page List[folderWire]
 		_, e := c.userDo(ctx, http.MethodGet, "/v2/me/folders"+folderQuery(cursor, nil), accessToken, nil, &page)
 		return page, e
@@ -130,7 +135,7 @@ func (c *Client) MyFolders(ctx context.Context, accessToken string) ([]Folder, e
 // request — the question the add-to-folder picker asks on every game page.
 func (c *Client) MyFoldersHolding(ctx context.Context, accessToken string, workID int64) ([]Folder, error) {
 	extra := url.Values{"contains_work_id": {strconv.FormatInt(workID, 10)}}
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderWire], error) {
 		var page List[folderWire]
 		_, e := c.userDo(ctx, http.MethodGet, "/v2/me/folders"+folderQuery(cursor, extra), accessToken, nil, &page)
 		return page, e
@@ -140,7 +145,7 @@ func (c *Client) MyFoldersHolding(ctx context.Context, accessToken string, workI
 
 func (c *Client) MyFolderItems(ctx context.Context, accessToken string, folderID int64) ([]FolderItem, error) {
 	path := "/v2/me/folders/" + strconv.FormatInt(folderID, 10) + "/items"
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderItemWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderItemWire], error) {
 		var page List[folderItemWire]
 		_, e := c.userDo(ctx, http.MethodGet, path+folderQuery(cursor, nil), accessToken, nil, &page)
 		return page, e
@@ -190,7 +195,7 @@ func (c *Client) MyFolder(ctx context.Context, accessToken string, folderID int6
 // read the bearer's OWN folders, which says nothing about anybody else's.
 func (c *Client) PublicFolders(ctx context.Context, ownerUID int64) ([]Folder, error) {
 	extra := url.Values{"owner_uid": {strconv.FormatInt(ownerUID, 10)}}
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderWire], error) {
 		var page List[folderWire]
 		e := c.get(ctx, "/v2/folders"+folderQuery(cursor, extra), &page)
 		return page, e
@@ -209,7 +214,7 @@ func (c *Client) PublicFolder(ctx context.Context, folderID int64) (*Folder, err
 
 func (c *Client) PublicFolderItems(ctx context.Context, folderID int64) ([]FolderItem, error) {
 	path := "/v2/folders/" + strconv.FormatInt(folderID, 10) + "/items"
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderItemWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderItemWire], error) {
 		var page List[folderItemWire]
 		e := c.get(ctx, path+folderQuery(cursor, nil), &page)
 		return page, e
@@ -217,9 +222,9 @@ func (c *Client) PublicFolderItems(ctx context.Context, folderID int64) ([]Folde
 	return itemsView(rows), err
 }
 
-func (c *Client) CreateFolder(ctx context.Context, accessToken string, in FolderWrite) (*Folder, error) {
+func (c *Client) CreateFolder(ctx context.Context, accessToken string, actor int, in FolderWrite, scope ...string) (*Folder, error) {
 	var out folderWire
-	if _, err := c.userDo(ctx, http.MethodPost, "/v2/me/folders", accessToken, in, &out); err != nil {
+	if err := c.userPost(ctx, "/v2/me/folders", accessToken, actor, in, &out, scope...); err != nil {
 		return nil, err
 	}
 	f := out.view()

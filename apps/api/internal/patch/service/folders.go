@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sort"
 
-	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -182,8 +180,8 @@ func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, 
 	return out, nil
 }
 
-func (s *PatchService) CreateFolder(ctx context.Context, token, name, description, visibility string) (*FolderView, error) {
-	f, err := s.galgame.V2().CreateFolder(ctx, token, catalogv2.FolderWrite{
+func (s *PatchService) CreateFolder(ctx context.Context, token string, userID int, name, description, visibility string) (*FolderView, error) {
+	f, err := s.galgame.V2().CreateFolder(ctx, token, userID, catalogv2.FolderWrite{
 		Name: &name, Description: &description, Visibility: &visibility,
 	})
 	if err != nil {
@@ -277,198 +275,4 @@ func pageOfIDs(ids []int, page, limit int) []int {
 		return nil
 	}
 	return ids[start:min(start+limit, len(ids))]
-}
-
-// FoldersForPatch is the add-to-folder picker: every folder the person owns,
-// each flagged with whether it already holds this game. The person's first
-// visit creates their default folder, because a site with a heart button and
-// no folder to put things in is not a state anyone chose.
-func (s *PatchService) FoldersForPatch(ctx context.Context, token string, patchID int) ([]FolderMembership, error) {
-	workID, err := s.workIDOf(patchID)
-	if err != nil {
-		return nil, err
-	}
-	folders, err := s.galgame.V2().MyFolders(ctx, token)
-	if err != nil {
-		return nil, err
-	}
-	if len(folders) == 0 {
-		created, cErr := s.ensureDefaultFolder(ctx, token)
-		if cErr != nil {
-			return nil, cErr
-		}
-		folders = []catalogv2.Folder{*created}
-	}
-	holding, err := s.galgame.V2().MyFoldersHolding(ctx, token, workID)
-	if err != nil {
-		return nil, err
-	}
-	has := map[int64]bool{}
-	for _, f := range holding {
-		has[f.ID] = true
-	}
-	sortFolders(folders)
-	out := make([]FolderMembership, 0, len(folders))
-	for _, f := range folders {
-		out = append(out, FolderMembership{FolderView: folderView(f), Contains: has[f.ID]})
-	}
-	return out, nil
-}
-
-// SetPatchFolders makes the person's folders holding this game exactly the set
-// they asked for.
-func (s *PatchService) SetPatchFolders(ctx context.Context, token string, patchID, userID int, targets []int64) error {
-	workID, err := s.workIDOf(patchID)
-	if err != nil {
-		return err
-	}
-	owned, err := s.galgame.V2().MyFolders(ctx, token)
-	if err != nil {
-		return err
-	}
-	mine := map[int64]bool{}
-	for _, f := range owned {
-		mine[f.ID] = true
-	}
-	want := map[int64]bool{}
-	for _, id := range targets {
-		if !mine[id] {
-			return fmt.Errorf("folder %d is not yours", id)
-		}
-		want[id] = true
-	}
-
-	holding, err := s.galgame.V2().MyFoldersHolding(ctx, token, workID)
-	if err != nil {
-		return err
-	}
-	current := map[int64]bool{}
-	for _, f := range holding {
-		current[f.ID] = true
-	}
-	for id := range want {
-		if !current[id] {
-			if err := s.galgame.V2().PutFolderItem(ctx, token, id, workID); err != nil {
-				return err
-			}
-		}
-	}
-	for id := range current {
-		if !want[id] {
-			if err := s.galgame.V2().DeleteFolderItem(ctx, token, id, workID); err != nil {
-				return err
-			}
-		}
-	}
-	s.settleFavoriteSideEffects(ctx, patchID, userID, len(current) == 0 && len(want) > 0, len(current) > 0 && len(want) == 0)
-	return nil
-}
-
-func (s *PatchService) ensureDefaultFolder(ctx context.Context, token string) (*catalogv2.Folder, error) {
-	// Deliberately unnamed: the backfill wrote empty names for every default
-	// folder it created, and clients derive the label from the owner's name.
-	// Inventing one here would freeze a language into somebody else's view.
-	empty, isDefault := "", true
-	pub := catalogv2.FolderVisibilityPublic
-	return s.galgame.V2().CreateFolder(ctx, token, catalogv2.FolderWrite{
-		Name: &empty, Description: &empty, Visibility: &pub, IsDefault: &isDefault,
-	})
-}
-
-func (s *PatchService) defaultFolderID(ctx context.Context, token string) (int64, error) {
-	folders, err := s.galgame.V2().MyFolders(ctx, token)
-	if err != nil {
-		return 0, err
-	}
-	for _, f := range folders {
-		if f.IsDefault {
-			return f.ID, nil
-		}
-	}
-	// A person can end up with folders but no default — the flag moves, and a
-	// moderator may have deleted the folder that held it. Making one is
-	// cheaper than refusing the heart button.
-	created, cErr := s.ensureDefaultFolder(ctx, token)
-	if cErr != nil {
-		return 0, cErr
-	}
-	return created.ID, nil
-}
-
-// ToggleFavoriteInCatalog is the heart button. In means "in my default
-// folder"; out means "in none of my folders", so unfavouriting a game the
-// person also filed by hand removes it from those folders too — the button
-// says favourited, and it has to be able to make that false.
-func (s *PatchService) ToggleFavoriteInCatalog(ctx context.Context, token string, patchID, userID int) (bool, error) {
-	workID, err := s.workIDOf(patchID)
-	if err != nil {
-		return false, err
-	}
-	if _, err := s.ensureLocalPatch(ctx, patchID, userID); err != nil {
-		return false, fmt.Errorf("patch not found")
-	}
-
-	holding, err := s.galgame.V2().MyFoldersHolding(ctx, token, workID)
-	if err != nil {
-		return false, err
-	}
-	if len(holding) > 0 {
-		for _, f := range holding {
-			if dErr := s.galgame.V2().DeleteFolderItem(ctx, token, f.ID, workID); dErr != nil {
-				return false, dErr
-			}
-		}
-		s.settleFavoriteSideEffects(ctx, patchID, userID, false, true)
-		return false, nil
-	}
-
-	folderID, err := s.defaultFolderID(ctx, token)
-	if err != nil {
-		return false, err
-	}
-	if err := s.galgame.V2().PutFolderItem(ctx, token, folderID, workID); err != nil {
-		return false, err
-	}
-	s.settleFavoriteSideEffects(ctx, patchID, userID, true, false)
-	return true, nil
-}
-
-func (s *PatchService) IsFavoritedInCatalog(ctx context.Context, token string, patchID int) bool {
-	if token == "" {
-		return false
-	}
-	workID, err := s.workIDOf(patchID)
-	if err != nil {
-		return false
-	}
-	held, err := favorite.Holds(ctx, s.galgame, token, workID)
-	return err == nil && held
-}
-
-// The local counter and the author's moemoepoints follow the upstream write,
-// never precede it. patch.favorite_count backs this site's own sorting; the
-// number a reader sees on a game page comes from the catalog's
-// nextmoe/favorites row, which counts people across every site.
-//
-// The award key names the favouriter. Keyed on the game alone it paid the
-// author for the first favourite a game ever got and replayed every later one
-// as a no-op (2026-09-07 to 2026-09-24). Without a per-favourite row id to key
-// on, a favourite that is taken back and given again pays nothing the second
-// time.
-func (s *PatchService) settleFavoriteSideEffects(ctx context.Context, patchID, userID int, added, removed bool) {
-	if !added && !removed {
-		return
-	}
-	delta, event := 1, "favorited"
-	if removed {
-		delta, event = -1, "unfavorited"
-	}
-	s.repo.UpdateCount(patchID, "favorite_count", delta)
-
-	patch, err := s.repo.GetPatchDetail(patchID)
-	if err != nil || patch == nil || patch.UserID == 0 || patch.UserID == userID {
-		return
-	}
-	go s.mp.Award(context.WithoutCancel(ctx), patch.UserID, delta, "liked",
-		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:%s:%d:%d", event, patchID, userID))
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -83,7 +82,7 @@ func workOfGID(ctx context.Context, v2 *catalogv2.Client, gid int) (int64, bool,
 		if id, ok := w.IntID(); ok {
 			return id, true, nil
 		}
-	case err != nil && !errors.Is(err, catalogv2.ErrNotFound):
+	case err != nil && !catalogv2.IsNotFound(err):
 		return 0, false, err
 	}
 
@@ -91,7 +90,7 @@ func workOfGID(ctx context.Context, v2 *catalogv2.Client, gid int) (int64, bool,
 		IDs: []int64{int64(gid)}, NSFW: true, Limit: 1,
 	})
 	if err != nil {
-		if errors.Is(err, catalogv2.ErrNotFound) {
+		if catalogv2.IsNotFound(err) {
 			return 0, false, nil
 		}
 		return 0, false, err

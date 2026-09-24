@@ -89,6 +89,11 @@ const save = async () => {
 
       <KunLoading v-if="loading" description="加载中..." />
 
+      <KunNull
+        v-else-if="!folders.length"
+        description="还没有收藏夹，在下方新建一个吧"
+      />
+
       <div v-else class="max-h-72 space-y-2 overflow-y-auto">
         <label
           v-for="folder in folders"

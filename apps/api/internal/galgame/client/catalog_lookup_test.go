@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 )
 
 type scripted struct {
@@ -95,11 +97,33 @@ func TestCheckGalgameByVndbIDAnswersThePageID(t *testing.T) {
 	}
 }
 
-func TestCatalogAbsentRequiresTheCatalogsOwnEnvelope(t *testing.T) {
-	if !catalogAbsent(&GalgameError{Code: catalogCodeNotFound, HTTPStatus: 404}) {
-		t.Fatal("404 + catalog not-found must be absence")
-	}
-	if catalogAbsent(&GalgameError{Code: 5, HTTPStatus: 500}) {
-		t.Fatal("a 500 is never absence")
+func TestAbsenceRequiresTheCatalogsOwnProblem(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		answer func(w http.ResponseWriter, r *http.Request)
+		absent bool
+	}{
+		{"catalog's own NOT_FOUND", func(w http.ResponseWriter, r *http.Request) {
+			catalogv2test.Problem(w, r, "NOT_FOUND", "No work with this id.", nil)
+		}, true},
+		{"a proxy's 404 page", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("404 page not found"))
+		}, false},
+		{"catalog falling over", func(w http.ResponseWriter, r *http.Request) {
+			catalogv2test.Problem(w, r, "INTERNAL_ERROR", "panic recovered", nil)
+		}, false},
+		{"a merge", func(w http.ResponseWriter, r *http.Request) {
+			catalogv2test.Problem(w, r, "ENTITY_MERGED", "merged", map[string]any{"object": "work", "current_id": "9"})
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(tc.answer))
+			t.Cleanup(srv.Close)
+			_, err := NewWithKey(srv.URL, "nmk_test_key").GetGalgame(context.Background(), 1, "")
+			if err == nil || IsAbsent(err) != tc.absent {
+				t.Fatalf("IsAbsent = %v, want %v: %v", IsAbsent(err), tc.absent, err)
+			}
+		})
 	}
 }

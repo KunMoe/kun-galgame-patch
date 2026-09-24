@@ -70,7 +70,7 @@ func (h *PatchHandler) MyFolders(c fiber.Ctx) error {
 	}
 	folders, err := h.service.MyFolders(c.Context(), token, utils.ContentLimitForListBrowse(c))
 	if err != nil {
-		return catalogErr(c, err, "读取收藏夹失败")
+		return catalogErr(c, err, "收藏夹不存在或未公开")
 	}
 	return response.OK(c, fiber.Map{"folders": folders})
 }
@@ -87,14 +87,14 @@ func (h *PatchHandler) UserFolders(c fiber.Ctx) error {
 		if token := middleware.GetAccessToken(c); token != "" {
 			folders, mErr := h.service.MyFolders(c.Context(), token, cl)
 			if mErr != nil {
-				return catalogErr(c, mErr, "读取收藏夹失败")
+				return catalogErr(c, mErr, "收藏夹不存在或未公开")
 			}
 			return response.OK(c, fiber.Map{"folders": folders})
 		}
 	}
 	folders, pErr := h.service.PublicFolders(c.Context(), ownerID, cl)
 	if pErr != nil {
-		return catalogErr(c, pErr, "读取收藏夹失败")
+		return catalogErr(c, pErr, "收藏夹不存在或未公开")
 	}
 	return response.OK(c, fiber.Map{"folders": folders})
 }
@@ -119,9 +119,9 @@ func (h *PatchHandler) CreateFolder(c fiber.Ctx) error {
 	if req.Description != nil {
 		description = *req.Description
 	}
-	folder, err := h.service.CreateFolder(c.Context(), token, *req.Name, description, visibility)
+	folder, err := h.service.CreateFolder(c.Context(), token, middleware.MustGetUser(c).ID, *req.Name, description, visibility)
 	if err != nil {
-		return catalogErr(c, err, "创建收藏夹失败")
+		return catalogErr(c, err, "无法创建收藏夹")
 	}
 	return response.OK(c, folder)
 }
@@ -149,7 +149,7 @@ func (h *PatchHandler) UpdateFolder(c fiber.Ctx) error {
 		Name: req.Name, Description: req.Description, Visibility: req.Visibility,
 	})
 	if err != nil {
-		return catalogErr(c, err, "更新收藏夹失败")
+		return catalogErr(c, err, "无法更新该收藏夹，请刷新后重试")
 	}
 	return response.OK(c, folder)
 }
@@ -164,7 +164,7 @@ func (h *PatchHandler) DeleteFolder(c fiber.Ctx) error {
 		return response.Error(c, idErr)
 	}
 	if err := h.service.DeleteFolder(c.Context(), token, folderID); err != nil {
-		return catalogErr(c, err, "删除收藏夹失败")
+		return catalogErr(c, err, "无法删除该收藏夹")
 	}
 	return response.OK(c, fiber.Map{"deleted": true})
 }
@@ -185,7 +185,7 @@ func (h *PatchHandler) FolderDetail(c fiber.Ctx) error {
 		folder, patches, total, err = h.service.FolderPatches(c.Context(), "", folderID, false, page, limit)
 	}
 	if err != nil {
-		return catalogErr(c, err, "读取收藏夹失败")
+		return catalogErr(c, err, "收藏夹不存在或未公开")
 	}
 	// The rows have to leave here as cards. Sent raw they carry no name, no
 	// cover and no count, and the shelf drew ten framed placeholders reading
@@ -207,7 +207,7 @@ func (h *PatchHandler) FoldersForPatch(c fiber.Ctx) error {
 	}
 	folders, fErr := h.service.FoldersForPatch(c.Context(), token, id)
 	if fErr != nil {
-		return catalogErr(c, fErr, "读取收藏夹失败")
+		return catalogErr(c, fErr, "收藏夹不存在或已被删除，请刷新后重试")
 	}
 	return response.OK(c, fiber.Map{"folders": folders})
 }
@@ -229,7 +229,7 @@ func (h *PatchHandler) SetPatchFolders(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest("收藏夹数量超出上限"))
 	}
 	if sErr := h.service.SetPatchFolders(c.Context(), token, id, middleware.MustGetUser(c).ID, req.FolderIDs); sErr != nil {
-		return catalogErr(c, sErr, "更新收藏失败")
+		return catalogErr(c, sErr, "无法更新收藏，请刷新后重试")
 	}
 	return response.OK(c, fiber.Map{"favorited": len(req.FolderIDs) > 0})
 }

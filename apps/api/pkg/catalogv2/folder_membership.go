@@ -58,7 +58,7 @@ func (c *Client) MyFolderHoldings(ctx context.Context, accessToken string, workI
 // SCOPE_REQUIRED here and nowhere else.
 func (c *Client) FolderHolders(ctx context.Context, workID int64) ([]int64, error) {
 	extra := url.Values{"work_id": {strconv.FormatInt(workID, 10)}}
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderHolderWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderHolderWire], error) {
 		var page List[folderHolderWire]
 		e := c.get(ctx, "/v2/folders/holders"+folderQuery(cursor, extra), &page)
 		return page, e
@@ -80,7 +80,7 @@ func (c *Client) FolderHolders(ctx context.Context, workID int64) ([]int64, erro
 // what a confirmation needs.
 func (c *Client) UserFolders(ctx context.Context, accessToken string, ownerUID int64) ([]Folder, error) {
 	path := "/v2/moderation/users/" + strconv.FormatInt(ownerUID, 10) + "/folders"
-	rows, err := walkFolderPages(ctx, func(cursor string) (List[folderWire], error) {
+	rows, err := walkFolderPages(ctx, func(ctx context.Context, cursor string) (List[folderWire], error) {
 		var page List[folderWire]
 		_, e := c.userDo(ctx, http.MethodGet, path+folderQuery(cursor, nil), accessToken, nil, &page)
 		return page, e

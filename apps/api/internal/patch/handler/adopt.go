@@ -18,16 +18,16 @@ func (h *PatchHandler) claimOnFirstResource(c fiber.Ctx, gid int) {
 		return
 	}
 	workID := int64(gid)
-	if appErr := adoptAndPublish(c, h.catalogV2(), token, workID); appErr != nil {
+	if appErr := adoptAndPublish(c, h.catalogV2(), token, middleware.GetUserID(c), workID); appErr != nil {
 		slog.Warn("resource: 静默收录 catalog 作品失败", "gid", gid, "work_id", workID, "error", appErr)
 	}
 }
 
-func adoptAndPublish(c fiber.Ctx, v2 *catalogv2.Client, token string, workID int64) error {
+func adoptAndPublish(c fiber.Ctx, v2 *catalogv2.Client, token string, actor int, workID int64) error {
 	if v2 == nil || !v2.Configured() {
 		return catalogv2.ErrNotConfigured
 	}
-	_, claimErr := v2.CreateClaim(c.Context(), token, workID, workID)
+	_, claimErr := v2.CreateClaim(c.Context(), token, actor, workID, workID)
 	if _, pubErr := v2.PatchClaim(c.Context(), token, workID, catalogv2.ClaimStateLive, anyState); pubErr != nil {
 		if claimErr != nil {
 			return claimErr
@@ -54,6 +54,10 @@ func (h *PatchHandler) patchClaim(c fiber.Ctx, token string, workID int64, state
 // work predates this site, so that would take a VNDB entry down with the patch
 // page. The read's ETag is what keeps that decision honest — an approval racing
 // it answers 412 instead of pointing the delete at a work that just went live.
+//
+// Once the withdraw has landed the submission is off its author's list whatever
+// the delete does, so a delete that fails after it is logged rather than
+// answered as a failed withdraw.
 func (h *PatchHandler) withdrawClaim(c fiber.Ctx, token string, workID int64) error {
 	v2 := h.catalogV2()
 	if v2 == nil || !v2.Configured() {
@@ -72,5 +76,9 @@ func (h *PatchHandler) withdrawClaim(c fiber.Ctx, token string, workID int64) er
 	if claim.State != catalogv2.ClaimStatePending {
 		return nil
 	}
-	return v2.DeleteClaim(c.Context(), token, workID)
+	if err := v2.DeleteClaim(c.Context(), token, workID); err != nil {
+		slog.Warn("withdraw: the claim is withdrawn but its draft was not deleted",
+			"work_id", workID, "error", err)
+	}
+	return nil
 }
