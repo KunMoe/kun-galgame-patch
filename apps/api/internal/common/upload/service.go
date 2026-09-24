@@ -13,6 +13,7 @@ import (
 
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/constants"
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
 
 	"github.com/redis/go-redis/v9"
@@ -55,6 +56,33 @@ func (s *Service) unmarkComplete(uuid string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	s.rdb.Del(ctx, "upload:complete:"+uuid)
+}
+
+// The artifact service checks the uploader only when the call carries a user
+// token. moyu calls it with the site-wide key, so until this record existed any
+// session could delete a published file by passing its artifact_uuid (which
+// every resource list served) to /upload/abort.
+const uploadOwnerTTL = 7 * 24 * time.Hour
+
+var (
+	errNotUploadOwner = errors.New("上传会话不存在或已过期，请重新上传")
+	errArtifactInUse  = errors.New("该文件已用于资源，不能放弃上传")
+)
+
+func uploadOwnerKey(uuid string) string { return "upload:owner:" + uuid }
+
+func (s *Service) requireOwner(ctx context.Context, uuid string, userID int) error {
+	owner, err := s.rdb.Get(ctx, uploadOwnerKey(uuid)).Int()
+	if errors.Is(err, redis.Nil) {
+		return errNotUploadOwner
+	}
+	if err != nil {
+		return fmt.Errorf("read upload owner: %w", err)
+	}
+	if owner != userID {
+		return errNotUploadOwner
+	}
+	return nil
 }
 
 const oneGiB int64 = 1024 * 1024 * 1024
@@ -121,6 +149,9 @@ func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTie
 	if err != nil {
 		return nil, mapArtifactErr(err)
 	}
+	if err := s.rdb.Set(ctx, uploadOwnerKey(res.Uuid), userID, uploadOwnerTTL).Err(); err != nil {
+		return nil, fmt.Errorf("record upload owner: %w", err)
+	}
 
 	resp := &InitResponse{
 		ArtifactUUID: res.Uuid,
@@ -143,6 +174,9 @@ func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTie
 }
 
 func (s *Service) Complete(ctx context.Context, userID int, tier constants.UploadTier, req CompleteRequest) (*CompleteResponse, error) {
+	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+		return nil, err
+	}
 	var cr artifactclient.CompleteUploadRequest
 	if len(req.Parts) > 0 {
 		parts := make([]artifactclient.CompletedPart, 0, len(req.Parts))
@@ -198,7 +232,10 @@ func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, 
 	return nil
 }
 
-func (s *Service) Resume(ctx context.Context, req ResumeRequest) (*ResumeResponse, error) {
+func (s *Service) Resume(ctx context.Context, userID int, req ResumeRequest) (*ResumeResponse, error) {
+	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+		return nil, err
+	}
 	out, err := s.art.Resume(ctx, req.ArtifactUUID)
 	if err != nil {
 		return nil, mapArtifactErr(err)
@@ -233,8 +270,24 @@ func (s *Service) Resume(ctx context.Context, req ResumeRequest) (*ResumeRespons
 	return resp, nil
 }
 
-func (s *Service) Abort(ctx context.Context, req AbortRequest) error {
-	return s.art.Delete(ctx, req.ArtifactUUID)
+func (s *Service) Abort(ctx context.Context, userID int, req AbortRequest) error {
+	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+		return err
+	}
+	var inUse int64
+	if err := s.db.Model(&patchModel.PatchResource{}).
+		Where("artifact_uuid = ?", req.ArtifactUUID).
+		Count(&inUse).Error; err != nil {
+		return fmt.Errorf("check artifact usage: %w", err)
+	}
+	if inUse > 0 {
+		return errArtifactInUse
+	}
+	if err := s.art.Delete(ctx, req.ArtifactUUID); err != nil {
+		return err
+	}
+	s.rdb.Del(ctx, uploadOwnerKey(req.ArtifactUUID))
+	return nil
 }
 
 func mapArtifactErr(err error) error {
