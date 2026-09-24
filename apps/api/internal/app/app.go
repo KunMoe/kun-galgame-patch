@@ -104,6 +104,20 @@ func validateConfig(cfg *config.Config) {
 	}
 }
 
+// credentialSource names where an integration's client credentials came from:
+// an empty dedicated id or secret falls back to moyu's OAuth client silently,
+// and a half-dedicated pair authenticates as neither.
+func credentialSource(id, secret string) string {
+	switch {
+	case id != "" && secret != "":
+		return "dedicated"
+	case id == "" && secret == "":
+		return "oauth client"
+	default:
+		return "mixed: one dedicated, one from the oauth client"
+	}
+}
+
 func New(cfg *config.Config) *App {
 	validateConfig(cfg)
 
@@ -144,6 +158,12 @@ func New(cfg *config.Config) *App {
 		ClientID:     artCfg.ClientID,
 		ClientSecret: artCfg.ClientSecret,
 	})
+	if artCli.Configured() {
+		slog.Info("artifact client configured", "base_url", artCfg.BaseURL,
+			"credentials", credentialSource(cfg.Artifact.ClientID, cfg.Artifact.ClientSecret))
+	} else {
+		slog.Warn("artifact client NOT configured; resource uploads and download links fail — set KUN_ARTIFACT_SERVICE_BASE_URL + client creds")
+	}
 
 	if galgame.V2().Configured() {
 		slog.Info("catalog v2 client configured", "base_url", cfg.NextMoeAPI.BaseURL)
@@ -276,6 +296,12 @@ func New(cfg *config.Config) *App {
 		ClientID:     imgCfg.ClientID,
 		ClientSecret: imgCfg.ClientSecret,
 	})
+	if imgCli.Configured() {
+		slog.Info("image service client configured", "base_url", imgCfg.BaseURL, "cdn_base", imgCfg.CDNBase,
+			"credentials", credentialSource(cfg.ImageService.ClientID, cfg.ImageService.ClientSecret))
+	} else {
+		slog.Warn("image service client NOT configured; image uploads fail and content images lose their dimensions — set KUN_IMAGE_SERVICE_BASE_URL + client creds")
+	}
 
 	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
@@ -284,7 +310,7 @@ func New(cfg *config.Config) *App {
 	markdown.SetContentImageResolver(imgCli.VariantURL)
 	markdown.RegisterContentImageHost(imgCfg.CDNBase)
 
-	contentImageMeta := imgCli.NewMetaResolver(3 * time.Second)
+	contentImageMeta := imgCli.NewMetaResolver(1500 * time.Millisecond)
 	markdown.SetContentImageMetaResolver(func(hashes []string) map[string]markdown.ImageMeta {
 		got := contentImageMeta.Resolve(hashes)
 		out := make(map[string]markdown.ImageMeta, len(got))
