@@ -21,9 +21,10 @@ Backend-for-Frontend（BFF）会话**：
 
 ## 什么才算「会话已死」（2026-09-24）
 
-只有三种情况答 40101（前端据此登出）、`OptionalAuth` 按匿名处理：Redis 里没有这个
-会话、刷新途中已登出、`/oauth/token` 以 `invalid_grant` 拒绝 refresh token（此时删会话、
-清 cookie）。其余一律保留会话：
+只有四种情况答 40101（前端据此登出）、`OptionalAuth` 按匿名处理：Redis 里没有这个
+会话、刷新途中已登出、`/oauth/token` 以 `invalid_grant` 拒绝 refresh token、会话 blob
+解不开（例如某次部署改了 `SessionData` 字段类型；记 ERROR）。后两种会删会话、清 cookie。
+其余一律保留会话：
 
 | 情况 | 答复 |
 |---|---|

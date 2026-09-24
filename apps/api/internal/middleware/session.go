@@ -27,6 +27,7 @@ const (
 
 var (
 	errNoSession            = stderrors.New("session is gone")
+	errSessionUndecodable   = fmt.Errorf("undecodable: %w", errNoSession)
 	errSessionStore         = stderrors.New("session store")
 	errRefreshLockContended = stderrors.New("refresh lock contended")
 )
@@ -40,6 +41,9 @@ var oauthRefreshHTTP = &http.Client{Timeout: 10 * time.Second}
 func liveSession(c fiber.Ctx, rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string) (*SessionData, error) {
 	ctx := c.Context()
 	session, err := readSession(ctx, rdb, sessionID)
+	if stderrors.Is(err, errSessionUndecodable) {
+		clearSessionCookie(c)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +78,26 @@ func readSession(ctx context.Context, rdb *redis.Client, sessionID string) (*Ses
 	}
 	var session SessionData
 	if err := json.Unmarshal(data, &session); err != nil {
-		return nil, fmt.Errorf("decode session %s: %w", sessionID[:min(8, len(sessionID))], err)
+		return nil, dropUndecodableSession(ctx, rdb, sessionID, data, err)
 	}
 	return &session, nil
+}
+
+// An undecodable session is over, not broken: answered as a 500 it failed every
+// request the reader made for the 90 days its TTL keeps sliding, and a deploy
+// that changed a SessionData field's type would have done that to every
+// signed-in reader at once.
+func dropUndecodableSession(ctx context.Context, rdb *redis.Client, sessionID string, data []byte, decodeErr error) error {
+	var owner struct {
+		ID int `json:"id"`
+	}
+	_ = json.Unmarshal(data, &owner)
+	slog.Error("session blob does not decode; ending the session",
+		"sessionPrefix", sessionID[:min(8, len(sessionID))], "userID", owner.ID, "error", decodeErr)
+	if err := rdb.Del(ctx, SessionPrefix+sessionID).Err(); err != nil {
+		slog.Error("undecodable session not deleted", "error", err)
+	}
+	return errSessionUndecodable
 }
 
 func sessionFailure(c fiber.Ctx, err error) error {

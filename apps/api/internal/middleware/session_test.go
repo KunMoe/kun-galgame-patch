@@ -235,6 +235,40 @@ func TestSessionStoreFailureIsNotAnonymous(t *testing.T) {
 	}
 }
 
+// A deploy that changes a SessionData field's type leaves blobs like this in
+// Redis. Each one must end its own session, not 500 every request its reader
+// makes for as long as the TTL keeps sliding.
+func TestUndecodableSessionIsEnded(t *testing.T) {
+	const blob = `{"id":42,"sub":"sub-42","oauth_access_token":"a","oauth_refresh_token":"r","oauth_expires_at":"soon"}`
+	for _, tc := range []struct {
+		path       string
+		wantStatus int
+		wantCode   int
+	}{
+		{"/auth", http.StatusUnauthorized, 40101},
+		{"/optional", http.StatusOK, 0},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			rig := newSessionRig(t, nil)
+			rig.rdb.Set(context.Background(), SessionPrefix+"s1", blob, SessionTTL)
+
+			status, body, resp := rig.get(t, tc.path, "s1")
+			if status != tc.wantStatus || body.Code != tc.wantCode {
+				t.Fatalf("got %d/%d, want %d/%d", status, body.Code, tc.wantStatus, tc.wantCode)
+			}
+			if tc.path == "/optional" && body.Data != float64(0) {
+				t.Fatalf("optional auth over an undecodable session = user %v, want anonymous", body.Data)
+			}
+			if !clearsCookie(resp) {
+				t.Fatal("the undecodable session's cookie must be cleared")
+			}
+			if n, _ := rig.rdb.Exists(context.Background(), SessionPrefix+"s1").Result(); n != 0 {
+				t.Fatal("the undecodable session must be deleted")
+			}
+		})
+	}
+}
+
 func TestRefreshDoesNotResurrectALoggedOutSession(t *testing.T) {
 	var rig *sessionRig
 	fake := &tokenFake{status: http.StatusOK, body: tokenOK, hook: func() {
