@@ -15,6 +15,7 @@ import (
 	"kun-galgame-patch-api/internal/constants"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
+	apperrors "kun-galgame-patch-api/pkg/errors"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -89,21 +90,21 @@ const oneGiB int64 = 1024 * 1024 * 1024
 
 func (s *Service) validatePreUpload(userID int, fileName string, declaredSize int64, tier constants.UploadTier) error {
 	if declaredSize <= 0 || declaredSize > tier.MaxFileSize {
-		return fmt.Errorf("文件大小超过 %d GB 上限", tier.MaxFileSize/oneGiB)
+		return apperrors.ErrBadRequest(fmt.Sprintf("文件大小超过 %d GB 上限", tier.MaxFileSize/oneGiB))
 	}
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if !slices.Contains(constants.AllowedResourceExtensions, ext) {
-		return fmt.Errorf("不支持的文件类型: %s", ext)
+		return apperrors.ErrBadRequest("不支持的文件类型: " + ext)
 	}
 	if tier.DailyLimit == constants.UnlimitedDailyUpload {
 		return nil
 	}
 	var user authModel.User
 	if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
-		return fmt.Errorf("获取用户信息失败")
+		return fmt.Errorf("read daily upload size: %w", err)
 	}
 	if user.DailyUploadSize+declaredSize > tier.DailyLimit {
-		return fmt.Errorf("超过今日上传限额 (%d GB)", tier.DailyLimit/oneGiB)
+		return apperrors.ErrBadRequest(fmt.Sprintf("超过今日上传限额 (%d GB)", tier.DailyLimit/oneGiB))
 	}
 	return nil
 }
@@ -112,21 +113,27 @@ const dailyImageLimit = 50
 
 var errDailyImageLimit = errors.New("今日图片上传次数已达上限")
 
-func (s *Service) CheckDailyImageQuota(userID int) error {
-	var user authModel.User
-	if err := s.db.Select("daily_image_count").First(&user, userID).Error; err != nil {
-		return fmt.Errorf("查询上传配额失败: %w", err)
+// ReserveDailyImage spends one of the reader's daily image uploads before the
+// upload runs: checking first and counting afterwards let concurrent uploads
+// all pass the check.
+func (s *Service) ReserveDailyImage(userID int) error {
+	res := s.db.Model(&authModel.User{}).
+		Where("id = ? AND daily_image_count < ?", userID, dailyImageLimit).
+		UpdateColumn("daily_image_count", gorm.Expr("daily_image_count + 1"))
+	if res.Error != nil {
+		return fmt.Errorf("reserve daily image: %w", res.Error)
 	}
-	if user.DailyImageCount >= dailyImageLimit {
+	if res.RowsAffected == 0 {
 		return errDailyImageLimit
 	}
 	return nil
 }
 
-func (s *Service) IncrementDailyImageCount(userID int) {
-	if err := s.db.Model(&authModel.User{}).Where("id = ?", userID).
-		Update("daily_image_count", gorm.Expr("daily_image_count + 1")).Error; err != nil {
-		slog.Warn("IncrementDailyImageCount: bump failed", "user_id", userID, "error", err)
+func (s *Service) ReleaseDailyImage(userID int) {
+	if err := s.db.Model(&authModel.User{}).
+		Where("id = ? AND daily_image_count > 0", userID).
+		UpdateColumn("daily_image_count", gorm.Expr("daily_image_count - 1")).Error; err != nil {
+		slog.Warn("release daily image reservation failed", "user_id", userID, "error", err)
 	}
 }
 
@@ -147,9 +154,12 @@ func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTie
 
 	res, err := s.art.InitUpload(ctx, in)
 	if err != nil {
-		return nil, mapArtifactErr(err)
+		return nil, err
 	}
 	if err := s.rdb.Set(ctx, uploadOwnerKey(res.Uuid), userID, uploadOwnerTTL).Err(); err != nil {
+		if derr := s.art.Delete(context.WithoutCancel(ctx), res.Uuid); derr != nil {
+			slog.Warn("upload init: withdrawing the unowned upload failed", "artifact_uuid", res.Uuid, "error", derr)
+		}
 		return nil, fmt.Errorf("record upload owner: %w", err)
 	}
 
@@ -188,7 +198,7 @@ func (s *Service) Complete(ctx context.Context, userID int, tier constants.Uploa
 
 	art, err := s.art.CompleteUpload(ctx, req.ArtifactUUID, cr)
 	if err != nil {
-		return nil, mapArtifactErr(err)
+		return nil, err
 	}
 
 	size := art.FileSize
@@ -198,37 +208,39 @@ func (s *Service) Complete(ctx context.Context, userID int, tier constants.Uploa
 	return &CompleteResponse{ArtifactUUID: req.ArtifactUUID, Size: size}, nil
 }
 
+var errOverDailyUpload = apperrors.ErrBadRequest("超过今日上传限额，文件已删除")
+
+// deductQuotaOnce runs after the artifact service has stored the file, so a
+// local failure is logged and the upload still succeeds: an error here sent the
+// reader back to upload a file that was already stored.
 func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, size int64, tier constants.UploadTier) error {
 	first, err := s.markCompleteOnce(ctx, uuid)
 	if err != nil {
-		return fmt.Errorf("complete 幂等校验失败: %w", err)
+		slog.Error("upload complete: quota not deducted", "artifact_uuid", uuid, "user_id", userID, "error", err)
+		return nil
 	}
 	if !first {
 		return nil
 	}
-	deducted := false
-	defer func() {
-		if !deducted {
-			s.unmarkComplete(uuid)
-		}
-	}()
 
-	if tier.DailyLimit != constants.UnlimitedDailyUpload {
-		var user authModel.User
-		if err := s.db.Select("daily_upload_size").First(&user, userID).Error; err != nil {
-			return fmt.Errorf("获取用户信息失败")
-		}
-		if user.DailyUploadSize+size > tier.DailyLimit {
-			_ = s.art.Delete(context.Background(), uuid)
-			return fmt.Errorf("超过今日上传限额，已删除")
-		}
+	limited := tier.DailyLimit != constants.UnlimitedDailyUpload
+	q := s.db.WithContext(ctx).Model(&authModel.User{}).Where("id = ?", userID)
+	if limited {
+		q = q.Where("daily_upload_size + ? <= ?", size, tier.DailyLimit)
 	}
-	if err := s.db.Model(&authModel.User{}).
-		Where("id = ?", userID).
-		UpdateColumn("daily_upload_size", gorm.Expr("daily_upload_size + ?", size)).Error; err != nil {
-		return fmt.Errorf("扣减限额失败: %w", err)
+	res := q.UpdateColumn("daily_upload_size", gorm.Expr("daily_upload_size + ?", size))
+	if res.Error != nil {
+		s.unmarkComplete(uuid)
+		slog.Error("upload complete: quota not deducted", "artifact_uuid", uuid, "user_id", userID, "error", res.Error)
+		return nil
 	}
-	deducted = true
+	if limited && res.RowsAffected == 0 {
+		s.unmarkComplete(uuid)
+		if err := s.art.Delete(context.WithoutCancel(ctx), uuid); err != nil {
+			slog.Warn("upload complete: deleting the over-quota upload failed", "artifact_uuid", uuid, "error", err)
+		}
+		return errOverDailyUpload
+	}
 	return nil
 }
 
@@ -238,7 +250,7 @@ func (s *Service) Resume(ctx context.Context, userID int, req ResumeRequest) (*R
 	}
 	out, err := s.art.Resume(ctx, req.ArtifactUUID)
 	if err != nil {
-		return nil, mapArtifactErr(err)
+		return nil, err
 	}
 
 	resp := &ResumeResponse{
@@ -283,30 +295,9 @@ func (s *Service) Abort(ctx context.Context, userID int, req AbortRequest) error
 	if inUse > 0 {
 		return errArtifactInUse
 	}
-	if err := s.art.Delete(ctx, req.ArtifactUUID); err != nil {
+	if err := s.art.Delete(ctx, req.ArtifactUUID); err != nil && !errors.Is(err, artifactclient.ErrNotFound) {
 		return err
 	}
 	s.rdb.Del(ctx, uploadOwnerKey(req.ArtifactUUID))
 	return nil
-}
-
-func mapArtifactErr(err error) error {
-	switch {
-	case errors.Is(err, artifactclient.ErrTooBig):
-		return fmt.Errorf("文件大小超过上限")
-	case errors.Is(err, artifactclient.ErrMIMEDenied):
-		return fmt.Errorf("不支持的文件类型")
-	case errors.Is(err, artifactclient.ErrSizeMismatch):
-		return fmt.Errorf("上传文件大小与声明不符，请重新上传")
-	case errors.Is(err, artifactclient.ErrQuotaExceeded):
-		return fmt.Errorf("服务器今日制品配额已满，请稍后再试")
-	case errors.Is(err, artifactclient.ErrUploadDisabled):
-		return fmt.Errorf("上传功能暂未开放")
-	case errors.Is(err, artifactclient.ErrUnauthorized):
-		return fmt.Errorf("制品服务鉴权失败")
-	case errors.Is(err, artifactclient.ErrNotConfigured):
-		return fmt.Errorf("制品服务未配置")
-	default:
-		return err
-	}
 }

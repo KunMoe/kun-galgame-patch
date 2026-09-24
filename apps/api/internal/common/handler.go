@@ -306,6 +306,9 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	} else if resource.ArtifactUUID != "" && h.art != nil {
 		if dl, derr := h.art.Download(c.Context(), resource.ArtifactUUID); derr == nil {
 			resource.DownloadURL = dl.Url
+		} else {
+			slog.Warn("resource detail renders without a download link",
+				"resource_id", resource.ID, "artifact_uuid", resource.ArtifactUUID, "error", derr)
 		}
 	}
 

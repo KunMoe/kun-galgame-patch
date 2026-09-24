@@ -12,14 +12,36 @@ import (
 	"net/http"
 	"net/textproto"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
+)
+
+const service = "image"
+
+// The image service's house codes (infra pkg/errors/codes.go 80001-80015,
+// 60002). Only the ones a reader's file can cause are named: the credential,
+// site and preset codes arrive as 400/401/403 and are moyu's own configuration.
+const (
+	codeFileTooLarge       = 80007
+	codeQuotaExceeded      = 80008
+	codeMIMEDenied         = 80009
+	codeDecodeFailed       = 80010
+	codeNotFound           = 80013
+	codeUploadDisabled     = 80015
+	codeModerationRejected = 60002
 )
 
 var (
-	ErrQuotaExceeded      = errors.New("image_service: daily upload quota exceeded")
-	ErrModerationRejected = errors.New("image_service: image rejected by moderation")
-	ErrUnauthorized       = errors.New("image_service: unauthorized (check client_id/secret + image_enabled)")
+	ErrNotConfigured      = errors.New("imageclient: not configured (empty base URL or credentials)")
+	ErrFileTooLarge       = errors.New("imageclient: file exceeds the preset's size limit")
+	ErrQuotaExceeded      = errors.New("imageclient: site daily upload quota exceeded")
+	ErrMIMEDenied         = errors.New("imageclient: preset does not accept this format")
+	ErrDecodeFailed       = errors.New("imageclient: image could not be decoded")
+	ErrModerationRejected = errors.New("imageclient: image rejected by moderation")
+	ErrUploadDisabled     = errors.New("imageclient: upload disabled")
 )
 
 type Config struct {
@@ -58,6 +80,8 @@ func New(cfg Config) *Client {
 	}
 }
 
+func (c *Client) Configured() bool { return c.baseURL != "" && c.basicAuth != "" }
+
 type UploadResult struct {
 	Hash         string            `json:"hash"`
 	URL          string            `json:"url"`
@@ -73,11 +97,8 @@ func (c *Client) Upload(
 	ctx context.Context,
 	body io.Reader, filename, mime, preset string,
 ) (*UploadResult, error) {
-	if c.baseURL == "" {
-		return nil, errors.New("image_service: client not configured (KUN_IMAGE_SERVICE_BASE_URL unset)")
-	}
-	if c.basicAuth == "" {
-		return nil, ErrUnauthorized
+	if !c.Configured() {
+		return nil, ErrNotConfigured
 	}
 	if filename == "" {
 		filename = "upload.bin"
@@ -105,56 +126,15 @@ func (c *Client) Upload(
 		return nil, fmt.Errorf("close multipart: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/image/upload", &buf)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+	var data UploadResult
+	if err := c.post(ctx, "upload", "/image/upload", w.FormDataContentType(), &buf, &data); err != nil {
+		return nil, err
 	}
-	req.Header.Set("Authorization", c.basicAuth)
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("image_service POST /image/upload: %w", err)
+	if data.VariantURLs == nil {
+		data.VariantURLs = map[string]string{}
 	}
-	defer resp.Body.Close()
-
-	raw, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-		var env struct {
-			Code int          `json:"code"`
-			Data UploadResult `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &env); err != nil {
-			return nil, fmt.Errorf("decode upload response: %w (body=%s)", err, truncate(string(raw), 200))
-		}
-		out := env.Data
-		if out.VariantURLs == nil {
-			out.VariantURLs = map[string]string{}
-		}
-		return &out, nil
-	}
-
-	var env struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	}
-	_ = json.Unmarshal(raw, &env)
-
-	switch env.Code {
-	case 80008:
-		return nil, fmt.Errorf("%w: %s", ErrQuotaExceeded, env.Message)
-	case 60002:
-		return nil, fmt.Errorf("%w: %s", ErrModerationRejected, env.Message)
-	case 80001, 80002, 80003, 80004, 80005, 80006, 80015:
-		return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
-	}
-	return nil, fmt.Errorf("image_service upload failed: status=%d code=%d msg=%q",
-		resp.StatusCode, env.Code, env.Message)
+	return &data, nil
 }
-
-func (c *Client) Configured() bool { return c.baseURL != "" && c.basicAuth != "" }
 
 type ReferencePingResult struct {
 	Updated  int64    `json:"updated"`
@@ -165,56 +145,21 @@ func (c *Client) ReferencePing(ctx context.Context, hashes []string) (*Reference
 	if len(hashes) == 0 {
 		return &ReferencePingResult{}, nil
 	}
-	if c.baseURL == "" {
-		return nil, errors.New("image_service: client not configured (KUN_IMAGE_SERVICE_BASE_URL unset)")
-	}
-	if c.basicAuth == "" {
-		return nil, ErrUnauthorized
+	if !c.Configured() {
+		return nil, ErrNotConfigured
 	}
 	if len(hashes) > 1000 {
 		return nil, fmt.Errorf("imageclient: batch size %d exceeds limit 1000", len(hashes))
 	}
-
 	body, _ := json.Marshal(struct {
 		Hashes []string `json:"hashes"`
 	}{Hashes: hashes})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/image/reference-ping", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+	var data ReferencePingResult
+	if err := c.post(ctx, "reference-ping", "/image/reference-ping", "application/json", bytes.NewReader(body), &data); err != nil {
+		return nil, err
 	}
-	req.Header.Set("Authorization", c.basicAuth)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("image_service POST /image/reference-ping: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		var env struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(raw, &env)
-		switch env.Code {
-		case 80001, 80002, 80003, 80004, 80005:
-			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
-		}
-		return nil, fmt.Errorf("image_service reference-ping failed: status=%d code=%d msg=%q",
-			resp.StatusCode, env.Code, env.Message)
-	}
-
-	var env struct {
-		Data ReferencePingResult `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode reference-ping response: %w (body=%s)", err, truncate(string(raw), 200))
-	}
-	return &env.Data, nil
+	return &data, nil
 }
 
 type ImageMeta struct {
@@ -227,61 +172,101 @@ func (c *Client) MetaBatch(ctx context.Context, hashes []string) (map[string]Ima
 	if len(hashes) == 0 {
 		return map[string]ImageMeta{}, nil
 	}
-	if c.baseURL == "" {
-		return nil, errors.New("image_service: client not configured (KUN_IMAGE_SERVICE_BASE_URL unset)")
-	}
-	if c.basicAuth == "" {
-		return nil, ErrUnauthorized
+	if !c.Configured() {
+		return nil, ErrNotConfigured
 	}
 	if len(hashes) > 1000 {
 		return nil, fmt.Errorf("imageclient: batch size %d exceeds limit 1000", len(hashes))
 	}
-
 	body, _ := json.Marshal(struct {
 		Hashes []string `json:"hashes"`
 	}{Hashes: hashes})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/image/meta-batch", bytes.NewReader(body))
+	var data struct {
+		Metas map[string]ImageMeta `json:"metas"`
+	}
+	if err := c.post(ctx, "meta-batch", "/image/meta-batch", "application/json", bytes.NewReader(body), &data); err != nil {
+		return nil, err
+	}
+	if data.Metas == nil {
+		return map[string]ImageMeta{}, nil
+	}
+	return data.Metas, nil
+}
+
+func (c *Client) post(ctx context.Context, op, path, contentType string, body io.Reader, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, body)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		return fmt.Errorf("build %s request: %w", op, err)
 	}
 	req.Header.Set("Authorization", c.basicAuth)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("image_service POST /image/meta-batch: %w", err)
+		return upstream.Transport(service, op, err)
 	}
 	defer resp.Body.Close()
-
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		var env struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(raw, &env)
-		switch env.Code {
-		case 80001, 80002, 80003, 80004, 80005:
-			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, env.Message)
-		}
-		return nil, fmt.Errorf("image_service meta-batch failed: status=%d code=%d msg=%q",
-			resp.StatusCode, env.Code, env.Message)
+	raw, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return upstream.Transport(service, op, err)
 	}
 
 	var env struct {
-		Data struct {
-			Metas map[string]ImageMeta `json:"metas"`
-		} `json:"data"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, fmt.Errorf("decode meta-batch response: %w (body=%s)", err, truncate(string(raw), 200))
+	decodeErr := json.Unmarshal(raw, &env)
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		if decodeErr == nil && env.Code == 0 {
+			if err := json.Unmarshal(env.Data, out); err == nil {
+				return nil
+			}
+		}
+		return &upstream.Error{Service: service, Op: op, Kind: upstream.Internal, Status: resp.StatusCode,
+			RequestID: resp.Header.Get("X-Request-ID"), Detail: "undecodable success body"}
 	}
-	if env.Data.Metas == nil {
-		return map[string]ImageMeta{}, nil
+	return failure(op, resp, env.Code, env.Message, decodeErr == nil)
+}
+
+func failure(op string, resp *http.Response, code int, message string, house bool) *upstream.Error {
+	e := &upstream.Error{
+		Service:    service,
+		Op:         op,
+		Status:     resp.StatusCode,
+		RequestID:  resp.Header.Get("X-Request-ID"),
+		RetryAfter: upstream.RetryAfter(resp.Header),
 	}
-	return env.Data.Metas, nil
+	if !house || code == 0 {
+		e.Kind = upstream.Internal
+		if e.Status >= 500 {
+			e.Kind = upstream.Unavailable
+		}
+		return e
+	}
+	e.Code = strconv.Itoa(code)
+	e.Detail = message
+	switch code {
+	case codeFileTooLarge:
+		e.Kind, e.Cause = upstream.Rejected, ErrFileTooLarge
+	case codeMIMEDenied:
+		e.Kind, e.Cause = upstream.Rejected, ErrMIMEDenied
+	case codeDecodeFailed:
+		e.Kind, e.Cause = upstream.Rejected, ErrDecodeFailed
+	case codeModerationRejected:
+		e.Kind, e.Cause = upstream.Rejected, ErrModerationRejected
+	case codeQuotaExceeded:
+		e.Kind, e.Cause = upstream.RateLimited, ErrQuotaExceeded
+	case codeUploadDisabled:
+		e.Kind, e.Cause = upstream.Unavailable, ErrUploadDisabled
+	case codeNotFound:
+		e.Kind = upstream.NotFound
+	default:
+		e.Kind = upstream.ByStatus(e.Status)
+	}
+	return e
 }
 
 func (c *Client) MainURL(hash string) string {
@@ -312,11 +297,4 @@ func isHex(s string) bool {
 		}
 	}
 	return true
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }

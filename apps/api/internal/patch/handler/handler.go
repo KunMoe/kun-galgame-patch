@@ -419,7 +419,7 @@ func (h *PatchHandler) GetResourceDownloadInfo(c fiber.Ctx) error {
 		return response.Error(c, errors.New(40310, "该资源已被禁用，暂时无法下载", fiber.StatusForbidden))
 	}
 	if err := h.service.ResolveDownloadURL(c.Context(), r); err != nil {
-		return response.Error(c, errors.ErrInternal("获取下载地址失败"))
+		return response.Upstream(c, err, "资源文件不存在或已被删除")
 	}
 	return response.OK(c, fiber.Map{
 		"storage":      r.Storage,

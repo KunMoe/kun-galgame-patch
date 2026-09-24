@@ -22,7 +22,7 @@ func (h *Handler) BotInit(c fiber.Ctx, userID int) error {
 	}
 	resp, err := h.svc.Init(c.Context(), userID, botUploadTier, req)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return uploadError(c, err)
 	}
 	return response.OK(c, resp)
 }
