@@ -32,13 +32,16 @@ func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, curso
 	gate := gateFor(contentLimit)
 	page, err := c.v2.CharacterAppearances(ctx, int64(id), true, cursor, entityWorksLimit(limit))
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	works := make([]catalogv2.Work, 0, len(page.Items))
 	for i := range page.Items {
 		works = append(works, page.Items[i].Work)
 	}
-	cards := c.entityWorkCards(ctx, works, gate)
+	cards, err := c.entityWorkCards(ctx, works, gate)
+	if err != nil {
+		return nil, err
+	}
 
 	out := &GalgameEntityWorkPage{Items: []GalgameEntityWork{}, NextCursor: page.Next()}
 	for i := range page.Items {
@@ -68,13 +71,16 @@ func (c *Client) StaffWorks(ctx context.Context, id int, contentLimit, cursor st
 	gate := gateFor(contentLimit)
 	page, err := c.v2.CreditNameCredits(ctx, int64(id), true, cursor, entityWorksLimit(limit))
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	works := make([]catalogv2.Work, 0, len(page.Items))
 	for i := range page.Items {
 		works = append(works, page.Items[i].Work)
 	}
-	cards := c.entityWorkCards(ctx, works, gate)
+	cards, err := c.entityWorkCards(ctx, works, gate)
+	if err != nil {
+		return nil, err
+	}
 
 	out := &GalgameEntityWorkPage{Items: []GalgameEntityWork{}, NextCursor: page.Next()}
 	for i := range page.Items {
@@ -105,7 +111,7 @@ func entityWorksLimit(limit int) int {
 // The sub-faces' own nsfw= reads content_rating, so nsfw=false there drops work
 // 2156 (AIR: r18 upstream, claimed sfw) — the very row this site shows to
 // everyone. They are asked wide open and content_limit= narrows here instead.
-func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, gate catalogGate) map[int64]GalgameBrief {
+func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, gate catalogGate) (map[int64]GalgameBrief, error) {
 	out := make(map[int64]GalgameBrief, len(works))
 	ids := make([]int64, 0, len(works))
 	seen := make(map[int64]bool, len(works))
@@ -118,14 +124,14 @@ func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, ga
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
-		return out
+		return out, nil
 	}
 	page, err := c.v2.ListWorks(ctx, catalogv2.WorksQuery{
 		IDs: ids, NSFW: true, Include: listCardInclude,
 		ContentLimit: gate.contentLimit, Limit: CatalogWorksIDsMax,
 	})
 	if err != nil {
-		return out
+		return nil, err
 	}
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])
@@ -136,5 +142,5 @@ func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, ga
 		b.Facet = facetOf(page.Items[i], gate.contentLimit != "sfw")
 		out[it.ID] = b
 	}
-	return out
+	return out, nil
 }

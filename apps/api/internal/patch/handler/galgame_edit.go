@@ -32,13 +32,7 @@ func (h *PatchHandler) GalgameTaxonomyDetailProxy(c fiber.Ctx) error {
 				Code: 0, Message: "OK", Data: fiber.Map{"moved_to": to},
 			})
 		}
-		if galgameClient.IsAbsent(err) {
-			return response.Error(c, errors.ErrNotFound("词条不存在"))
-		}
-		if werr, ok := err.(*galgameClient.GalgameError); ok {
-			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
-		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
+		return response.Upstream(c, err, "词条不存在")
 	}
 
 	var envelope map[string]json.RawMessage
@@ -132,7 +126,7 @@ func (h *PatchHandler) ResolveTaxonomyID(c fiber.Ctx) error {
 	case "official":
 		catalogID, found, lErr := h.galgame.ResolveWikiLabel(c.Context(), id)
 		if lErr != nil {
-			return response.Error(c, errors.ErrInternal("解析会社 ID 失败"))
+			return response.Upstream(c, lErr, "会社不存在")
 		}
 		if !found {
 			return response.Error(c, errors.ErrNotFound("会社不存在"))

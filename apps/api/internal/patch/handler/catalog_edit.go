@@ -3,12 +3,14 @@ package handler
 import (
 	stderrors "errors"
 	"log/slog"
-	"net/http"
 	"slices"
+	"strconv"
 
+	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -65,6 +67,7 @@ type catalogEditRequest struct {
 	ContentRating *int16              `json:"content_rating"`
 	Titles        *[]catalogEditTitle `json:"titles"`
 	Note          string              `json:"note"`
+	SubmitKey     string              `json:"submit_key"`
 }
 
 // The shape @nextmoe/edit-ui-core's parseEditProblem reads. The envelope's
@@ -78,51 +81,39 @@ func problemFields(p *catalogv2.Problem) fiber.Map {
 	return fiber.Map{"errors": p.Errors, "detail": p.Detail}
 }
 
+// Only a refusal that names its fields carries catalog's problem to the page.
+// Until 2026-09-24 every 403 did, so SITE_NOT_BOUND reached readers as English
+// prose, and a scope moyu's own key lacked told them to sign in again.
 func catalogEditErr(c fiber.Ctx, err error) error {
 	switch {
 	case stderrors.Is(err, catalogv2.ErrNotConfigured):
 		return response.Error(c, errors.ErrCatalogUnavailable(""))
-	case stderrors.Is(err, catalogv2.ErrForbidden):
-		return response.Error(c, errors.New(40300,
-			"你没有权限修改该条目（编辑资料需要相应的社区权限）", fiber.StatusForbidden))
 	case stderrors.Is(err, catalogv2.ErrNoAccessToken):
 		return response.Error(c, errors.ErrUnauthorized())
-	case stderrors.Is(err, catalogv2.ErrUnauthorized):
-		return response.Error(c, errors.ErrCatalogReauthRequired(
-			"资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
-	case stderrors.Is(err, catalogv2.ErrNotFound):
-		return response.Error(c, errors.ErrNotFound("资料库中没有这个条目"))
+	case catalogv2.ReauthRequired(err):
+		return response.Error(c, catalogReauth(err))
 	}
 
-	var p *catalogv2.Problem
-	if stderrors.As(err, &p) {
-		switch p.Status {
-		case http.StatusUnauthorized:
-			return response.Error(c, errors.ErrCatalogReauthRequired(
-				"资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
-		case http.StatusForbidden:
-			if p.Code == "SCOPE_REQUIRED" {
-				return response.Error(c, errors.ErrCatalogReauthRequired(""))
-			}
-			return response.ErrorData(c, errors.New(40300,
-				"你没有权限修改该条目（编辑资料需要相应的社区权限）", fiber.StatusForbidden),
-				problemFields(p))
-		case http.StatusNotFound:
-			return response.Error(c, errors.ErrNotFound("资料库中没有这个条目"))
-		case http.StatusUnprocessableEntity:
+	switch upstream.KindOf(err) {
+	case upstream.NotFound:
+		return response.Upstream(c, err, "资料库中没有这个条目")
+	case upstream.Conflict:
+		return response.Upstream(c, err, "条目已被他人修改，或该提案已经关闭，请刷新后重试")
+	case upstream.Rejected:
+		p, _ := catalogv2.ProblemOf(err)
+		if p != nil && p.Status == fiber.StatusUnprocessableEntity {
 			return response.ErrorData(c, errors.ErrValidation(p.Error()), problemFields(p))
-		case http.StatusConflict, http.StatusPreconditionFailed:
-			return response.ErrorData(c, errors.ErrConflict(
-				"条目已被他人修改，或该提案已经关闭，请刷新后重试"), problemFields(p))
-		case http.StatusTooManyRequests:
-			return response.Error(c, errors.ErrTooManyRequests(p.Error()))
 		}
-		slog.Error("catalog edit: upstream error", "status", p.Status, "code", p.Code, "detail", p.Detail)
-		return response.Error(c, errors.ErrCatalogUnavailable(""))
+		const denied = "你没有权限修改该条目（编辑资料需要相应的社区权限）"
+		if p != nil && p.Status == fiber.StatusForbidden && len(p.Errors) > 0 {
+			return response.ErrorData(c, errors.New(40300, denied, fiber.StatusForbidden), fiber.Map{"errors": p.Errors})
+		}
+		if p != nil && p.Status == fiber.StatusForbidden {
+			return response.Upstream(c, err, denied)
+		}
+		return response.Upstream(c, err, "资料库没有接受这次修改")
 	}
-
-	slog.Warn("catalog edit: unreachable", "error", err)
-	return response.Error(c, errors.ErrCatalogUnavailable(""))
+	return response.Upstream(c, err, "")
 }
 
 func (h *PatchHandler) catalogV2() *catalogv2.Client {
@@ -257,7 +248,9 @@ func (h *PatchHandler) CatalogEditSubmit(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrValidation("没有需要保存的修改"))
 	}
 
-	result, err := h.catalogV2().CreateProposal(c.Context(), token, catalogv2.EntityTypeWork, workID, patch, req.Note)
+	result, err := h.catalogV2().CreateProposal(c.Context(), token,
+		pressKey(middleware.MustGetUser(c).ID, "catalog.proposal."+strconv.FormatInt(workID, 10), req.SubmitKey),
+		catalogv2.EntityTypeWork, workID, patch, req.Note)
 	if err != nil {
 		return catalogEditErr(c, err)
 	}

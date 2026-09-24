@@ -50,7 +50,7 @@ func (h *CommonHandler) GetGalgameCharacter(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	detail, cerr := h.galgame.GetCharacter(c.Context(), id, cl)
 	if cerr != nil {
-		return response.Error(c, catalogEntityError(cerr, "角色"))
+		return catalogEntityError(c, cerr, "角色")
 	}
 	page, werr := h.galgame.CharacterWorks(c.Context(), id, cl, "", entityWorksLimit(c))
 	if werr != nil {
@@ -72,7 +72,7 @@ func (h *CommonHandler) GetGalgameCharacterWorks(c fiber.Ctx) error {
 		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c),
 	)
 	if cerr != nil {
-		return response.Error(c, catalogEntityError(cerr, "角色"))
+		return catalogEntityError(c, cerr, "角色")
 	}
 	works, next := h.entityWorkCards(page)
 	return response.OK(c, entityWorksResponse{Works: works, NextCursor: next})
@@ -86,7 +86,7 @@ func (h *CommonHandler) GetGalgameStaff(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	detail, cerr := h.galgame.GetStaff(c.Context(), id)
 	if cerr != nil {
-		return response.Error(c, catalogEntityError(cerr, "制作人员"))
+		return catalogEntityError(c, cerr, "制作人员")
 	}
 	page, werr := h.galgame.StaffWorks(c.Context(), id, cl, "", entityWorksLimit(c))
 	if werr != nil {
@@ -108,7 +108,7 @@ func (h *CommonHandler) GetGalgameStaffWorks(c fiber.Ctx) error {
 		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c),
 	)
 	if cerr != nil {
-		return response.Error(c, catalogEntityError(cerr, "制作人员"))
+		return catalogEntityError(c, cerr, "制作人员")
 	}
 	works, next := h.entityWorkCards(page)
 	return response.OK(c, entityWorksResponse{Works: works, NextCursor: next})
@@ -153,14 +153,9 @@ func entityID(c fiber.Ctx) (int, *errors.AppError) {
 	return id, nil
 }
 
-// A catalog merge answers 301 rather than 404, and the id that survived is in
-// the body — the same shape the taxonomy proxy already handles.
-func catalogEntityError(err error, subject string) *errors.AppError {
-	if galgameClient.IsAbsent(err) {
-		return errors.ErrNotFound(subject + "不存在")
-	}
+func catalogEntityError(c fiber.Ctx, err error, subject string) error {
 	if _, ok := galgameClient.MovedTarget(err); ok {
-		return errors.ErrNotFound(subject + "已被合并")
+		return response.Error(c, errors.ErrNotFound(subject+"已被合并"))
 	}
-	return errors.ErrInternal("调用 Galgame 资料库失败")
+	return response.Upstream(c, err, subject+"不存在")
 }

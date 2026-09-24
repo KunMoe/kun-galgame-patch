@@ -73,7 +73,7 @@ type GalgameStaffDetail struct {
 func (c *Client) GetCharacter(ctx context.Context, id int, contentLimit string) (*GalgameCharacterDetail, error) {
 	ch, err := c.v2.GetCharacter(ctx, int64(id), true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	out := catalogCharacterToDetail(ch, contentLimit != "nsfw" && contentLimit != "all")
 	return &out, nil
@@ -82,7 +82,7 @@ func (c *Client) GetCharacter(ctx context.Context, id int, contentLimit string) 
 func (c *Client) GetStaff(ctx context.Context, id int) (*GalgameStaffDetail, error) {
 	n, err := c.v2.GetCreditName(ctx, int64(id), true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	out := catalogNameToDetail(n)
 	return &out, nil

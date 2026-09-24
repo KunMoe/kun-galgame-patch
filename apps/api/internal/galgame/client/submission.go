@@ -13,7 +13,7 @@ func (c *Client) SearchPublishItems(ctx context.Context, q string, limit int) ([
 		Facets: []string{"olang"},
 	})
 	if err != nil {
-		return nil, 0, catalogErr(err)
+		return nil, 0, err
 	}
 	items := make([]GalgameHit, 0, len(page.Items))
 	for i := range page.Items {

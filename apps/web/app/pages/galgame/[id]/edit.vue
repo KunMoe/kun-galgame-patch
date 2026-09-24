@@ -111,6 +111,7 @@ const proposer = computed(() => ({
 }))
 
 const saving = ref(false)
+const submitKey = useSubmitKey()
 const form = useTemplateRef('form')
 const fieldErrors = ref<Record<string, string[]>>({})
 const formErrors = ref<string[]>([])
@@ -126,8 +127,9 @@ const save = async () => {
   saving.value = true
   const res = await api.post<{ merged: boolean }>(
     `/patch/${id}/catalog-edit`,
-    payload
+    { ...payload, submit_key: submitKey.keyFor(payload) }
   )
+  submitKey.settle(res.code)
   saving.value = false
   if (res.code !== 0) {
     const problem = parseEditProblem(res.data)

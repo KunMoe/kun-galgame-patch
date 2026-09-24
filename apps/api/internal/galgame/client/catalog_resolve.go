@@ -2,20 +2,11 @@ package client
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
-
-const catalogCodeNotFound = 4
-
-const catalogCodeMoved = 12
-
-func catalogAbsent(err error) bool {
-	return errors.Is(err, catalogv2.ErrNotFound) || IsAbsent(err)
-}
 
 const CatalogWorksIDsMax = 100
 
@@ -67,10 +58,10 @@ func (c *Client) ResolveWikiLabel(ctx context.Context, oid int) (int64, bool, er
 	}
 	id, err := c.v2.EntityByRef(ctx, "company", "curated", strconv.Itoa(oid), true)
 	if err != nil {
-		if catalogAbsent(err) {
+		if IsAbsent(err) {
 			return 0, false, nil
 		}
-		return 0, false, catalogErr(err)
+		return 0, false, err
 	}
 	if id <= 0 {
 		return 0, false, nil
@@ -88,7 +79,7 @@ func (c *Client) ClaimStates(ctx context.Context, gids []int) (map[int]string, e
 		IDs: ids, NSFW: true, Limit: CatalogWorksIDsMax,
 	})
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])

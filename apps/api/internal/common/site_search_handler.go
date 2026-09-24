@@ -78,7 +78,7 @@ func (h *CommonHandler) SiteSearch(c fiber.Ctx) error {
 
 	switch req.Type {
 	case "galgame":
-		items, total, appErr := h.searchGalgameLane(
+		items, total, err := h.searchGalgameLane(
 			c.Context(), req.Keywords, req.Page, req.Limit, galgameSearchFilter{
 				TagIDs:       parseSearchIDs(req.TagIDs),
 				CompanyID:    req.CompanyID,
@@ -86,8 +86,8 @@ func (h *CommonHandler) SiteSearch(c fiber.Ctx) error {
 				ReleasedTo:   req.ReleasedTo,
 				Sort:         req.Sort,
 			})
-		if appErr != nil {
-			return response.Error(c, appErr)
+		if err != nil {
+			return response.Upstream(c, err, "")
 		}
 		return response.Paginated(c, items, total)
 	case "resource":
@@ -166,7 +166,7 @@ func (h *CommonHandler) SiteSearchEntityResolve(c fiber.Ctx) error {
 	}
 	items, err := h.galgame.ResolveEntities(c.Context(), req.Family, parseSearchIDs(req.IDs))
 	if err != nil {
-		return response.Error(c, errors.ErrInternal("资料库条目解析失败"))
+		return response.Upstream(c, err, "")
 	}
 	return response.OK(c, fiber.Map{"items": items})
 }

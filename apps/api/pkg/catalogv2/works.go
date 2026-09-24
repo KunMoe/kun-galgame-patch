@@ -163,7 +163,7 @@ func (c *Client) WorkByRef(ctx context.Context, source, externalID string, nsfw 
 		return nil, err
 	}
 	if len(page.Items) == 0 {
-		return nil, ErrNotFound
+		return nil, Absent("GET /v2/catalog/works?refs")
 	}
 	return &page.Items[0], nil
 }

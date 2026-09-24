@@ -4,7 +4,6 @@ import (
 	"context"
 	stderrors "errors"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"kun-galgame-patch-api/internal/admin/dto"
@@ -15,8 +14,8 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
-	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -107,11 +106,7 @@ func (s *AdminService) catalogFolders(ctx context.Context, userID int, token str
 	}
 	folders, err := s.galgame.V2().UserFolders(ctx, token, int64(userID))
 	if err != nil {
-		var p *catalogv2.Problem
-		denied := stderrors.Is(err, catalogv2.ErrForbidden) ||
-			stderrors.Is(err, catalogv2.ErrUnauthorized) ||
-			(stderrors.As(err, &p) && (p.Status == http.StatusForbidden || p.Status == http.StatusUnauthorized))
-		if denied {
+		if upstream.KindOf(err) == upstream.Rejected {
 			return 0, 0, "未读取：当前管理员没有 catalog 审核权限"
 		}
 		slog.Warn("PurgeUserPreview: 读取 catalog 收藏夹失败", "user_id", userID, "error", err)

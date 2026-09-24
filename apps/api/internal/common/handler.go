@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	commentService "kun-galgame-patch-api/internal/comment/service"
 	"kun-galgame-patch-api/internal/favorite"
@@ -577,13 +578,13 @@ func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, ids []int) map[int]bool
 func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	month := strings.TrimSpace(c.Query("month"))
+	if _, err := time.Parse("2006-01", month); month != "" && err != nil {
+		return response.Error(c, errors.ErrBadRequest("月份格式应为 YYYY-MM"))
+	}
 
 	merged, err := h.fetchCalendarMonth(c.Context(), month, cl)
 	if err != nil {
-		if gerr, ok := galgameClient.AsBadRequest(err); ok {
-			return response.Error(c, errors.ErrBadRequest(gerr.Message))
-		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
+		return response.Upstream(c, err, "")
 	}
 	if merged == nil {
 		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))

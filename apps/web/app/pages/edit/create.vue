@@ -126,6 +126,7 @@ const startSubmit = () => {
 
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const submitKey = useSubmitKey()
 
 const handleSubmit = async () => {
   submitError.value = null
@@ -155,8 +156,9 @@ const handleSubmit = async () => {
   try {
     const res = await api.post<{ id: number; claim_state: string }>(
       '/galgame/submit',
-      payload
+      { ...payload, submit_key: submitKey.keyFor(payload) }
     )
+    submitKey.settle(res.code)
 
     if (res.code === 0) {
       useKunMessage(

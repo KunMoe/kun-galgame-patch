@@ -92,7 +92,7 @@ func (c *Client) companyRollupWorks(ctx context.Context, id int64, gate catalogG
 			Include: cardInclude, ContentLimit: gate.contentLimit,
 		})
 		if err != nil {
-			return nil, false, catalogErr(err)
+			return nil, false, err
 		}
 		if cursor == "" && data.Count() > catalogRollupWorksMax {
 			return nil, false, nil

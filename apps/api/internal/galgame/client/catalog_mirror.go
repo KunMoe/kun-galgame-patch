@@ -37,7 +37,7 @@ func (c *Client) DisplayVerdictsByCatalogIDs(ctx context.Context, ids []int64) (
 		IDs: ids, NSFW: true, Limit: CatalogWorksIDsMax,
 	})
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	out := make([]DisplayVerdict, 0, len(page.Items))
 	for i := range page.Items {

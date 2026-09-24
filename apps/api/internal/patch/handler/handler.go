@@ -3,7 +3,6 @@ package handler
 import (
 	stderrors "errors"
 	"log/slog"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
@@ -51,48 +51,38 @@ func catalogUserToken(c fiber.Ctx) (string, *errors.AppError) {
 	return token, nil
 }
 
-func catalogErr(c fiber.Ctx, err error, fallback string) error {
-	if stderrors.Is(err, catalogv2.ErrNotConfigured) {
-		return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
-	}
-	if stderrors.Is(err, service.ErrNoCatalogWork) {
+func catalogErr(c fiber.Ctx, err error, readerMsg string) error {
+	switch {
+	case stderrors.Is(err, service.ErrNoCatalogWork):
 		return response.Error(c, errors.ErrValidation(
 			"这个游戏还没有收录进资料库，暂时无法收藏或加入收藏夹"))
-	}
-	if stderrors.Is(err, gorm.ErrRecordNotFound) {
+	case stderrors.Is(err, service.ErrFolderNotYours):
+		return response.Error(c, errors.ErrNotFound("收藏夹不存在或已被删除，请刷新后重试"))
+	case stderrors.Is(err, gorm.ErrRecordNotFound):
 		return response.Error(c, errors.ErrNotFound("patch not found"))
-	}
-	if stderrors.Is(err, catalogv2.ErrNoAccessToken) {
+	case stderrors.Is(err, catalogv2.ErrNoAccessToken):
 		return response.Error(c, errors.ErrUnauthorized())
+	case catalogv2.ReauthRequired(err):
+		return response.Error(c, catalogReauth(err))
 	}
-	if stderrors.Is(err, catalogv2.ErrUnauthorized) {
-		return response.Error(c, errors.ErrCatalogReauthRequired(
-			"资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
+	return response.Upstream(c, err, readerMsg)
+}
+
+// pressKey is the Idempotency-Key for one press of a create button: the page
+// mints submit_key per press and keeps it across that press's retries. Without
+// one nothing is sent, which only costs the retry safety.
+func pressKey(userID int, op, submitKey string) string {
+	if submitKey == "" {
+		return ""
 	}
-	if stderrors.Is(err, catalogv2.ErrNotFound) {
-		return response.Error(c, errors.ErrNotFound("资料库中没有这个条目"))
+	return upstream.IdempotencyKey(strconv.Itoa(userID), op, submitKey)
+}
+
+func catalogReauth(err error) *errors.AppError {
+	if e, _ := upstream.As(err); e != nil && e.Code == catalogv2.CodeInvalidCredential {
+		return errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次")
 	}
-	if stderrors.Is(err, catalogv2.ErrForbidden) {
-		return response.Error(c, errors.New(40300,
-			"你没有权限修改该条目（编辑资料需要相应的社区权限）", fiber.StatusForbidden))
-	}
-	var p *catalogv2.Problem
-	if stderrors.As(err, &p) {
-		switch {
-		case p.Code == "SCOPE_REQUIRED" || p.Status == http.StatusUnauthorized:
-			return response.Error(c, errors.ErrCatalogReauthRequired(""))
-		case p.Status == http.StatusForbidden:
-			return response.Error(c, errors.New(40300, p.Error(), fiber.StatusForbidden))
-		case p.Status == http.StatusNotFound:
-			return response.Error(c, errors.ErrNotFound("资料库中没有这个条目"))
-		case p.Status == http.StatusUnprocessableEntity:
-			return response.Error(c, errors.ErrValidation(p.Error()))
-		case p.Status == http.StatusConflict, p.Status == http.StatusPreconditionFailed,
-			p.Status == http.StatusPreconditionRequired:
-			return response.Error(c, errors.ErrConflict(p.Error()))
-		}
-	}
-	return response.Error(c, errors.ErrInternal(fallback))
+	return errors.ErrCatalogReauthRequired("")
 }
 
 func getIDParam(c fiber.Ctx, name string) (int, error) {
@@ -236,6 +226,9 @@ func (h *PatchHandler) UpdatePatch(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
 	isPrivileged := middleware.IsModerator(c)
 	if err := h.service.UpdatePatch(c.Context(), id, user.ID, isPrivileged, req.VndbID); err != nil {
+		if _, ok := upstream.As(err); ok {
+			return response.Upstream(c, err, "")
+		}
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	return response.OKMessage(c, "Patch updated")
@@ -491,7 +484,7 @@ func (h *PatchHandler) ToggleFavorite(c fiber.Ctx) error {
 	}
 	favorited, err := h.service.ToggleFavoriteInCatalog(c.Context(), token, id, user.ID)
 	if err != nil {
-		return catalogErr(c, err, "收藏失败，请稍后重试")
+		return catalogErr(c, err, "收藏失败，请刷新后重试")
 	}
 
 	return response.OK(c, map[string]bool{"favorited": favorited})
@@ -530,216 +523,6 @@ func (h *PatchHandler) GetRandomPatch(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal(""))
 	}
 	return response.OK(c, map[string]int{"id": id})
-}
-
-func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
-	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	v2 := h.catalogV2()
-	if v2 == nil || !v2.Configured() {
-		return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
-	}
-	var form SubmissionForm
-	if err := c.Bind().Body(&form); err != nil {
-		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
-	}
-	fields, fErr := form.SubmissionFields()
-	if fErr != nil {
-		return response.Error(c, errors.ErrBadRequest(fErr.Error()))
-	}
-	token, tErr := catalogUserToken(c)
-	if tErr != nil {
-		return response.Error(c, tErr)
-	}
-	out, err := v2.MintClaim(c.Context(), token, fields)
-	if err != nil {
-		return catalogErr(c, err, "提交到资料库失败")
-	}
-	return c.JSON(response.Response{
-		Code: 0, Message: "OK",
-		Data: fiber.Map{"id": out.WorkID(), "claim_state": out.State},
-	})
-}
-
-func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
-	if appErr := h.ensureCanPublishGalgame(c); appErr != nil {
-		return response.Error(c, appErr)
-	}
-	gid, idErr := getIDParam(c, "gid")
-	if idErr != nil {
-		return response.Error(c, idErr.(*errors.AppError))
-	}
-	workID := int64(gid)
-	token, tErr := catalogUserToken(c)
-	if tErr != nil {
-		return response.Error(c, tErr)
-	}
-	if err := h.patchClaim(c, token, workID, catalogv2.ClaimStateLive); err != nil {
-		return catalogErr(c, err, "调用资料库失败")
-	}
-
-	vndbID := ""
-	if briefs, bErr := h.galgame.GalgameBatch(c.Context(), []int{gid}, ""); bErr == nil {
-		for i := range briefs {
-			if briefs[i].ID == gid {
-				vndbID = briefs[i].VndbID
-				break
-			}
-		}
-	}
-
-	userID := middleware.MustGetUser(c).ID
-	patchID, regErr := h.service.RegisterClaimedGalgame(userID, gid, vndbID)
-	if regErr != nil {
-		return response.Error(c, errors.ErrInternal("认领成功，但本站登记失败，请稍后重试"))
-	}
-
-	return c.JSON(response.Response{
-		Code:    0,
-		Message: "OK",
-		Data:    fiber.Map{"id": patchID},
-	})
-}
-
-func (h *PatchHandler) WithdrawGalgameSubmission(c fiber.Ctx) error {
-	gid, idErr := getIDParam(c, "gid")
-	if idErr != nil {
-		return response.Error(c, idErr.(*errors.AppError))
-	}
-	workID := int64(gid)
-	token, tErr := catalogUserToken(c)
-	if tErr != nil {
-		return response.Error(c, tErr)
-	}
-	if err := h.withdrawClaim(c, token, workID); err != nil {
-		return catalogErr(c, err, "调用资料库失败")
-	}
-	return response.OKMessage(c, "OK")
-}
-
-func (h *PatchHandler) ListMyGalgames(c fiber.Ctx) error {
-	v2 := h.catalogV2()
-	if v2 == nil || !v2.Configured() {
-		return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
-	}
-	limit, _ := strconv.Atoi(c.Query("limit", "20"))
-	if limit < 1 || limit > 50 {
-		limit = 20
-	}
-
-	states := mySubmissionStates
-	if raw := strings.TrimSpace(c.Query("claim_state", "")); raw != "" {
-		states = nil
-		for _, s := range strings.Split(raw, ",") {
-			if s = strings.TrimSpace(s); s != "" {
-				states = append(states, s)
-			}
-		}
-	}
-	token, tErr := catalogUserToken(c)
-	if tErr != nil {
-		return response.Error(c, tErr)
-	}
-	page, err := v2.MyClaims(c.Context(), token, catalogv2.MyClaimsQuery{
-		ClaimStates: states, Site: catalogv2.SiteKungal,
-		Cursor: c.Query("cursor", ""), Limit: limit,
-	})
-	if err != nil {
-		return catalogErr(c, err, "调用资料库失败")
-	}
-	items := make([]mySubmission, 0, len(page.Items))
-	for i := range page.Items {
-		items = append(items, submissionRow(&page.Items[i]))
-	}
-	return response.OK(c, fiber.Map{
-		"items": items, "next_cursor": page.Next(), "total": page.Count(),
-	})
-}
-
-var mySubmissionStates = []string{
-	catalogv2.ClaimStatePending,
-	catalogv2.ClaimStateDeclined,
-}
-
-type mySubmission struct {
-	WorkID        int64   `json:"work_id"`
-	DisplayName   string  `json:"display_name"`
-	ClaimState    string  `json:"claim_state"`
-	ProductWorkID *int64  `json:"product_work_id"`
-	LastReason    *string `json:"last_reason"`
-	FirstActedAt  string  `json:"first_acted_at"`
-}
-
-func submissionRow(r *catalogv2.ClaimRecord) mySubmission {
-	row := mySubmission{
-		WorkID: r.WorkID(), DisplayName: r.DisplayName, ClaimState: r.State,
-		ProductWorkID: r.ProductID(), LastReason: r.LastReason(),
-	}
-	if r.FirstActedAt != nil {
-		row.FirstActedAt = *r.FirstActedAt
-	}
-	return row
-}
-
-type wizardPendingHit struct {
-	ID          int    `json:"id"`
-	DisplayName string `json:"display_name"`
-	ClaimState  string `json:"claim_state"`
-	Reason      string `json:"reason,omitempty"`
-}
-
-func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
-	q := c.Query("q", "")
-	limit, _ := strconv.Atoi(c.Query("limit", "10"))
-	if limit < 1 || limit > 24 {
-		limit = 10
-	}
-	items, total, err := h.galgame.SearchPublishItems(c.Context(), q, limit)
-	if err != nil {
-		if werr, ok := err.(*galgameClient.GalgameError); ok {
-			return response.Error(c, errors.New(werr.Code, werr.Message, fiber.StatusBadRequest))
-		}
-		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
-	}
-	pending := make([]wizardPendingHit, 0)
-	if v2 := h.catalogV2(); v2 != nil && v2.Configured() {
-		pending = append(pending, h.ownPendingSubmissions(c, q)...)
-	}
-	return response.OK(c, fiber.Map{"items": items, "pending": pending, "total": total})
-}
-
-func (h *PatchHandler) ownPendingSubmissions(c fiber.Ctx, q string) []wizardPendingHit {
-	token := middleware.GetAccessToken(c)
-	if token == "" {
-		return nil
-	}
-	page, err := h.catalogV2().MyClaims(c.Context(), token, catalogv2.MyClaimsQuery{
-		ClaimStates: mySubmissionStates, Site: catalogv2.SiteKungal, Limit: 50,
-	})
-	if err != nil {
-		slog.Warn("读取本人投稿列表失败，向导仅显示公开结果", "error", err)
-		return nil
-	}
-	needle := strings.ToLower(strings.TrimSpace(q))
-	out := make([]wizardPendingHit, 0, len(page.Items))
-	for i := range page.Items {
-		it := submissionRow(&page.Items[i])
-		if needle != "" && !strings.Contains(strings.ToLower(it.DisplayName), needle) {
-			continue
-		}
-		hit := wizardPendingHit{
-			ID: int(it.WorkID), DisplayName: it.DisplayName, ClaimState: it.ClaimState,
-		}
-		if it.ProductWorkID != nil && *it.ProductWorkID > 0 {
-			hit.ID = int(*it.ProductWorkID)
-		}
-		if it.LastReason != nil {
-			hit.Reason = *it.LastReason
-		}
-		out = append(out, hit)
-	}
-	return out
 }
 
 func (h *PatchHandler) GetResourceRevisions(c fiber.Ctx) error {

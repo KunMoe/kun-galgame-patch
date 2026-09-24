@@ -64,3 +64,24 @@ func TestListMyGalgamesReadsTheTenantedV2Face(t *testing.T) {
 		}
 	}
 }
+
+// catalog answers an unknown claim_state 400, which is moyu's bug by then, so
+// the reader's value is checked here and never forwarded.
+func TestListMyGalgamesRefusesAnUnknownStateItself(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(myClaimsReply))
+	}))
+	t.Cleanup(srv.Close)
+
+	h := New(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil)
+	ta := testutil.NewTestApp(t)
+	ta.App.Get("/galgame/mine", middleware.Auth(ta.RDB, config.OAuthConfig{}), h.ListMyGalgames)
+	session := ta.CreateTestSession(t, 42)
+
+	resp := ta.Request(t, http.MethodGet, "/galgame/mine?claim_state=pending,bogus", "", session)
+	if resp.StatusCode != http.StatusBadRequest || calls != 0 {
+		t.Fatalf("status = %d after %d catalog calls, want 400 after none", resp.StatusCode, calls)
+	}
+}

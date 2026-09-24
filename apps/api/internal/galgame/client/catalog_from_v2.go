@@ -1,8 +1,6 @@
 package client
 
 import (
-	"errors"
-
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
@@ -368,29 +366,4 @@ func workToDetail(w catalogv2.Work) catalogWork {
 		}
 	}
 	return out
-}
-
-func catalogErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, catalogv2.ErrNotFound) {
-		return &GalgameError{Code: catalogCodeNotFound, Message: "not found", HTTPStatus: 404}
-	}
-	if errors.Is(err, catalogv2.ErrNotConfigured) {
-		return err
-	}
-	var p *catalogv2.Problem
-	if errors.As(err, &p) {
-		if p.Merged() {
-			moved, _ := catalogv2.ParseID(p.CurrentID)
-			return &GalgameError{Code: catalogCodeMoved, Message: p.Error(), HTTPStatus: 404, Moved: moved}
-		}
-		status := p.Status
-		if status == 0 {
-			status = 400
-		}
-		return &GalgameError{Code: status, Message: p.Error(), HTTPStatus: status}
-	}
-	return err
 }

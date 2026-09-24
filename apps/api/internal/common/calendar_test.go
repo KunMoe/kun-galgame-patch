@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -31,39 +33,63 @@ func TestCalendarContentLimitsFanOut(t *testing.T) {
 }
 
 func TestCalendarUpstreamFailureMapping(t *testing.T) {
-	const (
-		badMonth   = `{"code":"INVALID_PARAMETER","status":400,"detail":"month must be YYYY-MM"}`
-		serverDown = `{"code":"INTERNAL","status":500,"detail":"服务器内部错误"}`
-	)
-
 	for _, tc := range []struct {
-		name           string
-		upstreamStatus int
-		upstreamBody   string
-		wantStatus     int
-		wantBodyHas    string
+		name        string
+		month       string
+		answer      func(w http.ResponseWriter, r *http.Request)
+		wantStatus  int
+		wantBodyHas string
+		wantCalls   int32
+		retryAfter  string
 	}{
 		{
-			name:           "a malformed month is the CALLER's error, and says which",
-			upstreamStatus: http.StatusBadRequest, upstreamBody: badMonth,
-			wantStatus: http.StatusBadRequest, wantBodyHas: "month must be YYYY-MM",
+			name:  "a malformed month is the reader's error and never reaches catalog",
+			month: "2026-7",
+			answer: func(w http.ResponseWriter, r *http.Request) {
+				catalogv2test.Problem(w, r, "INVALID_PARAMETER", "month must be YYYY-MM.", nil)
+			},
+			wantStatus: http.StatusBadRequest, wantBodyHas: "YYYY-MM", wantCalls: 0,
 		},
 		{
-			name:           "the registry falling over is still a 50000",
-			upstreamStatus: http.StatusInternalServerError, upstreamBody: serverDown,
-			wantStatus: http.StatusInternalServerError, wantBodyHas: `"code":50000`,
+			name:  "catalog refusing a month moyu checked is moyu's bug",
+			month: "2026-07",
+			answer: func(w http.ResponseWriter, r *http.Request) {
+				catalogv2test.Problem(w, r, "INVALID_PARAMETER", "month must be YYYY-MM.", nil)
+			},
+			wantStatus: http.StatusInternalServerError, wantBodyHas: `"code":50000`, wantCalls: 1,
 		},
 		{
-			name:           "a non-envelope failure is an outage, not a bad request",
-			upstreamStatus: http.StatusBadGateway, upstreamBody: `<html>502</html>`,
-			wantStatus: http.StatusInternalServerError, wantBodyHas: `"code":50000`,
+			name:  "catalog falling over is an outage",
+			month: "2026-07",
+			answer: func(w http.ResponseWriter, r *http.Request) {
+				catalogv2test.Problem(w, r, "INTERNAL_ERROR", "panic recovered", nil)
+			},
+			wantStatus: http.StatusServiceUnavailable, wantBodyHas: `"code":50320`, wantCalls: 1,
+		},
+		{
+			name:  "a gateway page is an outage, not a bad request",
+			month: "2026-07",
+			answer: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = w.Write([]byte(`<html>502</html>`))
+			},
+			wantStatus: http.StatusServiceUnavailable, wantBodyHas: `"code":50320`, wantCalls: 1,
+		},
+		{
+			name:  "a rate limit passes its wait through",
+			month: "2026-07",
+			answer: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "30")
+				catalogv2test.Problem(w, r, "RATE_LIMITED", "slow down", nil)
+			},
+			wantStatus: http.StatusTooManyRequests, wantBodyHas: `"code":42900`, wantCalls: 1, retryAfter: "30",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(tc.upstreamStatus)
-				_, _ = w.Write([]byte(tc.upstreamBody))
+			var calls atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				tc.answer(w, r)
 			}))
 			t.Cleanup(upstream.Close)
 
@@ -71,7 +97,7 @@ func TestCalendarUpstreamFailureMapping(t *testing.T) {
 			app := fiber.New()
 			app.Get("/galgame/calendar", h.GetGalgameCalendar)
 
-			req, _ := http.NewRequest(http.MethodGet, "http://localhost/galgame/calendar?month=2026-7", nil)
+			req, _ := http.NewRequest(http.MethodGet, "http://localhost/galgame/calendar?month="+tc.month, nil)
 			resp, err := app.Test(req)
 			if err != nil {
 				t.Fatalf("app.Test: %v", err)
@@ -84,6 +110,15 @@ func TestCalendarUpstreamFailureMapping(t *testing.T) {
 			}
 			if !strings.Contains(string(body), tc.wantBodyHas) {
 				t.Errorf("body = %s, want it to carry %s", body, tc.wantBodyHas)
+			}
+			if strings.Contains(string(body), "month must be") {
+				t.Errorf("catalog's English reached the reader: %s", body)
+			}
+			if got := calls.Load(); got != tc.wantCalls {
+				t.Errorf("catalog was called %d times, want %d", got, tc.wantCalls)
+			}
+			if got := resp.Header.Get("Retry-After"); got != tc.retryAfter {
+				t.Errorf("Retry-After = %q, want %q", got, tc.retryAfter)
 			}
 		})
 	}

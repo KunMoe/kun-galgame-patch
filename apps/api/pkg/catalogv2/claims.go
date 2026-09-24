@@ -71,13 +71,13 @@ func (r ClaimRecord) LastReason() *string {
 	return r.LastEvent.Reason
 }
 
-func (c *Client) CreateClaim(ctx context.Context, accessToken string, workID, siteWorkID int64) (*ClaimRecord, error) {
+func (c *Client) CreateClaim(ctx context.Context, accessToken, idemKey string, workID, siteWorkID int64) (*ClaimRecord, error) {
 	body := map[string]any{"work_id": FormatID(workID)}
 	if siteWorkID > 0 {
 		body["site_work_id"] = FormatID(siteWorkID)
 	}
 	var out ClaimRecord
-	if _, err := c.userDo(ctx, http.MethodPost, "/v2/me/claims", accessToken, body, &out); err != nil {
+	if err := c.userPost(ctx, "/v2/me/claims", accessToken, idemKey, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -88,9 +88,9 @@ func (c *Client) CreateClaim(ctx context.Context, accessToken string, workID, si
 // in that language, so the wizard's zh-Hans name with olang=ja is born under the
 // Japanese title. That was v1's behaviour too; sending display_name at the top
 // level instead would pin the seed and change it.
-func (c *Client) MintClaim(ctx context.Context, accessToken string, fieldValues map[string]any) (*ClaimRecord, error) {
+func (c *Client) MintClaim(ctx context.Context, accessToken, idemKey string, fieldValues map[string]any) (*ClaimRecord, error) {
 	var out ClaimRecord
-	if _, err := c.userDo(ctx, http.MethodPost, "/v2/me/claims", accessToken,
+	if err := c.userPost(ctx, "/v2/me/claims", accessToken, idemKey,
 		map[string]any{"field_values": fieldValues}, &out); err != nil {
 		return nil, err
 	}

@@ -2,9 +2,7 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -14,56 +12,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const galgameCodeNotFound = 404
+func IsAbsent(err error) bool { return catalogv2.IsNotFound(err) }
 
-type GalgameError struct {
-	Code       int
-	Message    string
-	HTTPStatus int
-	Moved      int64
-}
-
-func (e *GalgameError) Error() string {
-	return fmt.Sprintf("galgame business error code=%d: %s", e.Code, e.Message)
-}
-
-func (e *GalgameError) Absent() bool {
-	if e.HTTPStatus == 0 {
-		return e.Code == galgameCodeNotFound
-	}
-	return e.HTTPStatus == http.StatusNotFound && (e.Code == catalogCodeNotFound || e.Code == galgameCodeNotFound)
-}
-
-func IsAbsent(err error) bool {
-	var gerr *GalgameError
-	return errors.As(err, &gerr) && gerr.Absent()
-}
-
-func MovedTarget(err error) (int64, bool) {
-	var gerr *GalgameError
-	if !errors.As(err, &gerr) {
-		return 0, false
-	}
-	if gerr.Code != catalogCodeMoved || gerr.Moved <= 0 {
-		return 0, false
-	}
-	if gerr.HTTPStatus != http.StatusMovedPermanently && gerr.HTTPStatus != http.StatusNotFound {
-		return 0, false
-	}
-	return gerr.Moved, true
-}
-
-func AsBadRequest(err error) (*GalgameError, bool) {
-	var gerr *GalgameError
-	if !errors.As(err, &gerr) || gerr.HTTPStatus != http.StatusBadRequest {
-		return nil, false
-	}
-	return gerr, true
-}
-
-func upstreamError(resp *http.Response, code int, message string) *GalgameError {
-	return &GalgameError{Code: code, Message: message, HTTPStatus: resp.StatusCode}
-}
+func MovedTarget(err error) (int64, bool) { return catalogv2.MergedInto(err) }
 
 type Client struct {
 	v2 *catalogv2.Client
@@ -227,7 +178,7 @@ var listCardInclude = []string{"titles", "covers", "refs", "companies", "tags", 
 func worksQueryFor(p SearchGalgameParams) catalogv2.WorksQuery {
 	q := catalogv2.WorksQuery{
 		Q:            p.Q,
-		Sort:         searchSortForCatalog(p.Sort),
+		Sort:         catalogWorkSort[strings.TrimSpace(p.Sort)],
 		Page:         p.Page,
 		Limit:        p.Limit,
 		OLang:        joinCatalogLangs(p.OriginalLang),
@@ -280,21 +231,22 @@ type SearchGalgameParams struct {
 	Limit        int
 }
 
-func searchSortForCatalog(sort string) string {
-	switch strings.TrimSpace(sort) {
-	case "", "relevance":
-		return ""
-	case "view":
-		return "popularity"
-	default:
-		return sort
-	}
+// Closed on purpose: catalog answers an undeclared sort 400 UNKNOWN_SORT, and
+// a 400 from catalog is moyu's bug, so whatever the reader sent has to be one
+// of these before it leaves.
+var catalogWorkSort = map[string]string{
+	"": "", "relevance": "", "view": "popularity", "popularity": "popularity",
+	"released_desc": "released_desc", "released_asc": "released_asc",
+	"updated": "updated", "id": "id",
 }
 
 func (c *Client) SearchGalgame(ctx context.Context, p SearchGalgameParams) (*Paginated[GalgameHit], error) {
+	if _, ok := catalogWorkSort[strings.TrimSpace(p.Sort)]; !ok {
+		return nil, fmt.Errorf("sort %q is not one catalog's works face declares", p.Sort)
+	}
 	page, err := c.v2.ListWorks(ctx, worksQueryFor(p))
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	sexualOK := gateFor(p.ContentLimit).contentLimit != "sfw"
 	out := Paginated[GalgameHit]{Total: page.Count()}
@@ -377,15 +329,15 @@ type GalgameDetailEnvelope struct {
 func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (*GalgameDetailEnvelope, error) {
 	w, err := c.v2.GetWork(ctx, int64(gid), true)
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	detail := workToDetail(*w)
 	if !detail.ClaimedBy.renderable() {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "galgame not found"}
+		return nil, catalogv2.Absent("GET /v2/catalog/works/{id}")
 	}
 	full := catalogWorkToFull(&detail)
 	if !gateFor(contentLimit).allows(full.ContentLimit) {
-		return nil, &GalgameError{Code: galgameCodeNotFound, Message: "galgame not found"}
+		return nil, catalogv2.Absent("GET /v2/catalog/works/{id}")
 	}
 	return &GalgameDetailEnvelope{Galgame: full}, nil
 }
@@ -393,10 +345,10 @@ func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (
 func (c *Client) CheckGalgameByVndbID(ctx context.Context, vndbID string) (exists bool, galgameID int, err error) {
 	w, err := c.v2.WorkByRef(ctx, "vndb", vndbID, true)
 	if err != nil {
-		if errors.Is(err, catalogv2.ErrNotFound) {
+		if IsAbsent(err) {
 			return false, 0, nil
 		}
-		return false, 0, catalogErr(err)
+		return false, 0, err
 	}
 	id, ok := catalogv2.ParseID(w.ID)
 	if !ok || !claimedFrom(w.Claim).renderable() {
@@ -436,7 +388,7 @@ func (c *Client) galgameBatch(ctx context.Context, ids []int, contentLimit strin
 		ContentLimit: gate.contentLimit, Limit: CatalogWorksIDsMax,
 	})
 	if err != nil {
-		return nil, catalogErr(err)
+		return nil, err
 	}
 	out := make([]GalgameBrief, 0, len(page.Items))
 	for i := range page.Items {
@@ -490,7 +442,7 @@ func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit str
 	for page := 0; page < calendarMaxPages; page++ {
 		data, err := c.v2.Calendar(ctx, month, true, cursor, calendarPageLimit)
 		if err != nil {
-			return nil, catalogErr(err)
+			return nil, err
 		}
 		if page == 0 {
 			out.Meta.Count = int(data.Count())

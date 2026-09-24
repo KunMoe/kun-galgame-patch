@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -119,9 +120,9 @@ func (h *CommonHandler) runSearchLanes(
 	}
 
 	run("galgame", func() {
-		cards, total, appErr := h.searchGalgameLane(ctx, raw, 1, lim.galgame, galgameSearchFilter{})
-		if appErr != nil {
-			slog.Warn("站内搜索 galgame lane 失败", "error", appErr.Message)
+		cards, total, err := h.searchGalgameLane(ctx, raw, 1, lim.galgame, galgameSearchFilter{})
+		if err != nil {
+			slog.Warn("站内搜索 galgame lane 失败", "error", err)
 			return
 		}
 		out.Galgames, out.Totals.Galgame = cards, total
@@ -178,9 +179,9 @@ type galgameSearchFilter struct {
 // own gate when a card is opened. kungal's search page draws the same line.
 func (h *CommonHandler) searchGalgameLane(
 	ctx context.Context, raw string, page, limit int, f galgameSearchFilter,
-) ([]enricher.GalgameCard, int64, *errors.AppError) {
+) ([]enricher.GalgameCard, int64, error) {
 	if h.galgame == nil {
-		return nil, 0, errors.ErrInternal("Galgame 目录未启用")
+		return nil, 0, stderrors.New("galgame client is not configured")
 	}
 	res, err := h.galgame.SearchGalgame(ctx, galgameClient.SearchGalgameParams{
 		Q:            raw,
@@ -194,10 +195,7 @@ func (h *CommonHandler) searchGalgameLane(
 		ReleasedTo:   f.ReleasedTo,
 	})
 	if err != nil {
-		if gerr, ok := galgameClient.AsBadRequest(err); ok {
-			return nil, 0, errors.ErrBadRequest(gerr.Message)
-		}
-		return nil, 0, errors.ErrInternal("搜索服务暂不可用")
+		return nil, 0, err
 	}
 
 	ids := make([]int, 0, len(res.Items))

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -67,7 +68,7 @@ func (c *Client) SearchEntities(
 ) ([]EntitySearchItem, int64, error) {
 	object, ok := entitySearchObject[family]
 	if !ok {
-		return nil, 0, &GalgameError{Code: 400, Message: "未知的资料库类型", HTTPStatus: 400}
+		return nil, 0, fmt.Errorf("unknown entity family %q", family)
 	}
 	gate := gateFor(contentLimit)
 
@@ -80,7 +81,7 @@ func (c *Client) SearchEntities(
 		Object: object, Q: q, Page: page, Limit: window, NSFW: true,
 	})
 	if err != nil {
-		return nil, 0, catalogErr(err)
+		return nil, 0, err
 	}
 
 	items := make([]EntitySearchItem, 0, len(hits.Items))
@@ -221,7 +222,7 @@ func (c *Client) ResolveEntities(ctx context.Context, family string, ids []int) 
 	case EntityFamilyCompany:
 		rows, err := c.v2.CompaniesByIDs(ctx, wide, true)
 		if err != nil {
-			return nil, catalogErr(err)
+			return nil, err
 		}
 		for _, r := range rows {
 			id, _ := r.IntID()
@@ -233,7 +234,7 @@ func (c *Client) ResolveEntities(ctx context.Context, family string, ids []int) 
 	case EntityFamilyTag:
 		rows, err := c.v2.TagsByIDs(ctx, wide, true)
 		if err != nil {
-			return nil, catalogErr(err)
+			return nil, err
 		}
 		for _, r := range rows {
 			id, _ := r.IntID()
@@ -243,7 +244,7 @@ func (c *Client) ResolveEntities(ctx context.Context, family string, ids []int) 
 			})
 		}
 	default:
-		return nil, &GalgameError{Code: 400, Message: "该资料库类型不支持按 id 解析", HTTPStatus: 400}
+		return nil, fmt.Errorf("entity family %q has no batch face", family)
 	}
 	return items, nil
 }

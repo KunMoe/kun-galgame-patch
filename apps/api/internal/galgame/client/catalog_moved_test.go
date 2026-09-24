@@ -5,48 +5,36 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 )
 
 func TestMovedTargetClassification(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		err  error
-		want int64
+		name  string
+		code  string
+		extra map[string]any
+		want  int64
 	}{
-		{
-			name: "v2 merge verdict",
-			err:  &GalgameError{Code: catalogCodeMoved, HTTPStatus: http.StatusNotFound, Moved: 6935},
-			want: 6935,
-		},
-		{
-			name: "legacy 301 merge verdict",
-			err:  &GalgameError{Code: catalogCodeMoved, HTTPStatus: http.StatusMovedPermanently, Moved: 6935},
-			want: 6935,
-		},
-		{
-			name: "a 301 with no merge code is not a merge",
-			err:  &GalgameError{Code: 233, HTTPStatus: http.StatusMovedPermanently, Moved: 6935},
-		},
-		{
-			name: "the merge code without a merge status is not a merge either",
-			err:  &GalgameError{Code: catalogCodeMoved, HTTPStatus: http.StatusOK, Moved: 6935},
-		},
-		{
-			name: "a merge verdict with no target is not actionable",
-			err:  &GalgameError{Code: catalogCodeMoved, HTTPStatus: http.StatusNotFound},
-		},
-		{
-			name: "a plain miss is not a merge",
-			err:  &GalgameError{Code: catalogCodeNotFound, HTTPStatus: http.StatusNotFound},
-		},
-		{name: "no error at all"},
+		{"a merge verdict", "ENTITY_MERGED", map[string]any{"object": "company", "current_id": "6935"}, 6935},
+		{"a merge verdict with no target is not actionable", "ENTITY_MERGED", map[string]any{"object": "company"}, 0},
+		{"a plain miss is not a merge", "NOT_FOUND", nil, 0},
+		{"a conflict is not a merge", "INVALID_STATE_TRANSITION", map[string]any{"current_id": "6935"}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			to, ok := MovedTarget(tc.err)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				catalogv2test.Problem(w, r, tc.code, "detail", tc.extra)
+			}))
+			t.Cleanup(srv.Close)
+			_, err := NewWithKey(srv.URL, "nmk_test_key").v2.GetCompany(context.Background(), 13323, true)
+			to, ok := MovedTarget(err)
 			if (tc.want > 0) != ok || to != tc.want {
 				t.Fatalf("MovedTarget = (%d, %v), want (%d, %v)", to, ok, tc.want, tc.want > 0)
 			}
 		})
+	}
+	if _, ok := MovedTarget(nil); ok {
+		t.Fatal("no error is no merge")
 	}
 }
 
@@ -54,20 +42,19 @@ func TestCompanyMergeDoesNotFollow(t *testing.T) {
 	var seen []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.URL.Path)
-		w.Header().Set("Content-Type", "application/problem+json")
 		if r.URL.Path == "/v2/catalog/companies/13323" {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"code":"ENTITY_MERGED","status":404,"current_id":"6935"}`))
+			w.Header().Set("Link", `</v2/catalog/companies/6935>; rel="canonical"`)
+			catalogv2test.Problem(w, r, "ENTITY_MERGED", "company 13323 was merged.",
+				map[string]any{"object": "company", "current_id": "6935"})
 			return
 		}
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":"6935","display_name":"生存ブランド"}`))
 	}))
 	t.Cleanup(upstream.Close)
 
 	c := NewWithKey(upstream.URL, "nmk_test_key")
 	_, err := c.v2.GetCompany(context.Background(), 13323, true)
-	to, ok := MovedTarget(catalogErr(err))
+	to, ok := MovedTarget(err)
 	if !ok || to != 6935 {
 		t.Fatalf("MovedTarget = (%d, %v), want (6935, true); err=%v", to, ok, err)
 	}

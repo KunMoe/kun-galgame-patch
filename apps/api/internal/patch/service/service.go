@@ -177,7 +177,7 @@ func (s *PatchService) ensureLocalPatch(ctx context.Context, id, actorID int) (*
 
 	briefs, bErr := s.galgame.GalgameBatch(ctx, []int{id}, "")
 	if bErr != nil {
-		return nil, err
+		return nil, bErr
 	}
 	var brief *galgameClient.GalgameBrief
 	for i := range briefs {
