@@ -66,13 +66,11 @@ type CreditGroup struct {
 }
 
 type CreditEntry struct {
-	ID            string                   `json:"id"`
-	DisplayName   string                   `json:"display_name"`
-	Latin         *string                  `json:"latin"`
-	Lang          *string                  `json:"lang"`
-	Localized     map[string]LocalizedText `json:"localized"`
-	CharacterID   *string                  `json:"character_id"`
-	CharacterName *string                  `json:"character_name"`
+	ID          string                   `json:"id"`
+	DisplayName string                   `json:"display_name"`
+	Latin       *string                  `json:"latin"`
+	Localized   map[string]LocalizedText `json:"localized"`
+	CharacterID *string                  `json:"character_id"`
 }
 
 type Rating struct {
@@ -140,7 +138,6 @@ type WorkCharacter struct {
 	ID          string                   `json:"id"`
 	DisplayName string                   `json:"display_name"`
 	Latin       *string                  `json:"latin"`
-	Lang        *string                  `json:"lang"`
 	Localized   map[string]LocalizedText `json:"localized"`
 	RosterRole  string                   `json:"roster_role"`
 	Spoiler     string                   `json:"spoiler"`

@@ -75,7 +75,6 @@ type catalogWorkCharacter struct {
 	ID           int64                           `json:"id"`
 	DisplayName  string                          `json:"display_name"`
 	Localized    map[string]catalogLocalizedName `json:"localized"`
-	Lang         string                          `json:"lang"`
 	Latin        string                          `json:"latin"`
 	Kind         string                          `json:"kind"`
 	Spoiler      int                             `json:"spoiler"`
@@ -88,8 +87,7 @@ type catalogWorkCharacter struct {
 
 type catalogCreditItem struct {
 	catalogPersonRef
-	CharacterID int64  `json:"character_id"`
-	Character   string `json:"character"`
+	CharacterID int64 `json:"character_id"`
 }
 
 type catalogCreditGroup struct {
@@ -205,7 +203,7 @@ func catalogCharacters(rows []catalogWorkCharacter, revealSexual bool) []Galgame
 	out := make([]GalgameCharacter, 0, len(rows))
 	for i := range rows {
 		c := &rows[i]
-		name := catalogEntityNames(c.Localized, c.DisplayName, c.Lang, c.Latin)
+		name := catalogEntityNames(c.Localized, c.DisplayName, "", c.Latin)
 		if name.canonical() == "" {
 			slog.Warn("catalog roster row has no name; the character is dropped", "character", c.ID)
 			continue
@@ -388,23 +386,16 @@ func rosterNameIndex(roster []catalogWorkCharacter) map[int64]KunLanguage {
 	out := make(map[int64]KunLanguage, len(roster))
 	for i := range roster {
 		c := &roster[i]
-		out[c.ID] = catalogEntityNames(c.Localized, c.DisplayName, c.Lang, c.Latin)
+		out[c.ID] = catalogEntityNames(c.Localized, c.DisplayName, "", c.Latin)
 	}
 	return out
 }
 
-// A credit annotates the character it played with one bare string, in whatever
-// language that credit's source wrote it. The roster above holds the same
-// character under every language catalog has, so prefer it and keep the credit's
-// own string only for a character the roster does not carry.
+// A work credit names the character it voiced only by character_id; the name
+// lives on the same work's roster. Catalog never sent the character_name this
+// used to fall back to: that field exists only on a name's credits face.
 func creditCharacter(roster map[int64]KunLanguage, c *catalogCreditItem) KunLanguage {
-	if name, ok := roster[c.CharacterID]; ok && name.canonical() != "" {
-		return name
-	}
-	if c.Character == "" {
-		return KunLanguage{}
-	}
-	return KunLanguage{JaJp: c.Character}
+	return roster[c.CharacterID]
 }
 
 // The same person reaches moyu as "保住圭" from one source and "保住圭 (Hozumi
