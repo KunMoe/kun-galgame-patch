@@ -928,7 +928,7 @@ func (s *PatchService) createDedupMessage(senderID, recipientID int, msgType, co
 }
 
 func galgameDisplayName(b *galgameClient.GalgameBrief) string {
-	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw} {
+	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw, b.DisplayName, b.Latin} {
 		if n != "" {
 			return n
 		}

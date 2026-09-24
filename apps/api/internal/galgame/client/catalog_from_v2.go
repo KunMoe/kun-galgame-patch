@@ -1,6 +1,8 @@
 package client
 
 import (
+	"log/slog"
+
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
@@ -97,18 +99,40 @@ func strOrEmpty(p *string) string {
 	return *p
 }
 
-func gradeInt(s *string) int {
+// null is "nobody assessed this image", never safe. One helper used to read
+// only the sexual words for both axes and answer 0 for anything else, so a null
+// grade came out as safe and every violent or brutal image as tame.
+func sexualGrade(s *string) *int { return grade(s, "safe", "suggestive", "explicit") }
+
+func violenceGrade(s *string) *int { return grade(s, "tame", "violent", "brutal") }
+
+func grade(s *string, scale ...string) *int {
 	if s == nil {
-		return 0
+		return nil
 	}
-	switch *s {
-	case "suggestive":
-		return 1
-	case "explicit":
-		return 2
-	default:
-		return 0
+	for level, word := range scale {
+		if *s == word {
+			return &level
+		}
 	}
+	return nil
+}
+
+const gradeSafe = 0
+
+// revealsSexual reports whether the reader opted into adult content. The
+// handlers default an absent content_limit to sfw, so only these two open it.
+func revealsSexual(contentLimit string) bool {
+	return contentLimit == "nsfw" || contentLimit == "all"
+}
+
+// artFor answers the hash a reader may be shown. A cover is not gated here —
+// the work's own content_limit already is catalog's verdict on its covers.
+func artFor(hash string, sexual *int, reveal bool) string {
+	if reveal || (sexual != nil && *sexual == gradeSafe) {
+		return hash
+	}
+	return ""
 }
 
 func spoilerInt(s string) int {
@@ -133,19 +157,25 @@ func imageHash(img *catalogv2.Image) string {
 }
 
 func workToListItem(w catalogv2.Work) catalogWorkListItem {
-	id, _ := w.IntID()
+	id, ok := w.IntID()
+	if !ok {
+		slog.Warn("catalog work id is not a catalog id; the row will not render",
+			"id", w.ID, "display_name", w.DisplayName)
+	}
 	item := catalogWorkListItem{
-		ID:            id,
-		Medium:        w.Medium,
-		DisplayName:   w.DisplayName,
-		ContentRating: w.ContentRating,
-		ContentLimit:  w.ContentLimit,
-		OLang:         w.OLang,
-		ReleaseDate:   w.ReleaseDate,
-		ClaimedBy:     claimedFrom(w.Claim),
-		Updated:       w.UpdatedAt,
-		Localized:     localizedFrom(w.Localized),
-		Refs:          refsFrom(w.Refs),
+		ID:               id,
+		Medium:           w.Medium,
+		DisplayName:      w.DisplayName,
+		Latin:            strOrEmpty(w.Latin),
+		ContentRating:    w.ContentRating,
+		ContentLimit:     w.ContentLimit,
+		OLang:            w.OLang,
+		ReleaseDate:      w.ReleaseDate,
+		ReleasePrecision: strOrEmpty(w.ReleasePrecision),
+		ClaimedBy:        claimedFrom(w.Claim),
+		Updated:          w.UpdatedAt,
+		Localized:        localizedFrom(w.Localized),
+		Refs:             refsFrom(w.Refs),
 	}
 	if w.Cover != nil {
 		item.Cover = w.Cover.URL
@@ -205,8 +235,8 @@ func imageToSlot(img *catalogv2.Image) catalogCoverSlot {
 		Width:     intOrZero(img.Width),
 		Height:    intOrZero(img.Height),
 		Thumbhash: strOrEmpty(img.Thumbhash),
-		Sexual:    gradeInt(img.Sexual),
-		Violence:  gradeInt(img.Violence),
+		Sexual:    sexualGrade(img.Sexual),
+		Violence:  violenceGrade(img.Violence),
 		Source:    img.Source,
 	}
 }
@@ -217,8 +247,8 @@ func coverToSlot(c *catalogv2.Cover) catalogCoverSlot {
 		Width:     intOrZero(c.Width),
 		Height:    intOrZero(c.Height),
 		Thumbhash: strOrEmpty(c.Thumbhash),
-		Sexual:    gradeInt(c.Sexual),
-		Violence:  gradeInt(c.Violence),
+		Sexual:    sexualGrade(c.Sexual),
+		Violence:  violenceGrade(c.Violence),
 		Source:    c.Source,
 	}
 }
@@ -272,20 +302,22 @@ func workCredits(w catalogv2.Work) []catalogCreditGroup {
 func workToDetail(w catalogv2.Work) catalogWork {
 	item := workToListItem(w)
 	out := catalogWork{
-		ID:            item.ID,
-		Medium:        item.Medium,
-		DisplayName:   item.DisplayName,
-		OLang:         item.OLang,
-		ContentRating: item.ContentRating,
-		ContentLimit:  item.ContentLimit,
-		ReleaseDate:   item.ReleaseDate,
-		Created:       w.CreatedAt,
-		Updated:       w.UpdatedAt,
-		Refs:          item.Refs,
-		ClaimedBy:     item.ClaimedBy,
-		Localized:     item.Localized,
-		CoverSlots:    item.Covers,
-		Labels:        item.Labels,
+		ID:               item.ID,
+		Medium:           item.Medium,
+		DisplayName:      item.DisplayName,
+		Latin:            item.Latin,
+		OLang:            item.OLang,
+		ContentRating:    item.ContentRating,
+		ContentLimit:     item.ContentLimit,
+		ReleaseDate:      item.ReleaseDate,
+		ReleasePrecision: item.ReleasePrecision,
+		Created:          w.CreatedAt,
+		Updated:          w.UpdatedAt,
+		Refs:             item.Refs,
+		ClaimedBy:        item.ClaimedBy,
+		Localized:        item.Localized,
+		CoverSlots:       item.Covers,
+		Labels:           item.Labels,
 	}
 	if w.Intros != nil {
 		for _, row := range *w.Intros {
@@ -295,30 +327,25 @@ func workToDetail(w catalogv2.Work) catalogWork {
 		}
 	}
 	if w.Covers != nil {
-		for i, c := range *w.Covers {
-			kind := "main"
-			if c.PortraitPinned {
-				kind = "portrait"
-			}
+		for _, c := range *w.Covers {
 			out.Covers = append(out.Covers, catalogDetailCover{
 				URL:            c.URL,
-				Kind:           kind,
+				Kind:           c.Kind,
 				PortraitPinned: c.PortraitPinned,
-				Sexual:         gradeInt(c.Sexual),
-				Violence:       gradeInt(c.Violence),
+				Sexual:         sexualGrade(c.Sexual),
+				Violence:       violenceGrade(c.Violence),
 				Source:         c.Source,
 				Width:          intOrZero(c.Width),
 				Height:         intOrZero(c.Height),
 				Thumbhash:      strOrEmpty(c.Thumbhash),
 			})
-			_ = i
 		}
 	}
 	if w.Screenshots != nil {
 		for _, s := range *w.Screenshots {
 			out.Screenshots = append(out.Screenshots, catalogScreenshot{
-				URL: s.URL, Caption: s.Caption, Sexual: gradeInt(s.Sexual),
-				Violence: gradeInt(s.Violence), Source: s.Source,
+				URL: s.URL, Caption: s.Caption, Sexual: sexualGrade(s.Sexual),
+				Violence: violenceGrade(s.Violence), Source: s.Source,
 				Width: intOrZero(s.Width), Height: intOrZero(s.Height),
 				Thumbhash: strOrEmpty(s.Thumbhash),
 			})
@@ -333,7 +360,8 @@ func workToDetail(w catalogv2.Work) catalogWork {
 				ID: id, DisplayName: ch.DisplayName, Localized: localizedFrom(ch.Localized),
 				Lang: strOrEmpty(ch.Lang), Latin: strOrEmpty(ch.Latin),
 				Kind: ch.RosterRole, Spoiler: spoilerInt(ch.Spoiler),
-				Image: imageHash(ch.Image), Figure: imageHash(ch.Figure),
+				Image: imageHash(ch.Image), ImageSexual: imageSexual(ch.Image),
+				Figure: imageHash(ch.Figure), FigureSexual: imageSexual(ch.Figure),
 				Voices: personRefsFrom(ch.Voices),
 			})
 		}
@@ -341,8 +369,10 @@ func workToDetail(w catalogv2.Work) catalogWork {
 	out.Credits = workCredits(w)
 	if w.Series != nil {
 		for _, sr := range *w.Series {
-			id, _ := catalogv2.ParseID(sr.ID)
-			if id == 0 {
+			id, ok := catalogv2.ParseID(sr.ID)
+			if !ok {
+				slog.Warn("catalog work series id is not a catalog id; the series is dropped",
+					"work", w.ID, "series", sr.ID, "name", sr.DisplayName)
 				continue
 			}
 			out.Series = append(out.Series, catalogWorkSeries{

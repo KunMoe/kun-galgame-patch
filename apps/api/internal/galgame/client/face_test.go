@@ -30,7 +30,7 @@ func (r *faceRecorder) server(t *testing.T) *httptest.Server {
 		r.auth = req.Header.Get("Authorization")
 		r.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{}}`))
+		_, _ = w.Write([]byte(`{"object":"list","items":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 	return srv

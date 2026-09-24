@@ -19,6 +19,13 @@ func mirrorServer(t *testing.T, body string, seen *url.Values) *Client {
 	return NewWithKey(srv.URL, "nmk_test_key")
 }
 
+func mirrorWork(id, rating, limit, claim string) string {
+	return `{"object":"work","id":"` + id + `","medium":"galgame","display_name":"W","latin":null,"localized":{},` +
+		`"olang":"ja","content_rating":"` + rating + `","content_limit":"` + limit + `","release_date":null,` +
+		`"release_date_precision":null,"release_status":"unknown","cover":null,"banner":null,"claim":` + claim + `,` +
+		`"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
+}
+
 func verdictOf(rows []DisplayVerdict, gid int) (string, bool) {
 	for _, r := range rows {
 		if r.GID == gid {
@@ -56,14 +63,12 @@ func TestDisplayVerdictsOpenBothGates(t *testing.T) {
 // its verdict from content_rating, which served explicit covers to SFW readers.
 func TestDisplayVerdictKeysOnTheCatalogID(t *testing.T) {
 	var q url.Values
-	c := mirrorServer(t, `{"object":"list","items":[
-		{"object":"work","id":"501","content_rating":"all","content_limit":"nsfw",
-		 "claim":{"site":"kungal","site_work_id":"7001","state":"live","content_limit":"nsfw"}},
-		{"object":"work","id":"502","content_rating":"r18","content_limit":"sfw","claim":null},
-		{"object":"work","id":"503","content_rating":"all","claim":null},
-		{"object":"work","id":"504","content_rating":"all","content_limit":"nsfw",
-		 "claim":{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"nsfw"}}
-	]}`, &q)
+	c := mirrorServer(t, `{"object":"list","items":[`+
+		mirrorWork("501", "all_ages", "nsfw", `{"site":"kungal","site_work_id":"7001","state":"live","content_limit":"nsfw"}`)+`,`+
+		mirrorWork("502", "r18", "sfw", "null")+`,`+
+		mirrorWork("503", "sensitive", "nsfw", "null")+`,`+
+		mirrorWork("504", "all_ages", "nsfw", `{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"nsfw"}`)+
+		`]}`, &q)
 
 	rows, err := c.DisplayVerdictsByCatalogIDs(context.Background(), []int64{501, 502, 503, 504})
 	if err != nil {
@@ -72,7 +77,7 @@ func TestDisplayVerdictKeysOnTheCatalogID(t *testing.T) {
 
 	for gid, want := range map[int]string{501: "nsfw", 502: "sfw", 503: "nsfw", 504: "nsfw"} {
 		if cl, ok := verdictOf(rows, gid); !ok || cl != want {
-			t.Errorf("%d = %q/%v, want %s (work.content_limit, nsfw when absent)", gid, cl, ok, want)
+			t.Errorf("%d = %q/%v, want %s (work.content_limit, whatever the rating)", gid, cl, ok, want)
 		}
 	}
 	for _, foreign := range []int{7001, 88} {

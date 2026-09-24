@@ -13,7 +13,7 @@ import (
 // modal without erroring.
 func TestProdCharacterDetailDecodes(t *testing.T) {
 	wire := loadGolden[catalogv2.Character](t, "catalog_character_detail_prod.json")
-	ch := catalogCharacterToDetail(&wire, true)
+	ch := catalogCharacterToDetail(&wire, false)
 
 	if ch.ID != 1699 || ch.Name.JaJp != "コロナ" || ch.Name.ZhCn != "科罗娜" {
 		t.Fatalf("identity = (%d, %+v), want 1699 under both names", ch.ID, ch.Name)
@@ -43,7 +43,7 @@ func TestProdCharacterDetailDecodes(t *testing.T) {
 				t.Fatalf("sexual trait %q reached an sfw reader", tr.Name)
 			}
 		}
-		if nsfw := catalogCharacterToDetail(&wire, false); len(nsfw.Traits) <= len(ch.Traits) {
+		if nsfw := catalogCharacterToDetail(&wire, true); len(nsfw.Traits) <= len(ch.Traits) {
 			t.Errorf("nsfw traits = %d, sfw = %d — the filter dropped nothing",
 				len(nsfw.Traits), len(ch.Traits))
 		}
@@ -179,7 +179,7 @@ func TestProdCompanyDetailDecodes(t *testing.T) {
 // without the missing data.
 func TestEntityDetailNeverMarshalsNullArrays(t *testing.T) {
 	for name, v := range map[string]any{
-		"character": catalogCharacterToDetail(&catalogv2.Character{}, true),
+		"character": catalogCharacterToDetail(&catalogv2.Character{}, false),
 		"staff":     catalogNameToDetail(&catalogv2.CreditName{}),
 	} {
 		raw, err := json.Marshal(v)

@@ -24,16 +24,16 @@ func (r *wizardRecorder) client(t *testing.T) *Client {
 		switch {
 		case req.URL.Path == "/v2/catalog/works":
 			r.catalogQ = req.URL.Query()
-			body = `{"object":"list","total":2,"items":[
-			  {"id":"11","display_name":"A","content_rating":"r18",
-			   "claim":{"site":"galgame_wiki","site_work_id":"292","state":"live","content_limit":"nsfw"},
-			   "localized":{"ja":{"value":"白恋サクラ","is_machine":false}},"refs":[{"source":"vndb","external_id":"v22610"}]},
-			  {"id":"12","display_name":"B","content_rating":"r18",
-			   "claim":{"site":"galgame_wiki","site_work_id":"9978","state":"draft","content_limit":"nsfw"}},
-			  {"id":"13","display_name":"withdrawn","content_rating":"r18",
-			   "claim":{"site":"galgame_wiki","site_work_id":"404","state":"hidden","content_limit":"nsfw"}},
-			  {"id":"14","display_name":"unclaimed","content_rating":"r18","claim":null}
-			]}`
+			body = `{"object":"list","total":2,"items":[` +
+				wizardWork("11", "白恋サクラ", `{"ja":{"value":"白恋サクラ","is_machine":false}}`,
+					`{"site":"kungal","site_work_id":"292","state":"live","content_limit":"nsfw"}`,
+					`[{"source":"vndb","external_id":"v22610"}]`) + `,` +
+				wizardWork("12", "B", `{}`,
+					`{"site":"kungal","site_work_id":"9978","state":"draft","content_limit":"nsfw"}`, `[]`) + `,` +
+				wizardWork("13", "withdrawn", `{}`,
+					`{"site":"kungal","site_work_id":"404","state":"hidden","content_limit":"nsfw"}`, `[]`) + `,` +
+				wizardWork("14", "unclaimed", `{}`, `null`, `[]`) +
+				`],"facets":{"olang":[{"value":"ja","display_name":"日语","count":2}]}}`
 		case strings.HasSuffix(req.URL.Path, "/galgame/search"):
 			r.wikiHits++
 		}
@@ -43,6 +43,14 @@ func (r *wizardRecorder) client(t *testing.T) *Client {
 	}))
 	t.Cleanup(srv.Close)
 	return NewWithKey(srv.URL, "nm_test_key")
+}
+
+func wizardWork(id, name, localized, claim, refs string) string {
+	return `{"object":"work","id":"` + id + `","medium":"galgame","display_name":"` + name + `","latin":null,` +
+		`"localized":` + localized + `,"olang":"ja","content_rating":"r18","content_limit":"nsfw",` +
+		`"release_date":null,"release_date_precision":null,"release_status":"unknown","cover":null,"banner":null,` +
+		`"claim":` + claim + `,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z",` +
+		`"titles":[],"refs":` + refs + `,"covers":[],"companies":[]}`
 }
 
 type wizardItems struct {
@@ -125,7 +133,7 @@ func TestPublishWizard_NeverTouchesTheWikiFace(t *testing.T) {
 func TestPublishWizard_EmptyResultIsAnArrayNotNull(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{}}`))
+		_, _ = w.Write([]byte(`{"object":"list","items":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 

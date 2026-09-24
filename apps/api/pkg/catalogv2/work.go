@@ -1,33 +1,34 @@
 package catalogv2
 
 type Work struct {
-	Object        string                   `json:"object"`
-	ID            string                   `json:"id"`
-	Medium        string                   `json:"medium"`
-	DisplayName   string                   `json:"display_name"`
-	Latin         *string                  `json:"latin"`
-	Localized     map[string]LocalizedText `json:"localized"`
-	OLang         string                   `json:"olang"`
-	ContentRating string                   `json:"content_rating"`
-	ContentLimit  string                   `json:"content_limit"`
-	ReleaseDate   *string                  `json:"release_date"`
-	CreatedAt     string                   `json:"created_at"`
-	UpdatedAt     string                   `json:"updated_at"`
-	Cover         *Image                   `json:"cover"`
-	Banner        *Image                   `json:"banner"`
-	Claim         *Claim                   `json:"claim"`
-	Titles        *[]WorkTitle             `json:"titles"`
-	Refs          *[]Ref                   `json:"refs"`
-	Credits       *[]CreditGroup           `json:"credits"`
-	Ratings       *[]Rating                `json:"ratings"`
-	Tags          *[]WorkTag               `json:"tags"`
-	Intros        *[]Intro                 `json:"intros"`
-	Covers        *[]Cover                 `json:"covers"`
-	Screenshots   *[]Screenshot            `json:"screenshots"`
-	Characters    *[]WorkCharacter         `json:"characters"`
-	Companies     *[]WorkCompany           `json:"companies"`
-	Series        *[]WorkSeriesRef         `json:"series"`
-	ViaCompany    *ViaCompany              `json:"via_company"`
+	Object           string                   `json:"object"`
+	ID               string                   `json:"id"`
+	Medium           string                   `json:"medium"`
+	DisplayName      string                   `json:"display_name"`
+	Latin            *string                  `json:"latin"`
+	Localized        map[string]LocalizedText `json:"localized"`
+	OLang            string                   `json:"olang"`
+	ContentRating    string                   `json:"content_rating"`
+	ContentLimit     string                   `json:"content_limit"`
+	ReleaseDate      *string                  `json:"release_date"`
+	ReleasePrecision *string                  `json:"release_date_precision"`
+	CreatedAt        string                   `json:"created_at"`
+	UpdatedAt        string                   `json:"updated_at"`
+	Cover            *Image                   `json:"cover"`
+	Banner           *Image                   `json:"banner"`
+	Claim            *Claim                   `json:"claim"`
+	Titles           *[]WorkTitle             `json:"titles"`
+	Refs             *[]Ref                   `json:"refs"`
+	Credits          *[]CreditGroup           `json:"credits"`
+	Ratings          *[]Rating                `json:"ratings"`
+	Tags             *[]WorkTag               `json:"tags"`
+	Intros           *[]Intro                 `json:"intros"`
+	Covers           *[]Cover                 `json:"covers"`
+	Screenshots      *[]Screenshot            `json:"screenshots"`
+	Characters       *[]WorkCharacter         `json:"characters"`
+	Companies        *[]WorkCompany           `json:"companies"`
+	Series           *[]WorkSeriesRef         `json:"series"`
+	ViaCompany       *ViaCompany              `json:"via_company"`
 }
 
 // Named only on the company_id + company_rollup lane, and only on rows the
@@ -112,6 +113,7 @@ type Cover struct {
 	ID             string  `json:"id"`
 	VoteCount      int     `json:"vote_count"`
 	PortraitPinned bool    `json:"portrait_pinned"`
+	Kind           string  `json:"cover_kind"`
 	URL            string  `json:"url"`
 	Hash           string  `json:"hash"`
 	Width          *int    `json:"width"`

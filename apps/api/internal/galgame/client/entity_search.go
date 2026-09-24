@@ -70,8 +70,6 @@ func (c *Client) SearchEntities(
 	if !ok {
 		return nil, 0, fmt.Errorf("unknown entity family %q", family)
 	}
-	gate := gateFor(contentLimit)
-
 	window, offset := limit, 0
 	if family == EntityFamilyTag {
 		window, offset, page = searchTagWindow, (page-1)*limit, 1
@@ -88,16 +86,15 @@ func (c *Client) SearchEntities(
 	for i := range hits.Items {
 		h := hits.Items[i]
 		id, ok := h.IntID()
-		if !ok {
-			continue
-		}
 		name := entityHitNames(family, h)
-		if name.canonical() == "" {
+		if !ok || name.canonical() == "" {
+			slog.Warn("catalog search hit has no usable id or name; it is dropped",
+				"family", family, "id", h.ID, "display_name", h.DisplayName)
 			continue
 		}
 		items = append(items, EntitySearchItem{ID: int(id), Family: family, Name: name})
 	}
-	items = c.attachEntityFacts(ctx, family, items, gate)
+	items = c.attachEntityFacts(ctx, family, items, contentLimit)
 
 	if family != EntityFamilyTag {
 		return items, hits.Count(), nil
@@ -123,11 +120,13 @@ func entityHitNames(family string, h catalogv2.SearchHit) KunLanguage {
 // attachEntityFacts fills the half of a card the search face does not answer: a
 // picture and a work count. It is decoration — a card without its face is still
 // a usable result — so a failed batch is logged and the rows are kept as they
-// are. Staff is absent on purpose: a credit name has no work count of its own
+// are, except for an SFW reader's tags: the batch is also what clears a tag of
+// the sexual family, and keeping them on a failure served every sexual tag to
+// that reader. Staff is absent on purpose: a credit name has no work count of its own
 // and its photo is null for every row catalog holds, so the batch would cost a
 // request per search and change nothing.
 func (c *Client) attachEntityFacts(
-	ctx context.Context, family string, items []EntitySearchItem, gate catalogGate,
+	ctx context.Context, family string, items []EntitySearchItem, contentLimit string,
 ) []EntitySearchItem {
 	if len(items) == 0 || family == EntityFamilyStaff {
 		return items
@@ -148,9 +147,10 @@ func (c *Client) attachEntityFacts(
 	case EntityFamilyCharacter:
 		var rows []catalogv2.Character
 		if rows, err = c.v2.CharactersByIDs(ctx, ids, true); err == nil {
+			reveal := revealsSexual(contentLimit)
 			for _, r := range rows {
 				id, _ := r.IntID()
-				facts[int(id)] = fact{imageHash: imageHash(r.Image)}
+				facts[int(id)] = fact{imageHash: artFor(imageHash(r.Image), imageSexual(r.Image), reveal)}
 			}
 		}
 	case EntityFamilyCompany:
@@ -178,18 +178,25 @@ func (c *Client) attachEntityFacts(
 			}
 		}
 	}
+	hideSexual := family == EntityFamilyTag && gateFor(contentLimit).contentLimit == "sfw"
 	if err != nil {
-		slog.Warn("资料库搜索的配图与作品数获取失败", "family", family, "error", err)
+		slog.Warn("资料库搜索的配图与作品数获取失败", "family", family, "error", err, "sfw_tags_dropped", hideSexual)
+		if hideSexual {
+			return items[:0]
+		}
 		return items
 	}
 
-	hideSexual := family == EntityFamilyTag && gate.contentLimit == "sfw"
 	out := items[:0]
 	for _, item := range items {
 		f, found := facts[item.ID]
 		// A tag the registry does not answer for cannot be classified, and the
 		// gate closes rather than guessing it safe.
-		if hideSexual && (!found || f.sexual) {
+		if hideSexual && !found {
+			slog.Warn("catalog tag batch did not answer a search hit; it is kept from an sfw reader", "tag", item.ID)
+			continue
+		}
+		if hideSexual && f.sexual {
 			continue
 		}
 		item.ImageHash, item.WorkCount = f.imageHash, f.workCount

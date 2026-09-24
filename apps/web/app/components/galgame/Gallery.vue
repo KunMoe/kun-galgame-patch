@@ -20,10 +20,21 @@ const violenceLevels = computed(
   () => settingStore.data.galleryViolenceLevels ?? []
 )
 
+// null is an image nobody assessed. It used to arrive as 0 and pass as safe; it
+// now gates as suggestive, behind the same opt-in. Violence stays the other
+// way round: catalog assesses none today, so gating null would hide every shot.
+const sexualLevel = (s: GalgameScreenshotRow) => s.sexual ?? 1
+const violenceLevel = (s: GalgameScreenshotRow) => s.violence ?? 0
+
 const sexualOk = (s: GalgameScreenshotRow) =>
-  showNsfw.value || s.sexual === 0 || sexualLevels.value.includes(s.sexual)
+  showNsfw.value ||
+  sexualLevel(s) === 0 ||
+  sexualLevels.value.includes(sexualLevel(s))
 const violenceOk = (s: GalgameScreenshotRow) =>
-  s.violence === 0 || violenceLevels.value.includes(s.violence)
+  violenceLevel(s) === 0 || violenceLevels.value.includes(violenceLevel(s))
+
+const isRated = (s: GalgameScreenshotRow) =>
+  sexualLevel(s) >= 1 || violenceLevel(s) >= 1
 
 const allShots = computed(() =>
   [...(props.screenshots ?? [])].filter((s) => !!s.image_hash)
@@ -53,34 +64,40 @@ const visible = computed(() =>
     : sorted.value
 )
 
-const hasRated = computed(() =>
-  allShots.value.some((s) => s.sexual >= 1 || s.violence >= 1)
-)
+const hasRated = computed(() => allShots.value.some(isRated))
 
-const countLevels = (axis: 'sexual' | 'violence'): Record<number, number> => {
-  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0 }
+const countLevels = (
+  levelOf: (s: GalgameScreenshotRow) => number
+): Record<number, number> => {
+  const counts: Record<number, number> = { 1: 0, 2: 0 }
   for (const s of allShots.value) {
-    const level = s[axis]
-    if (level >= 1 && level <= 3) counts[level] = (counts[level] ?? 0) + 1
+    const level = levelOf(s)
+    if (level >= 1) counts[level] = (counts[level] ?? 0) + 1
   }
   return counts
 }
-const sexualCounts = computed(() => countLevels('sexual'))
-const violenceCounts = computed(() => countLevels('violence'))
+const sexualCounts = computed(() => countLevels(sexualLevel))
+const violenceCounts = computed(() => countLevels(violenceLevel))
 
 const RING_W = 2.5
-const RING_DEPTH: Record<number, number> = { 1: 60, 2: 80, 3: 100 }
+const RING_DEPTH: Record<number, number> = { 1: 60, 2: 100 }
 const ringColor = (token: 'warning' | 'danger', level: number) =>
   `color-mix(in oklab, var(--color-${token}) ${RING_DEPTH[level] ?? 100}%, transparent)`
 
+// The ring reports an assessment, so an unassessed shot draws none.
+const hasRing = (s: GalgameScreenshotRow) =>
+  (s.sexual ?? 0) >= 1 || (s.violence ?? 0) >= 1
+
 const ratingRing = (s: GalgameScreenshotRow) => {
+  const sexual = s.sexual ?? 0
+  const violence = s.violence ?? 0
   const shadows: string[] = []
-  if (s.sexual >= 1) {
-    shadows.push(`inset 0 0 0 ${RING_W}px ${ringColor('warning', s.sexual)}`)
+  if (sexual >= 1) {
+    shadows.push(`inset 0 0 0 ${RING_W}px ${ringColor('warning', sexual)}`)
   }
-  if (s.violence >= 1) {
-    const inset = s.sexual >= 1 ? RING_W * 2 : RING_W
-    shadows.push(`inset 0 0 0 ${inset}px ${ringColor('danger', s.violence)}`)
+  if (violence >= 1) {
+    const inset = sexual >= 1 ? RING_W * 2 : RING_W
+    shadows.push(`inset 0 0 0 ${inset}px ${ringColor('danger', violence)}`)
   }
   return { boxShadow: shadows.join(', ') }
 }
@@ -114,9 +131,9 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
           class="border-default/20 block overflow-hidden rounded-lg border"
         >
           <KunNsfwMask
-            :nsfw="s.sexual >= 1 || s.violence >= 1"
+            :nsfw="isRated(s)"
             rounded="rounded-none"
-            label="该截图带有分级"
+            :label="s.sexual === null ? '该截图尚未评级' : '该截图带有分级'"
           >
             <div class="relative">
               <KunImage
@@ -128,7 +145,7 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
                 class-name="bg-default-100"
               />
               <div
-                v-if="s.sexual >= 1 || s.violence >= 1"
+                v-if="hasRing(s)"
                 class="pointer-events-none absolute inset-0"
                 :style="ratingRing(s)"
               />

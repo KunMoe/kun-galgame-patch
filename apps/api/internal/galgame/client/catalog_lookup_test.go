@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -45,18 +44,17 @@ func v2List(items string) string {
 	return `{"object":"list","items":[` + items + `]}`
 }
 
-func v2Work(id int64, gid int) string {
-	g := strconv.Itoa(gid)
-	return `{"object":"work","id":"` + strconv.FormatInt(id, 10) + `","refs":[` +
-		`{"source":"galgame_wiki","external_id":"` + g + `"},` +
-		`{"source":"curated","external_id":"` + g + `"}],` +
-		`"claim":{"site":"galgame_wiki","site_work_id":"` + g + `","state":"live","content_limit":"sfw"}}`
+// A basic-view work as handler/map_work.go answers it, with the claim swapped
+// in: nothing but the claim differs between the cases these tests draw.
+func v2Work(id, claim string) string {
+	return `{"object":"work","id":"` + id + `","medium":"galgame","display_name":"W","latin":null,"localized":{},` +
+		`"olang":"ja","content_rating":"all_ages","content_limit":"sfw","release_date":null,` +
+		`"release_date_precision":null,"release_status":"unknown","cover":null,"banner":null,` +
+		`"claim":` + claim + `,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
 }
 
 func TestClaimStatesDecodeBranches(t *testing.T) {
-	body := v2List(
-		`{"object":"work","id":"900","claim":{"site":"galgame_wiki","site_work_id":"7","state":"live","content_limit":"sfw"}}`,
-	)
+	body := v2List(v2Work("900", `{"site":"kungal","site_work_id":"7","state":"live","content_limit":"sfw"}`))
 	s := &scripted{status: 200, body: body}
 	got, err := s.client(t).ClaimStates(context.Background(), []int{900})
 	if err != nil {
@@ -71,7 +69,8 @@ func TestClaimStatesDecodeBranches(t *testing.T) {
 }
 
 func TestResolveWikiLabelDecodeBranches(t *testing.T) {
-	s := &scripted{status: 200, body: v2List(`{"id":"31","display_name":"Brand"}`)}
+	s := &scripted{status: 200, body: v2List(`{"object":"company","id":"31","display_name":"Brand","latin":null,"lang":"ja",` +
+		`"localized":{},"company_kind":"game_brand","work_count":3}`)}
 	id, found, err := s.client(t).ResolveWikiLabel(context.Background(), 31)
 	if err != nil || !found || id != 31 {
 		t.Fatalf("ResolveWikiLabel = (%d, %v, %v), want (31, true, nil)", id, found, err)
@@ -84,9 +83,9 @@ func TestCheckGalgameByVndbIDAnswersThePageID(t *testing.T) {
 		exists     bool
 		gid        int
 	}{
-		{"claimed by the forum", `{"object":"work","id":"900","claim":{"site":"kungal","site_work_id":"7","state":"live","content_limit":"sfw"}}`, true, 900},
-		{"unclaimed", `{"object":"work","id":"901","claim":null}`, true, 901},
-		{"hidden", `{"object":"work","id":"902","claim":{"site":"kungal","site_work_id":"8","state":"hidden","content_limit":"sfw"}}`, false, 0},
+		{"claimed by the forum", v2Work("900", `{"site":"kungal","site_work_id":"7","state":"live","content_limit":"sfw"}`), true, 900},
+		{"unclaimed", v2Work("901", "null"), true, 901},
+		{"hidden", v2Work("902", `{"site":"kungal","site_work_id":"8","state":"hidden","content_limit":"sfw"}`), false, 0},
 	}
 	for _, tc := range cases {
 		s := &scripted{status: 200, body: v2List(tc.work)}

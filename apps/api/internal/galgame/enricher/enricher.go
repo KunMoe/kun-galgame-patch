@@ -180,10 +180,12 @@ func BuildPatchSummaryMap(ctx context.Context, galgame *galgameClient.Client, db
 			s.Banner = g.Banner
 			s.EffectiveBannerHash = g.EffectiveBannerHash
 			s.Name = patchModel.PatchSummaryName{
-				EnUs: g.NameEnUs,
-				JaJp: g.NameJaJp,
-				ZhCn: g.NameZhCn,
-				ZhTw: g.NameZhTw,
+				EnUs:        g.NameEnUs,
+				JaJp:        g.NameJaJp,
+				ZhCn:        g.NameZhCn,
+				ZhTw:        g.NameZhTw,
+				DisplayName: g.DisplayName,
+				Latin:       g.Latin,
 			}
 		}
 		out[r.ID] = s
@@ -320,12 +322,7 @@ func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users
 	}
 
 	g := &env.Galgame
-	base.Name = KunLanguage{
-		EnUs: g.NameEnUs,
-		JaJp: g.NameJaJp,
-		ZhCn: g.NameZhCn,
-		ZhTw: g.NameZhTw,
-	}
+	base.Name = g.Names()
 	base.Banner = g.Banner
 	base.ContentLimit = g.ContentLimit
 
@@ -349,11 +346,15 @@ func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users
 		NameZhCn:                   g.NameZhCn,
 		NameJaJp:                   g.NameJaJp,
 		NameZhTw:                   g.NameZhTw,
+		DisplayName:                g.DisplayName,
+		Latin:                      g.Latin,
+		NameMachineTranslated:      g.NameMachineTranslated,
 		Banner:                     g.Banner,
 		ContentLimit:               g.ContentLimit,
 		AgeLimit:                   g.AgeLimit,
 		OriginalLanguage:           g.OriginalLanguage,
 		ReleaseDate:                g.ReleaseDate,
+		ReleasePrecision:           g.ReleasePrecision,
 		EffectiveBannerHash:        g.EffectiveBannerHash,
 		EffectiveBannerWidth:       g.EffectiveBannerWidth,
 		EffectiveBannerHeight:      g.EffectiveBannerHeight,
@@ -413,12 +414,7 @@ func baseCard(p *patchModel.Patch) GalgameCard {
 }
 
 func applyGalgame(card *GalgameCard, g *galgameClient.GalgameBrief) {
-	card.Name = KunLanguage{
-		EnUs: g.NameEnUs,
-		JaJp: g.NameJaJp,
-		ZhCn: g.NameZhCn,
-		ZhTw: g.NameZhTw,
-	}
+	card.Name = g.Names()
 	card.Banner = g.Banner
 	card.ContentLimit = g.ContentLimit
 	card.Galgame = g
@@ -529,7 +525,7 @@ func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users
 		Language: patchModel.JSONArray{},
 		Platform: patchModel.JSONArray{},
 	}
-	base.Name = KunLanguage{EnUs: g.NameEnUs, JaJp: g.NameJaJp, ZhCn: g.NameZhCn, ZhTw: g.NameZhTw}
+	base.Name = g.Names()
 	base.Banner = g.Banner
 	base.ContentLimit = g.ContentLimit
 	if t, perr := time.Parse(time.RFC3339, g.Created); perr == nil {
@@ -557,11 +553,15 @@ func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users
 		NameZhCn:                   g.NameZhCn,
 		NameJaJp:                   g.NameJaJp,
 		NameZhTw:                   g.NameZhTw,
+		DisplayName:                g.DisplayName,
+		Latin:                      g.Latin,
+		NameMachineTranslated:      g.NameMachineTranslated,
 		Banner:                     g.Banner,
 		ContentLimit:               g.ContentLimit,
 		AgeLimit:                   g.AgeLimit,
 		OriginalLanguage:           g.OriginalLanguage,
 		ReleaseDate:                g.ReleaseDate,
+		ReleasePrecision:           g.ReleasePrecision,
 		EffectiveBannerHash:        g.EffectiveBannerHash,
 		EffectiveBannerWidth:       g.EffectiveBannerWidth,
 		EffectiveBannerHeight:      g.EffectiveBannerHeight,

@@ -39,7 +39,7 @@ func TestPublicGIDIsAlwaysTheCatalogID(t *testing.T) {
 	}
 	claimed := &catalogWorkListItem{
 		ID:        900,
-		ClaimedBy: &catalogClaimedBy{Site: catalogClaimSiteLegacy, WorkID: 7, State: catalogClaimStateLive},
+		ClaimedBy: &catalogClaimedBy{Site: catalogClaimSiteKungal, WorkID: 7, State: catalogClaimStateLive},
 	}
 	if got := claimed.publicGID(); got != 900 {
 		t.Errorf("claimed publicGID = %d, want the catalog id 900", got)
@@ -49,7 +49,7 @@ func TestPublicGIDIsAlwaysTheCatalogID(t *testing.T) {
 	}
 	hidden := &catalogWorkListItem{
 		ID:        921,
-		ClaimedBy: &catalogClaimedBy{Site: catalogClaimSiteLegacy, WorkID: 21, State: catalogClaimStateHidden},
+		ClaimedBy: &catalogClaimedBy{Site: catalogClaimSiteKungal, WorkID: 21, State: catalogClaimStateHidden},
 	}
 	if hidden.ClaimedBy.renderable() {
 		t.Error("a hidden claim must not be renderable")

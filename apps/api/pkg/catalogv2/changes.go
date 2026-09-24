@@ -2,6 +2,7 @@ package catalogv2
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"strconv"
 )
@@ -53,18 +54,26 @@ func (c *Client) Changes(ctx context.Context, cursor string, limit int) (ChangeP
 		return ChangePage{}, err
 	}
 	out := ChangePage{Items: make([]Change, 0, len(page.Items)), NextCursor: page.Next()}
+	var foreign []string
 	for i := range page.Items {
 		w := &page.Items[i]
 		if w.TargetObject != "" && w.TargetObject != "work" {
+			foreign = append(foreign, w.TargetObject+":"+w.ID)
 			continue
 		}
 		id, ok := ParseID(w.ID)
 		if !ok {
+			slog.Warn("catalog changes feed: dropped a row whose id is not a catalog id",
+				"id", w.ID, "updated_at", w.UpdatedAt, "cursor", cursor)
 			continue
 		}
 		out.Items = append(out.Items, Change{
 			ID: id, UpdatedAt: w.UpdatedAt, Gone: w.Gone != nil && *w.Gone,
 		})
+	}
+	if len(foreign) > 0 {
+		slog.Warn("catalog changes feed: dropped rows of another family",
+			"count", len(foreign), "rows", foreign, "cursor", cursor)
 	}
 	return out, nil
 }

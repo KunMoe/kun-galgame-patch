@@ -2,6 +2,7 @@ package catalogv2
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 )
@@ -34,6 +35,10 @@ type claimEventWire struct {
 // survives a restart. sort=recorded_asc is the walk catalog documents for it.
 // The application key needs claim_events:read on top of catalog:read; an
 // operator grants it, and without it this answers 403, not an empty page.
+//
+// A row whose id or work_id does not parse ends the page with an error, after
+// the rows before it. Skipping it lost it for good: the next event's id moved
+// the watermark past it, and nothing reads an event twice.
 func (c *Client) ClaimEvents(ctx context.Context, since int64, limit int, site string) ([]ClaimEvent, error) {
 	q := url.Values{"sort": {"recorded_asc"}, "limit": {strconv.Itoa(limit)}}
 	if since > 0 {
@@ -65,9 +70,12 @@ func (c *Client) claimEvents(ctx context.Context, q url.Values, site string) ([]
 		w := &page.Items[i]
 		id, ok := ParseID(w.ID)
 		if !ok {
-			continue
+			return out, fmt.Errorf("claim event id %q is not a catalog id; the watermark holds before it", w.ID)
 		}
-		workID, _ := ParseID(w.WorkID)
+		workID, ok := ParseID(w.WorkID)
+		if !ok {
+			return out, fmt.Errorf("claim event %d names work_id %q, which is not a catalog id; the watermark holds before it", id, w.WorkID)
+		}
 		actor, _ := ParseID(w.ActorUID)
 		ev := ClaimEvent{
 			ID: id, WorkID: workID, FromState: w.FromState, ToState: w.ToState,

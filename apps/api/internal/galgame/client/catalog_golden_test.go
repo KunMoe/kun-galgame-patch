@@ -31,7 +31,7 @@ func loadGolden[T any](t *testing.T, name string) T {
 
 func TestProdWorkDetailDecodes(t *testing.T) {
 	w := loadGolden[catalogv2.Work](t, "catalog_work_detail_prod.json")
-	full := catalogWorkToFull(ptr(workToDetail(w)))
+	full := catalogWorkToFull(ptr(workToDetail(w)), false)
 
 	if full.ID != 3 || full.VndbID != "v12984" {
 		t.Fatalf("identity = (%d, %q), want (3, v12984)", full.ID, full.VndbID)
@@ -109,7 +109,7 @@ func TestProdWorkDetailDecodes(t *testing.T) {
 
 func TestProdWorkCompanyLogoDecodes(t *testing.T) {
 	w := loadGolden[catalogv2.Work](t, "catalog_work_company_logo_prod.json")
-	full := catalogWorkToFull(ptr(workToDetail(w)))
+	full := catalogWorkToFull(ptr(workToDetail(w)), false)
 
 	if len(full.Official) == 0 {
 		t.Fatal("no companies — include=companies names the block")

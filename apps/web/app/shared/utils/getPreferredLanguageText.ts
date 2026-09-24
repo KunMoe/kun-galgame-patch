@@ -40,7 +40,7 @@ export const getPreferredLanguageText = (
     }
   }
 
-  return ''
+  return language.display_name || language.latin || ''
 }
 
 // pickPreferredLanguageRow runs the same priority chain over rows that carry

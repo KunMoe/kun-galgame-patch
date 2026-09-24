@@ -18,6 +18,8 @@ interface GalgameName {
   name_ja_jp: string
   name_zh_cn: string
   name_zh_tw: string
+  display_name?: string
+  latin?: string
 }
 interface GalgameHit extends GalgameName {
   claim_state: string
@@ -39,7 +41,13 @@ interface SearchResult {
 const results = ref<SearchResult>({ items: [], pending: [], total: 0 })
 
 const displayName = (h: GalgameName): string =>
-  h.name_zh_cn || h.name_zh_tw || h.name_ja_jp || h.name_en_us || `#${h.id}`
+  h.name_zh_cn ||
+  h.name_zh_tw ||
+  h.name_ja_jp ||
+  h.name_en_us ||
+  h.display_name ||
+  h.latin ||
+  `#${h.id}`
 
 const claimStateLabel = (state: string): string =>
   state === 'declined' ? '已拒绝（可重新提交）' : '审核中'

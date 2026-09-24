@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -65,8 +66,8 @@ func TestDetailCarriesTheCatalogEntityGraph(t *testing.T) {
 		}
 
 		voice := g.Staff[2]
-		played := []KunLanguage{{JaJp: "コロナ", ZhCn: "科罗娜"}}
-		if len(voice.People) != 1 || !slices.Equal(voice.People[0].Characters, played) {
+		played := []KunLanguage{{JaJp: "コロナ", ZhCn: "科罗娜", MachineTranslated: []string{"zh-cn"}}}
+		if len(voice.People) != 1 || !reflect.DeepEqual(voice.People[0].Characters, played) {
 			t.Errorf("voice-actor = %+v, want the annotation resolved through the roster", voice.People)
 		}
 

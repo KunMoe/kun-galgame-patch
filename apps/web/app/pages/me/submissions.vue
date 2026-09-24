@@ -41,11 +41,17 @@ const forumGID = (m: MineItem): number => m.product_work_id ?? m.work_id
 
 const displayName = (m: MineItem): string => m.display_name || `#${patchID(m)}`
 
-const stateLabel = (s: string): { text: string; color: KunUIColor } => {
-  if (s === 'pending') return { text: '审核中', color: 'warning' }
-  if (s === 'declined') return { text: '已拒绝', color: 'danger' }
-  return { text: s, color: 'default' }
+const STATE_LABEL: Record<string, { text: string; color: KunUIColor }> = {
+  none: { text: '未认领', color: 'default' },
+  draft: { text: '草稿', color: 'default' },
+  pending: { text: '审核中', color: 'warning' },
+  live: { text: '已发布', color: 'success' },
+  declined: { text: '已拒绝', color: 'danger' },
+  hidden: { text: '已封禁', color: 'danger' }
 }
+
+const stateLabel = (s: string): { text: string; color: KunUIColor } =>
+  STATE_LABEL[s] ?? { text: s, color: 'default' }
 
 const withdrawing = ref<number | null>(null)
 const handleWithdraw = async (m: MineItem) => {
