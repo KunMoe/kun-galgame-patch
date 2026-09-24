@@ -1,7 +1,7 @@
 package dto
 
 type SubmitReportRequest struct {
-	SubjectKind string `json:"subject_kind" validate:"required,max=64"`
+	SubjectKind string `json:"subject_kind" validate:"required,oneof=patch_resource user"`
 	SubjectID   string `json:"subject_id" validate:"required,max=64"`
 	ReasonKey   string `json:"reason_key" validate:"required,max=64"`
 	Note        string `json:"note" validate:"max=1000"`

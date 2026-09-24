@@ -199,7 +199,11 @@ func (r *PatchRepository) DeleteResource(id int) error {
 		).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.PatchResource{}, id).Error
+		res := tx.Delete(&model.PatchResource{}, id)
+		if res.Error == nil && res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return res.Error
 	})
 }
 

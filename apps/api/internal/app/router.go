@@ -24,7 +24,7 @@ func (a *App) RegisterRoutes() {
 	moderatorAuth := middleware.RequireRole(middleware.ModeratorRoles...)
 	adminAuth := middleware.RequireRole(middleware.SuperAdminRoles...)
 
-	api.Post("/trust/callback", a.TrustHandler.Callback)
+	api.Post("/trust/callback", middleware.BodyLimit(16*1024), a.TrustHandler.Callback)
 
 	reportRoutes := api.Group("/report", auth)
 	reportRoutes.Get("/reasons", a.TrustHandler.GetReasons)

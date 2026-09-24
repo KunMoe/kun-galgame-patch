@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"time"
 
@@ -219,6 +220,9 @@ func New(cfg *config.Config) *App {
 	} else {
 		slog.Warn("trust service client NOT configured; reporting returns 未启用 — set KUN_TRUST_BASE_URL + OAuth creds")
 	}
+	if cfg.Trust.BaseURL != "" && cfg.Trust.CallbackSecret == "" {
+		slog.Warn("KUN_TRUST_CALLBACK_SECRET is empty: reports and decisions work, but every enforcement callback is refused with 401 and infra dead-letters it")
+	}
 	// No patch_comment subject: a comment is a community post now, and the
 	// primitive runs its own reporting — weighted by the reporter's trust level
 	// and past accuracy — with its own review queue. A moyu-side subject would
@@ -229,7 +233,11 @@ func New(cfg *config.Config) *App {
 				return patchRepository.SetResourceStatus(id, 2)
 			},
 			Remove: func(_ context.Context, id int) error {
-				return patchSvc.DeleteResource(id, 0, true, "内容违规（审核处置）")
+				err := patchSvc.DeleteResource(id, 0, true, "内容违规（审核处置）")
+				if stderrors.Is(err, patchService.ErrResourceNotFound) {
+					return nil
+				}
+				return err
 			},
 			Restore: func(_ context.Context, id int) error {
 				return patchRepository.RestoreResourceFromModHide(id)

@@ -6,12 +6,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
+
+const service = "trust"
 
 type Config struct {
 	BaseURL      string
@@ -44,13 +48,7 @@ func New(cfg Config) *Client {
 
 func (c *Client) Configured() bool { return c.baseURL != "" && c.basicAuth != "" }
 
-var (
-	ErrNotConfigured = errors.New("trustclient: not configured (empty base URL or credentials)")
-	ErrValidation    = errors.New("trustclient: report rejected (unregistered subject kind or unknown reason)")
-	ErrRateLimited   = errors.New("trustclient: reporter rate limit exceeded")
-	ErrForbidden     = errors.New("trustclient: client not bound to a site")
-	ErrUnauthorized  = errors.New("trustclient: unauthorized (check client_id/secret)")
-)
+var ErrNotConfigured = errors.New("trustclient: not configured (empty base URL or credentials)")
 
 type ReportRequest struct {
 	SubjectKind string `json:"subject_kind"`
@@ -80,34 +78,18 @@ func (c *Client) ListReportReasons(ctx context.Context) ([]ReasonView, error) {
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
-	req, err := http.NewRequestWithContext(
-		ctx, http.MethodGet, c.baseURL+"/api/v1/trust/report-reasons", nil,
-	)
+	const op = "list report reasons"
+	raw, err := c.do(ctx, op, http.MethodGet, "/api/v1/trust/report-reasons", c.basicAuth, nil, s2sKind)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", c.basicAuth)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
+	var data struct {
+		Reasons []ReasonView `json:"reasons"`
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-
-	var env struct {
-		Code int `json:"code"`
-		Data struct {
-			Reasons []ReasonView `json:"reasons"`
-		} `json:"data"`
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, &upstream.Error{Service: service, Op: op, Kind: upstream.Internal, Cause: err}
 	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK || env.Code != 0 {
-		return nil, fmt.Errorf("trustclient: list reasons failed (status %d, code %d)", resp.StatusCode, env.Code)
-	}
-	return env.Data.Reasons, nil
+	return data.Reasons, nil
 }
 
 func (c *Client) SubmitReport(ctx context.Context, req ReportRequest) (*ReportResult, error) {
@@ -118,43 +100,100 @@ func (c *Client) SubmitReport(ctx context.Context, req ReportRequest) (*ReportRe
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, c.baseURL+"/api/v1/trust/reports", bytes.NewReader(body),
-	)
+	const op = "submit report"
+	raw, err := c.do(ctx, op, http.MethodPost, "/api/v1/trust/reports", c.basicAuth, body, s2sKind)
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Authorization", c.basicAuth)
-	httpReq.Header.Set("Content-Type", "application/json")
+	var data ReportResult
+	if err := json.Unmarshal(raw, &data); err != nil || data.ReportID == 0 {
+		return nil, &upstream.Error{Service: service, Op: op, Kind: upstream.Internal, Detail: "undecodable report result", Cause: err}
+	}
+	return &data, nil
+}
 
-	resp, err := c.httpClient.Do(httpReq)
+type kindFunc func(status int, message string) upstream.Kind
+
+// s2sKind reads infra's trust s2s handler (handler/s2s.go mapIntakeErr,
+// auth.go siteBinding). One 422 code covers three causes, so the message
+// separates them: a subject kind the site never registered is moyu's
+// onboarding, while an unknown reason or a bad link is what the reader sent.
+func s2sKind(status int, message string) upstream.Kind {
+	if status == http.StatusUnprocessableEntity && strings.Contains(message, "subject_kind is not registered") {
+		return upstream.Internal
+	}
+	return upstream.ByStatus(status)
+}
+
+// adminKind reads infra's trust admin face (handler/admin.go), which runs on
+// the moderator's own token behind JWTAuth + RequirePermission. A 401 is that
+// token failing verification on the trust side, which the moderator cannot fix
+// by logging in again; a 403 is the moderator lacking the queue permission
+// unless infra says the client or token is not bound, which is moyu's setup.
+func adminKind(status int, message string) upstream.Kind {
+	switch {
+	case status == http.StatusForbidden && strings.Contains(message, "not bound"):
+		return upstream.Internal
+	case status == http.StatusForbidden, status == http.StatusBadRequest:
+		return upstream.Rejected
+	}
+	return upstream.ByStatus(status)
+}
+
+func (c *Client) do(
+	ctx context.Context, op, method, path, auth string, body []byte, kind kindFunc,
+) (json.RawMessage, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return nil, err
+	}
+	req.Header.Set("Authorization", auth)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, upstream.Transport(service, op, err)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return nil, upstream.Transport(service, op, err)
+	}
 
 	var env struct {
-		Code    int           `json:"code"`
-		Message string        `json:"message"`
-		Data    *ReportResult `json:"data"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
-	_ = json.Unmarshal(raw, &env)
-
-	if resp.StatusCode == http.StatusOK && env.Code == 0 && env.Data != nil {
-		return env.Data, nil
+	decodeErr := json.Unmarshal(raw, &env)
+	e := &upstream.Error{
+		Service:    service,
+		Op:         op,
+		Status:     resp.StatusCode,
+		RequestID:  resp.Header.Get("X-Request-ID"),
+		RetryAfter: upstream.RetryAfter(resp.Header),
 	}
-	switch resp.StatusCode {
-	case http.StatusTooManyRequests:
-		return nil, fmt.Errorf("%w: %s", ErrRateLimited, env.Message)
-	case http.StatusUnprocessableEntity:
-		return nil, fmt.Errorf("%w: %s", ErrValidation, env.Message)
-	case http.StatusForbidden:
-		return nil, ErrForbidden
-	case http.StatusUnauthorized:
-		return nil, ErrUnauthorized
+	if resp.StatusCode == http.StatusOK {
+		if decodeErr == nil && env.Code == 0 {
+			return env.Data, nil
+		}
+		e.Kind, e.Detail = upstream.Internal, "undecodable success body"
+		return nil, e
 	}
-	return nil, fmt.Errorf(
-		"trustclient: report failed (status %d, code %d): %s", resp.StatusCode, env.Code, env.Message,
-	)
+	if decodeErr != nil || env.Code == 0 {
+		e.Kind = upstream.Internal
+		if resp.StatusCode >= 500 {
+			e.Kind = upstream.Unavailable
+		}
+		return nil, e
+	}
+	e.Code, e.Detail = strconv.Itoa(env.Code), env.Message
+	e.Kind = kind(resp.StatusCode, env.Message)
+	return nil, e
 }

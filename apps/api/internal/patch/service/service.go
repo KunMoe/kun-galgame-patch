@@ -29,6 +29,7 @@ var (
 	ErrGalgameMissing       = errors.New("galgame missing for vndb_id")
 	ErrArtifactUnconfigured = errors.New("artifact client is not configured")
 	ErrArtifactNotReady     = errors.New("artifact is missing or not ready")
+	ErrResourceNotFound     = errors.New("resource not found")
 )
 
 type AuditLogger interface {
@@ -629,14 +630,19 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 
 func (s *PatchService) DeleteResource(resourceID, userID int, isPrivileged bool, reason string) error {
 	resource, err := s.repo.GetResourceByID(resourceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrResourceNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("resource not found")
+		return fmt.Errorf("load resource %d: %w", resourceID, err)
 	}
 	if resource.UserID != userID && !isPrivileged {
 		return fmt.Errorf("can only delete your own resources")
 	}
 
-	if err := s.repo.DeleteResource(resourceID); err != nil {
+	if err := s.repo.DeleteResource(resourceID); errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrResourceNotFound
+	} else if err != nil {
 		return err
 	}
 
