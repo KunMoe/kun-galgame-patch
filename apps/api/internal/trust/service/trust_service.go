@@ -75,6 +75,33 @@ func (s *TrustService) Reasons(ctx context.Context) ([]trust.ReportReason, error
 	return out, nil
 }
 
+// RegisterSubjectKinds declares the kinds moyu reports on (the site comes from
+// the client binding): a tenant with none answers every report 422. With no
+// callback secret the kind gets no callback URL either, since moyu refuses an
+// unsigned callback.
+func (s *TrustService) RegisterSubjectKinds(ctx context.Context, callbackURL, callbackSecret string) {
+	resource := trustclient.SubjectKind{Key: "patch_resource", NotifyOnDismiss: new(true)}
+	if callbackSecret != "" {
+		resource.CallbackURL, resource.CallbackSecret = &callbackURL, &callbackSecret
+	}
+	results, err := s.trust.EnsureSubjectKinds(ctx, []trustclient.SubjectKind{resource, {Key: "user"}})
+	if err != nil {
+		attrs := []any{"error", err}
+		if e, ok := upstream.As(err); ok {
+			attrs = append(attrs, "status", e.Status, "request_id", e.RequestID)
+		}
+		slog.Error("trust subject kinds not registered; reports on them answer 422 until they are", attrs...)
+		return
+	}
+	for _, r := range results {
+		if r.Result == "deprecated_skipped" {
+			slog.Warn("trust subject kind is deprecated upstream and was not revived", "key", r.Key)
+			continue
+		}
+		slog.Info("trust subject kind registered", "key", r.Key, "result", r.Result)
+	}
+}
+
 func (s *TrustService) SubmitReport(
 	ctx context.Context,
 	reporterID int,

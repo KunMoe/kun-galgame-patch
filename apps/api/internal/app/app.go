@@ -252,11 +252,15 @@ func New(cfg *config.Config) *App {
 		},
 	}
 	trustEnforce := enforce.NewService(db, trustRegistry, nil)
-	trustHdl := trustHandler.NewTrustHandler(
-		trustService.NewTrustService(trustCli, cfg.Trust.Site),
-		trustEnforce,
-		cfg.Trust.CallbackSecret,
-	)
+	trustSvc := trustService.NewTrustService(trustCli, cfg.Trust.Site)
+	if trustCli.Configured() {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			trustSvc.RegisterSubjectKinds(ctx, cfg.Site.BaseURL+"/api/v1/trust/callback", cfg.Trust.CallbackSecret)
+		}()
+	}
+	trustHdl := trustHandler.NewTrustHandler(trustSvc, trustEnforce, cfg.Trust.CallbackSecret)
 
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
 	imgCfg := cfg.ImageService

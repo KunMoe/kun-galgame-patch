@@ -112,6 +112,44 @@ func (c *Client) SubmitReport(ctx context.Context, req ReportRequest) (*ReportRe
 	return &data, nil
 }
 
+// SubjectKind is one entry of the declarative registry face. A nil field is
+// left as it is upstream (unset when the kind is created).
+type SubjectKind struct {
+	Key             string  `json:"key"`
+	CallbackURL     *string `json:"callback_url,omitempty"`
+	CallbackSecret  *string `json:"callback_secret,omitempty"`
+	NotifyOnDismiss *bool   `json:"notify_on_dismiss,omitempty"`
+}
+
+type EnsureResult struct {
+	Key    string `json:"key"`
+	Result string `json:"result"`
+}
+
+func (c *Client) EnsureSubjectKinds(ctx context.Context, kinds []SubjectKind) ([]EnsureResult, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+	body, err := json.Marshal(struct {
+		Kinds []SubjectKind `json:"kinds"`
+	}{kinds})
+	if err != nil {
+		return nil, err
+	}
+	const op = "ensure subject kinds"
+	raw, err := c.do(ctx, op, http.MethodPost, "/api/v1/trust/subject-kinds/ensure", c.basicAuth, body, s2sKind)
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Results []EnsureResult `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, &upstream.Error{Service: service, Op: op, Kind: upstream.Internal, Cause: err}
+	}
+	return data.Results, nil
+}
+
 type kindFunc func(status int, message string) upstream.Kind
 
 // s2sKind reads infra's trust s2s handler (handler/s2s.go mapIntakeErr,
