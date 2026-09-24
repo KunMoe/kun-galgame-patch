@@ -260,11 +260,10 @@ func (h *PatchHandler) ownPendingSubmissions(c fiber.Ctx, q string) []wizardPend
 		if needle != "" && !strings.Contains(strings.ToLower(it.DisplayName), needle) {
 			continue
 		}
+		// The work id, never product_work_id: that is the forum's page id, and
+		// linked here it names a different game.
 		hit := wizardPendingHit{
 			ID: int(it.WorkID), DisplayName: it.DisplayName, ClaimState: it.ClaimState,
-		}
-		if it.ProductWorkID != nil && *it.ProductWorkID > 0 {
-			hit.ID = int(*it.ProductWorkID)
 		}
 		if it.LastReason != nil {
 			hit.Reason = *it.LastReason

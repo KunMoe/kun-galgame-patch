@@ -2,8 +2,10 @@ package handler
 
 import (
 	"log/slog"
+	"slices"
 	"strconv"
 
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/upstream"
@@ -14,12 +16,24 @@ import (
 // If-Match is required on a claim PATCH; this takes whatever state it is in.
 const anyState = "*"
 
-// Only the resource that published the page adopts its work. Every upload used
-// to send the pair, spending the uploader's shared catalog allowance, and their
-// catalog.claim_writes_per_day, on works adopted long before.
-func (h *PatchHandler) claimOnFirstResource(c fiber.Ctx, gid int, published bool) {
+// The claim is read off the application key, so deciding costs the uploader
+// nothing. Every upload used to send the adopt pair, spending the uploader's
+// shared allowance and their catalog.claim_writes_per_day on works live long
+// before; gating on "this upload published the page" instead would never adopt
+// a bot-first page or retry an adoption that failed. A work the batch does not
+// answer is hidden or gone, and catalog would refuse the pair anyway.
+func (h *PatchHandler) adoptUnlessLive(c fiber.Ctx, gid int) {
 	token := middleware.GetAccessToken(c)
-	if !published || token == "" {
+	if token == "" || h.galgame == nil {
+		return
+	}
+	briefs, err := h.galgame.GalgameBatch(c.Context(), []int{gid}, "")
+	if err != nil {
+		slog.Warn("resource: 读取作品认领状态失败，本次不收录", "gid", gid, "error", err)
+		return
+	}
+	i := slices.IndexFunc(briefs, func(b galgameClient.GalgameBrief) bool { return b.ID == gid })
+	if i < 0 || briefs[i].ClaimState == catalogv2.ClaimStateLive {
 		return
 	}
 	workID := int64(gid)

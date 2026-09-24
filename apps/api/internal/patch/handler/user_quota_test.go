@@ -137,24 +137,61 @@ func TestAnUnreadableShelfIsAnEmptyHeartNotAnError(t *testing.T) {
 	}
 }
 
-func TestOnlyTheUploadThatPublishedThePageClaimsIt(t *testing.T) {
-	f, h, ta, session := newQuotaApp(t, map[string]string{
-		"POST /v2/me/claims":       `{"object":"claim","id":"9000","state":"draft"}`,
-		"PATCH /v2/me/claims/9000": `{"object":"claim","id":"9000","state":"live"}`,
-	})
-	ta.App.Post("/upload/:published", middleware.Auth(ta.RDB, config.OAuthConfig{}), func(c fiber.Ctx) error {
-		h.claimOnFirstResource(c, 9000, c.Params("published") == "first")
-		return c.SendStatus(http.StatusOK)
-	})
-
-	ta.Request(t, http.MethodPost, "/upload/first", "", session)
-	if f.calls("POST /v2/me/claims") != 1 || f.calls("PATCH /v2/me/claims/9000") != 1 {
-		t.Fatalf("the first resource did not adopt the work: %v", f.spent)
+// The claim is read off the application key, so deciding costs the uploader
+// nothing, and a work already live here costs them nothing at all. Anything
+// else is adopted on every upload, which is what lets a bot-first page or an
+// adoption that failed be picked up by the next person who uploads.
+func TestAnUploadAdoptsTheWorkUnlessItIsLiveHere(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		works string
+		want  int
+	}{
+		{"live on this site", `[{"object":"work","id":"9000","claim":{"site":"kungal","state":"live"}}]`, 0},
+		{"live under the legacy site key", `[{"object":"work","id":"9000","claim":{"site":"galgame_wiki","state":"live"}}]`, 0},
+		{"banned", `[{"object":"work","id":"9000","claim":{"site":"kungal","state":"hidden"}}]`, 0},
+		{"gone from catalog", `[]`, 0},
+		{"never claimed", `[{"object":"work","id":"9000","claim":null}]`, 2},
+		{"a draft", `[{"object":"work","id":"9000","claim":{"site":"kungal","state":"draft"}}]`, 2},
+		{"declined", `[{"object":"work","id":"9000","claim":{"site":"kungal","state":"declined"}}]`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, h, ta, session := newQuotaApp(t, map[string]string{
+				"GET /v2/catalog/works":    `{"object":"list","items":` + tc.works + `}`,
+				"POST /v2/me/claims":       `{"object":"claim","id":"9000","state":"draft"}`,
+				"PATCH /v2/me/claims/9000": `{"object":"claim","id":"9000","state":"live"}`,
+			})
+			ta.App.Post("/upload", middleware.Auth(ta.RDB, config.OAuthConfig{}), func(c fiber.Ctx) error {
+				h.adoptUnlessLive(c, 9000)
+				return c.SendStatus(http.StatusOK)
+			})
+			ta.Request(t, http.MethodPost, "/upload", "", session)
+			if f.total() != tc.want {
+				t.Fatalf("the upload spent %d of the uploader's calls (%v), want %d", f.total(), f.spent, tc.want)
+			}
+			if tc.want == 2 && (f.calls("POST /v2/me/claims") != 1 || f.calls("PATCH /v2/me/claims/9000") != 1) {
+				t.Fatalf("want the adopt pair, got %v", f.spent)
+			}
+		})
 	}
-	ta.Request(t, http.MethodPost, "/upload/second", "", session)
-	ta.Request(t, http.MethodPost, "/upload/third", "", session)
-	if f.total() != 2 {
-		t.Fatalf("later uploads spent %d more claim calls, want 0", f.total()-2)
+}
+
+// product_work_id is the forum's page id. A wizard row linked by it names a
+// different game on this site whenever the two numbers differ.
+func TestTheWizardNamesAPendingClaimByItsWorkID(t *testing.T) {
+	_, h, ta, session := newQuotaApp(t, map[string]string{
+		"GET /v2/catalog/works": `{"object":"list","items":[]}`,
+		"GET /v2/me/claims": `{"object":"list","items":[{"object":"claim","id":"77","state":"pending",` +
+			`"display_name":"白恋サクラ","site":"kungal","product_work_id":"4242"}]}`,
+	})
+	ta.App.Get("/galgame/search/publish", middleware.Auth(ta.RDB, config.OAuthConfig{}), h.SearchGalgameForPublish)
+	data := ok(t, ta.Request(t, http.MethodGet, "/galgame/search/publish?q=", "", session))
+	pending, _ := data["pending"].([]any)
+	if len(pending) != 1 {
+		t.Fatalf("pending = %v", pending)
+	}
+	if id := pending[0].(map[string]any)["id"]; id != float64(77) {
+		t.Fatalf("pending id = %v, want the catalog work id 77, not the forum's 4242", id)
 	}
 }
 

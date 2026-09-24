@@ -306,11 +306,11 @@ func (h *PatchHandler) CreateResource(c fiber.Ctx) error {
 		Platform:     model.JSONArray(req.Platform),
 	}
 
-	published, err := h.service.CreateResource(c.Context(), resource, user.ID)
-	if err != nil {
+	if err := h.service.CreateResource(c.Context(), resource, user.ID); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	h.claimOnFirstResource(c, patchID, published)
+
+	h.adoptUnlessLive(c, patchID)
 	return response.OK(c, resource)
 }
 

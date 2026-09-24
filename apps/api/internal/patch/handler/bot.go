@@ -68,10 +68,10 @@ func (h *PatchHandler) BotCreateResource(c fiber.Ctx, userID int) error {
 		return catalogErr(c, err, "无法创建补丁页")
 	}
 
-	// No claimOnFirstResource here. Adopting the catalog work needs the
-	// publisher's own OAuth token (POST /v2/me/claims) and a bot key is not
-	// one, so a bot-published page is indexed locally but never claimed in
-	// catalog. Closing that needs a bot user token from infra, not a code fix.
+	// No adoptUnlessLive here. Adopting the catalog work needs the publisher's
+	// own OAuth token (POST /v2/me/claims) and a bot key is not one, so a
+	// bot-published page stays unclaimed in catalog until a person uploads to
+	// it. Closing that needs a bot user token from infra, not a code fix.
 	resource := &model.PatchResource{
 		GalgameID:    id,
 		Storage:      "s3",
@@ -83,7 +83,7 @@ func (h *PatchHandler) BotCreateResource(c fiber.Ctx, userID int) error {
 		Language:     model.JSONArray(req.Language),
 		Platform:     model.JSONArray(req.Platform),
 	}
-	if _, err := h.service.CreateResource(c.Context(), resource, userID); err != nil {
+	if err := h.service.CreateResource(c.Context(), resource, userID); err != nil {
 		return response.Error(c, errors.ErrValidation(err.Error()))
 	}
 	return response.OK(c, map[string]any{"id": resource.ID, "galgame_id": id})
