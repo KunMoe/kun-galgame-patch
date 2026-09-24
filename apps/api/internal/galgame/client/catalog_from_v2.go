@@ -287,11 +287,10 @@ func workCredits(w catalogv2.Work) []catalogCreditGroup {
 			cid, _ := catalogv2.ParseID(strOrEmpty(e.CharacterID))
 			group.Credits = append(group.Credits, catalogCreditItem{
 				catalogPersonRef: catalogPersonRef{
-					ID: id, DisplayName: e.DisplayName, Lang: strOrEmpty(e.Lang),
+					ID: id, DisplayName: e.DisplayName,
 					Latin: strOrEmpty(e.Latin), Localized: localizedFrom(e.Localized),
 				},
 				CharacterID: cid,
-				Character:   strOrEmpty(e.CharacterName),
 			})
 		}
 		out = append(out, group)
@@ -358,8 +357,8 @@ func workToDetail(w catalogv2.Work) catalogWork {
 			id, _ := ch.IntID()
 			out.Characters = append(out.Characters, catalogWorkCharacter{
 				ID: id, DisplayName: ch.DisplayName, Localized: localizedFrom(ch.Localized),
-				Lang: strOrEmpty(ch.Lang), Latin: strOrEmpty(ch.Latin),
-				Kind: ch.RosterRole, Spoiler: spoilerInt(ch.Spoiler),
+				Latin: strOrEmpty(ch.Latin),
+				Kind:  ch.RosterRole, Spoiler: spoilerInt(ch.Spoiler),
 				Image: imageHash(ch.Image), ImageSexual: imageSexual(ch.Image),
 				Figure: imageHash(ch.Figure), FigureSexual: imageSexual(ch.Figure),
 				Voices: personRefsFrom(ch.Voices),
