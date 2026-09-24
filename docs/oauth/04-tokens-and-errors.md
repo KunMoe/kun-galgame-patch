@@ -10,7 +10,7 @@
 
 ## JWT Access Token Claims
 
-Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
+Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）。**所有校验 Bearer 的服务都要求这个标记**：`id_token` 签名同样有效，但它不是 access token，拿它当 Bearer 一律 401（2026-09-25 起）。claims：
 
 ```json
 {
@@ -87,17 +87,18 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
 
 | `error` | HTTP | 对应旧错误码 | RP 处理 |
 |---------|------|-------------|---------|
-| `invalid_client` | 401 | 15001 / 15008 | 配置错误（client_id / secret），refresh 已死 |
+| `invalid_client` | 401 | 15001 / 15008 | **RP 自己的配置错误**（client_id / secret 不对，或 secret 已轮换）→ 告警、这次请求失败，**不要清读者会话**：配置修好后原 refresh token 仍然有效 |
 | `invalid_grant` | 400 | 15002 / 15003 / 15004 / 10003 / 10014 | 授权凭据无效或会话已死 → 强制重新登录 |
 | `invalid_token` | 401 | 10002 | **仅 `/oauth/userinfo`**：bearer token 已失效 → 刷新或重新登录 |
-| `unauthorized_client` | 400 | 15005 | client 未被允许该 grant → refresh 已死 |
+| `unauthorized_client` | 400 | 15005 | client 未被允许该 grant（RP 的注册问题）→ 同 `invalid_client`：告警，**不清会话** |
 | `invalid_scope` | 400 | 15006 | scope 配置错误 |
 | `unsupported_grant_type` | 400 | 15011 | 请求 bug（grant_type 写错） |
 | `invalid_request` | 400 | 其他 | 请求格式问题 |
 | `server_error` | 500 | — | OP 内部故障 → **瞬态**，保留会话并重试 |
 
 > RP 的错误分类必须满足三条，否则会出现实际事故：
-> 1. `invalid_grant` / `unauthorized_client` / `invalid_client` / `invalid_token` → 「凭据已死」，清会话、要求重新登录。
+> 1. **只有 `invalid_grant`（以及 `/oauth/userinfo` 上的 `invalid_token`）表示读者的凭据已死** → 清会话、要求重新登录。
+>    `invalid_client` / `unauthorized_client` 说的是 **RP 自己**，与读者无关：按「凭据已死」处理的话，一次 secret 轮换或配置失误，就会让全站读者在各自下次 refresh 时被全部登出（moyu 曾照旧版本文档实现，2026-09-25 更正）。把它们当成 RP 自己的告警，保留会话。
 > 2. **未知字符串和 5xx 才当瞬态重试**。把 `invalid_token` 漏成未知，死会话会被无限重试且永不重新认证。
 > 3. **封禁没有对应的 RFC 6750 错误码**，OP 用 **HTTP 403** 表示。要保留「封禁页」而非退化成重新登录循环，就必须按状态码判定。
 
@@ -122,6 +123,8 @@ Header 携带 `typ: at+jwt`（RFC 9068 access token 类型标记）；claims：
 | 10017 | 400 | 该第三方登录方式未启用 | 联邦登录 provider 未配置凭据或未在 `auth.federation_providers` 中启用 |
 | 10018 | 400 | 第三方登录已过期，请重新发起 | 联邦补全页的 pending token 过期 / 无效（TTL 30 分钟） |
 | 10019 | 400 | 该第三方账号的绑定关系存在冲突 | 同一第三方账号已绑定其他用户，或该用户已绑定同 provider 的另一账号 |
+| 10020 | 400 | 管理员账号不能自助注销 | 持 `admin`/`ren` 权限的账号申请注销（见 [17](./17-account-deletion.md)） |
+| 10021 | 400 | 验证码发送过于频繁 | 注销验证码的重发冷却未到 |
 
 ### 内容分级与云端偏好 (18xxx)
 

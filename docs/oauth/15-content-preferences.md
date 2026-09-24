@@ -236,7 +236,7 @@ effective = adult_confirmed_at != null ? nsfw_display : 'hide'
 
 ### 用户注销
 
-`user_preferences` 的 `user_id` 外键带 `ON DELETE CASCADE`（与 `user_site_data` 一致），账号被硬删时这些行一并消失。账号中心的设置页也提供逐条删除。
+账号注销执行时，OAuth 在同一个事务里删除该账号全部命名空间的 `user_preferences`（见 [17](./17-account-deletion.md)）。账号行本身不会被硬删，所以这里不靠外键级联。账号中心的设置页也提供逐条删除。
 
 ---
 

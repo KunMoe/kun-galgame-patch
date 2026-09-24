@@ -64,6 +64,7 @@
 | users[].roles | 角色名称数组，如 `["admin"]` |
 | users[].site_roles | 站点域角色数组（按**请求方 client** 的站点定界；无授予时省略。见 [12-site-roles.md](./12-site-roles.md)） |
 | users[].cosmetics | 正在穿戴的装扮（按**请求方 client** 的站点解析，没有单独选择时取全站默认；什么都没戴时省略）。键是槽位：`avatar_frame`（头像框）、`profile_background`（主页背景），值都是 `{item_id, name, static_url, animated_url?}`；以后会有新的键，解码方要容忍未知键。渲染规则见 [16-shop.md](./16-shop.md) §1 |
+| users[].anonymized_at | 账号**已注销**时出现（RFC3339 UTC），此时不再带 `cosmetics`。渲染「已注销」以它为准，不要看 `status`（`status=1` 也可能只是封禁）。已注销账号的增量流见 [17](./17-account-deletion.md) §4 |
 | users[].created_at | 用户 **OAuth 注册时间**，UTC RFC3339（如 `2023-10-29T10:41:34Z`）。渲染「注册 / 加入时间」**必须用此字段**——不要用下游本地行的 created（未登录过本站的用户根本没有本地行→空白；首次登录晚于注册的用户本地时间也是错的）。 |
 | not_found | 请求中存在但 OAuth 库里查不到的 ID 列表 |
 
