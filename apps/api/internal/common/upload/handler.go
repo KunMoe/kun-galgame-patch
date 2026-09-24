@@ -36,6 +36,16 @@ func uploadTier(c fiber.Ctx) constants.UploadTier {
 	}
 }
 
+func uploadError(c fiber.Ctx, err error) error {
+	switch {
+	case stderrors.Is(err, errNotUploadOwner):
+		return response.Error(c, errors.New(40300, err.Error(), fiber.StatusForbidden))
+	case stderrors.Is(err, errArtifactInUse):
+		return response.Error(c, errors.ErrConflict(err.Error()))
+	}
+	return response.Error(c, errors.ErrBadRequest(err.Error()))
+}
+
 func (h *Handler) Init(c fiber.Ctx) error {
 	var req InitRequest
 	if err := utils.ParseAndValidate(c, &req); err != nil {
@@ -59,7 +69,7 @@ func (h *Handler) Complete(c fiber.Ctx) error {
 
 	resp, err := h.svc.Complete(c.Context(), user.ID, uploadTier(c), req)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return uploadError(c, err)
 	}
 	return response.OK(c, resp)
 }
@@ -69,11 +79,11 @@ func (h *Handler) Resume(c fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	_ = middleware.MustGetUser(c)
+	user := middleware.MustGetUser(c)
 
-	resp, err := h.svc.Resume(c.Context(), req)
+	resp, err := h.svc.Resume(c.Context(), user.ID, req)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return uploadError(c, err)
 	}
 	return response.OK(c, resp)
 }
@@ -134,10 +144,10 @@ func (h *Handler) Abort(c fiber.Ctx) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	_ = middleware.MustGetUser(c)
+	user := middleware.MustGetUser(c)
 
-	if err := h.svc.Abort(c.Context(), req); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	if err := h.svc.Abort(c.Context(), user.ID, req); err != nil {
+		return uploadError(c, err)
 	}
 	return response.OKMessage(c, "已放弃上传")
 }

@@ -32,7 +32,7 @@ const form = reactive({
   name: props.resource?.name ?? '',
   model_name: props.resource?.model_name ?? '',
   s3_key: props.resource?.s3_key ?? '',
-  artifact_uuid: props.resource?.artifact_uuid ?? '',
+  artifact_uuid: '',
   content: props.resource?.content ?? '',
   size: props.resource?.size ?? '',
   code: props.resource?.code ?? '',
@@ -87,6 +87,7 @@ onMounted(refreshPending)
 const showingExistingFile = computed(
   () =>
     isEdit.value &&
+    props.resource?.storage === 's3' &&
     form.storage === 's3' &&
     !replaceMode.value &&
     !pickedFile.value
@@ -194,7 +195,7 @@ const removeFile = () => {
   pickedFile.value = null
   if (isEdit.value && props.resource) {
     form.s3_key = props.resource.s3_key ?? ''
-    form.artifact_uuid = props.resource.artifact_uuid ?? ''
+    form.artifact_uuid = ''
     form.size = props.resource.size ?? ''
     replaceMode.value = false
   } else {
@@ -256,7 +257,8 @@ const validate = (): string | null => {
   if (form.storage === 's3') {
     if (stagedNotUploaded.value) return '请点击 "确认上传" 完成文件上传'
     if (uploadingNow.value) return '文件正在上传中，请稍候'
-    if (!form.artifact_uuid && !form.s3_key) return '请上传补丁文件'
+    if (!showingExistingFile.value && !form.artifact_uuid && !form.s3_key)
+      return '请上传补丁文件'
   } else {
     if (userLinks.value.filter((l) => l.trim()).length === 0)
       return '请至少添加一条资源链接'

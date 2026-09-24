@@ -54,7 +54,9 @@ func (a *App) RegisterRoutes() {
 		bot.Post("/upload/complete", func(c fiber.Ctx) error {
 			return a.UploadHandler.BotComplete(c, botUser)
 		})
-		bot.Post("/upload/resume", a.UploadHandler.BotResume)
+		bot.Post("/upload/resume", func(c fiber.Ctx) error {
+			return a.UploadHandler.BotResume(c, botUser)
+		})
 	}
 
 	patchRoutes := api.Group("/patch")

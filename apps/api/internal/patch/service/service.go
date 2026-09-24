@@ -515,6 +515,9 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 	}
 
 	if update.Storage == "s3" {
+		if update.ArtifactUUID == "" && update.S3Key == "" {
+			update.ArtifactUUID = existing.ArtifactUUID
+		}
 		switch {
 		case update.ArtifactUUID != "":
 			update.S3Key = ""
