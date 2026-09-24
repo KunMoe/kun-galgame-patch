@@ -83,7 +83,7 @@ func (h *PatchHandler) BotCreateResource(c fiber.Ctx, userID int) error {
 		Language:     model.JSONArray(req.Language),
 		Platform:     model.JSONArray(req.Platform),
 	}
-	if err := h.service.CreateResource(c.Context(), resource, userID); err != nil {
+	if _, err := h.service.CreateResource(c.Context(), resource, userID); err != nil {
 		return response.Error(c, errors.ErrValidation(err.Error()))
 	}
 	return response.OK(c, map[string]any{"id": resource.ID, "galgame_id": id})

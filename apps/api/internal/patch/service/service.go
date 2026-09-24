@@ -36,18 +36,19 @@ type AuditLogger interface {
 }
 
 type PatchService struct {
-	repo    *repository.PatchRepository
-	setting *settingService.Service
-	db      *gorm.DB
-	art     *artifactclient.Client
-	galgame *galgameClient.Client
-	users   *userclient.Client
-	mp      *moemoepoint.Awarder
-	audit   AuditLogger
+	repo      *repository.PatchRepository
+	setting   *settingService.Service
+	db        *gorm.DB
+	art       *artifactclient.Client
+	galgame   *galgameClient.Client
+	favorites *favorite.Service
+	users     *userclient.Client
+	mp        *moemoepoint.Awarder
+	audit     AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, galgame *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, art: art, galgame: galgame, users: users, mp: mp, audit: audit}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, galgame *galgameClient.Client, favorites *favorite.Service, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, art: art, galgame: galgame, favorites: favorites, users: users, mp: mp, audit: audit}
 }
 
 func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galgameID int) (int, error) {
@@ -448,23 +449,25 @@ func (s *PatchService) EnsureArtifactReady(ctx context.Context, uuid string) err
 	return nil
 }
 
-func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
+// CreateResource reports whether this resource is the one that published the
+// page, which is the only upload that adopts the catalog work.
+func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) (bool, error) {
 	resource.UserID = userID
 	resource.Note = markdown.NormalizeContentImageURLs(resource.Note)
 
 	if _, err := s.ensureLocalPatch(ctx, resource.GalgameID, userID); err != nil {
-		return fmt.Errorf("patch not found")
+		return false, fmt.Errorf("patch not found")
 	}
 
 	if resource.Storage == "s3" {
 		if resource.ArtifactUUID == "" {
-			return fmt.Errorf("缺少上传文件标识")
+			return false, fmt.Errorf("缺少上传文件标识")
 		}
 		resource.S3Key = ""
 		resource.Content = ""
 	} else {
 		if strings.TrimSpace(resource.Content) == "" {
-			return fmt.Errorf("请填写资源链接")
+			return false, fmt.Errorf("请填写资源链接")
 		}
 	}
 
@@ -473,14 +476,15 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 		if strings.Contains(msg, "idx_patch_resource_s3_key_unique") ||
 			strings.Contains(msg, "idx_patch_resource_artifact_uuid_unique") ||
 			strings.Contains(msg, "duplicate key value") {
-			return fmt.Errorf("该上传已被其它资源占用，请重新上传一次")
+			return false, fmt.Errorf("该上传已被其它资源占用，请重新上传一次")
 		}
-		return err
+		return false, err
 	}
 
 	s.repo.UpdateCount(resource.GalgameID, "resource_count", 1)
 	s.repo.RecalculatePatchAggregates(resource.GalgameID)
-	if err := s.repo.MarkIndexed(resource.GalgameID); err != nil {
+	published, err := s.repo.MarkIndexed(resource.GalgameID)
+	if err != nil {
 		slog.Warn("CreateResource: 标记 SEO 索引失败", "gid", resource.GalgameID, "error", err)
 	}
 
@@ -502,7 +506,7 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 		resource.User = one[0].User
 	}
 
-	return nil
+	return published, nil
 }
 
 func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID int, update *model.PatchResource, reason string, actorRole int) (*model.PatchResource, error) {

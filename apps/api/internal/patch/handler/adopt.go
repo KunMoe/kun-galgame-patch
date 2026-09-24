@@ -14,9 +14,12 @@ import (
 // If-Match is required on a claim PATCH; this takes whatever state it is in.
 const anyState = "*"
 
-func (h *PatchHandler) claimOnFirstResource(c fiber.Ctx, gid int) {
+// Only the resource that published the page adopts its work. Every upload used
+// to send the pair, spending the uploader's shared catalog allowance, and their
+// catalog.claim_writes_per_day, on works adopted long before.
+func (h *PatchHandler) claimOnFirstResource(c fiber.Ctx, gid int, published bool) {
 	token := middleware.GetAccessToken(c)
-	if token == "" {
+	if !published || token == "" {
 		return
 	}
 	workID := int64(gid)

@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"kun-galgame-patch-api/internal/favorite"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/upstream"
 )
@@ -21,12 +20,12 @@ const defaultFolderName = "默认收藏夹"
 
 // FoldersForPatch is the add-to-folder picker: every folder the person owns,
 // each flagged with whether it already holds this game.
-func (s *PatchService) FoldersForPatch(ctx context.Context, token string, patchID int) ([]FolderMembership, error) {
+func (s *PatchService) FoldersForPatch(ctx context.Context, token string, patchID, userID int) ([]FolderMembership, error) {
 	workID, err := s.workIDOf(patchID)
 	if err != nil {
 		return nil, err
 	}
-	folders, err := s.galgame.V2().MyFolders(ctx, token)
+	folders, err := s.favorites.OwnFolders(ctx, userID, token)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +52,7 @@ func (s *PatchService) SetPatchFolders(ctx context.Context, token string, patchI
 	if err != nil {
 		return err
 	}
+	defer s.favorites.Forget(ctx, userID)
 	owned, err := s.galgame.V2().MyFolders(ctx, token)
 	if err != nil {
 		return err
@@ -179,6 +179,7 @@ func (s *PatchService) ToggleFavoriteInCatalog(ctx context.Context, token string
 	if _, err := s.ensureLocalPatch(ctx, patchID, userID); err != nil {
 		return false, err
 	}
+	defer s.favorites.Forget(ctx, userID)
 
 	holding, err := s.galgame.V2().MyFoldersHolding(ctx, token, workID)
 	if err != nil {
@@ -207,16 +208,12 @@ func (s *PatchService) ToggleFavoriteInCatalog(ctx context.Context, token string
 	return true, nil
 }
 
-func (s *PatchService) IsFavoritedInCatalog(ctx context.Context, token string, patchID int) bool {
-	if token == "" {
-		return false
-	}
+func (s *PatchService) IsFavoritedInCatalog(ctx context.Context, userID int, token string, patchID int) (bool, error) {
 	workID, err := s.workIDOf(patchID)
 	if err != nil {
-		return false
+		return false, nil
 	}
-	held, err := favorite.Holds(ctx, s.galgame, token, workID)
-	return err == nil && held
+	return s.favorites.Holds(ctx, userID, token, workID)
 }
 
 // The local counter and the author's moemoepoints follow the upstream write,

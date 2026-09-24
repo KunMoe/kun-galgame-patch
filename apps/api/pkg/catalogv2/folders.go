@@ -20,14 +20,14 @@ const (
 	FolderVisibilityPublic  = "public"
 )
 
-const folderPageMax = 100
+const FolderPageMax = 100
 
 // A whole list is read rather than paged through to the caller: the catalog's
 // keyset is an incremental-sync watermark ordered by updated_at, while this
 // site's faces are page-numbered and ordered for a reader. The shapes are
 // small — production p50 is 5 folders per person and 2 items per folder, p99
 // is 370 items — so sorting locally costs one request in the ordinary case.
-const folderWalkPages = FolderItemsMax/folderPageMax + 1
+const folderWalkPages = FolderItemsMax/FolderPageMax + 1
 
 const folderWalkBudget = 20 * time.Second
 
@@ -115,7 +115,7 @@ func folderQuery(cursor string, extra url.Values) string {
 	for k, v := range extra {
 		q[k] = v
 	}
-	q.Set("limit", strconv.Itoa(folderPageMax))
+	q.Set("limit", strconv.Itoa(FolderPageMax))
 	if cursor != "" {
 		q.Set("cursor", cursor)
 	}
@@ -164,7 +164,7 @@ func (c *Client) MyFolderItems(ctx context.Context, accessToken string, folderID
 // every page of every folder to find out would cost a request per hundred
 // items per folder on a page that draws one card each.
 func (c *Client) FolderPreviewItems(ctx context.Context, accessToken string, folderID int64, limit int) ([]FolderItem, error) {
-	q := url.Values{"limit": {strconv.Itoa(min(max(limit, 1), folderPageMax))}}
+	q := url.Values{"limit": {strconv.Itoa(min(max(limit, 1), FolderPageMax))}}
 	id := strconv.FormatInt(folderID, 10)
 	var page List[folderItemWire]
 	if accessToken != "" {

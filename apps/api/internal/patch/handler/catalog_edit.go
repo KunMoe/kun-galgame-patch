@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	stderrors "errors"
 	"log/slog"
 	"slices"
 	"strconv"
+	"time"
 
 	"kun-galgame-patch-api/internal/middleware"
+	"kun-galgame-patch-api/internal/usercache"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -30,6 +33,7 @@ var catalogEditFieldKeys = []string{
 const (
 	catalogEditNoteMax       = 2000
 	catalogEditProposalLimit = 20
+	proposalPatchTTL         = 24 * time.Hour
 )
 
 // The shape the edit page reads; catalog's schema_field is the source it is
@@ -276,22 +280,44 @@ func (h *PatchHandler) CatalogEditProposals(c fiber.Ctx) error {
 	return response.OK(c, fiber.Map{"items": items})
 }
 
+type proposalPatch struct {
+	Patch          map[string]any `json:"patch"`
+	EffectivePatch map[string]any `json:"effective_patch"`
+}
+
 // The list face carries no patch — its spec advertises no include at all — so
-// "你改了哪些字段" needs the detail face, one call per row. Bounded by the page
-// limit, and the list is already narrowed to a single work, so this is a handful
-// of proposals at most. A row whose detail read fails keeps its listed shape
-// rather than sinking the whole list.
+// "你改了哪些字段" needs the detail face, one call per row. The patch is kept
+// under the proposal's updated_at, which catalog moves on every amendment, so
+// reopening the page asks again only for the proposals that changed. A row
+// whose detail read fails keeps its listed shape rather than sinking the list.
 func (h *PatchHandler) hydrateProposalPatch(c fiber.Ctx, token string, p *catalogv2.ProposalRecord) *catalogv2.ProposalRecord {
 	id, ok := catalogv2.ParseID(p.ID)
 	if !ok || len(p.Patch) > 0 {
 		return p
 	}
-	full, _, err := h.catalogV2().GetProposal(c.Context(), token, id)
+	fill := func(ctx context.Context) (proposalPatch, error) {
+		full, _, err := h.catalogV2().GetProposal(ctx, token, id)
+		if err != nil {
+			return proposalPatch{}, err
+		}
+		return proposalPatch{Patch: full.Patch, EffectivePatch: full.EffectivePatch}, nil
+	}
+	var (
+		got proposalPatch
+		err error
+	)
+	if p.UpdatedAt == "" {
+		got, err = fill(c.Context())
+	} else {
+		got, err = usercache.Fetch(c.Context(), h.mine.Key("proposal-patch:"+p.ID+":"+p.UpdatedAt), proposalPatchTTL, fill)
+	}
 	if err != nil {
 		slog.Warn("catalog edit: proposal patch not hydrated", "id", p.ID, "error", err)
 		return p
 	}
-	return full
+	out := *p
+	out.Patch, out.EffectivePatch = got.Patch, got.EffectivePatch
+	return &out
 }
 
 func proposalView(p *catalogv2.ProposalRecord) fiber.Map {

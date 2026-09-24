@@ -14,6 +14,7 @@ import (
 	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/service"
+	"kun-galgame-patch-api/internal/usercache"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
@@ -30,6 +31,7 @@ var vndbIDRegex = regexp.MustCompile(`^v\d+$`)
 type PatchHandler struct {
 	service    *service.PatchService
 	galgame    *galgameClient.Client
+	mine       *usercache.Cache
 	users      *userclient.Client
 	storeLinks *storelink.Resolver
 }
@@ -37,10 +39,11 @@ type PatchHandler struct {
 func New(
 	svc *service.PatchService,
 	galgame *galgameClient.Client,
+	mine *usercache.Cache,
 	users *userclient.Client,
 	storeLinks *storelink.Resolver,
 ) *PatchHandler {
-	return &PatchHandler{service: svc, galgame: galgame, users: users, storeLinks: storeLinks}
+	return &PatchHandler{service: svc, galgame: galgame, mine: mine, users: users, storeLinks: storeLinks}
 }
 
 func catalogUserToken(c fiber.Ctx) (string, *errors.AppError) {
@@ -138,7 +141,6 @@ func (h *PatchHandler) CreatePatch(c fiber.Ctx) error {
 
 type headerCard struct {
 	enricher.GalgameCard
-	IsFavorite bool `json:"is_favorite"`
 	// The DLsite purchase entry. Absent whenever the work has no buyable workno
 	// or the feature is unconfigured, and the button is not rendered at all.
 	DlsitePurchaseURL  string `json:"dlsite_purchase_url,omitempty"`
@@ -179,11 +181,7 @@ func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 		return h.patchGone(c, id)
 	}
 
-	card := h.withPurchaseLinks(headerCard{GalgameCard: *enriched})
-	if user := middleware.GetUser(c); user != nil {
-		card.IsFavorite = h.service.IsFavoritedInCatalog(c.Context(), middleware.GetAccessToken(c), id)
-	}
-	return response.OK(c, card)
+	return response.OK(c, h.withPurchaseLinks(headerCard{GalgameCard: *enriched}))
 }
 
 func (h *PatchHandler) GetPatchDetail(c fiber.Ctx) error {
@@ -308,11 +306,11 @@ func (h *PatchHandler) CreateResource(c fiber.Ctx) error {
 		Platform:     model.JSONArray(req.Platform),
 	}
 
-	if err := h.service.CreateResource(c.Context(), resource, user.ID); err != nil {
+	published, err := h.service.CreateResource(c.Context(), resource, user.ID)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-
-	h.claimOnFirstResource(c, patchID)
+	h.claimOnFirstResource(c, patchID, published)
 	return response.OK(c, resource)
 }
 
@@ -487,6 +485,24 @@ func (h *PatchHandler) ToggleFavorite(c fiber.Ctx) error {
 		return catalogErr(c, err, "收藏失败，请刷新后重试")
 	}
 
+	return response.OK(c, map[string]bool{"favorited": favorited})
+}
+
+// GetFavorite is the heart on a game page, asked once the page is in the
+// browser rather than inside GET /patch/:id: that read runs on every
+// navigation, server-side included, and whatever it asks with the reader's
+// token spends their catalog allowance on the forum too.
+func (h *PatchHandler) GetFavorite(c fiber.Ctx) error {
+	id, err := getIDParam(c, "id")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	user := middleware.MustGetUser(c)
+	favorited, fErr := h.service.IsFavoritedInCatalog(c.Context(), user.ID, middleware.GetAccessToken(c), id)
+	if fErr != nil {
+		slog.Warn("patch favorite: shelf unreadable, heart drawn empty",
+			"patch_id", id, "user_id", user.ID, "error", fErr)
+	}
 	return response.OK(c, map[string]bool{"favorited": favorited})
 }
 

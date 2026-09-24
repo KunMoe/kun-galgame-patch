@@ -174,9 +174,9 @@ interface GalgameScreenshotRow extends GalgameCoverRow {
 // enables for www.moyu.moe.
 type GalgameImageUploadPreset = 'topic'
 
-// Patch header (GET /patch/:id) -- GalgameCard + is_favorite.
+// Patch header (GET /patch/:id). It carries nothing about the reader; the
+// heart is GET /patch/:id/favorite, asked after mount.
 interface PatchHeader extends GalgameCard {
-  is_favorite: boolean
   // The DLsite purchase entry, assembled server-side. Absent whenever the work
   // has no buyable DLsite id or the feature is unconfigured, which is what the
   // button keys off. dlsite_campaign_name is present only while infra reports a

@@ -30,6 +30,7 @@ import (
 	faceHandler "kun-galgame-patch-api/internal/face/handler"
 	faceRepo "kun-galgame-patch-api/internal/face/repository"
 	faceService "kun-galgame-patch-api/internal/face/service"
+	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
@@ -50,6 +51,7 @@ import (
 	userHandler "kun-galgame-patch-api/internal/user/handler"
 	userRepo "kun-galgame-patch-api/internal/user/repository"
 	userService "kun-galgame-patch-api/internal/user/service"
+	"kun-galgame-patch-api/internal/usercache"
 	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/config"
@@ -109,6 +111,8 @@ func New(cfg *config.Config) *App {
 	db := database.NewPostgres(cfg.Database, cfg.Server.Mode)
 	rdb := cache.NewRedis(cfg.Redis)
 	galgame := galgameClient.NewWithKey(cfg.NextMoeAPI.BaseURL, cfg.NextMoeAPI.APIKey).WithRedis(rdb)
+	mine := usercache.New(rdb)
+	favorites := favorite.New(galgame, mine)
 
 	usrCli := userclient.New(userclient.Config{
 		BaseURL:      cfg.OAuth.ServerURL,
@@ -174,8 +178,8 @@ func New(cfg *config.Config) *App {
 	storeStop := storeLinks.Start()
 
 	patchRepository := patchRepo.New(db)
-	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, galgame, usrCli, mpAwarder, adminRepository)
-	patchHdl := patchHandler.New(patchSvc, galgame, usrCli, storeLinks)
+	patchSvc := patchService.New(patchRepository, settingSvc, db, artCli, galgame, favorites, usrCli, mpAwarder, adminRepository)
+	patchHdl := patchHandler.New(patchSvc, galgame, mine, usrCli, storeLinks)
 
 	// Every comment wall on this site lives in the community primitive. An
 	// unconfigured client degrades comments (reads answer an empty wall, writes
@@ -199,7 +203,7 @@ func New(cfg *config.Config) *App {
 	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors, communityInboxSvc))
 
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, usrCli, galgame, db, mpAwarder, commentSvc)
+	userSvc := userService.New(userRepository, usrCli, galgame, favorites, db, mpAwarder, commentSvc)
 	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
 	messageRepository := messageRepo.New(db)
@@ -265,7 +269,7 @@ func New(cfg *config.Config) *App {
 		ClientSecret: imgCfg.ClientSecret,
 	})
 
-	commonHdl := common.NewHandler(db, galgame, usrCli, artCli, commentSvc)
+	commonHdl := common.NewHandler(db, galgame, favorites, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 

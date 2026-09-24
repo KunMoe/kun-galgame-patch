@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
@@ -49,7 +50,8 @@ func (s *shelf) client(t *testing.T) *PatchService {
 		answers[min(n, len(answers)-1)](w, r)
 	}))
 	t.Cleanup(srv.Close)
-	return &PatchService{galgame: galgameClient.NewWithKey(srv.URL, "nmk_test_key")}
+	gal := galgameClient.NewWithKey(srv.URL, "nmk_test_key")
+	return &PatchService{galgame: gal, favorites: favorite.New(gal, nil)}
 }
 
 func (s *shelf) count(route string) int {
@@ -85,7 +87,7 @@ func TestThePickerNeverWrites(t *testing.T) {
 	s := &shelf{answers: map[string][]shelfAnswer{
 		"GET /v2/me/folders": {body(emptyShelf)},
 	}}
-	out, err := s.client(t).FoldersForPatch(context.Background(), "tok", 7)
+	out, err := s.client(t).FoldersForPatch(context.Background(), "tok", 7, 42)
 	if err != nil {
 		t.Fatal(err)
 	}

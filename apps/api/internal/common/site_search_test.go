@@ -16,7 +16,7 @@ import (
 // touches GORM or the catalog client, so a regression shows up as a panic
 // rather than a 500 nobody reads.
 func newSearchTestApp() *fiber.App {
-	h := NewHandler(nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
 	app := fiber.New()
 	app.Get("/search", h.SiteSearch)
 	app.Get("/search/overview", h.SiteSearchOverview)
@@ -93,7 +93,7 @@ func TestSiteSearchRejectsUnknownLaneFilters(t *testing.T) {
 // The box allows 107 runes and OAuth's /users/search refuses past 50, so a long
 // keyword was a 500 on the 用户 tab.
 func TestSiteSearchUserLaneTakesAKeywordLongerThanOAuthAllows(t *testing.T) {
-	h := NewHandler(nil, nil, userclient.NewMock(t, nil), nil, nil)
+	h := NewHandler(nil, nil, nil, userclient.NewMock(t, nil), nil, nil)
 	app := fiber.New()
 	app.Get("/search", h.SiteSearch)
 
