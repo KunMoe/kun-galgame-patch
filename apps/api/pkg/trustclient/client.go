@@ -164,9 +164,10 @@ func s2sKind(status int, message string) upstream.Kind {
 }
 
 // adminKind reads infra's trust admin face (handler/admin.go), which runs on
-// the moderator's own token behind JWTAuth + RequirePermission. A 401 is that
-// token failing verification on the trust side, which the moderator cannot fix
-// by logging in again; a 403 is the moderator lacking the queue permission
+// the moderator's own token behind JWTAuth + RequirePermission. A 401 there is
+// trust failing to verify a token moyu's session still holds, not the session
+// ending: mapped to 40100, a verification fault on the trust side logged every
+// moderator out of moyu. A 403 is the moderator lacking the queue permission,
 // unless infra says the client or token is not bound, which is moyu's setup.
 func adminKind(status int, message string) upstream.Kind {
 	switch {
