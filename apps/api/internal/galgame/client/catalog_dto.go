@@ -18,10 +18,9 @@ func isGIDClaimSite(site string) bool {
 }
 
 type catalogClaimedBy struct {
-	Site         string `json:"site"`
-	WorkID       int64  `json:"work_id"`
-	State        string `json:"state"`
-	ContentLimit string `json:"content_limit"`
+	Site   string `json:"site"`
+	WorkID int64  `json:"work_id"`
+	State  string `json:"state"`
 }
 
 // The claim's site_work_id is the FORUM's page id, not this site's. Both
@@ -88,6 +87,7 @@ type catalogWorkListItem struct {
 	Medium        string            `json:"medium"`
 	DisplayName   string            `json:"display_name"`
 	ContentRating string            `json:"content_rating"`
+	ContentLimit  string            `json:"content_limit"`
 	OLang         string            `json:"olang"`
 	ReleaseDate   *string           `json:"release_date"`
 	ClaimedBy     *catalogClaimedBy `json:"claimed_by"`
@@ -196,6 +196,7 @@ type catalogWork struct {
 	DisplayName   string            `json:"display_name"`
 	OLang         string            `json:"olang"`
 	ContentRating string            `json:"content_rating"`
+	ContentLimit  string            `json:"content_limit"`
 	ReleaseDate   *string           `json:"release_date"`
 	Created       string            `json:"created"`
 	Updated       string            `json:"updated"`

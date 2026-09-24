@@ -248,7 +248,7 @@ func TestContentLimitCaliber(t *testing.T) {
 		}
 	})
 
-	t.Run("the rendered content_limit is the claim's, not the rating's", func(t *testing.T) {
+	t.Run("the rendered content_limit is the work's, not the rating's", func(t *testing.T) {
 		srv.reset()
 		briefs, err := c.GalgameBatch(ctx, []int{22}, "")
 		if err != nil {
@@ -258,7 +258,7 @@ func TestContentLimitCaliber(t *testing.T) {
 			t.Fatalf("briefs = %+v, want the one live row", briefs)
 		}
 		if got := briefs[0].ContentLimit; got != "sfw" {
-			t.Errorf("content_limit = %q, want sfw (claimed_by.content_limit)", got)
+			t.Errorf("content_limit = %q, want sfw (work.content_limit)", got)
 		}
 		if got := briefs[0].AgeLimit; got != "r18" {
 			t.Errorf("age_limit = %q, want r18 — the AGE axis is untouched", got)
@@ -287,24 +287,19 @@ func TestContentLimitCaliber(t *testing.T) {
 }
 
 func TestContentAxisProjection(t *testing.T) {
-	claim := func(limit string) *catalogClaimedBy {
-		return &catalogClaimedBy{Site: catalogClaimSiteKungal, WorkID: 1, State: catalogClaimStateLive, ContentLimit: limit}
-	}
 	for _, tc := range []struct {
 		name            string
-		claim           *catalogClaimedBy
+		verdict         string
 		rating          string
 		wantCL, wantAge string
 	}{
-		{"claimed sfw, rated r18", claim("sfw"), "r18", "sfw", "r18"},
-		{"claimed nsfw, rated all_ages", claim("nsfw"), "all_ages", "nsfw", "all"},
-		{"unclaimed r18 falls back to nsfw", nil, "r18", "nsfw", "r18"},
-		{"unclaimed sensitive falls back to sfw", nil, "sensitive", "sfw", "all"},
-		{"a claim with no verdict falls back too", claim(""), "r18", "nsfw", "r18"},
-		{"another product's claim is not moyu's", &catalogClaimedBy{Site: "letmoe", ContentLimit: "sfw"}, "r18", "nsfw", "r18"},
+		{"sfw verdict, rated r18", "sfw", "r18", "sfw", "r18"},
+		{"nsfw verdict, rated all_ages", "nsfw", "all_ages", "nsfw", "all"},
+		{"no verdict is nsfw whatever the rating", "", "all_ages", "nsfw", "all"},
+		{"an unknown verdict is nsfw", "sensitive", "all_ages", "nsfw", "all"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cl, age := contentAxisOf(tc.claim, tc.rating)
+			cl, age := contentAxisOf(tc.verdict, tc.rating)
 			if cl != tc.wantCL || age != tc.wantAge {
 				t.Errorf("contentAxisOf = (%q, %q), want (%q, %q)", cl, age, tc.wantCL, tc.wantAge)
 			}

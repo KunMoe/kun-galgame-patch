@@ -15,8 +15,11 @@ import (
 const (
 	// Its own cursor namespace: this feed pages by opaque cur_ strings over
 	// catalog_work, the claim feed by an integer event id. Sharing a row would
-	// hand one of them the other's watermark.
-	mirrorSyncCronName = "catalog_display_mirror"
+	// hand one of them the other's watermark. The _v2 row starts a fresh drain:
+	// verdicts written under the old name came from content_rating whenever a
+	// work had no kungal claim, and only a walk from an empty cursor revisits
+	// every one of them.
+	mirrorSyncCronName = "catalog_display_mirror_v2"
 	// Staggered off the claim sync's */10 so the two do not queue behind each
 	// other on the same catalog origin.
 	mirrorSyncSchedule = "3-59/10 * * * *"

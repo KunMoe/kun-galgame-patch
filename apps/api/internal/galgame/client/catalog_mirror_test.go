@@ -52,32 +52,28 @@ func TestDisplayVerdictsOpenBothGates(t *testing.T) {
 // under the id it arrived as. This test used to assert the opposite — that the
 // claim's site_work_id won and an unclaimed work fell back to its `curated`
 // anchor — because filing a work under its catalog id then meant marking a
-// different game nsfw. Two of these rows still prove something: a claim's
-// content_limit beats content_rating, and another product's claim is not read
-// as ours.
+// different game nsfw. It later asserted that a work with no kungal claim took
+// its verdict from content_rating, which served explicit covers to SFW readers.
 func TestDisplayVerdictKeysOnTheCatalogID(t *testing.T) {
 	var q url.Values
 	c := mirrorServer(t, `{"object":"list","items":[
-		{"object":"work","id":"501","content_rating":"all",
+		{"object":"work","id":"501","content_rating":"all","content_limit":"nsfw",
 		 "claim":{"site":"kungal","site_work_id":"7001","state":"live","content_limit":"nsfw"}},
-		{"object":"work","id":"502","content_rating":"r18"},
-		{"object":"work","id":"504","content_rating":"all",
-		 "claim":{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"sfw"}}
+		{"object":"work","id":"502","content_rating":"r18","content_limit":"sfw","claim":null},
+		{"object":"work","id":"503","content_rating":"all","claim":null},
+		{"object":"work","id":"504","content_rating":"all","content_limit":"nsfw",
+		 "claim":{"site":"letmoe","site_work_id":"88","state":"live","content_limit":"nsfw"}}
 	]}`, &q)
 
-	rows, err := c.DisplayVerdictsByCatalogIDs(context.Background(), []int64{501, 502, 504})
+	rows, err := c.DisplayVerdictsByCatalogIDs(context.Background(), []int64{501, 502, 503, 504})
 	if err != nil {
 		t.Fatalf("DisplayVerdictsByCatalogIDs: %v", err)
 	}
 
-	if cl, ok := verdictOf(rows, 501); !ok || cl != "nsfw" {
-		t.Errorf("501 = %q/%v, want nsfw — claimed_by.content_limit beats content_rating", cl, ok)
-	}
-	if cl, ok := verdictOf(rows, 502); !ok || cl != "nsfw" {
-		t.Errorf("502 = %q/%v, want nsfw from content_rating r18", cl, ok)
-	}
-	if cl, ok := verdictOf(rows, 504); !ok || cl != "sfw" {
-		t.Errorf("504 = %q/%v, want sfw — letmoe's claim is not ours to read", cl, ok)
+	for gid, want := range map[int]string{501: "nsfw", 502: "sfw", 503: "nsfw", 504: "nsfw"} {
+		if cl, ok := verdictOf(rows, gid); !ok || cl != want {
+			t.Errorf("%d = %q/%v, want %s (work.content_limit, nsfw when absent)", gid, cl, ok, want)
+		}
 	}
 	for _, foreign := range []int{7001, 88} {
 		if _, ok := verdictOf(rows, foreign); ok {

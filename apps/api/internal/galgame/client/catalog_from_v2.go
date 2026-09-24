@@ -12,10 +12,9 @@ func claimedFrom(c *catalogv2.Claim) *catalogClaimedBy {
 	}
 	id, _ := catalogv2.ParseID(c.SiteWorkID)
 	return &catalogClaimedBy{
-		Site:         c.Site,
-		WorkID:       id,
-		State:        c.State,
-		ContentLimit: c.ContentLimit,
+		Site:   c.Site,
+		WorkID: id,
+		State:  c.State,
 	}
 }
 
@@ -142,6 +141,7 @@ func workToListItem(w catalogv2.Work) catalogWorkListItem {
 		Medium:        w.Medium,
 		DisplayName:   w.DisplayName,
 		ContentRating: w.ContentRating,
+		ContentLimit:  w.ContentLimit,
 		OLang:         w.OLang,
 		ReleaseDate:   w.ReleaseDate,
 		ClaimedBy:     claimedFrom(w.Claim),
@@ -279,6 +279,7 @@ func workToDetail(w catalogv2.Work) catalogWork {
 		DisplayName:   item.DisplayName,
 		OLang:         item.OLang,
 		ContentRating: item.ContentRating,
+		ContentLimit:  item.ContentLimit,
 		ReleaseDate:   item.ReleaseDate,
 		Created:       w.CreatedAt,
 		Updated:       w.UpdatedAt,

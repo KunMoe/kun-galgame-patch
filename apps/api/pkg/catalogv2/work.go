@@ -9,6 +9,7 @@ type Work struct {
 	Localized     map[string]LocalizedText `json:"localized"`
 	OLang         string                   `json:"olang"`
 	ContentRating string                   `json:"content_rating"`
+	ContentLimit  string                   `json:"content_limit"`
 	ReleaseDate   *string                  `json:"release_date"`
 	CreatedAt     string                   `json:"created_at"`
 	UpdatedAt     string                   `json:"updated_at"`

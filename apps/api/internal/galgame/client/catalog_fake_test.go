@@ -181,7 +181,7 @@ func (f *catalogFake) workDetail(req *http.Request) string {
 		credits = detailCreditsJSON
 	}
 	return `{"object":"work","id":"` + strconv.FormatInt(id, 10) + `","medium":"galgame","display_name":"W","olang":"ja",` +
-		`"content_rating":"` + ratingForCatalogID(id) + `","release_date":"2026-07-14","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-07-01T00:00:00Z",` +
+		`"content_rating":"` + ratingForCatalogID(id) + `","content_limit":"` + workLimitFor(id) + `","release_date":"2026-07-14","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-07-01T00:00:00Z",` +
 		`"localized":{"ja":{"value":"タイトル","is_machine":false},` +
 		`"zh":{"value":"机翻标题","is_machine":true},` +
 		`"zh-Hans":{"value":"标题","is_machine":false},` +
@@ -279,7 +279,7 @@ func (f *catalogFake) calendar() string {
 
 func workItem(catalogID int64, gid int, state string) string {
 	return `{"object":"work","id":"` + strconv.FormatInt(catalogID, 10) + `","medium":"galgame","display_name":"W",` +
-		`"content_rating":"` + ratingForCatalogID(catalogID) + `","olang":"ja","release_date":"2026-07-14",` +
+		`"content_rating":"` + ratingForCatalogID(catalogID) + `","content_limit":"` + workLimitFor(catalogID) + `","olang":"ja","release_date":"2026-07-14",` +
 		`"claim":` + claimJSON(gid, state) + `,` +
 		`"cover":{"url":"https://cdn/aa/bb/hash1.webp","hash":"hash1","width":600,"height":800,"thumbhash":"th","sexual":"safe","source":"vndb"},` +
 		`"banner":{"url":"https://cdn/aa/bb/hash2.webp","hash":"hash2","width":1280,"height":720,"thumbhash":"th2","sexual":"safe","source":"vndb"},` +
@@ -290,6 +290,17 @@ func workItem(catalogID int64, gid int, state string) string {
 		`"en":{"value":"Title","is_machine":true},` +
 		`"ko":{"value":"타이틀","is_machine":false}},` +
 		`"refs":[{"source":"vndb","external_id":"v42"},{"source":"galgame_wiki","external_id":"` + strconv.Itoa(gid) + `"},{"source":"curated","external_id":"` + strconv.Itoa(gid) + `"}]}`
+}
+
+// Every work carries catalog's verdict since spec 2.26.0, claimed or not.
+func workLimitFor(catalogID int64) string {
+	if gid, _ := gidForCatalogID(catalogID); gid != 0 {
+		return gidFixture[gid].limit
+	}
+	if ratingForCatalogID(catalogID) == "r18" {
+		return "nsfw"
+	}
+	return "sfw"
 }
 
 func claimJSON(gid int, state string) string {

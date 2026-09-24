@@ -53,21 +53,19 @@ func catalogLangFromProduct(lang string) string {
 	return lang
 }
 
-func contentAxisOf(claim *catalogClaimedBy, rating string) (contentLimit, ageLimit string) {
+// The display axis is catalog's own verdict on the work and nothing else. Any
+// work without a kungal claim used to fall back to content_rating == r18, the
+// recipe catalog retired in spec 2.26.0 after the forum served works with
+// explicit covers and a non-r18 rating to SFW readers.
+func contentAxisOf(verdict, rating string) (contentLimit, ageLimit string) {
 	ageLimit = "all"
 	if rating == "r18" {
 		ageLimit = "r18"
 	}
-	if claim != nil && isGIDClaimSite(claim.Site) {
-		switch claim.ContentLimit {
-		case "sfw", "nsfw":
-			return claim.ContentLimit, ageLimit
-		}
+	if verdict == "sfw" {
+		return "sfw", ageLimit
 	}
-	if rating == "r18" {
-		return "nsfw", ageLimit
-	}
-	return "sfw", ageLimit
+	return "nsfw", ageLimit
 }
 
 func normalizeCatalogDate(date *string) (*string, string) {
@@ -230,7 +228,7 @@ func claimStateOf(c *catalogClaimedBy) string {
 
 func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 	ja, zhCN, zhTW, en := namesOf(it.Localized)
-	cl, age := contentAxisOf(it.ClaimedBy, it.ContentRating)
+	cl, age := contentAxisOf(it.ContentLimit, it.ContentRating)
 	date, precision := normalizeCatalogDate(it.ReleaseDate)
 	hash, w, h, th := coverOf(it)
 
@@ -389,7 +387,7 @@ func portraitCover(covers []catalogDetailCover) *catalogDetailCover {
 }
 
 func catalogWorkToFull(w *catalogWork) GalgameFull {
-	cl, age := contentAxisOf(w.ClaimedBy, w.ContentRating)
+	cl, age := contentAxisOf(w.ContentLimit, w.ContentRating)
 	date, _ := normalizeCatalogDate(w.ReleaseDate)
 	names := localizedByProductKey(w.Localized)
 	intros := introByProductKey(w.Intros)
