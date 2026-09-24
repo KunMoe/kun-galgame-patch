@@ -92,7 +92,10 @@ func (s *Service) PurgeAuthor(ctx context.Context, userID int) (int64, error) {
 		for _, row := range res.Posts {
 			refs = append(refs, anchor.Ref{Kind: row.Thread.AnchorKind, ID: row.Thread.AnchorID})
 		}
-		targets := s.anchors.Resolve(refs)
+		targets, err := s.anchors.Resolve(refs)
+		if err != nil {
+			return 0, fmt.Errorf("resolve purged anchors: %w", err)
+		}
 		for _, row := range res.Posts {
 			if row.Post.Status != communityclient.PostVisible {
 				continue

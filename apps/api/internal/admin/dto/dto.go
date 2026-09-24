@@ -72,4 +72,7 @@ type UserPurgeResult struct {
 	UserRowDeleted  bool  `json:"user_row_deleted"`
 	SessionsRevoked int   `json:"sessions_revoked"`
 	CommentsPurged  int64 `json:"comments_purged"`
+	// Warning is set when the comments were purged upstream but the local purge
+	// did not complete; running the purge again finishes it.
+	Warning string `json:"warning,omitempty"`
 }

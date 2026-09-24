@@ -20,9 +20,8 @@ func NewEngagementHandler(service *engagement.Service) *EngagementHandler {
 }
 
 type wallRequest struct {
-	Kind     string `json:"kind" validate:"required,oneof=patch resource"`
-	ID       int    `json:"id" validate:"required,min=1"`
-	ThreadID int64  `json:"thread_id" validate:"min=0"`
+	Kind string `json:"kind" validate:"required,oneof=patch resource"`
+	ID   int    `json:"id" validate:"required,min=1"`
 }
 
 type wallNotificationRequest struct {
@@ -39,7 +38,7 @@ func (h *EngagementHandler) ReadWall(c fiber.Ctx) error {
 	}
 	user := middleware.MustGetUser(c)
 	kind, id := wallAnchor(req.Kind, req.ID)
-	return response.OK(c, h.service.ReadWall(c.Context(), user.ID, kind, id, req.ThreadID))
+	return response.OK(c, h.service.ReadWall(c.Context(), user.ID, kind, id))
 }
 
 func (h *EngagementHandler) SetWallNotification(c fiber.Ctx) error {
@@ -50,9 +49,9 @@ func (h *EngagementHandler) SetWallNotification(c fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	kind, id := wallAnchor(req.Kind, req.ID)
-	state, appErr := h.service.SetWallLevel(c.Context(), user.ID, kind, id, req.ThreadID, req.Level)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	state, err := h.service.SetWallLevel(c.Context(), user.ID, kind, id, req.Level)
+	if err != nil {
+		return fail(c, err)
 	}
 	return response.OK(c, state)
 }
@@ -67,11 +66,18 @@ func (h *EngagementHandler) Unread(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	res, appErr := h.service.Unread(c.Context(), user.ID, req.Cursor, req.Limit)
-	if appErr != nil {
-		return response.Error(c, appErr)
+	res, err := h.service.Unread(c.Context(), user.ID, req.Cursor, req.Limit)
+	if err != nil {
+		return fail(c, err)
 	}
 	return response.OK(c, res)
+}
+
+func fail(c fiber.Ctx, err error) error {
+	if appErr, ok := err.(*errors.AppError); ok {
+		return response.Error(c, appErr)
+	}
+	return response.Upstream(c, err, "评论区不存在")
 }
 
 func wallAnchor(kind string, id int) (int32, string) {

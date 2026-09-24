@@ -57,9 +57,10 @@ const onLikeChange = async (active: boolean) => {
     revertLike(active)
     return
   }
-  const res = await api.put<{ liked: boolean; like_count: number }>(
-    `/patch/comment/${props.comment.id}/like`
-  )
+  const url = `/patch/comment/${props.comment.id}/like`
+  const res = active
+    ? await api.put<{ liked: boolean; like_count: number }>(url)
+    : await api.delete<{ liked: boolean; like_count: number }>(url)
   if (res.code === 0) {
     emit('liked', props.comment.id, res.data.liked)
   } else {

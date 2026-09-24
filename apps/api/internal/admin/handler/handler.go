@@ -170,7 +170,7 @@ func (h *AdminHandler) PurgeUser(c fiber.Ctx) error {
 		if appErr, ok := perr.(*errors.AppError); ok {
 			return response.Error(c, appErr)
 		}
-		return response.Error(c, errors.ErrInternal(""))
+		return response.Upstream(c, perr, "")
 	}
 	return response.OK(c, res)
 }

@@ -76,7 +76,7 @@ type Resolver struct {
 // ResourceOwner answers which game each resource hangs off. A resource wall's
 // anchor carries only the resource id, and the row has to name the game.
 type ResourceOwner interface {
-	ResourcePatchIDs(resourceIDs []int) map[int]int
+	ResourcePatchIDs(resourceIDs []int) (map[int]int, error)
 }
 
 func New(galgame *galgameClient.Client, resource ResourceOwner) *Resolver {
@@ -85,7 +85,7 @@ func New(galgame *galgameClient.Client, resource ResourceOwner) *Resolver {
 
 // Resolve maps every anchor it recognises. A catalog-anchored wall another site
 // opened is left out rather than linked to a moyu page that never held it.
-func (r *Resolver) Resolve(refs []Ref) map[Ref]Target {
+func (r *Resolver) Resolve(refs []Ref) (map[Ref]Target, error) {
 	out := make(map[Ref]Target, len(refs))
 	resourceRefs := make(map[int][]Ref)
 
@@ -112,7 +112,10 @@ func (r *Resolver) Resolve(refs []Ref) map[Ref]Target {
 		}
 		patchIDs := map[int]int{}
 		if r.resource != nil {
-			patchIDs = r.resource.ResourcePatchIDs(ids)
+			var err error
+			if patchIDs, err = r.resource.ResourcePatchIDs(ids); err != nil {
+				return nil, err
+			}
 		}
 		for id, refs := range resourceRefs {
 			for _, ref := range refs {
@@ -123,16 +126,16 @@ func (r *Resolver) Resolve(refs []Ref) map[Ref]Target {
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // ResolveNamed is Resolve plus the game names, for the surfaces that print a
 // wall as a row the reader has to recognise. Names come from catalog in one
 // batch; a name that does not arrive leaves Label standing.
-func (r *Resolver) ResolveNamed(ctx context.Context, refs []Ref) map[Ref]Target {
-	targets := r.Resolve(refs)
-	if r.galgame == nil || len(targets) == 0 {
-		return targets
+func (r *Resolver) ResolveNamed(ctx context.Context, refs []Ref) (map[Ref]Target, error) {
+	targets, err := r.Resolve(refs)
+	if err != nil || r.galgame == nil || len(targets) == 0 {
+		return targets, err
 	}
 	ids := make([]int, 0, len(targets))
 	seen := make(map[int]bool, len(targets))
@@ -143,14 +146,14 @@ func (r *Resolver) ResolveNamed(ctx context.Context, refs []Ref) map[Ref]Target 
 		}
 	}
 	if len(ids) == 0 {
-		return targets
+		return targets, nil
 	}
 	// Both gates open: this names a row the reader is already allowed to see,
 	// and the surfaces calling it do their own content-limit filtering.
 	briefs, err := r.galgame.GalgameBatch(ctx, ids, "")
 	if err != nil {
 		slog.Warn("anchor: galgame name enrichment failed (best-effort)", "error", err)
-		return targets
+		return targets, nil
 	}
 	names := make(map[int]string, len(briefs))
 	for i := range briefs {
@@ -162,7 +165,7 @@ func (r *Resolver) ResolveNamed(ctx context.Context, refs []Ref) map[Ref]Target 
 			targets[ref] = target
 		}
 	}
-	return targets
+	return targets, nil
 }
 
 func parseID(anchorID string) (int, bool) {

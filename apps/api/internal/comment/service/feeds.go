@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -61,25 +60,25 @@ const (
 
 // AuthorFeed is a user's own comments. This face keysets by post id, which is
 // the existing upstream contract for it.
-func (s *Service) AuthorFeed(ctx context.Context, authorID int, after string, limit int, cl string, db PatchSummaryDB) (*FeedPage, *errors.AppError) {
+func (s *Service) AuthorFeed(ctx context.Context, authorID int, after string, limit int, cl string, db PatchSummaryDB) (*FeedPage, error) {
 	if !s.community.Configured() {
 		return emptyFeed(), nil
 	}
 	// Every anchor kind: a user's profile lists both of moyu's walls.
 	page, err := s.community.AuthorPosts(ctx, int64(authorID), after, limit, int(communityclient.AnyKind))
 	if err != nil {
-		if isCommunityDown(err) {
+		if unavailable(ctx, err, "author feed") {
 			return emptyFeed(), nil
 		}
-		return nil, mapError(err)
+		return nil, err
 	}
-	return s.renderFeed(ctx, page.Posts, page.NextCursor, "", cl, db), nil
+	return s.renderFeed(ctx, page.Posts, page.NextCursor, "", cl, db)
 }
 
 // SiteFeed is the newest comments across every wall. It keysets on creation
 // time, not id: the import gives historical comments fresh ids, so id order is
 // import order and a feed keyed on it would open with 2024.
-func (s *Service) SiteFeed(ctx context.Context, cursor string, limit int, cl string, db PatchSummaryDB) (*FeedPage, *errors.AppError) {
+func (s *Service) SiteFeed(ctx context.Context, cursor string, limit int, cl string, db PatchSummaryDB) (*FeedPage, error) {
 	if !s.community.Configured() {
 		return emptyFeed(), nil
 	}
@@ -90,17 +89,17 @@ func (s *Service) SiteFeed(ctx context.Context, cursor string, limit int, cl str
 		Limit:      limit,
 	})
 	if err != nil {
-		if isCommunityDown(err) {
+		if unavailable(ctx, err, "site feed") {
 			return emptyFeed(), nil
 		}
-		return nil, mapError(err)
+		return nil, err
 	}
-	return s.renderFeed(ctx, page.Posts, page.NextCursor, "", cl, db), nil
+	return s.renderFeed(ctx, page.Posts, page.NextCursor, "", cl, db)
 }
 
 // Search matches a comment's markdown source, not its cooked HTML: searching
 // the HTML makes `nofollow` match every comment that carries a link.
-func (s *Service) Search(ctx context.Context, q, cursor string, limit int, cl string, db PatchSummaryDB) (*FeedPage, *errors.AppError) {
+func (s *Service) Search(ctx context.Context, q, cursor string, limit int, cl string, db PatchSummaryDB) (*FeedPage, error) {
 	q = strings.TrimSpace(q)
 	if n := utf8.RuneCountInString(q); n < searchMinRunes || n > searchMaxRunes {
 		return nil, errors.ErrBadRequest("搜索评论需要 2-100 个字符")
@@ -110,12 +109,12 @@ func (s *Service) Search(ctx context.Context, q, cursor string, limit int, cl st
 	}
 	page, err := s.community.SearchPosts(ctx, q, communityclient.KindComments, cursor, limit)
 	if err != nil {
-		if isCommunityDown(err) {
+		if unavailable(ctx, err, "comment search") {
 			return emptyFeed(), nil
 		}
-		return nil, mapError(err)
+		return nil, err
 	}
-	return s.renderFeed(ctx, page.Posts, page.NextCursor, q, cl, db), nil
+	return s.renderFeed(ctx, page.Posts, page.NextCursor, q, cl, db)
 }
 
 // AuthorCounts is how many visible comments each user has — the number the
@@ -133,7 +132,7 @@ func (s *Service) AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
 	}
 	stats, err := s.community.AuthorStats(ctx, ids, communityclient.KindComments, communityclient.AnyKind)
 	if err != nil {
-		slog.Warn("comment: author stats failed (best-effort)", "error", err)
+		communityclient.LogDegraded(ctx, "comment: author stats failed (best-effort)", err)
 		return out
 	}
 	for _, stat := range stats.Stats {
@@ -151,7 +150,7 @@ func (s *Service) AuthorBoard(ctx context.Context, limit int) []int {
 	}
 	top, err := s.community.TopAuthors(ctx, communityclient.KindComments, communityclient.AnyKind, limit)
 	if err != nil {
-		slog.Warn("comment: top authors failed (best-effort)", "error", err)
+		communityclient.LogDegraded(ctx, "comment: top authors failed (best-effort)", err)
 		return nil
 	}
 	ids := make([]int, 0, len(top.Stats))
@@ -165,14 +164,17 @@ func (s *Service) AuthorBoard(ctx context.Context, limit int) []int {
 // the post search answer this site's threads PLUS every catalog-anchored one,
 // which are a network-wide conversation by design — a row from one would point
 // the reader at a moyu page that never held it.
-func (s *Service) renderFeed(ctx context.Context, rows []communityclient.AuthorPostView, next, highlight, cl string, db PatchSummaryDB) *FeedPage {
+func (s *Service) renderFeed(ctx context.Context, rows []communityclient.AuthorPostView, next, highlight, cl string, db PatchSummaryDB) (*FeedPage, error) {
 	refs := make([]anchor.Ref, 0, len(rows))
 	uids := make([]int, 0, len(rows))
 	for _, row := range rows {
 		refs = append(refs, anchor.Ref{Kind: row.Thread.AnchorKind, ID: row.Thread.AnchorID})
 		uids = append(uids, int(row.Post.AuthorID))
 	}
-	targets := s.anchors.Resolve(refs)
+	targets, err := s.anchors.Resolve(refs)
+	if err != nil {
+		return nil, err
+	}
 	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
 
 	items := make([]*FeedItem, 0, len(rows))
@@ -210,7 +212,7 @@ func (s *Service) renderFeed(ctx context.Context, rows []communityclient.AuthorP
 
 	items = enricher.FilterByGalgameContentLimit(ctx, s.galgame, items, func(it *FeedItem) int { return it.GalgameID }, cl)
 	s.attachSummaries(ctx, items, db)
-	return &FeedPage{Items: items, NextCursor: next}
+	return &FeedPage{Items: items, NextCursor: next}, nil
 }
 
 func (s *Service) attachSummaries(ctx context.Context, items []*FeedItem, db PatchSummaryDB) {
@@ -290,12 +292,21 @@ func (s *Service) PatchIDsForRefs(ctx context.Context, ids []int) map[int]int {
 	}
 	resolved, err := s.community.ResolvePosts(ctx, remaining, 0)
 	if err != nil {
-		slog.Warn("comment: moemoepoint ref resolve failed (best-effort)", "error", err)
+		communityclient.LogDegraded(ctx, "comment: moemoepoint ref resolve failed (best-effort)", err)
+		return out
+	}
+	refs := make([]anchor.Ref, 0, len(resolved.Posts))
+	for _, row := range resolved.Posts {
+		refs = append(refs, anchor.Ref{Kind: row.Thread.AnchorKind, ID: row.Thread.AnchorID})
+	}
+	targets, err := s.anchors.Resolve(refs)
+	if err != nil {
+		communityclient.LogDegraded(ctx, "comment: moemoepoint ref anchors failed (best-effort)", err)
 		return out
 	}
 	for _, row := range resolved.Posts {
-		if surface, ok := s.surfaceFor(row.Thread.AnchorKind, row.Thread.AnchorID); ok {
-			out[int(row.Post.ID)] = surface.PatchID
+		if target, ok := targets[anchor.Ref{Kind: row.Thread.AnchorKind, ID: row.Thread.AnchorID}]; ok {
+			out[int(row.Post.ID)] = target.PatchID
 		}
 	}
 	return out

@@ -98,10 +98,10 @@ func (r *Repository) ResourceRef(resourceID int) (*ResourceRef, error) {
 
 // ResourcePatchIDs answers a whole page of resource walls at once. A feed can
 // carry fifty of them, and the resolver used to ask for each one on its own.
-func (r *Repository) ResourcePatchIDs(resourceIDs []int) map[int]int {
+func (r *Repository) ResourcePatchIDs(resourceIDs []int) (map[int]int, error) {
 	out := make(map[int]int, len(resourceIDs))
 	if len(resourceIDs) == 0 {
-		return out
+		return out, nil
 	}
 	var rows []struct {
 		ID        int `gorm:"column:id"`
@@ -111,13 +111,12 @@ func (r *Repository) ResourcePatchIDs(resourceIDs []int) map[int]int {
 		Select("id, galgame_id").
 		Where("id IN ?", resourceIDs).
 		Scan(&rows).Error; err != nil {
-		slog.Warn("comment: resource anchor lookup failed (best-effort)", "error", err)
-		return out
+		return nil, err
 	}
 	for _, row := range rows {
 		out[row.ID] = row.GalgameID
 	}
-	return out
+	return out, nil
 }
 
 func (r *Repository) MapByLegacyIDs(ids []int) map[int]model.PatchCommentCommunityMap {

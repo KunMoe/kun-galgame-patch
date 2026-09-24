@@ -4,10 +4,7 @@ package engagement
 
 import (
 	"context"
-	stderrors "errors"
-	"log/slog"
 	"math"
-	"net/http"
 
 	"kun-galgame-patch-api/internal/community/anchor"
 	"kun-galgame-patch-api/internal/community/inbox"
@@ -51,6 +48,19 @@ type UnreadResult struct {
 	NextCursor string       `json:"next_cursor"`
 }
 
+// threadOf is the wall's thread as community files it under the anchor. The
+// reader's page used to send a thread id alongside the anchor and it was acted
+// on unchecked, so a crafted one set the level or read mark of another wall's
+// thread, or of a catalog-anchored one, which community does not fence by
+// tenant.
+func (s *Service) threadOf(ctx context.Context, anchorKind int32, anchorID string) (int64, error) {
+	page, err := s.community.GetComments(ctx, anchorKind, anchorID, "", "1", 0)
+	if err != nil || page.Thread == nil {
+		return 0, err
+	}
+	return page.Thread.ID, nil
+}
+
 // ReadWall reports a read receipt only for a wall the viewer already has a row
 // on or follows. A receipt creates the thread row, and upstream's unread
 // listing counts every level except muted: a receipt for every wall a reader
@@ -60,16 +70,21 @@ type UnreadResult struct {
 // A follower of the wall's anchor does get the receipt. Their thread row is
 // seeded watching upstream, which is what puts a wall they followed before its
 // first comment onto the unread list.
-func (s *Service) ReadWall(ctx context.Context, userID int, anchorKind int32, anchorID string, threadID int64) *State {
+func (s *Service) ReadWall(ctx context.Context, userID int, anchorKind int32, anchorID string) *State {
 	if !s.community.Configured() {
-		return &State{ThreadID: threadID}
+		return &State{}
+	}
+	threadID, err := s.threadOf(ctx, anchorKind, anchorID)
+	if err != nil {
+		communityclient.LogDegraded(ctx, "community engagement: wall thread lookup failed", err, "anchor_id", anchorID)
+		return &State{}
 	}
 
 	var row *communityclient.ThreadUserView
 	if threadID > 0 {
 		existing, err := s.community.ThreadStates(ctx, int64(userID), []int64{threadID})
 		if err != nil {
-			slog.Warn("community engagement: thread state lookup failed", "thread_id", threadID, "error", err)
+			communityclient.LogDegraded(ctx, "community engagement: thread state lookup failed", err, "thread_id", threadID)
 			return &State{ThreadID: threadID}
 		}
 		if len(existing.States) > 0 {
@@ -83,7 +98,7 @@ func (s *Service) ReadWall(ctx context.Context, userID int, anchorKind int32, an
 			{AnchorKind: anchorKind, AnchorID: anchorID},
 		})
 		if err != nil {
-			slog.Warn("community engagement: anchor state lookup failed", "anchor_id", anchorID, "error", err)
+			communityclient.LogDegraded(ctx, "community engagement: anchor state lookup failed", err, "anchor_id", anchorID)
 			return &State{ThreadID: threadID}
 		}
 		if len(states.States) > 0 {
@@ -94,7 +109,7 @@ func (s *Service) ReadWall(ctx context.Context, userID int, anchorKind int32, an
 	if threadID > 0 && (row != nil || anchorLevel == communityclient.NotificationWatching) {
 		view, err := s.community.MarkThreadRead(ctx, threadID, int64(userID), math.MaxInt32)
 		if err != nil {
-			slog.Warn("community engagement: mark read failed", "thread_id", threadID, "error", err)
+			communityclient.LogDegraded(ctx, "community engagement: mark read failed", err, "thread_id", threadID)
 		} else {
 			row = view
 			s.inbox.MarkThreadRead(userID, threadID, view.LastReadPostNumber)
@@ -107,55 +122,63 @@ func (s *Service) ReadWall(ctx context.Context, userID int, anchorKind int32, an
 	return stateFromLevel(threadID, anchorLevel)
 }
 
-func (s *Service) SetWallLevel(ctx context.Context, userID int, anchorKind int32, anchorID string, threadID int64, level int32) (*State, *errors.AppError) {
+func (s *Service) SetWallLevel(ctx context.Context, userID int, anchorKind int32, anchorID string, level int32) (*State, error) {
 	if level != communityclient.NotificationNormal && level != communityclient.NotificationWatching {
 		return nil, errors.ErrBadRequest("订阅级别不正确")
 	}
 	if !s.community.Configured() {
 		return nil, errors.ErrCommunityUnavailable("")
 	}
+	threadID, err := s.threadOf(ctx, anchorKind, anchorID)
+	if err != nil {
+		return nil, err
+	}
 
 	anchorView, err := s.community.SetAnchorNotification(ctx, int64(userID), anchorKind, anchorID, level)
 	if err != nil {
-		return nil, mapErr(err, "设置订阅失败")
+		return nil, err
+	}
+	if threadID == 0 {
+		return stateFromLevel(0, anchorView.NotificationLevel), nil
 	}
 
-	var threadView *communityclient.ThreadUserView
-	if threadID > 0 {
-		view, err := s.community.SetThreadNotification(ctx, threadID, int64(userID), level)
+	// Answered as a failure although the anchor write landed: both writes set a
+	// level, so the reader's retry converges, while a success here would show a
+	// wall unfollowed whose thread row still delivers every new comment.
+	threadView, err := s.community.SetThreadNotification(ctx, threadID, int64(userID), level)
+	if err != nil {
+		return nil, err
+	}
+	if level == communityclient.NotificationWatching {
+		read, err := s.community.MarkThreadRead(ctx, threadID, int64(userID), math.MaxInt32)
 		if err != nil {
-			return nil, mapErr(err, "设置订阅失败")
-		}
-		threadView = view
-		if level == communityclient.NotificationWatching {
-			if read, rerr := s.community.MarkThreadRead(ctx, threadID, int64(userID), math.MaxInt32); rerr == nil {
-				threadView = read
-				s.inbox.MarkThreadRead(userID, threadID, read.LastReadPostNumber)
-			}
+			communityclient.LogDegraded(ctx, "community engagement: mark read after follow failed", err, "thread_id", threadID)
+		} else {
+			threadView = read
+			s.inbox.MarkThreadRead(userID, threadID, read.LastReadPostNumber)
 		}
 	}
-
-	if threadView != nil {
-		return toState(threadID, threadView), nil
-	}
-	return stateFromLevel(threadID, anchorView.NotificationLevel), nil
+	return toState(threadID, threadView), nil
 }
 
-func (s *Service) Unread(ctx context.Context, userID int, cursor string, limit int) (*UnreadResult, *errors.AppError) {
+func (s *Service) Unread(ctx context.Context, userID int, cursor string, limit int) (*UnreadResult, error) {
 	empty := &UnreadResult{Items: []UnreadItem{}}
 	if !s.community.Configured() {
 		return empty, nil
 	}
 	page, err := s.community.ListUnread(ctx, int64(userID), cursor, limit)
 	if err != nil {
-		return nil, mapErr(err, "获取未读评论失败")
+		return nil, err
 	}
 
 	refs := make([]anchor.Ref, 0, len(page.Threads))
 	for _, row := range page.Threads {
 		refs = append(refs, anchor.Ref{Kind: row.Thread.AnchorKind, ID: row.Thread.AnchorID})
 	}
-	targets := s.anchors.ResolveNamed(ctx, refs)
+	targets, err := s.anchors.ResolveNamed(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
 
 	items := make([]UnreadItem, 0, len(page.Threads))
 	for _, row := range page.Threads {
@@ -203,13 +226,4 @@ func stateFromLevel(threadID int64, level int32) *State {
 		Subscribed:        level >= communityclient.NotificationTracking,
 		NotificationLevel: level,
 	}
-}
-
-func mapErr(err error, fallback string) *errors.AppError {
-	var apiErr *communityclient.APIError
-	if stderrors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
-		return errors.ErrNotFound("评论区不存在")
-	}
-	slog.Warn("community engagement request failed", "error", err)
-	return errors.ErrInternal(fallback)
 }

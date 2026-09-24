@@ -84,8 +84,7 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
     const t = resolved.value
     return {
       kind: t.kind,
-      id: t.kind === 'resource' ? t.resourceId : t.galgameId,
-      thread_id: threadId.value
+      id: t.kind === 'resource' ? t.resourceId : t.galgameId
     }
   }
 

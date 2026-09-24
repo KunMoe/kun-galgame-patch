@@ -1,6 +1,7 @@
 package anchor
 
 import (
+	"errors"
 	"testing"
 
 	"kun-galgame-patch-api/pkg/communityclient"
@@ -8,12 +9,18 @@ import (
 
 type stubOwner map[int]int
 
-func (s stubOwner) ResourcePatchIDs(resourceIDs []int) map[int]int {
+func (s stubOwner) ResourcePatchIDs(resourceIDs []int) (map[int]int, error) {
 	out := map[int]int{}
 	for _, id := range resourceIDs {
 		out[id] = s[id]
 	}
-	return out
+	return out, nil
+}
+
+type failingOwner struct{}
+
+func (failingOwner) ResourcePatchIDs([]int) (map[int]int, error) {
+	return nil, errors.New("connection refused")
 }
 
 func TestResolveOnlyClaimsSiteLocalAnchors(t *testing.T) {
@@ -31,7 +38,10 @@ func TestResolveOnlyClaimsSiteLocalAnchors(t *testing.T) {
 		{communityclient.AnchorSiteGame, "moyu:12345"},
 	}
 
-	got := r.Resolve(refs)
+	got, err := r.Resolve(refs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("resolved %d anchors, want 2: %v", len(got), got)
 	}
@@ -79,9 +89,25 @@ func TestIsMoyuMatchesResolve(t *testing.T) {
 		if got := IsMoyu(tc.kind, tc.id); got != tc.want {
 			t.Errorf("IsMoyu(%d, %q) = %v, want %v", tc.kind, tc.id, got, tc.want)
 		}
-		_, resolved := r.Resolve([]Ref{{tc.kind, tc.id}})[Ref{tc.kind, tc.id}]
-		if resolved != tc.want {
+		got, err := r.Resolve([]Ref{{tc.kind, tc.id}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, resolved := got[Ref{tc.kind, tc.id}]; resolved != tc.want {
 			t.Errorf("Resolve disagrees for (%d, %q): %v", tc.kind, tc.id, resolved)
 		}
+	}
+}
+
+// A resource wall whose game could not be read used to resolve with PatchID 0,
+// which the inbox reads as "resource deleted" and drops the notification for
+// good while its cursor moves on.
+func TestResolveFailsWhenTheResourceLookupFails(t *testing.T) {
+	r := New(nil, failingOwner{})
+	if _, err := r.Resolve([]Ref{{communityclient.AnchorSiteResource, "678"}}); err == nil {
+		t.Fatal("a failed resource lookup resolved")
+	}
+	if _, err := r.Resolve([]Ref{{communityclient.AnchorSiteGame, "42"}}); err != nil {
+		t.Fatalf("a game wall needs no lookup, got %v", err)
 	}
 }

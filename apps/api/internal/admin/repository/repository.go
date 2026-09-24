@@ -280,6 +280,12 @@ func (r *AdminRepository) CollectUserArtifactUUIDs(userID int, includeOwnedPatch
 	return out, nil
 }
 
+func (r *AdminRepository) CountOwnedPatches(userID int) (int64, error) {
+	var n int64
+	err := r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID).Count(&n).Error
+	return n, err
+}
+
 func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var ownedPatches int64

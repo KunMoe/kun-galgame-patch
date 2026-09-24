@@ -19,15 +19,21 @@ func (c *Client) GetComments(ctx context.Context, anchorKind int32, anchorID, af
 		"anchor_kind": itoa(int64(anchorKind)), "anchor_id": anchorID, "after": after, "limit": limit,
 		"viewer_id": viewer(viewerID),
 	})
-	err := c.do(ctx, http.MethodGet, "/comments"+q, nil, &out)
+	err := c.do(ctx, "getComments", http.MethodGet, "/comments"+q, nil, &out)
 	return &out, err
 }
 
 // CommentOnAnchor posts to an anchor's comment wall; the thread is created in
 // the same transaction when this is its first comment.
-func (c *Client) CommentOnAnchor(ctx context.Context, req CommentRequest) (*ThreadWithPost, error) {
+//
+// A repeated idempotencyKey answers with the post the first call wrote, and
+// writes nothing (infra #302). Community scopes a key to the site, not the
+// user, so the key must already be the author's own; an empty one always
+// writes.
+func (c *Client) CommentOnAnchor(ctx context.Context, req CommentRequest, idempotencyKey string) (*ThreadWithPost, error) {
 	var out ThreadWithPost
-	err := c.do(ctx, http.MethodPost, "/comments", req, &out)
+	replayed, err := c.send(ctx, "comment", http.MethodPost, "/comments", idempotencyKey, req, &out)
+	out.Replayed = replayed
 	return &out, err
 }
 
@@ -35,7 +41,7 @@ func (c *Client) EditPost(ctx context.Context, postID int64, req EditPostRequest
 	var out struct {
 		Post PostView `json:"post"`
 	}
-	err := c.do(ctx, http.MethodPatch, "/posts/"+itoa(postID), req, &out)
+	err := c.do(ctx, "editPost", http.MethodPatch, "/posts/"+itoa(postID), req, &out)
 	return &out.Post, err
 }
 
@@ -44,17 +50,28 @@ func (c *Client) DeletePost(ctx context.Context, postID, authorID int64, asModer
 	if asModerator {
 		q["as_moderator"] = "true"
 	}
-	return c.do(ctx, http.MethodDelete, "/posts/"+itoa(postID)+query(q), nil, nil)
+	return c.do(ctx, "deletePost", http.MethodDelete, "/posts/"+itoa(postID)+query(q), nil, nil)
 }
 
-func (c *Client) ToggleReaction(ctx context.Context, postID int64, req ReactionToggleRequest) (*ReactionToggleResult, error) {
-	var out ReactionToggleResult
-	err := c.do(ctx, http.MethodPost, "/posts/"+itoa(postID)+"/reaction", req, &out)
+// SetReaction and UnsetReaction replace the toggle, which undid itself when a
+// timed-out click was retried. Repeating either changes nothing and answers
+// Changed false.
+func (c *Client) SetReaction(ctx context.Context, postID, userID int64, kind int32) (*ReactionResult, error) {
+	var out ReactionResult
+	req := ReactionRequest{UserID: userID, Kind: kind}
+	err := c.do(ctx, "setReaction", http.MethodPut, "/posts/"+itoa(postID)+"/reaction", req, &out)
+	return &out, err
+}
+
+func (c *Client) UnsetReaction(ctx context.Context, postID, userID int64, kind int32) (*ReactionResult, error) {
+	var out ReactionResult
+	q := query(map[string]string{"user_id": itoa(userID), "kind": itoa(int64(kind))})
+	err := c.do(ctx, "unsetReaction", http.MethodDelete, "/posts/"+itoa(postID)+"/reaction"+q, nil, &out)
 	return &out, err
 }
 
 func (c *Client) SubmitFlag(ctx context.Context, postID int64, req FlagRequest) error {
-	return c.do(ctx, http.MethodPost, "/posts/"+itoa(postID)+"/flag", req, nil)
+	return c.do(ctx, "submitFlag", http.MethodPost, "/posts/"+itoa(postID)+"/flag", req, nil)
 }
 
 // ResolvePosts is the id-addressed read: it answers each post with the thread
@@ -64,7 +81,7 @@ func (c *Client) ResolvePosts(ctx context.Context, ids []int64, viewerID int64) 
 		return &PostsResolveResponse{Posts: []AuthorPostView{}}, nil
 	}
 	var out PostsResolveResponse
-	err := c.do(ctx, http.MethodPost, "/posts/resolve", PostsResolveRequest{IDs: ids, ViewerID: viewerID}, &out)
+	err := c.do(ctx, "resolvePosts", http.MethodPost, "/posts/resolve", PostsResolveRequest{IDs: ids, ViewerID: viewerID}, &out)
 	return &out, err
 }
 
@@ -80,7 +97,7 @@ func (c *Client) AuthorPosts(ctx context.Context, authorID int64, after string, 
 	if anchorKind >= 0 {
 		q["anchor_kind"] = itoa(int64(anchorKind))
 	}
-	err := c.do(ctx, http.MethodGet, "/authors/"+itoa(authorID)+"/posts"+query(q), nil, &out)
+	err := c.do(ctx, "listAuthorPosts", http.MethodGet, "/authors/"+itoa(authorID)+"/posts"+query(q), nil, &out)
 	return &out, err
 }
 
@@ -92,7 +109,7 @@ func (c *Client) AuthorStats(ctx context.Context, ids []int64, kind, anchorKind 
 	q := query(map[string]string{
 		"ids": joinInt64(ids), "kind": itoa(int64(kind)), "anchor_kind": itoa(int64(anchorKind)),
 	})
-	err := c.do(ctx, http.MethodGet, "/authors/stats"+q, nil, &out)
+	err := c.do(ctx, "authorStats", http.MethodGet, "/authors/stats"+q, nil, &out)
 	return &out, err
 }
 
@@ -105,13 +122,13 @@ func (c *Client) TopAuthors(ctx context.Context, kind, anchorKind int32, limit i
 	if limit > 0 {
 		q["limit"] = itoa(int64(limit))
 	}
-	err := c.do(ctx, http.MethodGet, "/authors/top"+query(q), nil, &out)
+	err := c.do(ctx, "topAuthors", http.MethodGet, "/authors/top"+query(q), nil, &out)
 	return &out, err
 }
 
 func (c *Client) AuthorPurge(ctx context.Context, authorID int64) (*PurgeResult, error) {
 	var out PurgeResult
-	err := c.do(ctx, http.MethodPost, "/authors/"+itoa(authorID)+"/purge", nil, &out)
+	err := c.do(ctx, "purgeAuthor", http.MethodPost, "/authors/"+itoa(authorID)+"/purge", nil, &out)
 	return &out, err
 }
 
@@ -144,7 +161,7 @@ func (c *Client) ListSitePosts(ctx context.Context, q SitePostsQuery) (*PostFeed
 	if q.Limit > 0 {
 		params["limit"] = itoa(int64(q.Limit))
 	}
-	err := c.do(ctx, http.MethodGet, "/posts"+query(params), nil, &out)
+	err := c.do(ctx, "listSitePosts", http.MethodGet, "/posts"+query(params), nil, &out)
 	return &out, err
 }
 
@@ -156,7 +173,7 @@ func (c *Client) SearchPosts(ctx context.Context, q string, kind int32, cursor s
 	if limit > 0 {
 		params["limit"] = itoa(int64(limit))
 	}
-	err := c.do(ctx, http.MethodGet, "/search/posts"+query(params), nil, &out)
+	err := c.do(ctx, "searchPosts", http.MethodGet, "/search/posts"+query(params), nil, &out)
 	return &out, err
 }
 
@@ -165,14 +182,14 @@ func (c *Client) SearchPosts(ctx context.Context, q string, kind int32, cursor s
 func (c *Client) MarkThreadRead(ctx context.Context, threadID, userID int64, lastRead int32) (*ThreadUserView, error) {
 	var out ThreadUserView
 	req := ThreadReadRequest{UserID: userID, LastReadPostNumber: lastRead}
-	err := c.do(ctx, http.MethodPost, "/threads/"+itoa(threadID)+"/read", req, &out)
+	err := c.do(ctx, "markThreadRead", http.MethodPost, "/threads/"+itoa(threadID)+"/read", req, &out)
 	return &out, err
 }
 
 func (c *Client) SetThreadNotification(ctx context.Context, threadID, userID int64, level int32) (*ThreadUserView, error) {
 	var out ThreadUserView
 	req := ThreadNotificationRequest{UserID: userID, Level: level}
-	err := c.do(ctx, http.MethodPost, "/threads/"+itoa(threadID)+"/notification", req, &out)
+	err := c.do(ctx, "setThreadNotification", http.MethodPost, "/threads/"+itoa(threadID)+"/notification", req, &out)
 	return &out, err
 }
 
@@ -183,7 +200,7 @@ func (c *Client) ThreadStates(ctx context.Context, userID int64, threadIDs []int
 		return &ThreadStatesResponse{States: []ThreadUserView{}}, nil
 	}
 	var out ThreadStatesResponse
-	err := c.do(ctx, http.MethodPost, "/threads/states", ThreadStatesRequest{UserID: userID, ThreadIDs: threadIDs}, &out)
+	err := c.do(ctx, "threadStates", http.MethodPost, "/threads/states", ThreadStatesRequest{UserID: userID, ThreadIDs: threadIDs}, &out)
 	return &out, err
 }
 
@@ -193,7 +210,7 @@ func (c *Client) ListUnread(ctx context.Context, userID int64, cursor string, li
 	if limit > 0 {
 		q["limit"] = itoa(int64(limit))
 	}
-	err := c.do(ctx, http.MethodGet, "/users/"+itoa(userID)+"/unread"+query(q), nil, &out)
+	err := c.do(ctx, "listUnread", http.MethodGet, "/users/"+itoa(userID)+"/unread"+query(q), nil, &out)
 	return &out, err
 }
 
@@ -203,14 +220,14 @@ func (c *Client) NotificationFeed(ctx context.Context, after int64, limit int) (
 	if limit > 0 {
 		q["limit"] = itoa(int64(limit))
 	}
-	err := c.do(ctx, http.MethodGet, "/notifications/feed"+query(q), nil, &out)
+	err := c.do(ctx, "notificationFeed", http.MethodGet, "/notifications/feed"+query(q), nil, &out)
 	return &out, err
 }
 
 func (c *Client) SetAnchorNotification(ctx context.Context, userID int64, anchorKind int32, anchorID string, level int32) (*AnchorStateView, error) {
 	var out AnchorStateView
 	req := AnchorNotificationRequest{UserID: userID, AnchorKind: anchorKind, AnchorID: anchorID, Level: level}
-	err := c.do(ctx, http.MethodPost, "/anchors/notification", req, &out)
+	err := c.do(ctx, "setAnchorNotification", http.MethodPost, "/anchors/notification", req, &out)
 	return &out, err
 }
 
@@ -219,12 +236,12 @@ func (c *Client) AnchorStates(ctx context.Context, userID int64, anchors []Ancho
 		return &AnchorStatesResponse{States: []AnchorStateView{}}, nil
 	}
 	var out AnchorStatesResponse
-	err := c.do(ctx, http.MethodPost, "/anchors/states", AnchorStatesRequest{UserID: userID, Anchors: anchors}, &out)
+	err := c.do(ctx, "anchorStates", http.MethodPost, "/anchors/states", AnchorStatesRequest{UserID: userID, Anchors: anchors}, &out)
 	return &out, err
 }
 
 func (c *Client) MarkNotificationsRead(ctx context.Context, userID int64, ids []int64) (*MarkNotificationsReadResult, error) {
 	var out MarkNotificationsReadResult
-	err := c.do(ctx, http.MethodPost, "/users/"+itoa(userID)+"/notifications/read", MarkNotificationsReadRequest{IDs: ids}, &out)
+	err := c.do(ctx, "markNotificationsRead", http.MethodPost, "/users/"+itoa(userID)+"/notifications/read", MarkNotificationsReadRequest{IDs: ids}, &out)
 	return &out, err
 }

@@ -88,8 +88,7 @@ func (in *Inbox) ForwardRead(ctx context.Context, userID int, ids []int64) {
 	for start := 0; start < len(ids); start += readChunk {
 		end := min(start+readChunk, len(ids))
 		if _, err := in.community.MarkNotificationsRead(ctx, int64(userID), ids[start:end]); err != nil {
-			slog.Warn("community inbox: forward read failed",
-				"user_id", userID, "error", err)
+			communityclient.LogDegraded(ctx, "community inbox: forward read failed", err, "user_id", userID)
 		}
 	}
 }
@@ -139,8 +138,10 @@ func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationV
 		return nil, nil
 	}
 
-	refs := distinctRefs(candidates)
-	targets := in.anchors.ResolveNamed(ctx, refs)
+	targets, err := in.anchors.ResolveNamed(ctx, distinctRefs(candidates))
+	if err != nil {
+		return nil, err
+	}
 	excerpts := in.mentionExcerpts(ctx, candidates)
 
 	users, err := in.localUserIDs(collectUserIDs(candidates))
@@ -217,7 +218,7 @@ func (in *Inbox) mentionExcerpts(ctx context.Context, notes []communityclient.No
 		end := min(start+mentionBatch, len(ids))
 		res, err := in.community.ResolvePosts(ctx, ids[start:end], 0)
 		if err != nil {
-			slog.Warn("community inbox: mention excerpt lookup failed", "error", err)
+			communityclient.LogDegraded(ctx, "community inbox: mention excerpt lookup failed", err)
 			continue
 		}
 		for i := range res.Posts {
@@ -289,6 +290,13 @@ func parseTime(s string, fallback time.Time) time.Time {
 	return fallback
 }
 
+// upsertMessage keys a fold's version on `created`, which is the
+// notification's upstream updated_at: community moves it with every seq bump
+// (a fold that grew) and a local read never touches it. A page fetched before
+// the reader read the row locally used to write status 0 back over that read.
+// So an equal version keeps the local read, a newer one re-surfaces the row as
+// unread, and an older one — a page another sync already moved past — is
+// skipped.
 func upsertMessage(tx *gorm.DB, row *messageRow) error {
 	return tx.Exec(`
 		INSERT INTO user_message (
@@ -298,12 +306,14 @@ func upsertMessage(tx *gorm.DB, row *messageRow) error {
 		ON CONFLICT (community_notification_id) WHERE community_notification_id IS NOT NULL
 		DO UPDATE SET
 			content = EXCLUDED.content,
-			status = EXCLUDED.status,
+			status = CASE WHEN EXCLUDED.created > user_message.created THEN EXCLUDED.status
+				ELSE GREATEST(user_message.status, EXCLUDED.status) END,
 			link = EXCLUDED.link,
 			sender_id = EXCLUDED.sender_id,
 			created = EXCLUDED.created,
 			updated = EXCLUDED.updated,
 			community_post_number = EXCLUDED.community_post_number
+		WHERE EXCLUDED.created >= user_message.created
 	`, row.Type, row.Content, row.Status, row.Link, row.SenderID, row.RecipientID,
 		row.Created, row.Updated, row.NotificationID, row.ThreadID, row.PostNumber).Error
 }

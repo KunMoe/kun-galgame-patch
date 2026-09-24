@@ -40,7 +40,7 @@ type CommonHandler struct {
 // CommentSource is the community-backed comment service, narrowed to what the
 // mixed lists here ask of it.
 type CommentSource interface {
-	SiteFeed(ctx context.Context, cursor string, limit int, cl string, db commentService.PatchSummaryDB) (*commentService.FeedPage, *errors.AppError)
+	SiteFeed(ctx context.Context, cursor string, limit int, cl string, db commentService.PatchSummaryDB) (*commentService.FeedPage, error)
 	AuthorBoard(ctx context.Context, limit int) []int
 	AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
 }
@@ -122,7 +122,9 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	// keysets on creation time rather than id — the import gives historical
 	// comments fresh ids, so id order is import order.
 	comments := []*commentService.FeedItem{}
-	if page, appErr := h.comments.SiteFeed(c.Context(), "", homeCommentCount, cl, patchSummaryFinder{db: h.db}); appErr == nil {
+	if page, err := h.comments.SiteFeed(c.Context(), "", homeCommentCount, cl, patchSummaryFinder{db: h.db}); err != nil {
+		slog.ErrorContext(c.Context(), "home: comment strip failed", "error", err)
+	} else {
 		comments = page.Items
 	}
 

@@ -58,7 +58,13 @@ catalog id」的站点表，所以合并遗留的墙它扫得动。
 | `GET /search/comment` | 站内评论搜索 |
 | `GET /admin/comment?q=` / `GET /admin/comment/recent` | 管理队列 |
 | `GET /community/unread` | 关注的评论区里有未读的那些 |
-| `POST /community/wall/read` `/wall/notification` | 已读回执 / 关注，按墙（`{kind, id, thread_id}`）寻址 |
+| `POST /community/wall/read` `/wall/notification` | 已读回执 / 关注，按墙（`{kind, id}`）寻址；thread 由服务端按锚点向原语查得，不收客户端的 `thread_id` |
+| `PUT` / `DELETE /patch/comment/:postId/like` | 点赞 / 取消点赞（原语的 set / unset，重试不会把自己撤销；原来的 `PUT` 是切换） |
+
+发评论的 body 带 `submit_key`：页面每按一次「发布」生成一个 UUID，同一段文字重试时沿用。
+服务端转发给原语的是 `upstream.IdempotencyKey(作者 id, "comment", submit_key)`，不是原值：
+原语的幂等键按站点隔离、不按用户，原样转发会让别人的键回放出别人的评论。没有 `submit_key`
+就不发键，不从正文推导 —— 那样会把读者有意发两次的同一句话合并成一条。
 
 **退役的路由**：`PUT /admin/comment/:id/approve`、
 `GET|PUT /admin/setting/comment-verify`。
