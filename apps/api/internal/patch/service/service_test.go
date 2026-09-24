@@ -9,7 +9,7 @@ import (
 )
 
 func TestExtractMentionUserIDs(t *testing.T) {
-	svc := service.New(nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := service.New(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	tests := []struct {
 		name    string

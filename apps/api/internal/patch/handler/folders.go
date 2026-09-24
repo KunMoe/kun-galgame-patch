@@ -69,7 +69,7 @@ func (h *PatchHandler) MyFolders(c fiber.Ctx) error {
 	if appErr != nil {
 		return response.Error(c, appErr)
 	}
-	folders, err := h.service.MyFolders(c.Context(), token, utils.ContentLimitForListBrowse(c))
+	folders, err := h.service.MyFolders(c.Context(), middleware.MustGetUser(c).ID, token, utils.ContentLimitForListBrowse(c))
 	if err != nil {
 		return catalogErr(c, err, "收藏夹不存在或未公开")
 	}
@@ -86,7 +86,7 @@ func (h *PatchHandler) UserFolders(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	if user := middleware.GetUser(c); user != nil && user.ID == ownerID {
 		if token := middleware.GetAccessToken(c); token != "" {
-			folders, mErr := h.service.MyFolders(c.Context(), token, cl)
+			folders, mErr := h.service.MyFolders(c.Context(), ownerID, token, cl)
 			if mErr != nil {
 				return catalogErr(c, mErr, "收藏夹不存在或未公开")
 			}
@@ -120,8 +120,9 @@ func (h *PatchHandler) CreateFolder(c fiber.Ctx) error {
 	if req.Description != nil {
 		description = *req.Description
 	}
-	folder, err := h.service.CreateFolder(c.Context(), token,
-		pressKey(middleware.MustGetUser(c).ID, "catalog.folder", req.SubmitKey), *req.Name, description, visibility)
+	userID := middleware.MustGetUser(c).ID
+	folder, err := h.service.CreateFolder(c.Context(), userID, token,
+		pressKey(userID, "catalog.folder", req.SubmitKey), *req.Name, description, visibility)
 	if err != nil {
 		return catalogErr(c, err, "无法创建收藏夹")
 	}
@@ -147,7 +148,7 @@ func (h *PatchHandler) UpdateFolder(c fiber.Ctx) error {
 	if req.Name == nil && req.Description == nil && req.Visibility == nil {
 		return response.Error(c, errors.ErrBadRequest("没有要修改的内容"))
 	}
-	folder, err := h.service.UpdateFolder(c.Context(), token, folderID, catalogv2.FolderWrite{
+	folder, err := h.service.UpdateFolder(c.Context(), middleware.MustGetUser(c).ID, token, folderID, catalogv2.FolderWrite{
 		Name: req.Name, Description: req.Description, Visibility: req.Visibility,
 	})
 	if err != nil {
@@ -165,7 +166,7 @@ func (h *PatchHandler) DeleteFolder(c fiber.Ctx) error {
 	if idErr != nil {
 		return response.Error(c, idErr)
 	}
-	if err := h.service.DeleteFolder(c.Context(), token, folderID); err != nil {
+	if err := h.service.DeleteFolder(c.Context(), middleware.MustGetUser(c).ID, token, folderID); err != nil {
 		return catalogErr(c, err, "无法删除该收藏夹")
 	}
 	return response.OK(c, fiber.Map{"deleted": true})
@@ -179,12 +180,14 @@ func (h *PatchHandler) FolderDetail(c fiber.Ctx) error {
 	token := middleware.GetAccessToken(c)
 	page := max(fiber.Query(c, "page", 1), 1)
 	limit := min(max(fiber.Query(c, "limit", folderPageSize), 1), folderPageSize)
-	// Try the owner's lane first when there is a token: it is the only one that
-	// answers a private folder, and it 404s just the same when the reader is
-	// not the owner, so nothing leaks by attempting it.
-	folder, patches, total, err := h.service.FolderPatches(c.Context(), token, folderID, token != "", page, limit)
-	if err != nil && token != "" {
-		folder, patches, total, err = h.service.FolderPatches(c.Context(), "", folderID, false, page, limit)
+	// The public lane first, off the application key: it answers every public
+	// folder, the reader's own included. Owner's lane first spent one of the
+	// reader's catalog calls on a 404 for every folder of somebody else's they
+	// opened. Only the reader's own private folder needs their token, and the
+	// owner's lane 404s just the same for anybody else's, so nothing leaks.
+	folder, patches, total, err := h.service.FolderPatches(c.Context(), "", folderID, false, page, limit)
+	if token != "" && catalogv2.IsNotFound(err) {
+		folder, patches, total, err = h.service.FolderPatches(c.Context(), token, folderID, true, page, limit)
 	}
 	if err != nil {
 		return catalogErr(c, err, "收藏夹不存在或未公开")
@@ -207,7 +210,7 @@ func (h *PatchHandler) FoldersForPatch(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	folders, fErr := h.service.FoldersForPatch(c.Context(), token, id)
+	folders, fErr := h.service.FoldersForPatch(c.Context(), token, id, middleware.MustGetUser(c).ID)
 	if fErr != nil {
 		return catalogErr(c, fErr, "收藏夹不存在或已被删除，请刷新后重试")
 	}

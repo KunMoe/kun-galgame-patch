@@ -30,7 +30,7 @@ func TestListMyGalgamesReadsTheTenantedV2Face(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	h := New(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil)
+	h := New(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil, nil)
 	ta := testutil.NewTestApp(t)
 	ta.App.Get("/galgame/mine", middleware.Auth(ta.RDB, config.OAuthConfig{}), h.ListMyGalgames)
 	session := ta.CreateTestSession(t, 42)
@@ -75,7 +75,7 @@ func TestListMyGalgamesRefusesAnUnknownStateItself(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	h := New(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil)
+	h := New(nil, galgameClient.NewWithKey(srv.URL, "nm_test_key"), nil, nil, nil)
 	ta := testutil.NewTestApp(t)
 	ta.App.Get("/galgame/mine", middleware.Auth(ta.RDB, config.OAuthConfig{}), h.ListMyGalgames)
 	session := ta.CreateTestSession(t, 42)

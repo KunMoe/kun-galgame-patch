@@ -28,10 +28,11 @@ import (
 )
 
 type CommonHandler struct {
-	db      *gorm.DB
-	galgame *galgameClient.Client
-	users   *userclient.Client
-	art     *artifactclient.Client
+	db        *gorm.DB
+	galgame   *galgameClient.Client
+	favorites *favorite.Service
+	users     *userclient.Client
+	art       *artifactclient.Client
 	// comments answers the two things this file still needs from the comment
 	// walls now that they live in the community primitive: the home page's
 	// newest rows, and how many comments a listed user has written.
@@ -46,8 +47,8 @@ type CommentSource interface {
 	AuthorCounts(ctx context.Context, userIDs []int) map[int]int64
 }
 
-func NewHandler(db *gorm.DB, galgame *galgameClient.Client, users *userclient.Client, art *artifactclient.Client, comments CommentSource) *CommonHandler {
-	return &CommonHandler{db: db, galgame: galgame, users: users, art: art, comments: comments}
+func NewHandler(db *gorm.DB, galgame *galgameClient.Client, favorites *favorite.Service, users *userclient.Client, art *artifactclient.Client, comments CommentSource) *CommonHandler {
+	return &CommonHandler{db: db, galgame: galgame, favorites: favorites, users: users, art: art, comments: comments}
 }
 
 func (h *CommonHandler) attachResourceUsers(ctx context.Context, rs []patchModel.PatchResource) {
@@ -319,7 +320,6 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	h.attachResourceUsers(c.Context(), recs)
 	patchModel.StripResourceSecrets(recs)
 
-	patchFavorited := false
 	if u := middleware.GetUser(c); u != nil && u.ID > 0 {
 		ids := make([]int, 0, len(recs)+1)
 		ids = append(ids, resource.ID)
@@ -339,8 +339,6 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 			recs[i].IsLiked = likedSet[recs[i].ID]
 		}
 
-		patchFavorited = h.holdsPatch(c, resource.GalgameID)
-
 		var resFavCount int64
 		h.db.Model(&patchModel.UserPatchResourceFavoriteRelation{}).
 			Where("user_id = ? AND resource_id = ?", u.ID, resource.ID).
@@ -349,10 +347,9 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, map[string]any{
-		"resource":          resource,
-		"patch":             patchCard,
-		"recommendations":   recs,
-		"patch_is_favorite": patchFavorited,
+		"resource":        resource,
+		"patch":           patchCard,
+		"recommendations": recs,
 	})
 }
 
@@ -527,7 +524,7 @@ func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.
 	cards := enricher.EnrichCalendarBriefs(briefs, h.calendarPatchRows(ids))
 
 	if uid := middleware.GetUserID(c); uid > 0 {
-		fav := h.calendarFavoriteSet(c, ids)
+		fav := h.calendarFavoriteSet(c, uid, ids)
 		for i := range cards {
 			if fav[cards[i].ID] {
 				cards[i].IsFavorite = true
@@ -537,23 +534,10 @@ func (h *CommonHandler) enrichCalendarItems(c fiber.Ctx, briefs []galgameClient.
 	return cards
 }
 
-// holdsPatch and calendarFavoriteSet both used to count
-// user_patch_favorite_relation, which the 2026-09-07 cutover froze: these two
-// hearts went on showing whatever was true that day while the game page beside
-// them read the catalog and disagreed.
-//
-// The resource page asks about one game, so it asks the catalog about one work.
-func (h *CommonHandler) holdsPatch(c fiber.Ctx, patchID int) bool {
-	if patchID <= 0 || patchModel.IsLocalOnly(patchID) {
-		return false
-	}
-	held, err := favorite.Holds(c.Context(), h.galgame, middleware.GetAccessToken(c), int64(patchID))
-	return err == nil && held
-}
-
-// The calendar asks about a whole month of games, so it asks the catalog about
-// them in one batch.
-func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, ids []int) map[int]bool {
+// calendarFavoriteSet used to count user_patch_favorite_relation, which the
+// 2026-09-07 cutover froze: these hearts went on showing whatever was true
+// that day while the game page beside them read the catalog and disagreed.
+func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, uid int, ids []int) map[int]bool {
 	set := make(map[int]bool, len(ids))
 	token := middleware.GetAccessToken(c)
 	if token == "" || len(ids) == 0 {
@@ -565,7 +549,7 @@ func (h *CommonHandler) calendarFavoriteSet(c fiber.Ctx, ids []int) map[int]bool
 			works = append(works, int64(id))
 		}
 	}
-	held, err := favorite.HoldsAll(c.Context(), h.galgame, token, works)
+	held, err := h.favorites.HoldsAll(c.Context(), uid, token, works)
 	if err != nil {
 		slog.Warn("calendar favorite set failed", "error", err)
 		return set

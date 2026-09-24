@@ -15,16 +15,30 @@ const userStore = useUserStore()
 const api = useApi()
 const { requireLogin } = useAuthModal()
 
-const favorite = ref(props.patch.is_favorite)
+// Asked after mount, never inside GET /patch/:id: that read runs on every
+// navigation, SSR included, and whatever it asks with the reader's token
+// spends the catalog allowance they share with the forum. favoriteSeq drops an
+// answer that left before a press or a picker save.
+const favorite = ref(false)
+let favoriteSeq = 0
 
-watch(
-  () => props.patch.is_favorite,
-  (v) => {
-    favorite.value = v
+const loadFavorite = async () => {
+  const seq = ++favoriteSeq
+  favorite.value = false
+  if (!userStore.user.id) return
+  const res = await api.get<{ favorited: boolean }>(
+    `/patch/${props.patch.id}/favorite`
+  )
+  if (res.code === 0 && seq === favoriteSeq) {
+    favorite.value = res.data.favorited
   }
-)
+}
+
+onMounted(loadFavorite)
+watch([() => props.patch.id, () => userStore.user.id], loadFavorite)
 
 const onFavoriteChange = async (active: boolean) => {
+  favoriteSeq++
   if (!requireLogin()) {
     favorite.value = !active
     return
@@ -50,6 +64,7 @@ const openPicker = () => {
   pickerOpen.value = true
 }
 const onFoldersSaved = (payload: { favorited: boolean }) => {
+  favoriteSeq++
   favorite.value = payload.favorited
 }
 

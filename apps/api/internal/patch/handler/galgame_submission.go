@@ -1,17 +1,25 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"kun-galgame-patch-api/internal/middleware"
+	"kun-galgame-patch-api/internal/usercache"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 
 	"github.com/gofiber/fiber/v3"
+)
+
+const (
+	claimsScope     = "claims"
+	wizardClaimsTTL = time.Minute
 )
 
 func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
@@ -34,7 +42,9 @@ func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 	if tErr != nil {
 		return response.Error(c, tErr)
 	}
-	out, err := v2.MintClaim(c.Context(), token, pressKey(middleware.MustGetUser(c).ID, "catalog.mint", form.SubmitKey), fields)
+	userID := middleware.MustGetUser(c).ID
+	out, err := v2.MintClaim(c.Context(), token, pressKey(userID, "catalog.mint", form.SubmitKey), fields)
+	h.mine.Forget(c.Context(), userID, claimsScope)
 	if err != nil {
 		if p, ok := catalogv2.ProblemOf(err); ok && p.Code == catalogv2.CodeDuplicateSuspects {
 			return response.Error(c, errors.ErrConflict(duplicateSuspectsMessage(p.Suspects)))
@@ -72,7 +82,10 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 	if tErr != nil {
 		return response.Error(c, tErr)
 	}
-	if err := h.patchClaim(c, token, int64(gid), catalogv2.ClaimStateLive); err != nil {
+	userID := middleware.MustGetUser(c).ID
+	err := h.patchClaim(c, token, int64(gid), catalogv2.ClaimStateLive)
+	h.mine.Forget(c.Context(), userID, claimsScope)
+	if err != nil {
 		return catalogErr(c, err, "无法认领该游戏，请刷新后重试")
 	}
 
@@ -89,7 +102,6 @@ func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
 	// The claim is live in catalog by now, and a retry of this request answers
 	// 409 there, so a failed local row is logged rather than handed back as a
 	// 500 the reader cannot recover from. The page id is the work id either way.
-	userID := middleware.MustGetUser(c).ID
 	patchID, regErr := h.service.RegisterClaimedGalgame(userID, gid, vndbID)
 	if regErr != nil {
 		slog.Warn("claim: catalog claim is live but the local patch row failed",
@@ -113,7 +125,9 @@ func (h *PatchHandler) WithdrawGalgameSubmission(c fiber.Ctx) error {
 	if tErr != nil {
 		return response.Error(c, tErr)
 	}
-	if err := h.withdrawClaim(c, token, int64(gid)); err != nil {
+	err := h.withdrawClaim(c, token, int64(gid))
+	h.mine.Forget(c.Context(), middleware.MustGetUser(c).ID, claimsScope)
+	if err != nil {
 		return catalogErr(c, err, "无法撤回该投稿，请刷新后重试")
 	}
 	return response.OKMessage(c, "OK")
@@ -218,28 +232,38 @@ func (h *PatchHandler) SearchGalgameForPublish(c fiber.Ctx) error {
 
 func (h *PatchHandler) ownPendingSubmissions(c fiber.Ctx, q string) []wizardPendingHit {
 	token := middleware.GetAccessToken(c)
-	if token == "" {
+	uid := middleware.GetUserID(c)
+	if token == "" || uid <= 0 {
 		return nil
 	}
-	page, err := h.catalogV2().MyClaims(c.Context(), token, catalogv2.MyClaimsQuery{
-		ClaimStates: mySubmissionStates, Site: catalogv2.SiteKungal, Limit: 50,
+	slot := h.mine.Slot(c.Context(), uid, claimsScope, "wizard")
+	rows, err := usercache.Fetch(c.Context(), slot, wizardClaimsTTL, func(ctx context.Context) ([]mySubmission, error) {
+		page, err := h.catalogV2().MyClaims(ctx, token, catalogv2.MyClaimsQuery{
+			ClaimStates: mySubmissionStates, Site: catalogv2.SiteKungal, Limit: 50,
+		})
+		if err != nil {
+			return nil, err
+		}
+		rows := make([]mySubmission, 0, len(page.Items))
+		for i := range page.Items {
+			rows = append(rows, submissionRow(&page.Items[i]))
+		}
+		return rows, nil
 	})
 	if err != nil {
 		slog.Warn("读取本人投稿列表失败，向导仅显示公开结果", "error", err)
 		return nil
 	}
 	needle := strings.ToLower(strings.TrimSpace(q))
-	out := make([]wizardPendingHit, 0, len(page.Items))
-	for i := range page.Items {
-		it := submissionRow(&page.Items[i])
+	out := make([]wizardPendingHit, 0, len(rows))
+	for _, it := range rows {
 		if needle != "" && !strings.Contains(strings.ToLower(it.DisplayName), needle) {
 			continue
 		}
+		// The work id, never product_work_id: that is the forum's page id, and
+		// linked here it names a different game.
 		hit := wizardPendingHit{
 			ID: int(it.WorkID), DisplayName: it.DisplayName, ClaimState: it.ClaimState,
-		}
-		if it.ProductWorkID != nil && *it.ProductWorkID > 0 {
-			hit.ID = int(*it.ProductWorkID)
 		}
 		if it.LastReason != nil {
 			hit.Reason = *it.LastReason

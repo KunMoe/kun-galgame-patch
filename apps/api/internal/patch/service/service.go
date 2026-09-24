@@ -36,18 +36,19 @@ type AuditLogger interface {
 }
 
 type PatchService struct {
-	repo    *repository.PatchRepository
-	setting *settingService.Service
-	db      *gorm.DB
-	art     *artifactclient.Client
-	galgame *galgameClient.Client
-	users   *userclient.Client
-	mp      *moemoepoint.Awarder
-	audit   AuditLogger
+	repo      *repository.PatchRepository
+	setting   *settingService.Service
+	db        *gorm.DB
+	art       *artifactclient.Client
+	galgame   *galgameClient.Client
+	favorites *favorite.Service
+	users     *userclient.Client
+	mp        *moemoepoint.Awarder
+	audit     AuditLogger
 }
 
-func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, galgame *galgameClient.Client, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
-	return &PatchService{repo: repo, setting: setting, db: db, art: art, galgame: galgame, users: users, mp: mp, audit: audit}
+func New(repo *repository.PatchRepository, setting *settingService.Service, db *gorm.DB, art *artifactclient.Client, galgame *galgameClient.Client, favorites *favorite.Service, users *userclient.Client, mp *moemoepoint.Awarder, audit AuditLogger) *PatchService {
+	return &PatchService{repo: repo, setting: setting, db: db, art: art, galgame: galgame, favorites: favorites, users: users, mp: mp, audit: audit}
 }
 
 func (s *PatchService) CreatePatchByGalgameID(ctx context.Context, userID, galgameID int) (int, error) {

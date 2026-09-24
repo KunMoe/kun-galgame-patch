@@ -13,7 +13,7 @@ import (
 )
 
 func TestHikariRetired(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
 	app := fiber.New()
 	api := app.Group("/api/v1")
 	api.Use("/hikari", middleware.HikariCORS())

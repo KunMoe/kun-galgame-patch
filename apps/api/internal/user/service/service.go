@@ -24,12 +24,13 @@ import (
 )
 
 type UserService struct {
-	repo     *repository.UserRepository
-	users    *userclient.Client
-	galgame  *galgameClient.Client
-	db       *gorm.DB
-	mp       *moemoepoint.Awarder
-	comments CommentStats
+	repo      *repository.UserRepository
+	users     *userclient.Client
+	galgame   *galgameClient.Client
+	favorites *favorite.Service
+	db        *gorm.DB
+	mp        *moemoepoint.Awarder
+	comments  CommentStats
 }
 
 // CommentStats is what the profile still needs to know about comments now that
@@ -44,11 +45,12 @@ func New(
 	repo *repository.UserRepository,
 	users *userclient.Client,
 	galgame *galgameClient.Client,
+	favorites *favorite.Service,
 	db *gorm.DB,
 	mp *moemoepoint.Awarder,
 	comments CommentStats,
 ) *UserService {
-	return &UserService{repo: repo, users: users, galgame: galgame, db: db, mp: mp, comments: comments}
+	return &UserService{repo: repo, users: users, galgame: galgame, favorites: favorites, db: db, mp: mp, comments: comments}
 }
 
 func (s *UserService) commentCount(ctx context.Context, userID int) int64 {
@@ -342,7 +344,7 @@ func (s *UserService) GetUserFavorites(ctx context.Context, userID int, token st
 // person's folders resolves to. The profile counter and the tab both go
 // through it so the number and the list cannot disagree again.
 func (s *UserService) favoritePatchIDs(ctx context.Context, userID int, token string, isOwner bool) ([]int, error) {
-	workIDs, err := favorite.WorkIDs(ctx, s.galgame, userID, token, isOwner)
+	workIDs, err := s.favorites.WorkIDs(ctx, userID, token, isOwner)
 	if err != nil {
 		return nil, err
 	}

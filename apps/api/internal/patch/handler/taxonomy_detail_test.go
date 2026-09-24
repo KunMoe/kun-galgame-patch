@@ -61,7 +61,7 @@ func TestGalgameTaxonomyDetailStatusCodes(t *testing.T) {
 			}))
 			t.Cleanup(upstream.Close)
 
-			h := New(nil, galgameClient.NewWithKey(upstream.URL, "nm_test_key"), nil, nil)
+			h := New(nil, galgameClient.NewWithKey(upstream.URL, "nm_test_key"), nil, nil, nil)
 			app := fiber.New()
 			app.Get("/api/v1/tag/:name", h.GalgameTaxonomyDetailProxy)
 			app.Get("/api/v1/official/:name", h.GalgameTaxonomyDetailProxy)

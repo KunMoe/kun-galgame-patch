@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/catalogv2"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,9 +28,20 @@ func (r *PatchRepository) GetPatchByID(id int) (*model.Patch, error) {
 	return &patch, err
 }
 
+// MarkIndexed publishes the page on a resource landing. A page whose latest
+// claim event hid it stays unpublished: the ban is what unpublished it, and a
+// resource is not an unban.
 func (r *PatchRepository) MarkIndexed(gid int) error {
-	return r.db.Model(&model.Patch{}).Where("id = ?", gid).
-		Updates(map[string]any{"published": true, "is_stub": false}).Error
+	if err := r.db.Model(&model.Patch{}).Where("id = ? AND is_stub", gid).
+		Update("is_stub", false).Error; err != nil {
+		return err
+	}
+	return r.db.Exec(`
+		UPDATE patch SET published = true
+		WHERE id = ? AND NOT published AND COALESCE((
+			SELECT to_state FROM claim_event_processed
+			WHERE work_id = ? ORDER BY event_id DESC LIMIT 1
+		), '') <> ?`, gid, gid, catalogv2.ClaimStateHidden).Error
 }
 
 func (r *PatchRepository) Unpublish(gid int) error {

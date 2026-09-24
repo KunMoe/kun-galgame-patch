@@ -109,6 +109,7 @@ func (a *App) RegisterRoutes() {
 		middleware.RateLimit(a.RDB, "resource-revisions", 60, time.Minute),
 		a.PatchHandler.GetResourceRevisions,
 	)
+	patchRoutes.Get("/:id/favorite", auth, a.PatchHandler.GetFavorite)
 	patchRoutes.Put("/:id/favorite", auth, a.PatchHandler.ToggleFavorite)
 	patchRoutes.Get("/:id/folder", auth, a.PatchHandler.FoldersForPatch)
 	patchRoutes.Put("/:id/folder", auth, a.PatchHandler.SetPatchFolders)

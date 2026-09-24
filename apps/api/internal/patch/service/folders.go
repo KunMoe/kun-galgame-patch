@@ -82,8 +82,8 @@ func (s *PatchService) workIDOf(patchID int) (int64, error) {
 	return int64(patchID), nil
 }
 
-func (s *PatchService) MyFolders(ctx context.Context, token, contentLimit string) ([]FolderView, error) {
-	rows, err := s.galgame.V2().MyFolders(ctx, token)
+func (s *PatchService) MyFolders(ctx context.Context, userID int, token, contentLimit string) ([]FolderView, error) {
+	rows, err := s.favorites.OwnFolders(ctx, userID, token)
 	if err != nil {
 		return nil, err
 	}
@@ -113,10 +113,9 @@ func folderViews(rows []catalogv2.Folder) []FolderView {
 	return out
 }
 
-// previewCoversPerFolder is the mosaic a shelf card draws, and it costs one
-// request per non-empty folder. Measured 2026-09-12: p99 is 3 folders per
-// person and the largest shelf in production has 27, so the loop is not worth
-// paging or parallelising.
+// previewCoversPerFolder is the mosaic a shelf card draws. Measured
+// 2026-09-12: p99 is 3 folders per person and the largest shelf in production
+// has 27, so the loop is not worth paging or parallelising.
 const previewCoversPerFolder = 4
 
 // attachPreviewCovers fills in the covers a folder card draws.
@@ -136,15 +135,13 @@ func (s *PatchService) attachPreviewCovers(ctx context.Context, views []FolderVi
 		if v.ItemCount == 0 {
 			continue
 		}
-		items, err := s.galgame.V2().FolderPreviewItems(ctx, token, v.ID, previewCoversPerFolder)
+		ids, err := s.favorites.PreviewWorkIDs(ctx, token, v.ID, v.Updated, previewCoversPerFolder)
 		if err != nil {
 			slog.Warn("收藏夹封面：读取条目失败", "folder_id", v.ID, "error", err)
 			continue
 		}
-		for _, it := range items {
-			byFolder[v.ID] = append(byFolder[v.ID], it.WorkID)
-			works = append(works, it.WorkID)
-		}
+		byFolder[v.ID] = ids
+		works = append(works, ids...)
 	}
 	if len(works) == 0 {
 		return
@@ -180,7 +177,8 @@ func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, 
 	return out, nil
 }
 
-func (s *PatchService) CreateFolder(ctx context.Context, token, idemKey, name, description, visibility string) (*FolderView, error) {
+func (s *PatchService) CreateFolder(ctx context.Context, userID int, token, idemKey, name, description, visibility string) (*FolderView, error) {
+	defer s.favorites.Forget(ctx, userID)
 	f, err := s.galgame.V2().CreateFolder(ctx, token, idemKey, catalogv2.FolderWrite{
 		Name: &name, Description: &description, Visibility: &visibility,
 	})
@@ -191,7 +189,8 @@ func (s *PatchService) CreateFolder(ctx context.Context, token, idemKey, name, d
 	return &v, nil
 }
 
-func (s *PatchService) UpdateFolder(ctx context.Context, token string, folderID int64, in catalogv2.FolderWrite) (*FolderView, error) {
+func (s *PatchService) UpdateFolder(ctx context.Context, userID int, token string, folderID int64, in catalogv2.FolderWrite) (*FolderView, error) {
+	defer s.favorites.Forget(ctx, userID)
 	f, err := s.galgame.V2().PatchFolder(ctx, token, folderID, in)
 	if err != nil {
 		return nil, err
@@ -200,7 +199,8 @@ func (s *PatchService) UpdateFolder(ctx context.Context, token string, folderID 
 	return &v, nil
 }
 
-func (s *PatchService) DeleteFolder(ctx context.Context, token string, folderID int64) error {
+func (s *PatchService) DeleteFolder(ctx context.Context, userID int, token string, folderID int64) error {
+	defer s.favorites.Forget(ctx, userID)
 	return s.galgame.V2().DeleteFolder(ctx, token, folderID)
 }
 
