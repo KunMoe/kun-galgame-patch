@@ -8,7 +8,6 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/imageclient"
-	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -22,7 +21,6 @@ type NotificationSync interface {
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
-	mp *moemoepoint.Client,
 	img *imageclient.Client,
 	comments CommentImages,
 	notifications NotificationSync,
@@ -58,7 +56,7 @@ func Start(
 		if _, err := c.AddFunc(claimSyncSchedule, func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			applied, cursor, err := RunClaimEventSync(ctx, db, catalog, galgame, mp)
+			applied, cursor, err := RunClaimEventSync(ctx, db, catalog, galgame)
 			if err != nil {
 				slog.Error("catalog claim 同步失败", "error", err, "applied", applied, "cursor", cursor)
 				return

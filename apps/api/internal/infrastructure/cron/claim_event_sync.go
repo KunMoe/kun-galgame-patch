@@ -10,7 +10,6 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	userModel "kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
-	"kun-galgame-patch-api/pkg/moemoepoint"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -38,7 +37,6 @@ func RunClaimEventSync(
 	db *gorm.DB,
 	catalog *catalogv2.Client,
 	galgame *galgameClient.Client,
-	mp *moemoepoint.Client,
 ) (int, int64, error) {
 	if db == nil || catalog == nil || !catalog.Configured() {
 		return 0, 0, fmt.Errorf("claim event sync: missing db or catalog client")
@@ -73,7 +71,7 @@ func RunClaimEventSync(
 			ev := &feed[i]
 			next := ev.ID
 			txErr := db.Transaction(func(tx *gorm.DB) error {
-				if err := applyClaimEvent(ctx, tx, galgame, mp, ev); err != nil {
+				if err := applyClaimEvent(ctx, tx, galgame, ev); err != nil {
 					return err
 				}
 				return writeClaimCursorTx(tx, next)
@@ -137,7 +135,6 @@ func applyClaimEvent(
 	ctx context.Context,
 	tx *gorm.DB,
 	galgame *galgameClient.Client,
-	mp *moemoepoint.Client,
 	ev *catalogv2.ClaimEvent,
 ) error {
 	effect := effectOf(ev)
@@ -192,26 +189,12 @@ func applyClaimEvent(
 
 	switch effect {
 	case claimEffectApproved:
-		if mp != nil {
-			// Claim event IDs overlap retired wiki message IDs, so their award keys
-			// need a separate namespace.
-			awarded, aerr := mp.Adjust(ctx, recipient, moemoepoint.AdjustRequest{
-				Delta:          3,
-				Reason:         "content_approved",
-				Ref:            fmt.Sprintf("galgame:%d", gid),
-				IdempotencyKey: fmt.Sprintf("moyu:claim_approved:%d", ev.ID),
-			})
-			if aerr != nil {
-				return fmt.Errorf("award moemoepoint: %w", aerr)
-			}
-			if uerr := tx.Exec(
-				`UPDATE "user" SET moemoepoint = ? WHERE id = ?`, awarded.Balance, recipient,
-			).Error; uerr != nil {
-				return fmt.Errorf("sync moemoepoint cache: %w", uerr)
-			}
-		}
+		// The forum pays for the approval. Both sites read this same site=kungal
+		// feed and an event does not say which site the submission came from, so
+		// paying here too paid all 27 approvals from 2026-08-04 to 2026-09-18
+		// twice. The forum sends no notice, so this one stays.
 		return writeClaimNotification(tx, recipient, gid,
-			fmt.Sprintf("您提交的《%s》已通过审核，奖励 +3 萌萌点", name))
+			fmt.Sprintf("您提交的《%s》已通过审核", name))
 	case claimEffectDeclined:
 		text := fmt.Sprintf("您提交的《%s》未通过审核", name)
 		if reason != "" {

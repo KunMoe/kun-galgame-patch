@@ -303,7 +303,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, mpClient, imgCli, commentSvc, communityInboxSvc)
+	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc)
 	stopBackground := func() {
 		cronStop()
 		storeStop()
