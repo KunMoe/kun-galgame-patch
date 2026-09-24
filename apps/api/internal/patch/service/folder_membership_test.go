@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 )
 
@@ -49,6 +50,18 @@ func (s *shelf) client(t *testing.T) *PatchService {
 	}))
 	t.Cleanup(srv.Close)
 	return &PatchService{galgame: galgameClient.NewWithKey(srv.URL, "nmk_test_key")}
+}
+
+func (s *shelf) count(route string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, r := range s.seen {
+		if r == route {
+			n++
+		}
+	}
+	return n
 }
 
 func body(s string) shelfAnswer {
@@ -104,14 +117,38 @@ func TestTheDefaultFolderIsNamedAndKeyedOnTheShelfItSaw(t *testing.T) {
 	}
 }
 
+// The losing heart is told IDEMPOTENCY_REQUEST_IN_PROGRESS while the winner's
+// create runs (infra protocol/idempotency.go); the same key sent again once it
+// has finished is answered with the winner's folder.
 func TestARacingDefaultCreateReusesTheWinner(t *testing.T) {
+	defaultFolderRetryDelay = 0
 	s := &shelf{answers: map[string][]shelfAnswer{
-		"GET /v2/me/folders":  {body(emptyShelf), body(defaultShelf)},
-		"POST /v2/me/folders": {problem("IDEMPOTENCY_REQUEST_IN_PROGRESS")},
+		"GET /v2/me/folders": {body(emptyShelf)},
+		"POST /v2/me/folders": {
+			problem("IDEMPOTENCY_REQUEST_IN_PROGRESS"),
+			body(`{"id":"9","name":"默认收藏夹","is_default":true}`),
+		},
 	}}
-	id, err := s.client(t).defaultFolderID(context.Background(), "tok", 42)
+	svc := s.client(t)
+	id, err := svc.defaultFolderID(context.Background(), "tok", 42)
 	if err != nil || id != 9 {
-		t.Fatalf("defaultFolderID = %d, %v; want the default the other request made", id, err)
+		t.Fatalf("defaultFolderID = %d, %v; want the folder the winner made", id, err)
+	}
+	if s.count("POST /v2/me/folders") != 2 {
+		t.Fatalf("posts = %v", s.seen)
+	}
+}
+
+func TestTwoHeartsOnOneShelfShareAKey(t *testing.T) {
+	seen := []catalogv2.Folder{{ID: 5}}
+	if defaultFolderKey(42, seen) != defaultFolderKey(42, seen) {
+		t.Fatal("two hearts on the same shelf must send one create between them")
+	}
+	if defaultFolderKey(42, seen) == defaultFolderKey(42, nil) {
+		t.Fatal("a shelf that changed is a new create, not a replay of the old one")
+	}
+	if defaultFolderKey(42, seen) == defaultFolderKey(43, seen) {
+		t.Fatal("two readers must never share a key")
 	}
 }
 

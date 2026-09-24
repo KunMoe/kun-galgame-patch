@@ -118,7 +118,7 @@ func TestCreateClaimPostsWorkID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	out, err := catalogv2.New(srv.URL, "nmk_test_x").CreateClaim(context.Background(), "tok", 42, 7, 7)
+	out, err := catalogv2.New(srv.URL, "nmk_test_x").CreateClaim(context.Background(), "tok", "key-1", 7, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestMintClaimSendsTheWizardMapAsFieldValues(t *testing.T) {
 		"catalog.work.olang":        "ja",
 		"catalog.work.titles":       []any{map[string]any{"lang": "zh-Hans", "title": "夏日口袋", "kind": 0}},
 	}
-	out, err := catalogv2.New(srv.URL, "nmk_test_x").MintClaim(context.Background(), "tok", 42, fields)
+	out, err := catalogv2.New(srv.URL, "nmk_test_x").MintClaim(context.Background(), "tok", "key-1", fields)
 	if err != nil {
 		t.Fatal(err)
 	}

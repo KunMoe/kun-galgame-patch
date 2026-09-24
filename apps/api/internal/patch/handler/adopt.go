@@ -2,9 +2,11 @@ package handler
 
 import (
 	"log/slog"
+	"strconv"
 
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -27,7 +29,11 @@ func adoptAndPublish(c fiber.Ctx, v2 *catalogv2.Client, token string, actor int,
 	if v2 == nil || !v2.Configured() {
 		return catalogv2.ErrNotConfigured
 	}
-	_, claimErr := v2.CreateClaim(c.Context(), token, actor, workID, workID)
+	// Keyed on the work alone, unlike the reader's creates: a replayed answer
+	// changes nothing here, since the claim either exists or is made and the
+	// PATCH below is what decides the outcome.
+	_, claimErr := v2.CreateClaim(c.Context(), token,
+		upstream.IdempotencyKey(strconv.Itoa(actor), "catalog.adopt", strconv.FormatInt(workID, 10)), workID, workID)
 	if _, pubErr := v2.PatchClaim(c.Context(), token, workID, catalogv2.ClaimStateLive, anyState); pubErr != nil {
 		if claimErr != nil {
 			return claimErr

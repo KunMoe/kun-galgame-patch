@@ -222,9 +222,9 @@ func (c *Client) PublicFolderItems(ctx context.Context, folderID int64) ([]Folde
 	return itemsView(rows), err
 }
 
-func (c *Client) CreateFolder(ctx context.Context, accessToken string, actor int, in FolderWrite, scope ...string) (*Folder, error) {
+func (c *Client) CreateFolder(ctx context.Context, accessToken, idemKey string, in FolderWrite) (*Folder, error) {
 	var out folderWire
-	if err := c.userPost(ctx, "/v2/me/folders", accessToken, actor, in, &out, scope...); err != nil {
+	if err := c.userPost(ctx, "/v2/me/folders", accessToken, idemKey, in, &out); err != nil {
 		return nil, err
 	}
 	f := out.view()

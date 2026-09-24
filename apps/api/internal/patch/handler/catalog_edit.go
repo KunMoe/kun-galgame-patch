@@ -4,6 +4,7 @@ import (
 	stderrors "errors"
 	"log/slog"
 	"slices"
+	"strconv"
 
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -66,6 +67,7 @@ type catalogEditRequest struct {
 	ContentRating *int16              `json:"content_rating"`
 	Titles        *[]catalogEditTitle `json:"titles"`
 	Note          string              `json:"note"`
+	SubmitKey     string              `json:"submit_key"`
 }
 
 // The shape @nextmoe/edit-ui-core's parseEditProblem reads. The envelope's
@@ -104,7 +106,7 @@ func catalogEditErr(c fiber.Ctx, err error) error {
 		}
 		const denied = "你没有权限修改该条目（编辑资料需要相应的社区权限）"
 		if p != nil && p.Status == fiber.StatusForbidden && len(p.Errors) > 0 {
-			return response.ErrorData(c, errors.New(40300, denied, fiber.StatusForbidden), problemFields(p))
+			return response.ErrorData(c, errors.New(40300, denied, fiber.StatusForbidden), fiber.Map{"errors": p.Errors})
 		}
 		if p != nil && p.Status == fiber.StatusForbidden {
 			return response.Upstream(c, err, denied)
@@ -246,7 +248,9 @@ func (h *PatchHandler) CatalogEditSubmit(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrValidation("没有需要保存的修改"))
 	}
 
-	result, err := h.catalogV2().CreateProposal(c.Context(), token, middleware.MustGetUser(c).ID, catalogv2.EntityTypeWork, workID, patch, req.Note)
+	result, err := h.catalogV2().CreateProposal(c.Context(), token,
+		pressKey(middleware.MustGetUser(c).ID, "catalog.proposal."+strconv.FormatInt(workID, 10), req.SubmitKey),
+		catalogv2.EntityTypeWork, workID, patch, req.Note)
 	if err != nil {
 		return catalogEditErr(c, err)
 	}

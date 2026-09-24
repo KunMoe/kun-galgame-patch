@@ -34,7 +34,7 @@ func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 	if tErr != nil {
 		return response.Error(c, tErr)
 	}
-	out, err := v2.MintClaim(c.Context(), token, middleware.MustGetUser(c).ID, fields)
+	out, err := v2.MintClaim(c.Context(), token, pressKey(middleware.MustGetUser(c).ID, "catalog.mint", form.SubmitKey), fields)
 	if err != nil {
 		if p, ok := catalogv2.ProblemOf(err); ok && p.Code == catalogv2.CodeDuplicateSuspects {
 			return response.Error(c, errors.ErrConflict(duplicateSuspectsMessage(p.Suspects)))

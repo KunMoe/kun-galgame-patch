@@ -180,8 +180,8 @@ func (s *PatchService) bannerHashesByWork(ctx context.Context, workIDs []int64, 
 	return out, nil
 }
 
-func (s *PatchService) CreateFolder(ctx context.Context, token string, userID int, name, description, visibility string) (*FolderView, error) {
-	f, err := s.galgame.V2().CreateFolder(ctx, token, userID, catalogv2.FolderWrite{
+func (s *PatchService) CreateFolder(ctx context.Context, token, idemKey, name, description, visibility string) (*FolderView, error) {
+	f, err := s.galgame.V2().CreateFolder(ctx, token, idemKey, catalogv2.FolderWrite{
 		Name: &name, Description: &description, Visibility: &visibility,
 	})
 	if err != nil {

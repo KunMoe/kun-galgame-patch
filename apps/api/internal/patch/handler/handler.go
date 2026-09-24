@@ -68,6 +68,16 @@ func catalogErr(c fiber.Ctx, err error, readerMsg string) error {
 	return response.Upstream(c, err, readerMsg)
 }
 
+// pressKey is the Idempotency-Key for one press of a create button: the page
+// mints submit_key per press and keeps it across that press's retries. Without
+// one nothing is sent, which only costs the retry safety.
+func pressKey(userID int, op, submitKey string) string {
+	if submitKey == "" {
+		return ""
+	}
+	return upstream.IdempotencyKey(strconv.Itoa(userID), op, submitKey)
+}
+
 func catalogReauth(err error) *errors.AppError {
 	if e, _ := upstream.As(err); e != nil && e.Code == catalogv2.CodeInvalidCredential {
 		return errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次")

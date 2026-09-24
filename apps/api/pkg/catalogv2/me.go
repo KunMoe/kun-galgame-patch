@@ -97,9 +97,9 @@ func (c *Client) Snapshot(ctx context.Context, accessToken, object string, id in
 	return &out, nil
 }
 
-func (c *Client) CreateProposal(ctx context.Context, accessToken string, actor int, entityType string, entityID int64, patch map[string]any, note string) (*ProposalRecord, error) {
+func (c *Client) CreateProposal(ctx context.Context, accessToken, idemKey, entityType string, entityID int64, patch map[string]any, note string) (*ProposalRecord, error) {
 	var out ProposalRecord
-	err := c.userPost(ctx, "/v2/me/proposals", accessToken, actor, map[string]any{
+	err := c.userPost(ctx, "/v2/me/proposals", accessToken, idemKey, map[string]any{
 		"entity_type": entityType,
 		"entity_id":   FormatID(entityID),
 		"patch":       patch,

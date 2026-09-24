@@ -202,7 +202,7 @@ func TestFolderWritesAddressTheRightRoutes(t *testing.T) {
 	ctx := context.Background()
 	name := "n"
 
-	if _, err := c.CreateFolder(ctx, "tok", 42, FolderWrite{Name: &name}); err != nil {
+	if _, err := c.CreateFolder(ctx, "tok", "key-1", FolderWrite{Name: &name}); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
 	if _, err := c.PatchFolder(ctx, "tok", 5, FolderWrite{Name: &name}); err != nil {
@@ -247,7 +247,7 @@ func TestFolderWriteSurfacesTheScopeRefusal(t *testing.T) {
 	c := New(srv.URL, "k")
 
 	name := "x"
-	_, err := c.CreateFolder(context.Background(), "tok", 42, FolderWrite{Name: &name})
+	_, err := c.CreateFolder(context.Background(), "tok", "key-1", FolderWrite{Name: &name})
 	if !ReauthRequired(err) {
 		t.Fatalf("a reader's token refused for a scope must ask for a new sign-in: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestFolderCreateOmitsUnsetFields(t *testing.T) {
 	c := New(srv.URL, "k")
 
 	name := "n"
-	if _, err := c.CreateFolder(context.Background(), "tok", 42, FolderWrite{Name: &name}); err != nil {
+	if _, err := c.CreateFolder(context.Background(), "tok", "key-1", FolderWrite{Name: &name}); err != nil {
 		t.Fatalf("CreateFolder: %v", err)
 	}
 	if strings.Contains(seen, "visibility") {

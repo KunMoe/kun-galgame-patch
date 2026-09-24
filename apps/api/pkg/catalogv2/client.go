@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -158,12 +157,11 @@ func (c *Client) userDo(ctx context.Context, method, path, accessToken string, b
 	return c.do(ctx, method, path, accessToken, "", body, out)
 }
 
-// userPost is every POST that creates something. The key is the actor, the
-// route and the exact bytes sent, plus whatever else the caller says makes
-// this write distinct; catalog replays the first answer to a repeat of it for
-// 24h, so a reader who retries a submit that timed out gets back the record
-// the first attempt made instead of a second one.
-func (c *Client) userPost(ctx context.Context, path, accessToken string, actor int, body, out any, scope ...string) error {
+// userPost is every POST that creates something. Catalog replays its first
+// answer to a repeated key for 24h, refusals included, so the key has to name
+// one attempt at the write rather than its body: keyed on the body, a folder
+// deleted and made again came back as the deleted one.
+func (c *Client) userPost(ctx context.Context, path, accessToken, idemKey string, body, out any) error {
 	if accessToken == "" {
 		return ErrNoAccessToken
 	}
@@ -171,10 +169,8 @@ func (c *Client) userPost(ctx context.Context, path, accessToken string, actor i
 	if err != nil {
 		return err
 	}
-	parts := append([]string{strconv.Itoa(actor), http.MethodPost + " " + path, string(raw)}, scope...)
 	_, err = c.send(ctx, call{
-		method: http.MethodPost, path: path, token: accessToken,
-		idemKey: upstream.IdempotencyKey(parts...), body: raw,
+		method: http.MethodPost, path: path, token: accessToken, idemKey: idemKey, body: raw,
 	}, out)
 	return err
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
+	"time"
 
 	"kun-galgame-patch-api/internal/favorite"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -109,19 +109,16 @@ func (s *PatchService) moveFolderItems(ctx context.Context, token string, workID
 	return nil
 }
 
-// The key names the folders the person had when it was sent: two hearts racing
-// on the same shelf send one create between them, and a default deleted later
-// is made again instead of replayed from catalog's 24-hour idempotency record.
-func (s *PatchService) createDefaultFolder(ctx context.Context, token string, userID int, seen []catalogv2.Folder) (*catalogv2.Folder, error) {
-	name, empty, isDefault := defaultFolderName, "", true
-	pub := catalogv2.FolderVisibilityPublic
-	ids := make([]string, 0, len(seen))
+// A second create with is_default does not conflict in catalog, it demotes the
+// first, so two hearts racing on an empty shelf made two folders. The key names
+// the shelf the heart saw, so racing hearts send one create between them and a
+// default deleted later is made again rather than replayed.
+func defaultFolderKey(userID int, seen []catalogv2.Folder) string {
+	parts := []string{strconv.Itoa(userID), "catalog.default-folder"}
 	for _, f := range seen {
-		ids = append(ids, strconv.FormatInt(f.ID, 10))
+		parts = append(parts, strconv.FormatInt(f.ID, 10))
 	}
-	return s.galgame.V2().CreateFolder(ctx, token, userID, catalogv2.FolderWrite{
-		Name: &name, Description: &empty, Visibility: &pub, IsDefault: &isDefault,
-	}, strings.Join(ids, ","))
+	return upstream.IdempotencyKey(parts...)
 }
 
 func defaultOf(folders []catalogv2.Folder) (int64, bool) {
@@ -133,9 +130,15 @@ func defaultOf(folders []catalogv2.Folder) (int64, bool) {
 	return 0, false
 }
 
+const defaultFolderAttempts = 3
+
+var defaultFolderRetryDelay = 250 * time.Millisecond
+
 // A person can end up with folders but no default — the flag moves, and a
 // moderator may have deleted the folder that held it — so the heart button
-// makes one rather than refusing.
+// makes one rather than refusing. The racing heart that loses is answered
+// IDEMPOTENCY_REQUEST_IN_PROGRESS while the winner's create runs; sending the
+// same key again once it has finished replays the winner's folder.
 func (s *PatchService) defaultFolderID(ctx context.Context, token string, userID int) (int64, error) {
 	folders, err := s.galgame.V2().MyFolders(ctx, token)
 	if err != nil {
@@ -144,21 +147,24 @@ func (s *PatchService) defaultFolderID(ctx context.Context, token string, userID
 	if id, ok := defaultOf(folders); ok {
 		return id, nil
 	}
-	created, err := s.createDefaultFolder(ctx, token, userID, folders)
-	if err == nil {
-		return created.ID, nil
+	name, empty, isDefault := defaultFolderName, "", true
+	pub := catalogv2.FolderVisibilityPublic
+	in := catalogv2.FolderWrite{Name: &name, Description: &empty, Visibility: &pub, IsDefault: &isDefault}
+	key := defaultFolderKey(userID, folders)
+	for attempt := 1; ; attempt++ {
+		created, err := s.galgame.V2().CreateFolder(ctx, token, key, in)
+		if err == nil {
+			return created.ID, nil
+		}
+		if upstream.KindOf(err) != upstream.Conflict || attempt == defaultFolderAttempts {
+			return 0, err
+		}
+		select {
+		case <-ctx.Done():
+			return 0, err
+		case <-time.After(defaultFolderRetryDelay):
+		}
 	}
-	if upstream.KindOf(err) != upstream.Conflict {
-		return 0, err
-	}
-	again, rErr := s.galgame.V2().MyFolders(ctx, token)
-	if rErr != nil {
-		return 0, err
-	}
-	if id, ok := defaultOf(again); ok {
-		return id, nil
-	}
-	return 0, err
 }
 
 // ToggleFavoriteInCatalog is the heart button. In means "in my default

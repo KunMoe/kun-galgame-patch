@@ -25,6 +25,7 @@ type folderWriteRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Visibility  *string `json:"visibility"`
+	SubmitKey   string  `json:"submit_key"`
 }
 
 type setFoldersRequest struct {
@@ -119,7 +120,8 @@ func (h *PatchHandler) CreateFolder(c fiber.Ctx) error {
 	if req.Description != nil {
 		description = *req.Description
 	}
-	folder, err := h.service.CreateFolder(c.Context(), token, middleware.MustGetUser(c).ID, *req.Name, description, visibility)
+	folder, err := h.service.CreateFolder(c.Context(), token,
+		pressKey(middleware.MustGetUser(c).ID, "catalog.folder", req.SubmitKey), *req.Name, description, visibility)
 	if err != nil {
 		return catalogErr(c, err, "无法创建收藏夹")
 	}

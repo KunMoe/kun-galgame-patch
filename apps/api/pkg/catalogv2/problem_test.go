@@ -32,7 +32,7 @@ func (l lane) call(c *catalogv2.Client) error {
 		_, _, err := c.GetMyClaim(ctx, "tok", 7)
 		return err
 	default:
-		_, err := c.CreateProposal(ctx, "tok", 42, catalogv2.EntityTypeWork, 7,
+		_, err := c.CreateProposal(ctx, "tok", "key-1", catalogv2.EntityTypeWork, 7,
 			map[string]any{"catalog.work.olang": "ja"}, "")
 		return err
 	}

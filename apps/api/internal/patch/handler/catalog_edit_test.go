@@ -30,6 +30,7 @@ type catalogEditFake struct {
 	lastQuery  map[string]string
 	lastCreate map[string]any
 	sawCreate  bool
+	createKeys []string
 	schema     string
 	createBody string
 	// Every include= the detail face was asked for, in order.
@@ -85,6 +86,7 @@ func (f *catalogEditFake) handler() http.HandlerFunc {
 				`"catalog.work.titles":[{"lang":"ja","title":"作品名","kind":0},{"lang":"","title":"略称","kind":1,"latin":"ryakusho"}]}}`))
 		case p == "/v2/me/proposals" && r.Method == http.MethodPost:
 			f.sawCreate = true
+			f.createKeys = append(f.createKeys, r.Header.Get("Idempotency-Key"))
 			raw, _ := io.ReadAll(r.Body)
 			if err := json.Unmarshal(raw, &f.lastCreate); err != nil {
 				f.t.Errorf("create body is not JSON: %v", err)
@@ -513,5 +515,33 @@ func TestCatalogEditWithoutACatalogClient(t *testing.T) {
 	r := testutil.ParseResponse(t, resp)
 	if resp.StatusCode != fiber.StatusServiceUnavailable || r.Code != 50320 {
 		t.Fatalf("got %d/%d, want 503/50320", resp.StatusCode, r.Code)
+	}
+}
+
+// The page mints submit_key once per press of 保存 and keeps it across that
+// press's retries; the key catalog dedupes on is derived from it, never from
+// the patch, which would replay a withdrawn proposal to a reader proposing the
+// same edit again.
+func TestCatalogEditSubmitKeysOnThePress(t *testing.T) {
+	fake := newCatalogEditFake(t)
+	ta, session := newCatalogEditApp(t, fake)
+
+	for _, body := range []string{
+		`{"display_name":"新名","submit_key":"press-1"}`,
+		`{"display_name":"新名","submit_key":"press-1"}`,
+		`{"display_name":"新名","submit_key":"press-2"}`,
+		`{"display_name":"新名"}`,
+	} {
+		resp := ta.Request(t, http.MethodPost, "/patch/9000/catalog-edit", body, session)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d", resp.StatusCode)
+		}
+	}
+	k := fake.createKeys
+	if len(k) != 4 || k[0] == "" || k[0] != k[1] || k[1] == k[2] || k[3] != "" {
+		t.Fatalf("keys = %q", k)
+	}
+	if k[0] == "press-1" {
+		t.Fatal("the page's value must not be forwarded as the key itself")
 	}
 }

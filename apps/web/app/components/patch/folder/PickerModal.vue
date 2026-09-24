@@ -11,6 +11,7 @@ const loading = ref(false)
 const saving = ref(false)
 const creating = ref(false)
 const newName = ref('')
+const submitKey = useSubmitKey()
 
 const load = async () => {
   loading.value = true
@@ -50,11 +51,12 @@ const createFolder = async () => {
   const name = newName.value.trim()
   if (!name) return
   creating.value = true
+  const payload = { name, description: '', visibility: 'public' }
   const res = await api.post<Folder>('/folder', {
-    name,
-    description: '',
-    visibility: 'public'
+    ...payload,
+    submit_key: submitKey.keyFor(payload)
   })
+  submitKey.settle(res.code)
   creating.value = false
   if (res.code !== 0) {
     useKunMessage(res.message || '创建收藏夹失败', 'error')

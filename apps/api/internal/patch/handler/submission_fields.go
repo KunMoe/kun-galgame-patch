@@ -54,6 +54,7 @@ type SubmissionForm struct {
 	ContentLimit     string `json:"content_limit"`
 	AgeLimit         string `json:"age_limit"`
 	OriginalLanguage string `json:"original_language"`
+	SubmitKey        string `json:"submit_key"`
 }
 
 func (f *SubmissionForm) nameFor(form string) string {
