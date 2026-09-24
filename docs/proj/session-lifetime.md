@@ -14,9 +14,27 @@ Backend-for-Frontend（BFF）会话**：
   **httpOnly 不透明 cookie** `moyu_session`。OAuth 的 access/refresh token **永不落到
   浏览器**；角色从会话里 access token 的 JWT `roles` claim 解出（`decodeJWTRoles`）。
 - 每个请求,`Auth` 中间件取 Redis 会话，按**两档**刷新 access token（见
-  `refreshOAuthToken`）：
+  `internal/middleware/session.go` 的 `refreshOAuthToken`）：
   - **硬过期**（`now >= ExpiresAt`）：**同步**刷新，失败且会话确已死则清 cookie 退出。
-  - **软窗口**（`T-5min .. T`）：**后台 goroutine** 刷新，放行本次请求。
+  - **软窗口**（`T-5min .. T`）：**后台 goroutine** 刷新，放行本次请求。回写用
+    `SET XX`，刷新途中用户登出的会话不会被写回来。
+
+## 什么才算「会话已死」（2026-09-24）
+
+只有三种情况答 40101（前端据此登出）、`OptionalAuth` 按匿名处理：Redis 里没有这个
+会话、刷新途中已登出、`/oauth/token` 以 `invalid_grant` 拒绝 refresh token（此时删会话、
+清 cookie）。其余一律保留会话：
+
+| 情况 | 答复 |
+|---|---|
+| `invalid_client`（401）、`unauthorized_client` 及其他 4xx | moyu 自己的密钥 / 授权类型配置错 → 记 ERROR、500 |
+| OAuth 5xx、网络失败、并发刷新 3 秒内没完成 | 503 |
+| OAuth 429 | 429 |
+| Redis 读会话或抢刷新锁失败 | 503（`OptionalAuth` 同样 503，不降级成匿名） |
+
+`docs/oauth/04-tokens-and-errors.md` 让 RP 在 `invalid_client` / `unauthorized_client`
+上也清会话；moyu 刻意不这样做：这两个错误说的是 moyu 自己的 client，照做的话一次
+`KUN_OAUTH_CLIENT_SECRET` 轮换就会让每个在线用户在 token 到期时被登出。
 
 > cookie 名 / 前缀刻意与 kungal 不同：本地 dev 两站同在 127.0.0.1、共享一个 Redis，
 > cookie 按域不按端口隔离，前缀撞了会互相读写/删对方会话。务必保持站点唯一。
@@ -68,5 +86,6 @@ timeout）——本次未做。
 | 文件 | 改动 |
 |---|---|
 | `internal/middleware/auth.go` | `SessionTTL` 7d→90d；新增 `sessionRenewPrefix`、`renewSlidingSession`；`Auth`/`OptionalAuth` 调用续期。`CreateSession`/`refreshOAuthToken` 本就引用 `SessionTTL`，自动跟随 |
+| `internal/middleware/session.go` | （2026-09-24）会话读取与刷新从 `auth.go` 拆出；按上表区分会话已死与瞬态失败 |
 
 `SecureCookies` 本仓已有（`internal/app/app.go` 按 `Server.Mode` 设置），续期 cookie 直接复用。

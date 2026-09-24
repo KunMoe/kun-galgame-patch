@@ -149,10 +149,10 @@ export const useApi = () => {
   // Policy mirrors User.vue EXACTLY: only 40100 (no/expired cookie) and 40101
   // (session dead) wipe the store. Any OTHER non-zero code (5xx, network blip,
   // transient OAuth refresh failure that KEEPS the cookie for the next-request
-  // retry) must NOT log out — that was the "登录之后过一会自动退出" bug. Caveat:
-  // the backend also returns 40101 on a transient refresh failure during the
-  // hard-expiry window; we accept that rare spurious logout to keep the
-  // contract identical to User.vue rather than guess from the client.
+  // retry) must NOT log out — that was the "登录之后过一会自动退出" bug. The
+  // backend answers 40101 only for a session that is really over (gone, logged
+  // out, or its refresh token refused as invalid_grant); a refresh that fails
+  // for any other reason is a 5xx or 429 and keeps the session.
   //
   // Client-only (store mutation + DOM toast must not run during SSR, where they
   // would desync hydration), and a no-op once already logged out — so a

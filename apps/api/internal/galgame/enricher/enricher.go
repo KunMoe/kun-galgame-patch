@@ -140,8 +140,7 @@ func resolveUser(ctx context.Context, users *userclient.Client, id int) *patchMo
 	if users == nil || id <= 0 {
 		return nil
 	}
-	b, _ := users.User(ctx, uint(id))
-	return patchModel.NewPatchUser(b)
+	return patchModel.NewPatchUser(userclient.BriefMapByInt(ctx, users, []int{id})[id])
 }
 
 func BuildPatchSummaryMap(ctx context.Context, galgame *galgameClient.Client, db PatchSummaryDB, patchIDs []int) map[int]patchModel.PatchSummary {

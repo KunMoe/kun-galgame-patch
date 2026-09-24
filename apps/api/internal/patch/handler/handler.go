@@ -451,8 +451,12 @@ func (h *PatchHandler) ToggleResourceLike(c fiber.Ctx) error {
 
 	user := middleware.MustGetUser(c)
 	liked, err := h.service.ToggleResourceLike(resourceID, user.ID)
+	if stderrors.Is(err, service.ErrResourceNotFound) {
+		return response.Error(c, errors.ErrNotFound("资源不存在"))
+	}
 	if err != nil {
-		return response.Error(c, errors.ErrNotFound(err.Error()))
+		slog.Error("ToggleResourceLike failed", "resourceID", resourceID, "error", err)
+		return response.Error(c, errors.ErrInternal("点赞失败，请稍后重试"))
 	}
 
 	return response.OK(c, map[string]bool{"liked": liked})

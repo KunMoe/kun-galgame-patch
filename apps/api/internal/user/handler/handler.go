@@ -266,7 +266,7 @@ func (h *UserHandler) GetMoemoepointLog(c fiber.Ctx) error {
 
 	items, hasMore, err := h.service.GetMoemoepointLog(c.Context(), user.ID, limit, beforeID, c.Query("reason"))
 	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
+		return response.Upstream(c, err, "")
 	}
 	return response.OK(c, fiber.Map{"items": items, "has_more": hasMore})
 }
@@ -279,7 +279,7 @@ func (h *UserHandler) SearchUsers(c fiber.Ctx) error {
 
 	users, err := h.service.SearchUsers(c.Context(), req.Query, 50)
 	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
+		return response.Upstream(c, err, "")
 	}
 
 	return response.OK(c, users)

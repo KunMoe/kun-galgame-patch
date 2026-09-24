@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"log/slog"
@@ -11,7 +12,9 @@ import (
 	"kun-galgame-patch-api/internal/auth/service"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
 
@@ -25,10 +28,11 @@ type AuthHandler struct {
 	rdb     *redis.Client
 	db      *gorm.DB
 	users   *userclient.Client
+	points  *moemoepoint.Awarder
 }
 
-func New(svc *service.AuthService, rdb *redis.Client, db *gorm.DB, users *userclient.Client) *AuthHandler {
-	return &AuthHandler{service: svc, rdb: rdb, db: db, users: users}
+func New(svc *service.AuthService, rdb *redis.Client, db *gorm.DB, users *userclient.Client, points *moemoepoint.Awarder) *AuthHandler {
+	return &AuthHandler{service: svc, rdb: rdb, db: db, users: users, points: points}
 }
 
 func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
@@ -37,30 +41,42 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	tokenResp, err := h.service.ExchangeCode(req.Code, req.CodeVerifier)
+	tokenResp, err := h.service.ExchangeCode(c.Context(), req.Code, req.CodeVerifier)
 	if err != nil {
-		slog.Error("OAuth code exchange failed", "error", err)
-		return response.Error(c, errors.ErrBadRequest("OAuth authentication failed"))
+		if upstream.KindOf(err) == upstream.Rejected {
+			slog.Warn("OAuth refused the authorization code", "error", err)
+		}
+		return response.Upstream(c, err, "登录凭据已失效，请重新登录")
 	}
 
-	userInfo, err := h.service.GetUserInfo(tokenResp.AccessToken)
+	// The code is spent from here on, so nothing below can be retried with it:
+	// the reader has to start the sign-in again, and the token it bought is
+	// revoked rather than left live upstream.
+	abandon := func(step string, err error) {
+		slog.Error("sign-in abandoned after the code exchange; its token is revoked",
+			"step", step, "error", err)
+		go h.service.RevokeOAuthToken(tokenResp.RefreshToken)
+	}
+
+	userInfo, err := h.service.GetUserInfo(c.Context(), tokenResp.AccessToken)
+	if stderrors.Is(err, service.ErrUserBanned) {
+		slog.Warn("OAuth login blocked: account banned (10014)")
+		go h.service.RevokeOAuthToken(tokenResp.RefreshToken)
+		return response.Error(c, errors.ErrAccountBanned(""))
+	}
 	if err != nil {
-		if stderrors.Is(err, service.ErrUserBanned) {
-			slog.Warn("OAuth login blocked: account banned (10014)")
-			return response.Error(c, errors.ErrAccountBanned(""))
-		}
-		slog.Error("OAuth get userinfo failed", "error", err)
-		return response.Error(c, errors.ErrBadRequest("failed to get user info"))
+		abandon("userinfo", err)
+		return response.Upstream(c, err, "")
 	}
 	if userInfo.ID == 0 {
-		slog.Error("OAuth userinfo missing id field", "sub", userInfo.Sub)
-		return response.Error(c, errors.ErrBadRequest("invalid user info"))
+		abandon("userinfo", stderrors.New("userinfo carried no id"))
+		return response.Error(c, errors.ErrInternal("登录失败，请重新登录"))
 	}
 
 	localUser, err := h.service.FindOrCreateUserByID(userInfo.ID)
 	if err != nil {
-		slog.Error("Failed to provision local user row", "userID", userInfo.ID, "error", err)
-		return response.Error(c, errors.ErrInternal(""))
+		abandon("local user row", err)
+		return response.Error(c, errors.ErrInternal("登录失败，请重新登录"))
 	}
 
 	go func(userID int, ip string) {
@@ -81,8 +97,8 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 	}
 
 	if err := middleware.CreateSession(c, h.rdb, session); err != nil {
-		slog.Error("Create session failed", "error", err)
-		return response.Error(c, errors.ErrInternal(""))
+		abandon("session", err)
+		return response.Error(c, errors.ErrInternal("登录失败，请重新登录"))
 	}
 
 	return response.OK(c, h.composeMe(c, localUser, userInfo.Sub, userInfo.Roles, userInfo.SiteRoles,
@@ -105,7 +121,7 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 }
 
 func (h *AuthHandler) Ecosystem(c fiber.Ctx) error {
-	return response.OK(c, fiber.Map{"apps": h.service.ListEcosystem()})
+	return response.OK(c, fiber.Map{"apps": h.service.ListEcosystem(c.Context())})
 }
 
 func (h *AuthHandler) Me(c fiber.Ctx) error {
@@ -114,7 +130,11 @@ func (h *AuthHandler) Me(c fiber.Ctx) error {
 
 	var local authModel.User
 	if err := h.db.First(&local, user.ID).Error; err != nil {
-		return response.Error(c, errors.ErrNotFound("user not found"))
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return response.Error(c, errors.ErrNotFound("user not found"))
+		}
+		slog.Error("read local user row", "userID", user.ID, "error", err)
+		return response.Error(c, errors.ErrInternal(""))
 	}
 
 	return response.OK(c, h.composeMe(c, &local, user.Sub, roles, middleware.GetSiteRoles(c),
@@ -135,10 +155,10 @@ func (h *AuthHandler) readContentStance(c fiber.Ctx) contentStance {
 	if token == "" {
 		return contentStance{}
 	}
-	info, err := h.service.GetUserInfo(token)
+	info, err := h.service.GetUserInfo(c.Context(), token)
 	if err != nil {
-		slog.Warn("OAuth userinfo lookup failed; leaving the content stance unreported",
-			"userID", middleware.GetUserID(c), "error", err)
+		logDegraded(c.Context(), "OAuth userinfo lookup failed; leaving the content stance unreported", err,
+			"userID", middleware.GetUserID(c))
 		return contentStance{}
 	}
 	return contentStance{adultConfirmed: info.AdultConfirmed, nsfwDisplay: info.NsfwDisplay}
@@ -167,13 +187,11 @@ func (h *AuthHandler) proxyUserOAuth(c fiber.Ctx, method, path string) error {
 	}
 	body := c.Body()
 	ct := string(c.Request().Header.ContentType())
-	status, raw, err := h.service.ProxyUserToOAuth(method, path, accessToken, body, ct)
+	status, raw, err := h.service.ProxyUserToOAuth(c.Context(), method, path, accessToken, body, ct)
 	if err != nil {
-		slog.Error("OAuth profile proxy failed", "method", method, "path", path, "error", err)
-		return response.Error(c, errors.ErrInternal("OAuth 服务不可达"))
+		return response.Upstream(c, err, "")
 	}
-	c.Set("Content-Type", "application/json")
-	return c.Status(status).Send(raw)
+	return relayOAuth(c, method+" "+path, status, raw)
 }
 
 func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, roles, siteRoles []string, stance contentStance) dto.MeResponse {
@@ -198,12 +216,21 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		NsfwDisplay:     stance.nsfwDisplay,
 	}
 
+	// The local column only moves on moyu's own awards, so the forum's and
+	// the shop's never reached it.
+	if balance, err := h.points.Balance(c.Context(), local.ID); err == nil {
+		resp.Moemoepoint = balance
+	} else {
+		logDegraded(c.Context(), "moemoepoint balance unavailable; /auth/me shows the cached one", err,
+			"userID", local.ID)
+	}
+
 	h.users.Invalidate(uint(local.ID))
 
 	brief, err := h.users.User(c.Context(), uint(local.ID))
 	if err != nil {
-		slog.Warn("OAuth /users/batch lookup failed in composeMe; returning empty display fields",
-			"userID", local.ID, "error", err)
+		logDegraded(c.Context(), "OAuth /users/batch lookup failed in composeMe; returning empty display fields",
+			err, "userID", local.ID)
 		return resp
 	}
 	if brief != nil {
@@ -220,4 +247,12 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		}
 	}
 	return resp
+}
+
+func logDegraded(ctx context.Context, msg string, err error, attrs ...any) {
+	level := slog.LevelError
+	if k := upstream.KindOf(err); k == upstream.Unavailable || k == upstream.RateLimited {
+		level = slog.LevelWarn
+	}
+	slog.Log(ctx, level, msg, append(attrs, "error", err)...)
 }

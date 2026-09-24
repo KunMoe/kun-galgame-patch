@@ -3,9 +3,12 @@ package moemoepoint
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/upstream"
 )
 
 func newTestClient(srv *httptest.Server) *Client {
@@ -140,5 +143,54 @@ func TestLog_EmptyNeverNil(t *testing.T) {
 	}
 	if items == nil {
 		t.Fatal("items must be non-nil (empty slice) so JSON marshals to [] not null")
+	}
+}
+
+// Status and body pairs are what infra answers on the s2s faces:
+// middleware.OAuthClientBasicAuth for the credential, and s2sTarget / respondErr
+// in apps/api/internal/platform/ledger/handler/handler.go for the rest.
+func TestAdjustErrorKinds(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   upstream.Kind
+	}{
+		{"bad secret", 401, `{"code":15008,"message":"客户端密钥无效"}`, upstream.Internal},
+		{"not an awarder", 403, `{"code":16005,"message":"该客户端无权发放萌萌点"}`, upstream.Internal},
+		{"key names another award", 400, `{"code":16004,"message":"幂等键已存在但请求内容不一致"}`, upstream.Conflict},
+		{"unknown user", 404, `{"code":10005,"message":"用户不存在"}`, upstream.NotFound},
+		{"ledger down", 500, `{"code":10,"message":"操作失败"}`, upstream.Unavailable},
+		{"gateway page", 502, `<html>bad gateway</html>`, upstream.Unavailable},
+		{"wrong origin", 404, `<html>not found</html>`, upstream.Internal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			_, err := newTestClient(srv).Adjust(context.Background(), 42,
+				AdjustRequest{Delta: 1, Reason: "liked", IdempotencyKey: "moyu:resource_like:7:42"})
+			if got := upstream.KindOf(err); got != tc.want {
+				t.Fatalf("kind = %d, want %d (err %v)", got, tc.want, err)
+			}
+		})
+	}
+}
+
+func TestFailureLevelIsLoudForMoyusOwnFaults(t *testing.T) {
+	for kind, want := range map[upstream.Kind]slog.Level{
+		upstream.Internal:    slog.LevelError,
+		upstream.Conflict:    slog.LevelError,
+		upstream.Unavailable: slog.LevelWarn,
+		upstream.RateLimited: slog.LevelWarn,
+		upstream.NotFound:    slog.LevelWarn,
+	} {
+		if got := failureLevel(&upstream.Error{Kind: kind}); got != want {
+			t.Errorf("kind %d logs at %v, want %v", kind, got, want)
+		}
 	}
 }

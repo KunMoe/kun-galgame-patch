@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	"kun-galgame-patch-api/internal/auth/repository"
 	"kun-galgame-patch-api/pkg/config"
+	"kun-galgame-patch-api/pkg/upstream"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -49,7 +51,7 @@ type EcosystemApp struct {
 	AutoConsent bool   `json:"auto_consent"`
 }
 
-func (s *AuthService) ListEcosystem() []EcosystemApp {
+func (s *AuthService) ListEcosystem(ctx context.Context) []EcosystemApp {
 	s.ecoMu.RLock()
 	apps, fetched := s.ecoApps, s.ecoFetched
 	s.ecoMu.RUnlock()
@@ -57,7 +59,7 @@ func (s *AuthService) ListEcosystem() []EcosystemApp {
 		return apps
 	}
 
-	fresh, err := s.fetchEcosystem()
+	fresh, err := s.fetchEcosystem(ctx)
 	if err != nil {
 		slog.Warn("OAuth ecosystem refetch failed; serving stale cache", "error", err, "stale_count", len(apps))
 		return apps
@@ -69,8 +71,8 @@ func (s *AuthService) ListEcosystem() []EcosystemApp {
 	return fresh
 }
 
-func (s *AuthService) fetchEcosystem() ([]EcosystemApp, error) {
-	req, err := http.NewRequest(http.MethodGet, s.oauthCfg.ServerURL+"/oauth/ecosystem", nil)
+func (s *AuthService) fetchEcosystem(ctx context.Context) ([]EcosystemApp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.oauthCfg.ServerURL+"/oauth/ecosystem", nil)
 	if err != nil {
 		return nil, fmt.Errorf("build oauth ecosystem request: %w", err)
 	}
@@ -80,7 +82,10 @@ func (s *AuthService) fetchEcosystem() ([]EcosystemApp, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read oauth ecosystem: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("oauth ecosystem failed (%d): %s", resp.StatusCode, truncate(string(respBody), 200))
 	}
@@ -125,26 +130,63 @@ type OAuthUserInfo struct {
 	NsfwDisplay    string `json:"nsfw_display"`
 }
 
-func (s *AuthService) ExchangeCode(code, codeVerifier string) (*OAuthTokenResponse, error) {
-	var tokenResp OAuthTokenResponse
-	err := s.oauthPostJSON("/oauth/token", map[string]string{
+func (s *AuthService) ExchangeCode(ctx context.Context, code, codeVerifier string) (*OAuthTokenResponse, error) {
+	payload, _ := json.Marshal(map[string]string{
 		"grant_type":    "authorization_code",
 		"code":          code,
 		"code_verifier": codeVerifier,
 		"client_id":     s.oauthCfg.ClientID,
 		"client_secret": s.oauthCfg.ClientSecret,
 		"redirect_uri":  s.oauthCfg.RedirectURI,
-	}, &tokenResp)
+	})
+	resp, body, err := s.oauthPost(ctx, "exchange", "/oauth/token", payload)
 	if err != nil {
 		return nil, err
 	}
-	return &tokenResp, nil
+	var tok struct {
+		OAuthTokenResponse
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	decodeErr := json.Unmarshal(body, &tok)
+	if resp.StatusCode == http.StatusOK && decodeErr == nil && tok.AccessToken != "" {
+		return &tok.OAuthTokenResponse, nil
+	}
+	return nil, tokenEndpointError("exchange", resp, tok.Error, tok.ErrorDescription)
+}
+
+// tokenEndpointError reads /oauth/token's RFC 6749 answer. invalid_grant is the
+// reader's code (spent, expired, or minted for another verifier); every other
+// 4xx is about moyu's own client registration or secret.
+func tokenEndpointError(op string, resp *http.Response, code, desc string) *upstream.Error {
+	kind := upstream.Internal
+	switch {
+	case resp.StatusCode >= 500:
+		kind = upstream.Unavailable
+	case resp.StatusCode == http.StatusTooManyRequests:
+		kind = upstream.RateLimited
+	case code == "invalid_grant":
+		kind = upstream.Rejected
+	}
+	return &upstream.Error{
+		Service:    "oauth",
+		Op:         op,
+		Kind:       kind,
+		Status:     resp.StatusCode,
+		Code:       code,
+		Detail:     desc,
+		RequestID:  resp.Header.Get("X-Request-ID"),
+		RetryAfter: upstream.RetryAfter(resp.Header),
+	}
 }
 
 var ErrUserBanned = errors.New("oauth user banned")
 
-func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
-	req, err := http.NewRequest(http.MethodGet, s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
+// GetUserInfo answers ErrUserBanned for the 403 infra's BearerAuth gives a
+// banned account. A 401 is not the reader's: moyu holds this token and has just
+// judged it unexpired.
+func (s *AuthService) GetUserInfo(ctx context.Context, accessToken string) (*OAuthUserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.oauthCfg.ServerURL+"/oauth/userinfo", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -152,21 +194,40 @@ func (s *AuthService) GetUserInfo(accessToken string) (*OAuthUserInfo, error) {
 
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("OAuth userinfo request failed: %w", err)
+		return nil, upstream.Transport("oauth", "userinfo", err)
 	}
 	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
+	body, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return nil, upstream.Transport("oauth", "userinfo", err)
+	}
 
 	if resp.StatusCode == http.StatusForbidden {
 		return nil, ErrUserBanned
 	}
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("OAuth userinfo request failed (%d): %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode != http.StatusOK {
+		var bearer struct {
+			Error            string `json:"error"`
+			ErrorDescription string `json:"error_description"`
+		}
+		_ = json.Unmarshal(body, &bearer)
+		kind := upstream.Internal
+		switch {
+		case resp.StatusCode >= 500:
+			kind = upstream.Unavailable
+		case resp.StatusCode == http.StatusTooManyRequests:
+			kind = upstream.RateLimited
+		}
+		return nil, &upstream.Error{
+			Service: "oauth", Op: "userinfo", Kind: kind, Status: resp.StatusCode,
+			Code: bearer.Error, Detail: bearer.ErrorDescription,
+			RequestID: resp.Header.Get("X-Request-ID"), RetryAfter: upstream.RetryAfter(resp.Header),
+		}
 	}
 	var info OAuthUserInfo
-	if err := json.Unmarshal(respBody, &info); err != nil {
-		return nil, fmt.Errorf("decode userinfo: %w", err)
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, &upstream.Error{Service: "oauth", Op: "userinfo", Kind: upstream.Internal,
+			Status: resp.StatusCode, Cause: fmt.Errorf("decode userinfo: %w", err)}
 	}
 	return &info, nil
 }
@@ -192,54 +253,35 @@ func (s *AuthService) FindOrCreateUserByID(id int) (*authModel.User, error) {
 }
 
 func (s *AuthService) RevokeOAuthToken(token string) {
-	if err := s.oauthPostJSON("/oauth/revoke", map[string]string{"token": token}, nil); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	payload, _ := json.Marshal(map[string]string{"token": token})
+	resp, _, err := s.oauthPost(ctx, "revoke", "/oauth/revoke", payload)
+	if err != nil {
 		slog.Error("OAuth revoke failed", "error", err)
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		slog.Error("OAuth revoke refused", "status", resp.StatusCode)
 	}
 }
 
-func (s *AuthService) oauthPostJSON(path string, body any, out any) error {
-	payload, err := json.Marshal(body)
+func (s *AuthService) oauthPost(ctx context.Context, op, path string, payload []byte) (*http.Response, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.oauthCfg.ServerURL+path, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("encode oauth request: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, s.oauthCfg.ServerURL+path, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("build oauth %s request: %w", path, err)
+		return nil, nil, fmt.Errorf("build oauth %s request: %w", path, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("OAuth %s request failed: %w", path, err)
+		return nil, nil, upstream.Transport("oauth", op, err)
 	}
 	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	var oauthErr struct {
-		Error            string `json:"error"`
-		ErrorDescription string `json:"error_description"`
+	body, err := upstream.ReadBody(resp.Body)
+	if err != nil {
+		return nil, nil, upstream.Transport("oauth", op, err)
 	}
-	_ = json.Unmarshal(respBody, &oauthErr)
-
-	if resp.StatusCode != 200 {
-		msg := oauthErr.ErrorDescription
-		if msg == "" {
-			msg = oauthErr.Error
-		}
-		if msg == "" {
-			msg = truncate(string(respBody), 500)
-		}
-		return fmt.Errorf("OAuth %s failed (%d): %s", path, resp.StatusCode, msg)
-	}
-
-	respPayload := json.RawMessage(respBody)
-	if out == nil || len(respPayload) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(respPayload, out); err != nil {
-		return fmt.Errorf("decode oauth data: %w", err)
-	}
-	return nil
+	return resp, body, nil
 }
 
 func truncate(s string, n int) string {
@@ -258,14 +300,16 @@ func (s *AuthService) PreferencesNamespace() string {
 }
 
 func (s *AuthService) ProxyUserToOAuth(
+	ctx context.Context,
 	method, path, accessToken string,
 	body []byte,
 	contentType string,
 ) (status int, raw []byte, err error) {
-	return s.ProxyUserToOAuthWithHeaders(method, path, accessToken, body, contentType, nil)
+	return s.ProxyUserToOAuthWithHeaders(ctx, method, path, accessToken, body, contentType, nil)
 }
 
 func (s *AuthService) ProxyUserToOAuthWithHeaders(
+	ctx context.Context,
 	method, path, accessToken string,
 	body []byte,
 	contentType string,
@@ -275,7 +319,7 @@ func (s *AuthService) ProxyUserToOAuthWithHeaders(
 	if len(body) > 0 {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, s.oauthCfg.ServerURL+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, s.oauthCfg.ServerURL+path, rdr)
 	if err != nil {
 		return 0, nil, fmt.Errorf("build oauth %s %s: %w", method, path, err)
 	}
@@ -291,9 +335,12 @@ func (s *AuthService) ProxyUserToOAuthWithHeaders(
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("oauth %s %s transport: %w", method, path, err)
+		return 0, nil, upstream.Transport("oauth", method+" "+path, err)
 	}
 	defer resp.Body.Close()
-	raw, _ = io.ReadAll(resp.Body)
+	raw, err = upstream.ReadBody(resp.Body)
+	if err != nil {
+		return 0, nil, upstream.Transport("oauth", method+" "+path, err)
+	}
 	return resp.StatusCode, raw, nil
 }

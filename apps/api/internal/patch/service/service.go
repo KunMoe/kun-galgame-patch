@@ -736,35 +736,62 @@ func (s *PatchService) ResolveDownloadURL(ctx context.Context, r *model.PatchRes
 	return nil
 }
 
+var ErrResourceNotFound = errors.New("resource not found")
+
 func (s *PatchService) ToggleResourceLike(resourceID, userID int) (bool, error) {
 	resource, err := s.repo.GetResourceByID(resourceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, ErrResourceNotFound
+	}
 	if err != nil {
-		return false, fmt.Errorf("resource not found")
+		return false, err
 	}
 
 	existing, err := s.repo.FindResourceLike(userID, resourceID)
 	if err == nil {
-		s.repo.DeleteResourceLike(existing.ID)
-		s.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
-			UpdateColumn("like_count", gorm.Expr("GREATEST(like_count - 1, 0)"))
-		if resource.UserID != userID {
-			go s.mp.Award(context.Background(), resource.UserID, -1, "liked",
-				fmt.Sprintf("resource:%d", resourceID), fmt.Sprintf("moyu:resource_unlike:%d", existing.ID))
+		removed, err := s.repo.DeleteResourceLike(existing.ID)
+		if err != nil {
+			return false, err
+		}
+		if removed {
+			s.settleResourceLike(resource, userID, -1)
 		}
 		return false, nil
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
 
-	rel := &model.UserPatchResourceLikeRelation{UserID: userID, ResourceID: resourceID}
-	s.repo.CreateResourceLike(rel)
-	s.db.Model(&model.PatchResource{}).Where("id = ?", resourceID).
-		UpdateColumn("like_count", gorm.Expr("like_count + 1"))
-	if resource.UserID != userID {
-		go s.mp.Award(context.Background(), resource.UserID, 1, "liked",
-			fmt.Sprintf("resource:%d", resourceID), fmt.Sprintf("moyu:resource_like:%d", rel.ID))
-		go s.notifyContentInteraction(userID, resource.UserID, resource.GalgameID,
-			"likeResource", fmt.Sprintf("/resource/%d", resourceID))
+	added, err := s.repo.CreateResourceLike(&model.UserPatchResourceLikeRelation{UserID: userID, ResourceID: resourceID})
+	if err != nil {
+		return false, err
+	}
+	if added {
+		s.settleResourceLike(resource, userID, 1)
+		if resource.UserID != userID {
+			go s.notifyContentInteraction(userID, resource.UserID, resource.GalgameID,
+				"likeResource", fmt.Sprintf("/resource/%d", resourceID))
+		}
 	}
 	return true, nil
+}
+
+// The award is keyed on the resource and the liker. It was keyed on the like
+// row's id, which is 0 when the insert loses a race: moyu:resource_like:0 was
+// then every resource's key, and the ledger refused it (16004) after first use.
+// Liking again after an unlike therefore awards nothing, as comment likes do.
+func (s *PatchService) settleResourceLike(resource *model.PatchResource, userID, delta int) {
+	s.db.Model(&model.PatchResource{}).Where("id = ?", resource.ID).
+		UpdateColumn("like_count", gorm.Expr("GREATEST(like_count + ?, 0)", delta))
+	if resource.UserID == userID {
+		return
+	}
+	event := "resource_like"
+	if delta < 0 {
+		event = "resource_unlike"
+	}
+	go s.mp.Award(context.Background(), resource.UserID, delta, "liked",
+		fmt.Sprintf("resource:%d", resource.ID), fmt.Sprintf("moyu:%s:%d:%d", event, resource.ID, userID))
 }
 
 func (s *PatchService) ToggleResourceFavorite(resourceID, userID int) (bool, error) {

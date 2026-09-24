@@ -112,15 +112,13 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 		FavoriteCount:  s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit),
 	}
 
-	if s.users != nil {
-		if b, _ := s.users.User(ctx, uint(userID)); b != nil {
-			resp.Name = b.Name
-			resp.Avatar = b.Avatar
-			resp.Cosmetics = b.Cosmetics
-			resp.Bio = b.Bio
-			resp.Roles = b.Roles
-			resp.SiteRoles = b.SiteRoles
-		}
+	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
+		resp.Name = b.Name
+		resp.Avatar = b.Avatar
+		resp.Cosmetics = b.Cosmetics
+		resp.Bio = b.Bio
+		resp.Roles = b.Roles
+		resp.SiteRoles = b.SiteRoles
 	}
 
 	if currentUID > 0 && currentUID != userID {
