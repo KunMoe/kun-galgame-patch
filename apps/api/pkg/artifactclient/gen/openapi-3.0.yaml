@@ -187,6 +187,26 @@ components:
         - code
         - message
       type: object
+    EnvelopeResumeUploadResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/EnvelopeResumeUploadResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        code:
+          format: int64
+          type: integer
+        data:
+          $ref: "#/components/schemas/ResumeUploadResponse"
+        message:
+          type: string
+      required:
+        - code
+        - message
+      type: object
     HouseError:
       additionalProperties: false
       properties:
@@ -302,6 +322,51 @@ components:
       required:
         - part_number
         - url
+      type: object
+    ResumeUploadResponse:
+      additionalProperties: false
+      properties:
+        expires_at:
+          type: string
+        multipart:
+          type: boolean
+        part_size:
+          format: int64
+          type: integer
+        part_urls:
+          items:
+            $ref: "#/components/schemas/PartURL"
+          nullable: true
+          type: array
+        upload_url:
+          type: string
+        uploaded_parts:
+          items:
+            $ref: "#/components/schemas/UploadedPart"
+          nullable: true
+          type: array
+        uuid:
+          type: string
+      required:
+        - uuid
+        - multipart
+        - expires_at
+      type: object
+    UploadedPart:
+      additionalProperties: false
+      properties:
+        etag:
+          type: string
+        part_number:
+          format: int32
+          type: integer
+        size:
+          format: int64
+          type: integer
+      required:
+        - part_number
+        - etag
+        - size
       type: object
 info:
   title: KUN Artifact Service
@@ -479,5 +544,32 @@ paths:
                 $ref: "#/components/schemas/HouseError"
           description: Error
       summary: Issue a download URL (presigned, or Worker URL for public)
+      tags:
+        - artifacts
+  /api/v1/artifacts/{uuid}/resume:
+    get:
+      operationId: resumeUpload
+      parameters:
+        - description: Artifact UUID
+          in: path
+          name: uuid
+          required: true
+          schema:
+            description: Artifact UUID
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeResumeUploadResponse"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseError"
+          description: Error
+      summary: Resume an interrupted upload (lists stored parts, re-presigns the missing ones)
       tags:
         - artifacts
