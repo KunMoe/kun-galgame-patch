@@ -29,7 +29,6 @@ var (
 	ErrGalgameMissing       = errors.New("galgame missing for vndb_id")
 	ErrArtifactUnconfigured = errors.New("artifact client is not configured")
 	ErrArtifactNotReady     = errors.New("artifact is missing or not ready")
-	ErrResourceNotFound     = errors.New("resource not found")
 )
 
 type AuditLogger interface {
