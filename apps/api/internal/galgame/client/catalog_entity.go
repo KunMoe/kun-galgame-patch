@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // KunLanguage is moyu's four name slots. Entity names travel whole rather than
@@ -408,16 +409,26 @@ func creditCharacter(roster map[int64]KunLanguage, c *catalogCreditItem) KunLang
 
 // The same person reaches moyu as "保住圭" from one source and "保住圭 (Hozumi
 // Kei)" from another; the parenthetical and the spacing are all that differ.
+// Only a trailing parenthetical goes: a company's leading type marker is part
+// of its name, and cutting at the first "(" turned "(有)PINA(ぴなぽんな)" into
+// an empty key, which dropped every such credit from its game page.
 func normalizeCreditName(name string) string {
-	if i := strings.IndexAny(name, "(（"); i >= 0 {
-		name = name[:i]
+	head, rest := "", name
+	if strings.HasPrefix(rest, "(") || strings.HasPrefix(rest, "（") {
+		if j := strings.IndexAny(rest, ")）"); j >= 0 {
+			_, w := utf8.DecodeRuneInString(rest[j:])
+			head, rest = rest[:j+w], rest[j+w:]
+		}
+	}
+	if i := strings.IndexAny(rest, "(（"); i >= 0 {
+		rest = rest[:i]
 	}
 	return strings.Map(func(r rune) rune {
 		if r == ' ' || r == '\t' || r == '　' {
 			return -1
 		}
 		return r
-	}, name)
+	}, head+rest)
 }
 
 // Merging two credits for the same person keeps the shorter form of each slot,
