@@ -48,6 +48,9 @@ type GalgameBrief struct {
 	NameZhCn                   string            `json:"name_zh_cn"`
 	NameJaJp                   string            `json:"name_ja_jp"`
 	NameZhTw                   string            `json:"name_zh_tw"`
+	DisplayName                string            `json:"display_name"`
+	Latin                      string            `json:"latin,omitempty"`
+	NameMachineTranslated      []string          `json:"name_machine_translated,omitempty"`
 	Banner                     string            `json:"banner"`
 	ContentLimit               string            `json:"content_limit"`
 	AgeLimit                   string            `json:"age_limit"`
@@ -79,6 +82,13 @@ type GalgameBrief struct {
 	Facet *GalgameFacet `json:"facet,omitempty"`
 }
 
+func (b *GalgameBrief) Names() KunLanguage {
+	return KunLanguage{
+		EnUs: b.NameEnUs, JaJp: b.NameJaJp, ZhCn: b.NameZhCn, ZhTw: b.NameZhTw,
+		DisplayName: b.DisplayName, Latin: b.Latin, MachineTranslated: b.NameMachineTranslated,
+	}
+}
+
 // The company a card credits. The name travels as four slots rather than one
 // string because the reader's 标题语言 setting picks between them in the
 // browser, the same way it does for a work title.
@@ -96,11 +106,15 @@ type GalgameHit struct {
 	NameZhCn                   string            `json:"name_zh_cn"`
 	NameJaJp                   string            `json:"name_ja_jp"`
 	NameZhTw                   string            `json:"name_zh_tw"`
+	DisplayName                string            `json:"display_name"`
+	Latin                      string            `json:"latin,omitempty"`
+	NameMachineTranslated      []string          `json:"name_machine_translated,omitempty"`
 	Banner                     string            `json:"banner"`
 	ContentLimit               string            `json:"content_limit"`
 	AgeLimit                   string            `json:"age_limit"`
 	OriginalLanguage           string            `json:"original_language"`
 	ReleaseDate                *string           `json:"release_date"`
+	ReleasePrecision           string            `json:"release_precision,omitempty"`
 	EffectiveBannerHash        string            `json:"effective_banner_hash"`
 	EffectiveBannerWidth       int               `json:"effective_banner_width,omitempty"`
 	EffectiveBannerHeight      int               `json:"effective_banner_height,omitempty"`
@@ -141,8 +155,8 @@ type Official struct {
 type CoverInput struct {
 	ImageHash string `json:"image_hash"`
 	SortOrder int    `json:"sort_order"`
-	Sexual    int    `json:"sexual"`
-	Violence  int    `json:"violence"`
+	Sexual    *int   `json:"sexual"`
+	Violence  *int   `json:"violence"`
 	Source    string `json:"source"`
 	SourceKey string `json:"source_key"`
 	Kind      string `json:"kind,omitempty"`
@@ -155,8 +169,8 @@ type ScreenshotInput struct {
 	ImageHash string `json:"image_hash"`
 	SortOrder int    `json:"sort_order"`
 	Caption   string `json:"caption"`
-	Sexual    int    `json:"sexual"`
-	Violence  int    `json:"violence"`
+	Sexual    *int   `json:"sexual"`
+	Violence  *int   `json:"violence"`
 	Source    string `json:"source"`
 	SourceKey string `json:"source_key"`
 	Width     int    `json:"width,omitempty"`
@@ -282,23 +296,27 @@ type GalgameSeries struct {
 }
 
 type GalgameFull struct {
-	ID               int     `json:"id"`
-	ForumGID         int     `json:"forum_gid,omitempty"`
-	VndbID           string  `json:"vndb_id"`
-	ClaimState       string  `json:"claim_state"`
-	NameEnUs         string  `json:"name_en_us"`
-	NameZhCn         string  `json:"name_zh_cn"`
-	NameJaJp         string  `json:"name_ja_jp"`
-	NameZhTw         string  `json:"name_zh_tw"`
-	Banner           string  `json:"banner"`
-	IntroEnUs        string  `json:"intro_en_us"`
-	IntroZhCn        string  `json:"intro_zh_cn"`
-	IntroJaJp        string  `json:"intro_ja_jp"`
-	IntroZhTw        string  `json:"intro_zh_tw"`
-	ContentLimit     string  `json:"content_limit"`
-	AgeLimit         string  `json:"age_limit"`
-	OriginalLanguage string  `json:"original_language"`
-	ReleaseDate      *string `json:"release_date"`
+	ID                    int      `json:"id"`
+	ForumGID              int      `json:"forum_gid,omitempty"`
+	VndbID                string   `json:"vndb_id"`
+	ClaimState            string   `json:"claim_state"`
+	NameEnUs              string   `json:"name_en_us"`
+	NameZhCn              string   `json:"name_zh_cn"`
+	NameJaJp              string   `json:"name_ja_jp"`
+	NameZhTw              string   `json:"name_zh_tw"`
+	DisplayName           string   `json:"display_name"`
+	Latin                 string   `json:"latin,omitempty"`
+	NameMachineTranslated []string `json:"name_machine_translated,omitempty"`
+	Banner                string   `json:"banner"`
+	IntroEnUs             string   `json:"intro_en_us"`
+	IntroZhCn             string   `json:"intro_zh_cn"`
+	IntroJaJp             string   `json:"intro_ja_jp"`
+	IntroZhTw             string   `json:"intro_zh_tw"`
+	ContentLimit          string   `json:"content_limit"`
+	AgeLimit              string   `json:"age_limit"`
+	OriginalLanguage      string   `json:"original_language"`
+	ReleaseDate           *string  `json:"release_date"`
+	ReleasePrecision      string   `json:"release_precision,omitempty"`
 
 	Tag        []GalgameFullTag      `json:"tag"`
 	Official   []GalgameFullOfficial `json:"official"`
@@ -322,6 +340,13 @@ type GalgameFull struct {
 	Updated                    string            `json:"updated"`
 }
 
+func (f *GalgameFull) Names() KunLanguage {
+	return KunLanguage{
+		EnUs: f.NameEnUs, JaJp: f.NameJaJp, ZhCn: f.NameZhCn, ZhTw: f.NameZhTw,
+		DisplayName: f.DisplayName, Latin: f.Latin, MachineTranslated: f.NameMachineTranslated,
+	}
+}
+
 type GalgameDetailEnvelope struct {
 	Galgame GalgameFull `json:"galgame"`
 }
@@ -335,7 +360,7 @@ func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (
 	if !detail.ClaimedBy.renderable() {
 		return nil, catalogv2.Absent("GET /v2/catalog/works/{id}")
 	}
-	full := catalogWorkToFull(&detail)
+	full := catalogWorkToFull(&detail, revealsSexual(contentLimit))
 	if !gateFor(contentLimit).allows(full.ContentLimit) {
 		return nil, catalogv2.Absent("GET /v2/catalog/works/{id}")
 	}

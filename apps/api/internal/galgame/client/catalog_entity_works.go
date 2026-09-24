@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"log/slog"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
@@ -54,14 +55,9 @@ func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, curso
 		if !ok {
 			continue
 		}
-		voices := make([]GalgamePersonRef, 0, len(a.Voices))
-		for _, v := range personRefsFrom(a.Voices) {
-			if name := v.names(); name.canonical() != "" {
-				voices = append(voices, GalgamePersonRef{ID: int(v.ID), Name: name})
-			}
-		}
 		out.Items = append(out.Items, GalgameEntityWork{
-			Galgame: card, RosterRole: a.RosterRole, Spoiler: spoilerInt(a.Spoiler), Voices: voices,
+			Galgame: card, RosterRole: a.RosterRole, Spoiler: spoilerInt(a.Spoiler),
+			Voices: namedPeople(personRefsFrom(a.Voices), "work", id),
 		})
 	}
 	return out, nil
@@ -117,7 +113,12 @@ func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, ga
 	seen := make(map[int64]bool, len(works))
 	for i := range works {
 		id, ok := works[i].IntID()
-		if !ok || seen[id] {
+		if !ok {
+			slog.Warn("catalog entity sub-face names a work whose id is not a catalog id; it is dropped",
+				"id", works[i].ID, "display_name", works[i].DisplayName)
+			continue
+		}
+		if seen[id] {
 			continue
 		}
 		seen[id] = true

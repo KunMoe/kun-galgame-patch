@@ -72,8 +72,8 @@ type catalogCoverSlot struct {
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
 	Thumbhash string `json:"thumbhash"`
-	Sexual    int    `json:"sexual"`
-	Violence  int    `json:"violence"`
+	Sexual    *int   `json:"sexual"`
+	Violence  *int   `json:"violence"`
 	Source    string `json:"source"`
 }
 
@@ -83,16 +83,18 @@ type catalogCoverSlots struct {
 }
 
 type catalogWorkListItem struct {
-	ID            int64             `json:"id"`
-	Medium        string            `json:"medium"`
-	DisplayName   string            `json:"display_name"`
-	ContentRating string            `json:"content_rating"`
-	ContentLimit  string            `json:"content_limit"`
-	OLang         string            `json:"olang"`
-	ReleaseDate   *string           `json:"release_date"`
-	ClaimedBy     *catalogClaimedBy `json:"claimed_by"`
-	Cover         string            `json:"cover"`
-	Updated       string            `json:"updated"`
+	ID               int64             `json:"id"`
+	Medium           string            `json:"medium"`
+	DisplayName      string            `json:"display_name"`
+	Latin            string            `json:"latin"`
+	ContentRating    string            `json:"content_rating"`
+	ContentLimit     string            `json:"content_limit"`
+	OLang            string            `json:"olang"`
+	ReleaseDate      *string           `json:"release_date"`
+	ReleasePrecision string            `json:"release_date_precision"`
+	ClaimedBy        *catalogClaimedBy `json:"claimed_by"`
+	Cover            string            `json:"cover"`
+	Updated          string            `json:"updated"`
 
 	Localized map[string]catalogLocalizedName `json:"localized"`
 	Covers    *catalogCoverSlots              `json:"covers"`
@@ -140,8 +142,8 @@ type catalogDetailCover struct {
 	URL            string `json:"url"`
 	Kind           string `json:"kind"`
 	PortraitPinned bool   `json:"portrait_pinned"`
-	Sexual         int    `json:"sexual"`
-	Violence       int    `json:"violence"`
+	Sexual         *int   `json:"sexual"`
+	Violence       *int   `json:"violence"`
 	Source         string `json:"source"`
 	Width          int    `json:"width"`
 	Height         int    `json:"height"`
@@ -151,8 +153,8 @@ type catalogDetailCover struct {
 type catalogScreenshot struct {
 	URL       string `json:"url"`
 	Caption   string `json:"caption"`
-	Sexual    int    `json:"sexual"`
-	Violence  int    `json:"violence"`
+	Sexual    *int   `json:"sexual"`
+	Violence  *int   `json:"violence"`
 	Source    string `json:"source"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
@@ -191,17 +193,19 @@ type catalogWorkSeries struct {
 }
 
 type catalogWork struct {
-	ID            int64             `json:"id"`
-	Medium        string            `json:"medium"`
-	DisplayName   string            `json:"display_name"`
-	OLang         string            `json:"olang"`
-	ContentRating string            `json:"content_rating"`
-	ContentLimit  string            `json:"content_limit"`
-	ReleaseDate   *string           `json:"release_date"`
-	Created       string            `json:"created"`
-	Updated       string            `json:"updated"`
-	Refs          []catalogRef      `json:"refs"`
-	ClaimedBy     *catalogClaimedBy `json:"claimed_by"`
+	ID               int64             `json:"id"`
+	Medium           string            `json:"medium"`
+	DisplayName      string            `json:"display_name"`
+	Latin            string            `json:"latin"`
+	OLang            string            `json:"olang"`
+	ContentRating    string            `json:"content_rating"`
+	ContentLimit     string            `json:"content_limit"`
+	ReleaseDate      *string           `json:"release_date"`
+	ReleasePrecision string            `json:"release_date_precision"`
+	Created          string            `json:"created"`
+	Updated          string            `json:"updated"`
+	Refs             []catalogRef      `json:"refs"`
+	ClaimedBy        *catalogClaimedBy `json:"claimed_by"`
 
 	Localized map[string]catalogLocalizedName `json:"localized"`
 
@@ -216,36 +220,4 @@ type catalogWork struct {
 	Characters []catalogWorkCharacter `json:"characters"`
 	Ratings    []catalogRating        `json:"ratings"`
 	Series     []catalogWorkSeries    `json:"series"`
-}
-
-type catalogLookupPair struct {
-	Source     string `json:"source"`
-	ExternalID string `json:"external_id"`
-}
-
-type catalogLookupBatchRequest struct {
-	Items []catalogLookupPair `json:"items"`
-}
-
-type catalogLookupBatchItem struct {
-	Source     string            `json:"source"`
-	ExternalID string            `json:"external_id"`
-	Work       *catalogWorkBrief `json:"work"`
-	ClaimedBy  *catalogClaimedBy `json:"claimed_by"`
-}
-
-type catalogWorkBrief struct {
-	ID            int64  `json:"id"`
-	Medium        string `json:"medium"`
-	DisplayName   string `json:"display_name"`
-	ContentRating string `json:"content_rating"`
-}
-
-type catalogLookupBatchData struct {
-	Items []catalogLookupBatchItem `json:"items"`
-}
-
-type catalogLookupData struct {
-	Work      *catalogWorkBrief `json:"work"`
-	ClaimedBy *catalogClaimedBy `json:"claimed_by"`
 }

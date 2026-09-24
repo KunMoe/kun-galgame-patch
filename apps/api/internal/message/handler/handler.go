@@ -79,10 +79,12 @@ func (h *MessageHandler) attachGalgameNames(ctx context.Context, msgs []userMode
 	for i := range briefs {
 		b := &briefs[i]
 		nameByID[b.ID] = map[string]string{
-			"en-us": b.NameEnUs,
-			"ja-jp": b.NameJaJp,
-			"zh-cn": b.NameZhCn,
-			"zh-tw": b.NameZhTw,
+			"en-us":        b.NameEnUs,
+			"ja-jp":        b.NameJaJp,
+			"zh-cn":        b.NameZhCn,
+			"zh-tw":        b.NameZhTw,
+			"display_name": b.DisplayName,
+			"latin":        b.Latin,
 		}
 	}
 	for idx, id := range idByIdx {

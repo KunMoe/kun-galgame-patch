@@ -89,6 +89,9 @@ interface GalgameCard {
     name_zh_cn: string
     name_ja_jp: string
     name_zh_tw: string
+    display_name?: string
+    latin?: string
+    name_machine_translated?: Language[]
     banner: string
     effective_banner_hash: string
     // Pinned cover's intrinsic metadata (filled at read time by wiki from
@@ -144,8 +147,10 @@ interface GalgameMaker {
 interface GalgameCoverRow {
   image_hash: string
   sort_order: number
-  sexual: number
-  violence: number
+  // 0-2 on catalog's scales (safe/suggestive/explicit, tame/violent/brutal).
+  // null means nobody assessed the image, which is not safe.
+  sexual: number | null
+  violence: number | null
   source: string
   source_key: string
   // VNDB cover type (covers only): '' | main | pkgfront | dig | pkgback |

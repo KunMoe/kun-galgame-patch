@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -77,6 +78,7 @@ func (c *Client) facetsByWorkID(ctx context.Context, ids []int64, gate catalogGa
 	for i := range page.Items {
 		id, ok := page.Items[i].IntID()
 		if !ok {
+			slog.Warn("catalog work id is not a catalog id; its shelf is dropped", "id", page.Items[i].ID)
 			continue
 		}
 		out[id] = facetOf(page.Items[i], sexualOK)

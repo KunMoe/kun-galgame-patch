@@ -2,6 +2,7 @@ package catalogv2
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"strconv"
 )
@@ -56,22 +57,27 @@ func (c *Client) Redirects(ctx context.Context, cursor string, limit int) (Redir
 		return RedirectPage{}, err
 	}
 	out := RedirectPage{Items: make([]Redirect, 0, len(page.Items)), NextCursor: page.Next()}
+	var foreign []string
 	for i := range page.Items {
 		w := &page.Items[i]
 		if w.TargetObject != "" && w.TargetObject != "work" {
+			foreign = append(foreign, w.TargetObject+":"+w.OldID+"->"+w.CurrentID)
 			continue
 		}
-		oldID, ok := ParseID(w.OldID)
-		if !ok {
-			continue
-		}
-		currentID, ok := ParseID(w.CurrentID)
-		if !ok {
+		oldID, okOld := ParseID(w.OldID)
+		currentID, okCurrent := ParseID(w.CurrentID)
+		if !okOld || !okCurrent {
+			slog.Warn("catalog redirects feed: dropped a merge whose ids are not catalog ids",
+				"old_id", w.OldID, "current_id", w.CurrentID, "merged_at", w.MergedAt, "cursor", cursor)
 			continue
 		}
 		out.Items = append(out.Items, Redirect{
 			OldID: oldID, CurrentID: currentID, MergedAt: w.MergedAt,
 		})
+	}
+	if len(foreign) > 0 {
+		slog.Warn("catalog redirects feed: dropped merges of another family",
+			"count", len(foreign), "rows", foreign, "cursor", cursor)
 	}
 	return out, nil
 }

@@ -19,10 +19,12 @@ type PatchSummary struct {
 }
 
 type PatchSummaryName struct {
-	EnUs string `json:"en-us"`
-	JaJp string `json:"ja-jp"`
-	ZhCn string `json:"zh-cn"`
-	ZhTw string `json:"zh-tw"`
+	EnUs        string `json:"en-us"`
+	JaJp        string `json:"ja-jp"`
+	ZhCn        string `json:"zh-cn"`
+	ZhTw        string `json:"zh-tw"`
+	DisplayName string `json:"display_name,omitempty"`
+	Latin       string `json:"latin,omitempty"`
 }
 
 func renderNote(src string) string {

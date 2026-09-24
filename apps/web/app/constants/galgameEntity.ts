@@ -1,9 +1,12 @@
 import type { KunUIColor } from '@kungal/ui-core'
 
+// catalog's roster_role: main | secondary | appears | unknown. unknown is a
+// character reached only through a voice credit, with no roster row to rank it.
 export const GALGAME_CHARACTER_KIND_MAP: Record<string, string> = {
   main: '主角',
   secondary: '配角',
-  appears: '登场'
+  appears: '登场',
+  unknown: '未知'
 }
 
 export const GALGAME_CHARACTER_KIND_COLOR: Record<string, KunUIColor> = {
@@ -17,7 +20,8 @@ export const GALGAME_CHARACTER_SPOILER_MAP: Record<number, string> = {
 
 export const GALGAME_STAFF_GENDER_MAP: Record<number, string> = {
   1: '男',
-  2: '女'
+  2: '女',
+  3: '其他'
 }
 
 // catalog's label_kind, which is what the 会社 chip carries. Rendering it raw
@@ -169,6 +173,19 @@ export const KUN_EXTERNAL_RATING_MAP: Record<string, ExternalRatingMeta> = {
     buckets: pointBuckets(5),
     bucketLabel: String,
     tier: { cutoffs: [3.8, 4.2, 4.5, 4.7], minVotes: 10 }
+  },
+  // catalog carries HowLongToBeat on its 0-100 scale in 5-point buckets, which
+  // the out-of-10 fallback below cannot read. Its tier lines have not been
+  // calibrated against the corpus like the others', so it carries no badge.
+  howlongtobeat: {
+    label: 'HowLongToBeat',
+    max: 100,
+    suffix: '/100',
+    hint: 'HowLongToBeat 用户评分',
+    format: (score) => String(Math.round(score)),
+    buckets: Array.from({ length: 21 }, (_, index) => index * 5),
+    bucketLabel: String,
+    tier: { cutoffs: [60, 70, 80, 90], minVotes: Number.POSITIVE_INFINITY }
   }
 }
 

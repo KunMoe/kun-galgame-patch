@@ -1,6 +1,7 @@
 package client
 
 import (
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,46 +69,27 @@ func contentAxisOf(verdict, rating string) (contentLimit, ageLimit string) {
 	return "nsfw", ageLimit
 }
 
-func normalizeCatalogDate(date *string) (*string, string) {
-	if date == nil {
-		return nil, ""
-	}
-	d := strings.TrimSpace(*date)
-	switch len(d) {
-	case 10:
-		return &d, "day"
-	case 7:
-		full := d + "-01"
-		return &full, "month"
-	case 4:
-		full := d + "-01-01"
-		return &full, "year"
-	}
-	return nil, ""
-}
-
 // Several catalog tags fold onto one moyu column — zh-Hant and zh-TW both land
 // on zh-tw — so the fold has to elect a winner, and map iteration is random in
 // Go. Source before machine, then the lowest tag, so the same payload always
 // renders the same title.
-func localizedByProductKey(localized map[string]catalogLocalizedName) map[string]string {
+func localizedByProductKey(localized map[string]catalogLocalizedName) map[string]catalogLocalizedName {
 	tags := make([]string, 0, len(localized))
 	for tag := range localized {
 		tags = append(tags, tag)
 	}
 	sort.Strings(tags)
 
-	out := make(map[string]string, 4)
+	out := make(map[string]catalogLocalizedName, len(kunSlots))
 	for _, machine := range []bool{false, true} {
 		for _, tag := range tags {
 			row := localized[tag]
 			if row.Machine != machine || row.Value == "" {
 				continue
 			}
-			switch k := productLangFromCatalog(tag); k {
-			case "ja-jp", "zh-cn", "zh-tw", "en-us":
-				if _, taken := out[k]; !taken {
-					out[k] = row.Value
+			if slot, ok := kunSlot(tag); ok {
+				if _, taken := out[slot]; !taken {
+					out[slot] = row
 				}
 			}
 		}
@@ -115,9 +97,18 @@ func localizedByProductKey(localized map[string]catalogLocalizedName) map[string
 	return out
 }
 
-func namesOf(localized map[string]catalogLocalizedName) (ja, zhCN, zhTW, en string) {
-	n := localizedByProductKey(localized)
-	return n["ja-jp"], n["zh-cn"], n["zh-tw"], n["en-us"]
+// A work's display_name is its official title in its original language. It
+// used to land in ja-jp whatever that language was, so a Chinese or English
+// work read as Japanese; it now fills its own language's slot when localized
+// left that empty, and travels whole for a language no slot speaks.
+func workNames(localized map[string]catalogLocalizedName, displayName, olang, latin string) KunLanguage {
+	slots := localizedByProductKey(localized)
+	if slot, ok := kunSlot(olang); ok && displayName != "" && slots[slot].Value == "" {
+		slots[slot] = catalogLocalizedName{Value: displayName}
+	}
+	n := kunLanguageOf(slots)
+	n.DisplayName, n.Latin = displayName, latin
+	return n
 }
 
 func vndbIDOf(refs []catalogRef) string {
@@ -227,9 +218,8 @@ func claimStateOf(c *catalogClaimedBy) string {
 }
 
 func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
-	ja, zhCN, zhTW, en := namesOf(it.Localized)
+	names := workNames(it.Localized, it.DisplayName, it.OLang, it.Latin)
 	cl, age := contentAxisOf(it.ContentLimit, it.ContentRating)
-	date, precision := normalizeCatalogDate(it.ReleaseDate)
 	hash, w, h, th := coverOf(it)
 
 	b := GalgameBrief{
@@ -238,15 +228,18 @@ func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 		VndbID:                   vndbIDOf(it.Refs),
 		DlsiteWorkno:             dlsiteWorknoOf(it.Refs),
 		ClaimState:               claimStateOf(it.ClaimedBy),
-		NameJaJp:                 ja,
-		NameZhCn:                 zhCN,
-		NameZhTw:                 zhTW,
-		NameEnUs:                 en,
+		NameJaJp:                 names.JaJp,
+		NameZhCn:                 names.ZhCn,
+		NameZhTw:                 names.ZhTw,
+		NameEnUs:                 names.EnUs,
+		DisplayName:              names.DisplayName,
+		Latin:                    names.Latin,
+		NameMachineTranslated:    names.MachineTranslated,
 		ContentLimit:             cl,
 		AgeLimit:                 age,
 		OriginalLanguage:         productLangFromCatalog(it.OLang),
-		ReleaseDate:              date,
-		ReleasePrecision:         precision,
+		ReleaseDate:              it.ReleaseDate,
+		ReleasePrecision:         it.ReleasePrecision,
 		EffectiveBannerHash:      hash,
 		EffectiveBannerWidth:     w,
 		EffectiveBannerHeight:    h,
@@ -255,9 +248,6 @@ func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 	b.EffectivePortraitHash, b.EffectivePortraitWidth,
 		b.EffectivePortraitHeight, b.EffectivePortraitThumbhash = portraitOf(it.Covers)
 	b.Maker = makerOf(it.Labels)
-	if ja == "" && zhCN == "" && zhTW == "" && en == "" {
-		b.NameJaJp = it.DisplayName
-	}
 	return b
 }
 
@@ -272,10 +262,14 @@ func catalogItemToHit(it *catalogWorkListItem) GalgameHit {
 		NameZhCn:                 b.NameZhCn,
 		NameJaJp:                 b.NameJaJp,
 		NameZhTw:                 b.NameZhTw,
+		DisplayName:              b.DisplayName,
+		Latin:                    b.Latin,
+		NameMachineTranslated:    b.NameMachineTranslated,
 		ContentLimit:             b.ContentLimit,
 		AgeLimit:                 b.AgeLimit,
 		OriginalLanguage:         b.OriginalLanguage,
 		ReleaseDate:              b.ReleaseDate,
+		ReleasePrecision:         b.ReleasePrecision,
 		EffectiveBannerHash:      b.EffectiveBannerHash,
 		EffectiveBannerWidth:     b.EffectiveBannerWidth,
 		EffectiveBannerHeight:    b.EffectiveBannerHeight,
@@ -386,40 +380,40 @@ func portraitCover(covers []catalogDetailCover) *catalogDetailCover {
 	return nil
 }
 
-func catalogWorkToFull(w *catalogWork) GalgameFull {
+func catalogWorkToFull(w *catalogWork, revealSexual bool) GalgameFull {
 	cl, age := contentAxisOf(w.ContentLimit, w.ContentRating)
-	date, _ := normalizeCatalogDate(w.ReleaseDate)
-	names := localizedByProductKey(w.Localized)
+	names := workNames(w.Localized, w.DisplayName, w.OLang, w.Latin)
 	intros := introByProductKey(w.Intros)
 
 	f := GalgameFull{
-		ID:               w.publicGID(),
-		ForumGID:         w.ClaimedBy.forumGID(),
-		VndbID:           vndbIDOf(w.Refs),
-		ClaimState:       claimStateOf(w.ClaimedBy),
-		NameJaJp:         names["ja-jp"],
-		NameZhCn:         names["zh-cn"],
-		NameZhTw:         names["zh-tw"],
-		NameEnUs:         names["en-us"],
-		IntroJaJp:        intros["ja-jp"],
-		IntroZhCn:        intros["zh-cn"],
-		IntroZhTw:        intros["zh-tw"],
-		IntroEnUs:        intros["en-us"],
-		ContentLimit:     cl,
-		AgeLimit:         age,
-		OriginalLanguage: productLangFromCatalog(w.OLang),
-		ReleaseDate:      date,
-		Created:          w.Created,
-		Updated:          w.Updated,
-		Covers:           catalogCoversToInputs(w.Covers),
-		Screenshots:      catalogScreenshotsToInputs(w.Screenshots),
-		Characters:       catalogCharacters(w.Characters),
-		Staff:            catalogStaff(w.Credits, w.Characters),
-		Ratings:          catalogRatings(w.Ratings),
-		Series:           catalogSeries(w.Series),
-	}
-	if f.NameJaJp == "" && f.NameZhCn == "" && f.NameZhTw == "" && f.NameEnUs == "" {
-		f.NameJaJp = w.DisplayName
+		ID:                    w.publicGID(),
+		ForumGID:              w.ClaimedBy.forumGID(),
+		VndbID:                vndbIDOf(w.Refs),
+		ClaimState:            claimStateOf(w.ClaimedBy),
+		NameJaJp:              names.JaJp,
+		NameZhCn:              names.ZhCn,
+		NameZhTw:              names.ZhTw,
+		NameEnUs:              names.EnUs,
+		DisplayName:           names.DisplayName,
+		Latin:                 names.Latin,
+		NameMachineTranslated: names.MachineTranslated,
+		IntroJaJp:             intros["ja-jp"],
+		IntroZhCn:             intros["zh-cn"],
+		IntroZhTw:             intros["zh-tw"],
+		IntroEnUs:             intros["en-us"],
+		ContentLimit:          cl,
+		AgeLimit:              age,
+		OriginalLanguage:      productLangFromCatalog(w.OLang),
+		ReleaseDate:           w.ReleaseDate,
+		ReleasePrecision:      w.ReleasePrecision,
+		Created:               w.Created,
+		Updated:               w.Updated,
+		Covers:                catalogCoversToInputs(w.Covers),
+		Screenshots:           catalogScreenshotsToInputs(w.Screenshots),
+		Characters:            catalogCharacters(w.Characters, revealSexual),
+		Staff:                 catalogStaff(w.Credits, w.Characters),
+		Ratings:               catalogRatings(w.Ratings),
+		Series:                catalogSeries(w.Series),
 	}
 	if c := heroCover(w.Covers); c != nil {
 		f.EffectiveBannerHash = hashFromURL(c.URL)
@@ -485,7 +479,8 @@ func catalogLabelToFullOfficial(gid int, l *catalogWorkLabel) GalgameFullOfficia
 func catalogSeries(rows []catalogWorkSeries) []GalgameSeries {
 	out := make([]GalgameSeries, 0, len(rows))
 	for _, r := range rows {
-		if r.ID == 0 || strings.TrimSpace(r.Name) == "" {
+		if strings.TrimSpace(r.Name) == "" {
+			slog.Warn("catalog series has no name; it is dropped", "series", r.ID)
 			continue
 		}
 		out = append(out, GalgameSeries{

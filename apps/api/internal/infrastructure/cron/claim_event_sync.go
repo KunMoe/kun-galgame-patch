@@ -61,10 +61,7 @@ func RunClaimEventSync(
 	applied := 0
 	for page := 1; page <= claimSyncMaxPages; page++ {
 		feed, ferr := catalog.ClaimEvents(ctx, cursor, claimSyncBatch, claimSyncSite)
-		if ferr != nil {
-			return applied, cursor, fmt.Errorf("fetch claim feed: %w", ferr)
-		}
-		if len(feed) == 0 {
+		if ferr == nil && len(feed) == 0 {
 			break
 		}
 		for i := range feed {
@@ -81,6 +78,9 @@ func RunClaimEventSync(
 			}
 			cursor = next
 			applied++
+		}
+		if ferr != nil {
+			return applied, cursor, fmt.Errorf("fetch claim feed: %w", ferr)
 		}
 		if len(feed) < claimSyncBatch {
 			break
@@ -99,12 +99,21 @@ const (
 	claimEffectUnbanned
 	claimEffectRememberSubmitter
 	claimEffectUnknownState
+	claimEffectUnanchored
 )
 
 func effectOf(ev *catalogv2.ClaimEvent) claimEffect {
-	if ev.ProductWorkID == nil || *ev.ProductWorkID <= 0 {
-		return claimEffectNone
+	effect := transitionEffect(ev)
+	if effect == claimEffectNone || effect == claimEffectUnknownState {
+		return effect
 	}
+	if ev.ProductWorkID == nil || *ev.ProductWorkID <= 0 {
+		return claimEffectUnanchored
+	}
+	return effect
+}
+
+func transitionEffect(ev *catalogv2.ClaimEvent) claimEffect {
 	switch ev.ToState {
 	case catalogv2.ClaimStateLive:
 		switch {
@@ -139,14 +148,20 @@ func applyClaimEvent(
 ) error {
 	effect := effectOf(ev)
 	if ev.Site != claimSyncSite {
+		slog.Warn("claim 事件来自其他租户, 跳过",
+			"event", ev.ID, "site", ev.Site, "work", ev.WorkID, "to_state", ev.ToState)
 		return nil
 	}
-	if effect == claimEffectUnknownState {
+	switch effect {
+	case claimEffectUnknownState:
 		slog.Warn("收到未识别的 claim 目标状态, 跳过",
 			"event", ev.ID, "state", ev.ToState, "work", ev.WorkID)
 		return nil
-	}
-	if effect == claimEffectNone {
+	case claimEffectUnanchored:
+		slog.Warn("claim 事件没有 product_work_id (认领已不存在), 跳过通知与封禁",
+			"event", ev.ID, "work", ev.WorkID, "to_state", ev.ToState)
+		return nil
+	case claimEffectNone:
 		return nil
 	}
 
@@ -237,6 +252,7 @@ func claimWorkName(ctx context.Context, galgame *galgameClient.Client, gid int) 
 				}
 				for _, s := range []string{
 					briefs[i].NameZhCn, briefs[i].NameZhTw, briefs[i].NameJaJp, briefs[i].NameEnUs,
+					briefs[i].DisplayName, briefs[i].Latin,
 				} {
 					if s != "" {
 						return s

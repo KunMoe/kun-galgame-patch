@@ -185,7 +185,7 @@ func resourceLink(resourceID int) string {
 }
 
 func displayName(b *galgameClient.GalgameBrief) string {
-	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw} {
+	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw, b.DisplayName, b.Latin} {
 		if n != "" {
 			return n
 		}

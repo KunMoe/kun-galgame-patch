@@ -1,6 +1,7 @@
 package client
 
 import (
+	"log/slog"
 	"slices"
 	"sort"
 	"strings"
@@ -9,22 +10,53 @@ import (
 // KunLanguage is moyu's four name slots. Entity names travel whole rather than
 // flattened to one string because the reader's 标题语言 setting picks between
 // them in the browser, the same way it does for a work title.
+//
+// A work's name also carries its display_name and latin whole, for a work whose
+// original language none of the four slots speaks: the picker falls back to
+// them rather than to a blank title.
 type KunLanguage struct {
 	EnUs string `json:"en-us"`
 	JaJp string `json:"ja-jp"`
 	ZhCn string `json:"zh-cn"`
 	ZhTw string `json:"zh-tw"`
+
+	DisplayName       string   `json:"display_name,omitempty"`
+	Latin             string   `json:"latin,omitempty"`
+	MachineTranslated []string `json:"machine_translated,omitempty"`
 }
+
+var kunSlots = []string{"ja-jp", "zh-cn", "zh-tw", "en-us"}
 
 // canonical is the one name that stands for the entity when a slot cannot be
 // chosen: deduplicating credits, and testing whether a name is empty at all.
 func (n KunLanguage) canonical() string {
-	for _, v := range []string{n.JaJp, n.ZhCn, n.EnUs, n.ZhTw} {
+	for _, v := range []string{n.JaJp, n.ZhCn, n.EnUs, n.ZhTw, n.DisplayName, n.Latin} {
 		if v != "" {
 			return v
 		}
 	}
 	return ""
+}
+
+func kunSlot(lang string) (string, bool) {
+	switch slot := productLangFromCatalog(lang); slot {
+	case "ja-jp", "zh-cn", "zh-tw", "en-us":
+		return slot, true
+	}
+	return "", false
+}
+
+func kunLanguageOf(slots map[string]catalogLocalizedName) KunLanguage {
+	n := KunLanguage{
+		EnUs: slots["en-us"].Value, JaJp: slots["ja-jp"].Value,
+		ZhCn: slots["zh-cn"].Value, ZhTw: slots["zh-tw"].Value,
+	}
+	for _, slot := range kunSlots {
+		if row := slots[slot]; row.Machine && row.Value != "" {
+			n.MachineTranslated = append(n.MachineTranslated, slot)
+		}
+	}
+	return n
 }
 
 // catalogPersonRef is how the public face names a person inside another record:
@@ -39,16 +71,18 @@ type catalogPersonRef struct {
 }
 
 type catalogWorkCharacter struct {
-	ID          int64                           `json:"id"`
-	DisplayName string                          `json:"display_name"`
-	Localized   map[string]catalogLocalizedName `json:"localized"`
-	Lang        string                          `json:"lang"`
-	Latin       string                          `json:"latin"`
-	Kind        string                          `json:"kind"`
-	Spoiler     int                             `json:"spoiler"`
-	Image       string                          `json:"image"`
-	Figure      string                          `json:"figure"`
-	Voices      []catalogPersonRef              `json:"voices"`
+	ID           int64                           `json:"id"`
+	DisplayName  string                          `json:"display_name"`
+	Localized    map[string]catalogLocalizedName `json:"localized"`
+	Lang         string                          `json:"lang"`
+	Latin        string                          `json:"latin"`
+	Kind         string                          `json:"kind"`
+	Spoiler      int                             `json:"spoiler"`
+	Image        string                          `json:"image"`
+	ImageSexual  *int                            `json:"image_sexual"`
+	Figure       string                          `json:"figure"`
+	FigureSexual *int                            `json:"figure_sexual"`
+	Voices       []catalogPersonRef              `json:"voices"`
 }
 
 type catalogCreditItem struct {
@@ -134,51 +168,55 @@ type GalgameRating struct {
 // when catalog sends none it lands in ja-jp, which is what an untagged catalog
 // display name almost always is.
 func catalogEntityNames(localized map[string]catalogLocalizedName, displayName, lang, latin string) KunLanguage {
-	slot := productLangFromCatalog(lang)
-	switch slot {
-	case "ja-jp", "zh-cn", "zh-tw", "en-us":
-	default:
+	slot, ok := kunSlot(lang)
+	if !ok {
 		slot = "ja-jp"
 	}
-	n := map[string]string{slot: displayName}
-	for key, value := range localizedByProductKey(localized) {
-		if n[key] == "" {
-			n[key] = value
-		}
+	slots := localizedByProductKey(localized)
+	if displayName != "" {
+		slots[slot] = catalogLocalizedName{Value: displayName}
 	}
-	if latin != "" && n["en-us"] == "" {
-		n["en-us"] = latin
+	if latin != "" && slots["en-us"].Value == "" {
+		slots["en-us"] = catalogLocalizedName{Value: latin}
 	}
-	return KunLanguage{EnUs: n["en-us"], JaJp: n["ja-jp"], ZhCn: n["zh-cn"], ZhTw: n["zh-tw"]}
+	return kunLanguageOf(slots)
 }
 
 func (p *catalogPersonRef) names() KunLanguage {
 	return catalogEntityNames(p.Localized, p.DisplayName, p.Lang, p.Latin)
 }
 
-func catalogCharacters(rows []catalogWorkCharacter) []GalgameCharacter {
+func namedPeople(refs []catalogPersonRef, ownerKey string, ownerID int64) []GalgamePersonRef {
+	out := make([]GalgamePersonRef, 0, len(refs))
+	for i := range refs {
+		p := &refs[i]
+		name := p.names()
+		if name.canonical() == "" {
+			slog.Warn("catalog credit name has no name; it is dropped", "credit_name", p.ID, ownerKey, ownerID)
+			continue
+		}
+		out = append(out, GalgamePersonRef{ID: int(p.ID), Name: name})
+	}
+	return out
+}
+
+func catalogCharacters(rows []catalogWorkCharacter, revealSexual bool) []GalgameCharacter {
 	out := make([]GalgameCharacter, 0, len(rows))
 	for i := range rows {
 		c := &rows[i]
 		name := catalogEntityNames(c.Localized, c.DisplayName, c.Lang, c.Latin)
 		if name.canonical() == "" {
+			slog.Warn("catalog roster row has no name; the character is dropped", "character", c.ID)
 			continue
-		}
-		voices := make([]GalgamePersonRef, 0, len(c.Voices))
-		for j := range c.Voices {
-			v := &c.Voices[j]
-			if n := v.names(); n.canonical() != "" {
-				voices = append(voices, GalgamePersonRef{ID: int(v.ID), Name: n})
-			}
 		}
 		out = append(out, GalgameCharacter{
 			ID:         int(c.ID),
 			Name:       name,
 			Kind:       c.Kind,
 			Spoiler:    c.Spoiler,
-			ImageHash:  hashFromURL(c.Image),
-			FigureHash: hashFromURL(c.Figure),
-			Voices:     voices,
+			ImageHash:  artFor(hashFromURL(c.Image), c.ImageSexual, revealSexual),
+			FigureHash: artFor(hashFromURL(c.Figure), c.FigureSexual, revealSexual),
+			Voices:     namedPeople(c.Voices, "character", c.ID),
 		})
 	}
 	return out
@@ -285,6 +323,8 @@ func catalogStaff(groups []catalogCreditGroup, roster []catalogWorkCharacter) []
 			name := c.names()
 			norm := normalizeCreditName(name.canonical())
 			if norm == "" {
+				slog.Warn("catalog credit has no usable name; it is dropped",
+					"credit_name", c.ID, "role_key", g.RoleKey, "name", name.canonical())
 				continue
 			}
 			i, seen := b.at[norm]
@@ -384,21 +424,19 @@ func normalizeCreditName(name string) string {
 // which is the one without the "(Hozumi Kei)" tail, and fills slots either of
 // them left empty.
 func mergeEntityNames(a, b KunLanguage) KunLanguage {
-	pick := func(x, y string) string {
-		if y == "" {
-			return x
+	slots := make(map[string]catalogLocalizedName, len(kunSlots))
+	pick := func(slot, x, y string) {
+		from := a
+		if y != "" && (x == "" || len(y) < len(x)) {
+			x, from = y, b
 		}
-		if x == "" || len(y) < len(x) {
-			return y
-		}
-		return x
+		slots[slot] = catalogLocalizedName{Value: x, Machine: slices.Contains(from.MachineTranslated, slot)}
 	}
-	return KunLanguage{
-		EnUs: pick(a.EnUs, b.EnUs),
-		JaJp: pick(a.JaJp, b.JaJp),
-		ZhCn: pick(a.ZhCn, b.ZhCn),
-		ZhTw: pick(a.ZhTw, b.ZhTw),
-	}
+	pick("en-us", a.EnUs, b.EnUs)
+	pick("ja-jp", a.JaJp, b.JaJp)
+	pick("zh-cn", a.ZhCn, b.ZhCn)
+	pick("zh-tw", a.ZhTw, b.ZhTw)
+	return kunLanguageOf(slots)
 }
 
 func appendUniqueName(slice []KunLanguage, val KunLanguage) []KunLanguage {

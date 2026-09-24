@@ -60,7 +60,8 @@ export interface KunSettingData {
   // ── Galgame 画廊 (screenshot) per-rating filter — see components/galgame/
   // Gallery.vue. Two independent axes, each a persisted set of opted-in levels:
   //   色情 (sexual): the global NSFW mode reveals every level; in SFW mode only
-  //     unrated (0) + the levels listed here show.
+  //     safe (0) + the levels listed here show. A shot nobody assessed counts
+  //     as level 1.
   //   暴力 (violence): ALWAYS an explicit per-level opt-in (the NSFW mode does
   //     NOT unlock it), gated behind a confirm. Default empty = hidden.
   gallerySexualLevels: number[]

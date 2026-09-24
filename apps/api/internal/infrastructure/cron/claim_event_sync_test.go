@@ -83,10 +83,18 @@ func TestEffectOfMapsEveryTransition(t *testing.T) {
 			want: claimEffectNone,
 		},
 		{
-			name: "no product anchor means nothing local to say",
+			name: "an approval with no product anchor is reported, not silently skipped",
 			ev: catalogv2.ClaimEvent{
 				FromState: ptr(catalogv2.ClaimStatePending),
 				ToState:   catalogv2.ClaimStateLive,
+			},
+			want: claimEffectUnanchored,
+		},
+		{
+			name: "a transition with nothing to do needs no anchor",
+			ev: catalogv2.ClaimEvent{
+				FromState: ptr(catalogv2.ClaimStateLive),
+				ToState:   catalogv2.ClaimStateDraft,
 			},
 			want: claimEffectNone,
 		},

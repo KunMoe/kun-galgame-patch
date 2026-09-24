@@ -48,7 +48,8 @@ func TestCompanyMergeDoesNotFollow(t *testing.T) {
 				map[string]any{"object": "company", "current_id": "6935"})
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":"6935","display_name":"生存ブランド"}`))
+		_, _ = w.Write([]byte(`{"object":"company","id":"6935","display_name":"生存ブランド","latin":null,"lang":"ja",` +
+			`"localized":{},"company_kind":"game_brand","work_count":1,"aliases":[],"intros":[],"links":[]}`))
 	}))
 	t.Cleanup(upstream.Close)
 

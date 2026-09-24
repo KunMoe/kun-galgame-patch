@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"slices"
 	"sort"
@@ -75,7 +76,7 @@ func (c *Client) GetCharacter(ctx context.Context, id int, contentLimit string) 
 	if err != nil {
 		return nil, err
 	}
-	out := catalogCharacterToDetail(ch, contentLimit != "nsfw" && contentLimit != "all")
+	out := catalogCharacterToDetail(ch, revealsSexual(contentLimit))
 	return &out, nil
 }
 
@@ -117,12 +118,21 @@ func genderInt(g *string) int {
 		return 1
 	case "female":
 		return 2
+	case "other":
+		return 3
 	default:
 		return 0
 	}
 }
 
-func catalogCharacterToDetail(ch *catalogv2.Character, hideSexual bool) GalgameCharacterDetail {
+func imageSexual(img *catalogv2.Image) *int {
+	if img == nil {
+		return nil
+	}
+	return sexualGrade(img.Sexual)
+}
+
+func catalogCharacterToDetail(ch *catalogv2.Character, revealSexual bool) GalgameCharacterDetail {
 	id, _ := ch.IntID()
 	out := GalgameCharacterDetail{
 		ID: int(id),
@@ -130,8 +140,8 @@ func catalogCharacterToDetail(ch *catalogv2.Character, hideSexual bool) GalgameC
 			localizedFrom(ch.Localized), ch.DisplayName, strOrEmpty(ch.Lang), strOrEmpty(ch.Latin),
 		),
 		Aliases:    catalogAliasValues(aliasRowsFrom(ch.Aliases)),
-		ImageHash:  imageHash(ch.Image),
-		FigureHash: imageHash(ch.Figure),
+		ImageHash:  artFor(imageHash(ch.Image), imageSexual(ch.Image), revealSexual),
+		FigureHash: artFor(imageHash(ch.Figure), imageSexual(ch.Figure), revealSexual),
 		Gender:     genderInt(ch.Gender),
 		Intros:     catalogIntros(introRowsFrom(ch.Intros)),
 		Traits:     make([]GalgameCharacterTrait, 0, len(ch.Traits)),
@@ -140,11 +150,12 @@ func catalogCharacterToDetail(ch *catalogv2.Character, hideSexual bool) GalgameC
 	out.BirthM, out.BirthD = monthDay(strOrEmpty(ch.Birthday))
 	for i := range ch.Traits {
 		t := &ch.Traits[i]
-		if hideSexual && t.IsSexual {
+		if !revealSexual && t.IsSexual {
 			continue
 		}
 		name := catalogVocabularyName(localizedFrom(t.Localized), t.DisplayName)
 		if name == "" {
+			slog.Warn("catalog character trait has no name; it is dropped", "character", ch.ID, "trait", t.ID)
 			continue
 		}
 		tid, _ := catalogv2.ParseID(t.ID)
@@ -172,17 +183,13 @@ func catalogNameToDetail(n *catalogv2.CreditName) GalgameStaffDetail {
 		BirthY:    intOrZero(n.BirthYear),
 		BirthM:    intOrZero(n.BirthMonth),
 		BirthD:    intOrZero(n.BirthDay),
-		Siblings:  make([]GalgamePersonRef, 0, len(n.Siblings)),
+		Siblings:  namedPeople(personRefsFrom(n.Siblings), "sibling_of", id),
 		Intros:    catalogIntros(introRowsFrom(n.Intros)),
 		Links:     catalogRefLinks(refRowsFrom(n.Refs), catalogStaffPage),
 	}
-	for _, s := range personRefsFrom(n.Siblings) {
-		if name := s.names(); name.canonical() != "" {
-			out.Siblings = append(out.Siblings, GalgamePersonRef{ID: int(s.ID), Name: name})
-		}
-	}
 	for _, link := range linkRowsFrom(n.Links) {
 		if link.URL == "" {
+			slog.Warn("catalog staff link has no url; it is dropped", "credit_name", n.ID, "source", link.Source)
 			continue
 		}
 		out.Links = append(out.Links, GalgameEntityLink{Name: linkDisplayName(link.Source, link.URL), URL: link.URL})

@@ -12,17 +12,22 @@ const violenceLevels = computed(
   () => settingStore.data.galleryViolenceLevels ?? []
 )
 
-const LEVELS = [
-  { value: 1, label: '轻' },
-  { value: 2, label: '中' },
-  { value: 3, label: '高' }
+// Catalog grades each axis 0-2: suggestive / explicit, violent / brutal. A shot
+// nobody assessed is counted under the first sexual level, which gates it.
+const SEXUAL_LEVELS = [
+  { value: 1, label: '轻度（含未评级）' },
+  { value: 2, label: '露骨' }
+]
+const VIOLENCE_LEVELS = [
+  { value: 1, label: '暴力' },
+  { value: 2, label: '残忍' }
 ]
 
 const sexualShown = computed(() =>
-  LEVELS.filter((lv) => (props.sexualCounts[lv.value] ?? 0) > 0)
+  SEXUAL_LEVELS.filter((lv) => (props.sexualCounts[lv.value] ?? 0) > 0)
 )
 const violenceShown = computed(() =>
-  LEVELS.filter((lv) => (props.violenceCounts[lv.value] ?? 0) > 0)
+  VIOLENCE_LEVELS.filter((lv) => (props.violenceCounts[lv.value] ?? 0) > 0)
 )
 
 const toggleSexual = (level: number) =>
