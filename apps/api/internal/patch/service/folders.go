@@ -317,7 +317,7 @@ func (s *PatchService) FoldersForPatch(ctx context.Context, token string, patchI
 
 // SetPatchFolders makes the person's folders holding this game exactly the set
 // they asked for.
-func (s *PatchService) SetPatchFolders(ctx context.Context, token string, patchID int, targets []int64) error {
+func (s *PatchService) SetPatchFolders(ctx context.Context, token string, patchID, userID int, targets []int64) error {
 	workID, err := s.workIDOf(patchID)
 	if err != nil {
 		return err
@@ -360,7 +360,7 @@ func (s *PatchService) SetPatchFolders(ctx context.Context, token string, patchI
 			}
 		}
 	}
-	s.settleFavoriteSideEffects(ctx, patchID, len(current) == 0 && len(want) > 0, len(current) > 0 && len(want) == 0)
+	s.settleFavoriteSideEffects(ctx, patchID, userID, len(current) == 0 && len(want) > 0, len(current) > 0 && len(want) == 0)
 	return nil
 }
 
@@ -418,7 +418,7 @@ func (s *PatchService) ToggleFavoriteInCatalog(ctx context.Context, token string
 				return false, dErr
 			}
 		}
-		s.settleFavoriteSideEffects(ctx, patchID, false, true)
+		s.settleFavoriteSideEffects(ctx, patchID, userID, false, true)
 		return false, nil
 	}
 
@@ -429,7 +429,7 @@ func (s *PatchService) ToggleFavoriteInCatalog(ctx context.Context, token string
 	if err := s.galgame.V2().PutFolderItem(ctx, token, folderID, workID); err != nil {
 		return false, err
 	}
-	s.settleFavoriteSideEffects(ctx, patchID, true, false)
+	s.settleFavoriteSideEffects(ctx, patchID, userID, true, false)
 	return true, nil
 }
 
@@ -449,20 +449,26 @@ func (s *PatchService) IsFavoritedInCatalog(ctx context.Context, token string, p
 // never precede it. patch.favorite_count backs this site's own sorting; the
 // number a reader sees on a game page comes from the catalog's
 // nextmoe/favorites row, which counts people across every site.
-func (s *PatchService) settleFavoriteSideEffects(ctx context.Context, patchID int, added, removed bool) {
+//
+// The award key names the favouriter. Keyed on the game alone it paid the
+// author for the first favourite a game ever got and replayed every later one
+// as a no-op (2026-09-07 to 2026-09-24). Without a per-favourite row id to key
+// on, a favourite that is taken back and given again pays nothing the second
+// time.
+func (s *PatchService) settleFavoriteSideEffects(ctx context.Context, patchID, userID int, added, removed bool) {
 	if !added && !removed {
 		return
 	}
-	delta := 1
+	delta, event := 1, "favorited"
 	if removed {
-		delta = -1
+		delta, event = -1, "unfavorited"
 	}
 	s.repo.UpdateCount(patchID, "favorite_count", delta)
 
 	patch, err := s.repo.GetPatchDetail(patchID)
-	if err != nil || patch == nil || patch.UserID == 0 {
+	if err != nil || patch == nil || patch.UserID == 0 || patch.UserID == userID {
 		return
 	}
 	go s.mp.Award(context.WithoutCancel(ctx), patch.UserID, delta, "liked",
-		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:favorite:%d:%d", patchID, delta))
+		fmt.Sprintf("galgame:%d", patchID), fmt.Sprintf("moyu:%s:%d:%d", event, patchID, userID))
 }

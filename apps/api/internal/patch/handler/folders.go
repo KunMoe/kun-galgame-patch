@@ -228,7 +228,7 @@ func (h *PatchHandler) SetPatchFolders(c fiber.Ctx) error {
 	if len(req.FolderIDs) > catalogv2.FoldersPerUserMax {
 		return response.Error(c, errors.ErrBadRequest("收藏夹数量超出上限"))
 	}
-	if sErr := h.service.SetPatchFolders(c.Context(), token, id, req.FolderIDs); sErr != nil {
+	if sErr := h.service.SetPatchFolders(c.Context(), token, id, middleware.MustGetUser(c).ID, req.FolderIDs); sErr != nil {
 		return catalogErr(c, sErr, "更新收藏失败")
 	}
 	return response.OK(c, fiber.Map{"favorited": len(req.FolderIDs) > 0})
