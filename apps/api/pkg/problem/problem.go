@@ -42,10 +42,11 @@ const (
 	ReasonNotAllowedValue = "NOT_ALLOWED_VALUE"
 )
 
-// TypeBase is the platform's problem-type namespace. The URI is a stable
-// identifier, not a promise that the page exists yet. The `moyu` segment is
-// this face's domain, beside infra's own platform/catalog/me/....
-const TypeBase = "https://developer.nextmoe.dev/problems/moyu/"
+// Every code above is one of infra's platform codes, and a code has exactly one
+// type URI across the platform, so it is infra's URI. This face used to publish
+// them under problems/moyu/, while the developer docs for it already showed
+// problems/platform/.
+const TypeBase = "https://developer.nextmoe.dev/problems/platform/"
 
 // ContentType is RFC 9457's media type.
 const ContentType = "application/problem+json"
