@@ -1,6 +1,7 @@
 package handler
 
 import (
+	stderrors "errors"
 	"strconv"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
@@ -9,6 +10,7 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/user/dto"
 	"kun-galgame-patch-api/internal/user/service"
+	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -169,6 +171,28 @@ func (h *UserHandler) GetUserContributions(c fiber.Ctx) error {
 	return response.Paginated(c, enricher.EnrichPatchCards(c.Context(), h.galgame, h.users, patches, cl), total)
 }
 
+func followErr(c fiber.Ctx, err error) error {
+	if stderrors.Is(err, service.ErrFollowSelf) || stderrors.Is(err, service.ErrUserMissing) {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	msg := ""
+	if communityclient.RefusalOf(err) == communityclient.RefusalFollowingLimit {
+		msg = "关注人数已达上限（5000）"
+	}
+	return response.Upstream(c, err, msg)
+}
+
+func followListQuery(c fiber.Ctx) (dto.GetFollowListRequest, error) {
+	var req dto.GetFollowListRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return req, err
+	}
+	if req.Limit == 0 {
+		req.Limit = 20
+	}
+	return req, nil
+}
+
 func (h *UserHandler) Follow(c fiber.Ctx) error {
 	userID, err := getUID(c)
 	if err != nil {
@@ -176,8 +200,8 @@ func (h *UserHandler) Follow(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.Follow(user.ID, userID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	if err := h.service.Follow(c.Context(), user.ID, userID); err != nil {
+		return followErr(c, err)
 	}
 
 	return response.OKMessage(c, "Followed")
@@ -190,8 +214,8 @@ func (h *UserHandler) Unfollow(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.Unfollow(user.ID, userID); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	if err := h.service.Unfollow(c.Context(), user.ID, userID); err != nil {
+		return followErr(c, err)
 	}
 
 	return response.OKMessage(c, "Unfollowed")
@@ -203,22 +227,16 @@ func (h *UserHandler) GetFollowers(c fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	var req dto.GetUserProfileRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+	req, err := followListQuery(c)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	if req.Page == 0 {
-		req.Page = 1
-	}
-	if req.Limit == 0 {
-		req.Limit = 20
-	}
 
-	users, total, err := h.service.GetFollowers(c.Context(), userID, middleware.GetUserID(c), req.Page, req.Limit)
+	page, err := h.service.GetFollowers(c.Context(), userID, middleware.GetUserID(c), req.Cursor, req.Limit)
 	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
+		return response.Upstream(c, err, "")
 	}
-	return response.Paginated(c, users, total)
+	return response.OK(c, page)
 }
 
 func (h *UserHandler) GetFollowing(c fiber.Ctx) error {
@@ -227,22 +245,16 @@ func (h *UserHandler) GetFollowing(c fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 
-	var req dto.GetUserProfileRequest
-	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+	req, err := followListQuery(c)
+	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	if req.Page == 0 {
-		req.Page = 1
-	}
-	if req.Limit == 0 {
-		req.Limit = 20
-	}
 
-	users, total, err := h.service.GetFollowing(c.Context(), userID, middleware.GetUserID(c), req.Page, req.Limit)
+	page, err := h.service.GetFollowing(c.Context(), userID, middleware.GetUserID(c), req.Cursor, req.Limit)
 	if err != nil {
-		return response.Error(c, errors.ErrInternal(""))
+		return response.Upstream(c, err, "")
 	}
-	return response.Paginated(c, users, total)
+	return response.OK(c, page)
 }
 
 func (h *UserHandler) CheckIn(c fiber.Ctx) error {

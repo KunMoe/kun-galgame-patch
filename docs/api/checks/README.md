@@ -27,7 +27,7 @@
 |---|---|---|---|
 | 1 | `POST /patch/:id/comment` | **评论功能完全不可用**：DTO `galgame_id` 标了 `required`，校验在 handler 从路径注入之前运行，前端只发 `{content}` → 恒返回 `40000 "GalgameID is required"` | BE：`galgame_id` 改 `omitempty`（路径参数才是权威来源）|
 | 2 | `POST /message/` | 任意登录用户可向**任意用户收件箱**写任意通知（recipient_id/type/content/link 全可控、无限流、无 FE 调用方）—— 垃圾/钓鱼面 | BE：**删除该路由 + 整条死链**（handler/service/repo/dto）。合法通知由 patch 服务 `createDedupMessage` 内部产生 |
-| 3 | `DELETE /user/:id/follow` | 即使没有关注关系也会把对方 `follower_count -1`（`DeleteFollow` 忽略 RowsAffected）→ 任何人可刷低/骚扰他人粉丝数（实测复现）| BE：`DeleteFollow` 返回 rowsAffected，仅在确有删除时才扣计数 |
+| 3 | `DELETE /user/:id/follow` | 即使没有关注关系也会把对方 `follower_count -1`（`DeleteFollow` 忽略 RowsAffected）→ 任何人可刷低/骚扰他人粉丝数（实测复现）| 关注图已迁到 community：unfollow 幂等，不再改本地计数 |
 | 4 | `GET /home` `GET /resource` `GET /resource/:id`(recs) `GET /user/:id/resource` | 公开列表流逐行下发完整下载载荷（`content` 直链 + `code` + `password` + `s3_key`），前端卡片根本不读 → 爬虫翻页即可批量收割，彻底架空限流的 `/patch/resource/:id/link` | BE：新增 `patchModel.StripResourceSecrets`，在这些 feed 上清空四个秘密字段；保留单资源详情主体与 `/patch/:id/resource`（前端就地渲染的揭示面）|
 | 5 | `POST /chat/message/:id/reaction` | **IDOR**：未校验房间成员，任何登录用户可对**私聊房间**里不属于自己的消息加/去表情（实测复现）| BE：`ToggleReaction` 增加 `IsMember` 校验 |
 | 6 | `GET /admin/stats` & `GET /admin/stats/sum` | json key 与前端不符：`new_patch_resource`/`patch_resource_count`/`patch_comment_count` ↔ 前端读 `new_resource`/`resource_count`/`comment_count` → 三块统计卡恒显 0 | BE：改 3 个 json tag 对齐前端 |

@@ -210,8 +210,6 @@ func (h *AuthHandler) composeMe(c fiber.Ctx, local *authModel.User, sub string, 
 		DailyCheckIn:    local.DailyCheckIn,
 		DailyImageCount: local.DailyImageCount,
 		DailyUploadSize: local.DailyUploadSize,
-		FollowerCount:   local.FollowerCount,
-		FollowingCount:  local.FollowingCount,
 		AdultConfirmed:  stance.adultConfirmed,
 		NsfwDisplay:     stance.nsfwDisplay,
 	}

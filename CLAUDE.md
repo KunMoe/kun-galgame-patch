@@ -129,6 +129,13 @@ deployment order live in infra's `docs/community/`.
   (normal), never 0: muted also drops the replies and mentions addressed to the
   reader. Community's unread `total` counts normal rows, so it is not a red dot —
   the bell reads `user_message`, where `commentWatch` is the followed-wall signal.
+- **Following a user lives in community too** (2026-09-25, infra #314).
+  `user_follow_relation` and `user.follower_count` / `following_count` are frozen
+  rollback material that no code reads; profile counts come from
+  `POST /follows/states` and are omitted, never zeroed, when it fails. 关注了您 is
+  community kind 8, mirrored into `user_message` like the comment kinds; kind 9
+  (a followee's board topic) is not mirrored because moyu has no boards. Admin
+  purge still deletes the frozen rows: `following_id` is `ON DELETE RESTRICT`.
 - `patch.comment_count` is a display counter only the write path can keep true;
   no SQL can recompute it. `merge.Fold` no longer moves comments and logs the
   stranded wall instead. Community-side moderation (a review-queue reject) drifts

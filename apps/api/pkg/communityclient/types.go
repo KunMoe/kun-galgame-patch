@@ -37,13 +37,15 @@ const (
 )
 
 const (
-	NotificationKindReplied        = 1
-	NotificationKindMentioned      = 2
-	NotificationKindPosted         = 3
-	NotificationKindThreadCreated  = 4
-	NotificationKindLiked          = 5
-	NotificationKindAnswerAccepted = 6
-	NotificationKindFeedbackStatus = 7
+	NotificationKindReplied               = 1
+	NotificationKindMentioned             = 2
+	NotificationKindPosted                = 3
+	NotificationKindThreadCreated         = 4
+	NotificationKindLiked                 = 5
+	NotificationKindAnswerAccepted        = 6
+	NotificationKindFeedbackStatus        = 7
+	NotificationKindFollowed              = 8
+	NotificationKindFolloweeThreadCreated = 9
 )
 
 const (
@@ -306,4 +308,39 @@ type MarkNotificationsReadRequest struct {
 type MarkNotificationsReadResult struct {
 	Marked      int64 `json:"marked"`
 	UnreadCount int64 `json:"unread_count"`
+}
+
+type FollowResult struct {
+	FollowerID int64 `json:"follower_id"`
+	FolloweeID int64 `json:"followee_id"`
+	Following  bool  `json:"following"`
+	Created    bool  `json:"created"`
+	Deleted    bool  `json:"deleted"`
+}
+
+type FollowView struct {
+	UserID     int64   `json:"user_id"`
+	FollowedAt *string `json:"followed_at"`
+}
+
+type FollowListResponse struct {
+	Users      []FollowView `json:"users"`
+	NextCursor string       `json:"next_cursor"`
+}
+
+type FollowStatesRequest struct {
+	ViewerID int64   `json:"viewer_id,omitempty"`
+	UserIDs  []int64 `json:"user_ids"`
+}
+
+type FollowStateView struct {
+	UserID         int64 `json:"user_id"`
+	FollowersCount int64 `json:"followers_count"`
+	FollowingCount int64 `json:"following_count"`
+	ViewerFollows  bool  `json:"viewer_follows"`
+	FollowsViewer  bool  `json:"follows_viewer"`
+}
+
+type FollowStatesResponse struct {
+	States []FollowStateView `json:"states"`
 }

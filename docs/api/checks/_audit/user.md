@@ -1,7 +1,7 @@
 # Domain: user
 
 ## Summary
-16 user endpoints audited (3 mutating self-reversing-tested live, 9 GETs tested live, 2 file/legacy untestable). FE↔BE shapes match the `.d.ts` contracts everywhere (UserInfoResponse, paginated `{items,total}`, moemoepoint log `{items,has_more}`, check-in `{moemoepoint}`, search `[]UserBasic`). One HIGH data-integrity bug found and PROVEN live: `DELETE /user/:id/follow` decrements the target's `follower_count` even when no follow relation exists (no rows-affected guard), letting any user corrupt anyone's follower count. Two MEDIUM issues: `PUT /user/:id/follow` leaks the raw Postgres FK-violation string when the followee has no local user row; and the `validate:"min=1"` on the shared list DTO makes the handlers' `if page==0` defaulting dead code (omitting `page`/`limit` returns 40000 — FE always sends them, so low real impact). Dropped as false-positive: the resource list exposing `content`/`s3_key`/`password` — verified the canonical `GET /patch/:id/resource` returns the identical fields, so this is a pre-existing app-wide pattern owned by patch/common, not a user-domain defect. `/user/search` and `/user/image` have no current FE consumer (search is auth-gated and shape-correct; image is a legacy endpoint superseded by `/upload/image-service`).
+16 user endpoints audited. Follow/unfollow are idempotent writes to the community follow graph; a missing local user row returns `用户不存在`. Profile `follower_count`/`following_count` are optional and come from `followStates`. Follower/following lists are cursor-paged `{items,next_cursor?,total}`. Remaining list tabs still share `GetUserProfileRequest` with `validate:"min=1"`, so omitting `page`/`limit` on those is 40000. `/user/search` and `/user/image` have no current FE consumer.
 
 ## Endpoints
 
@@ -17,12 +17,12 @@
 
 ### GET /user/:id — UserHandler.GetUserInfo
 - verdict: ok
-- tested: `curl /user/2` → all 14 fields present and matching FE `UserInfo` (id,name,avatar,bio,roles,moemoepoint,follower_count,following_count,register_time,patch_count,resource_count,comment_count,favorite_count,is_followed). `register_time` is RFC3339 (`2026-05-11T22:11:51Z`), consumed by FE `formatDate` — fine. `optionalAuth` (router 166) lets `is_followed` reflect the viewer; anonymous → false. OAuth lookup failure degrades gracefully (name/avatar/bio empty) per service lines 114-121.
+- tested: `curl /user/2` → fields matching FE `UserInfo` (id,name,avatar,bio,roles,moemoepoint,follower_count,following_count,register_time,patch_count,resource_count,comment_count,favorite_count,is_followed). `follower_count`/`following_count`/`is_followed` come from one community `followStates` call; those two counts are omitted (`omitempty`) if that call fails. `register_time` is RFC3339. `optionalAuth` lets `is_followed` reflect the viewer; anonymous → false. OAuth lookup failure degrades gracefully (name/avatar/bio empty).
 - issues: none
 
 ### GET /user/:id/floating — UserHandler.GetUserFloating
 - verdict: ok
-- tested: `curl /user/2/floating` → identical `UserInfoResponse` to `/user/:id` but with `is_followed:false` always (service `GetUserFloating` passes currentUID=0, line 133). No auth middleware (router 167) — public, intentional for the floating hover card. No FE consumer found (grep `floating` in app/ empty) — endpoint unused but harmless.
+- tested: `curl /user/2/floating` → same `UserInfoResponse` as `/user/:id` except it never calls community, so `follower_count`/`following_count` are omitted and `is_followed` stays false. No auth middleware — public, for the floating hover card.
 - issues: none
 
 ### GET /user/:id/patch — UserHandler.GetUserPatches
@@ -54,12 +54,12 @@
 
 ### GET /user/:id/follower — UserHandler.GetFollowers
 - verdict: ok
-- tested: `optionalAuth` (router 173) stamps per-row `is_followed` relative to viewer via `WhichFollowed` (one query/page, repo 178). Returns `{items: UserFollowItem[], total}` (id/name/avatar/is_followed) matching FE FollowListModal `FollowItem`. Default limit 20 (handler 266), within DTO max=20. Live-verified empty list for user 2.
+- tested: cursor-paged `{items, next_cursor?, total}`. `cursor` is the previous page's `next_cursor`; `limit` default 20, max 24. `total` is the profile user's `followers_count` from `followStates`. Each item is `FollowItem` (`id,name,avatar,cosmetics?,is_followed`); `is_followed` is the viewer's `viewer_follows` (false when anonymous). Rows without an OAuth brief are dropped.
 - issues: none
 
 ### GET /user/:id/following — UserHandler.GetFollowing
 - verdict: ok
-- tested: `curl /user/2/following?page=1&limit=10` → `{"code":0,"data":{"items":[],"total":0}}`. Same `UserFollowItem` shape + per-row `is_followed`. `GetFollowingIDs` filters `follower_id = :id` (repo 162) — correct direction (users that :id follows).
+- tested: same shape as `/follower`. `total` is the profile user's `following_count` from `followStates`. Direction is who `:id` follows.
 - issues: none
 
 ### POST /user/image — UserHandler.UploadImage
@@ -77,17 +77,15 @@
 - issues: none
 
 ### PUT /user/:id/follow — UserHandler.Follow
-- verdict: fix
-- tested: Live: `PUT /user/2/follow` as user 2 → `{"code":40000,"message":"cannot follow yourself"}` (self-follow guard works, service 138). `PUT /user/551/follow` (551 has no local user row) → `{"code":40000,"message":"ERROR: insert or update on table \"user_follow_relation\" violates foreign key constraint \"user_follow_relation_following_id_fkey\" (SQLSTATE 23503)"}`. Idempotent for an EXISTING relation: re-follow returns "already following this user" (service 143-145).
-- issues:
-  - [medium][security] Raw Postgres error string is leaked to the client when the followee has no local `user` row (the `following_id` FK is RESTRICT, migration 000). Handler wraps the service error verbatim: `errors.ErrBadRequest(err.Error())` (handler 230), and the service returns `repo.CreateFollow`'s raw gorm/pq error (service 148). Followee ids come from OAuth and may legitimately lack a local row, so this is reachable. EVIDENCE: handler.go:229-231 — `if err := h.service.Follow(...); err != nil { return response.Error(c, errors.ErrBadRequest(err.Error())) }`; service.go:147-150 returns the raw `CreateFollow` error. FIX (BE): in `service.Follow`, detect the FK violation (or pre-check the followee exists via `repo.FindByID`) and return a clean `fmt.Errorf("用户不存在")` instead of the raw driver error; never surface SQLSTATE strings to clients.
+- verdict: ok
+- tested: Self-follow → `{"code":40000,"message":"cannot follow yourself"}`. Missing local user row → `{"code":40000,"message":"用户不存在"}`. Repeat follow is idempotent and returns `Followed`. Writes go to the community follow graph.
+- issues: none
 
 ### DELETE /user/:id/follow — UserHandler.Unfollow
-- verdict: fix
-- tested: PROVEN live. As admin user 2 (which does NOT follow user 1, and no relation exists): `DELETE /user/1/follow` → `{"code":0,"message":"Unfollowed"}`. DB before: `user(id=1).follower_count = 11` (11 real follow relations exist). DB after: `follower_count = 10` — decremented despite NO relation being deleted (the 11 real relations are intact). Restored to 11 via psql after the test.
-- issues:
-  - [high][bug/security] `Unfollow` decrements follow counts unconditionally, even when no follow relation existed — corrupting another user's `follower_count`. `repo.DeleteFollow` uses `db.Where(...).Delete(...)` which returns nil error on 0 rows-affected (repository.go:132-135), so `service.Unfollow` always proceeds to `repo.UpdateFollowCounts(followerID, followingID, -1)` (service.go:156-160). Any logged-in user can repeatedly call `DELETE /user/:victim/follow` (without ever following) to drive `victim.follower_count` toward 0 while real relations remain — a data-integrity / harassment vector. `GREATEST(...,0)` only prevents going negative; it does not prevent corrupting a legitimate positive count. EVIDENCE: repository.go:132-135 (`DeleteFollow` ignores `RowsAffected`); service.go:157-160 (`if err := DeleteFollow(...); err != nil {...}; return UpdateFollowCounts(...,-1)`). FIX (BE): make `DeleteFollow` return `(rowsAffected int64, err error)` (or check `.RowsAffected`); in `service.Unfollow` only call `UpdateFollowCounts(-1)` when a row was actually deleted, else return "not following this user" (or a no-op success without decrement). Mirror the existing-relation guard that `Follow` already has.
+- verdict: ok
+- tested: Repeat unfollow is idempotent and returns `Unfollowed`. Missing local user row → `用户不存在`. Writes go to the community follow graph.
+- issues: none
 
 ## Cross-cutting
 - [info][note] `GET /user/:id/resource` (and `/comment`) return the full `PatchResource` including `content` (which for legacy-archived rows is a live `https://oss.moyu.moe/...` download URL), `s3_key`, `password`, `code` — NOT gated behind the rate-limited `/resource/:id/link` reveal flow. VERIFIED this is NOT a user-domain defect: the canonical `GET /patch/:id/resource` (patch/service.GetResources, service.go:639-648) returns the IDENTICAL fields with no stripping, so the user-profile list merely mirrors the established app-wide behavior. For modern s3 uploads `content == s3_key` (a harmless relative key, the public URL is only minted at `/link` time); the leak is specific to legacy rows whose `content` column already holds an absolute URL. This is a pre-existing design state owned by the patch/common domains (note: common/handler.go:437-440 and Hikari:524-528 DO strip `content` in their own contexts, showing the redaction pattern exists but isn't applied to either resource-list path). Out of scope to "fix" from the user domain; flagging for the patch/common audit.
-- [low][note] All six `/user/:id/{patch,resource,favorite,comment,contribute}` + follower/following list endpoints share `GetUserProfileRequest{Page,Limit}` with `validate:"min=1"` (+ Limit `max=20`), which negates the per-handler `if ==0 { default }` blocks — omitting `page`/`limit` yields 40000 rather than defaulting. See the `/user/:id/patch` entry for the concrete fix.
+- [low][note] The five `/user/:id/{patch,resource,favorite,comment,contribute}` list endpoints share `GetUserProfileRequest{Page,Limit}` with `validate:"min=1"`, which negates the per-handler `if ==0 { default }` blocks — omitting `page`/`limit` yields 40000 rather than defaulting. Follower/following lists take `cursor`+`limit` instead.

@@ -23,6 +23,7 @@ type Inbox struct {
 	community *communityclient.Client
 	anchors   *anchor.Resolver
 	db        *gorm.DB
+	localIDs  func([]int64) (map[int64]struct{}, error)
 }
 
 func New(community *communityclient.Client, anchors *anchor.Resolver, db *gorm.DB) *Inbox {
@@ -127,31 +128,38 @@ func (in *Inbox) applyPage(ctx context.Context, notes []communityclient.Notifica
 }
 
 func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationView) ([]messageRow, error) {
-	candidates := make([]communityclient.NotificationView, 0, len(notes))
-	for _, n := range notes {
-		if !mirrored(n.Kind) || !anchor.IsMoyu(n.AnchorKind, n.AnchorID) {
-			continue
-		}
-		candidates = append(candidates, n)
-	}
-	if len(candidates) == 0 {
+	follows, comments := partition(notes)
+	if len(follows) == 0 && len(comments) == 0 {
 		return nil, nil
 	}
 
-	targets, err := in.anchors.ResolveNamed(ctx, distinctRefs(candidates))
-	if err != nil {
-		return nil, err
+	var targets map[anchor.Ref]anchor.Target
+	excerpts := map[int64]string{}
+	if len(comments) > 0 {
+		var err error
+		targets, err = in.anchors.ResolveNamed(ctx, distinctRefs(comments))
+		if err != nil {
+			return nil, err
+		}
+		excerpts = in.mentionExcerpts(ctx, comments)
 	}
-	excerpts := in.mentionExcerpts(ctx, candidates)
 
-	users, err := in.localUserIDs(collectUserIDs(candidates))
+	all := make([]communityclient.NotificationView, 0, len(follows)+len(comments))
+	all = append(all, follows...)
+	all = append(all, comments...)
+	users, err := in.lookupUsers(collectUserIDs(all))
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
-	rows := make([]messageRow, 0, len(candidates))
-	for _, n := range candidates {
+	rows := make([]messageRow, 0, len(all))
+	for _, n := range follows {
+		if row, ok := followRow(n, users, now); ok {
+			rows = append(rows, row)
+		}
+	}
+	for _, n := range comments {
 		ref := anchor.Ref{Kind: n.AnchorKind, ID: n.AnchorID}
 		target, ok := targets[ref]
 		if !ok {
@@ -172,31 +180,46 @@ func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationV
 			excerpt = excerpts[*n.PostID]
 		}
 		mapped := messageFor(n, target, excerpt)
-
-		row := messageRow{
-			Type:           mapped.Type,
-			Content:        mapped.Content,
-			Status:         mapped.Status,
-			Link:           mapped.Link,
-			RecipientID:    int(n.UserID),
-			Created:        parseTime(n.UpdatedAt, now),
-			Updated:        now,
-			NotificationID: n.ID,
-			PostNumber:     n.PostNumber,
-		}
-		if n.ThreadID > 0 {
-			tid := n.ThreadID
-			row.ThreadID = &tid
-		}
-		if n.ActorID != nil && *n.ActorID > 0 {
-			if _, ok := users[*n.ActorID]; ok {
-				id := int(*n.ActorID)
-				row.SenderID = &id
-			}
-		}
-		rows = append(rows, row)
+		rows = append(rows, commentRow(n, mapped, users, now))
 	}
 	return rows, nil
+}
+
+func followRow(n communityclient.NotificationView, users map[int64]struct{}, now time.Time) (messageRow, bool) {
+	if _, ok := users[n.UserID]; !ok {
+		return messageRow{}, false
+	}
+	mapped := followMessage(n)
+	return fillRow(n, mapped, users, now, false), true
+}
+
+func commentRow(n communityclient.NotificationView, mapped mappedRow, users map[int64]struct{}, now time.Time) messageRow {
+	return fillRow(n, mapped, users, now, true)
+}
+
+func fillRow(n communityclient.NotificationView, mapped mappedRow, users map[int64]struct{}, now time.Time, withThread bool) messageRow {
+	row := messageRow{
+		Type:           mapped.Type,
+		Content:        mapped.Content,
+		Status:         mapped.Status,
+		Link:           mapped.Link,
+		RecipientID:    int(n.UserID),
+		Created:        parseTime(n.UpdatedAt, now),
+		Updated:        now,
+		NotificationID: n.ID,
+		PostNumber:     n.PostNumber,
+	}
+	if withThread && n.ThreadID > 0 {
+		tid := n.ThreadID
+		row.ThreadID = &tid
+	}
+	if n.ActorID != nil && *n.ActorID > 0 {
+		if _, ok := users[*n.ActorID]; ok {
+			id := int(*n.ActorID)
+			row.SenderID = &id
+		}
+	}
+	return row
 }
 
 func (in *Inbox) mentionExcerpts(ctx context.Context, notes []communityclient.NotificationView) map[int64]string {
@@ -227,6 +250,13 @@ func (in *Inbox) mentionExcerpts(ctx context.Context, notes []communityclient.No
 		}
 	}
 	return out
+}
+
+func (in *Inbox) lookupUsers(ids []int64) (map[int64]struct{}, error) {
+	if in.localIDs != nil {
+		return in.localIDs(ids)
+	}
+	return in.localUserIDs(ids)
 }
 
 func (in *Inbox) localUserIDs(ids []int64) (map[int64]struct{}, error) {

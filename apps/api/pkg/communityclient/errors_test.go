@@ -32,6 +32,7 @@ var (
 	routeMiss       = answer{404, `{"code":404,"message":"Cannot GET /api/v1/community/comments"}`}
 	threadClosed    = answer{409, `{"code":10,"message":"thread is not open"}`}
 	contentBlocked  = answer{422, `{"code":7,"message":"content blocked by word list"}`}
+	followingLimit  = answer{422, `{"code":7,"message":"following limit reached (max 5000)"}`}
 	badField        = answer{422, `{"code":7,"message":"anchor_kind must be 1..4 — a board hosts topics only"}`}
 	dailyLimit      = answer{429, `{"code":10,"message":"sandbox limit: daily reply limit"}`}
 	tooManyLinks    = answer{429, `{"code":10,"message":"sandbox limit: too many links"}`}
@@ -66,6 +67,7 @@ func TestFailuresAreClassifiedByWhoseFaultTheyAre(t *testing.T) {
 		{"moyu calls a face community does not have", routeMiss, upstream.Internal, communityclient.RefusalOther},
 		{"the wall is closed", threadClosed, upstream.Conflict, communityclient.RefusalOther},
 		{"the word list blocks the reader's text", contentBlocked, upstream.Rejected, communityclient.RefusalContentBlocked},
+		{"the reader hit the follow cap", followingLimit, upstream.Rejected, communityclient.RefusalFollowingLimit},
 		{"moyu sent an invalid field", badField, upstream.Internal, communityclient.RefusalOther},
 		{"the newcomer hit the daily cap", dailyLimit, upstream.RateLimited, communityclient.RefusalOther},
 		{"the newcomer posted too many links", tooManyLinks, upstream.Rejected, communityclient.RefusalSandbox},

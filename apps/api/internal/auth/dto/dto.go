@@ -23,8 +23,6 @@ type MeResponse struct {
 	DailyCheckIn    int                   `json:"daily_check_in"`
 	DailyImageCount int                   `json:"daily_image_count"`
 	DailyUploadSize int64                 `json:"daily_upload_size"`
-	FollowerCount   int                   `json:"follower_count"`
-	FollowingCount  int                   `json:"following_count"`
 
 	// The account's stored content stance, verbatim from OAuth. It is NOT the
 	// effective one: the client must fold it as

@@ -43,3 +43,88 @@ func TestAFailedAnchorLookupFailsThePageBeforeTheCursorMoves(t *testing.T) {
 		t.Fatal("the page applied without its resource wall")
 	}
 }
+
+func TestPlanMirrorsFollowedWithEmptyAnchor(t *testing.T) {
+	actor := int64(5)
+	in := New(nil, anchor.New(nil, failingOwner{}), nil)
+	in.localIDs = func(ids []int64) (map[int64]struct{}, error) {
+		return map[int64]struct{}{3: {}, 5: {}}, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{{
+		ID: 11, UserID: 3, Kind: communityclient.NotificationKindFollowed,
+		ActorID: &actor, ActorCount: 1, ThreadID: 0, AnchorKind: 0, AnchorID: "",
+	}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.Type != "follow" || row.Content != "关注了您!" || row.Link != "/user/5/resource" {
+		t.Errorf("row = %+v", row)
+	}
+	if row.RecipientID != 3 || row.SenderID == nil || *row.SenderID != 5 {
+		t.Errorf("ids recipient=%d sender=%v", row.RecipientID, row.SenderID)
+	}
+	if row.ThreadID != nil {
+		t.Errorf("thread_id = %v", row.ThreadID)
+	}
+	if row.NotificationID != 11 {
+		t.Errorf("notification_id = %d", row.NotificationID)
+	}
+}
+
+func TestPlanFollowFoldNamesTheCount(t *testing.T) {
+	actor := int64(5)
+	in := New(nil, nil, nil)
+	in.localIDs = func([]int64) (map[int64]struct{}, error) {
+		return map[int64]struct{}{3: {}, 5: {}}, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{{
+		ID: 11, UserID: 3, Kind: communityclient.NotificationKindFollowed,
+		ActorID: &actor, ActorCount: 4, AnchorKind: 0, AnchorID: "",
+	}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Content != "等 4 人关注了您!" {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestPlanDoesNotMirrorFolloweeThreadCreated(t *testing.T) {
+	in := New(nil, nil, nil)
+	in.localIDs = func([]int64) (map[int64]struct{}, error) {
+		t.Fatal("kind 9 looked up local users")
+		return nil, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{{
+		ID: 11, UserID: 3, Kind: communityclient.NotificationKindFolloweeThreadCreated,
+		AnchorKind: communityclient.AnchorBoard, AnchorID: "1",
+	}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
+func TestPlanSkipsFollowedWhenRecipientIsNotLocal(t *testing.T) {
+	actor := int64(5)
+	in := New(nil, nil, nil)
+	in.localIDs = func([]int64) (map[int64]struct{}, error) {
+		return map[int64]struct{}{5: {}}, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{{
+		ID: 11, UserID: 3, Kind: communityclient.NotificationKindFollowed,
+		ActorID: &actor, ActorCount: 1,
+	}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("rows = %+v", rows)
+	}
+}

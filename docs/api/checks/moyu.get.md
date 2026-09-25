@@ -126,15 +126,15 @@
 |---|---|---|---|---|
 | `GET /api/v1/user/search` | 登录 | `userH.SearchUsers` | 对齐 | query 参数为 `query`（非 keyword）；暂无 FE 调用方 |
 | `GET /api/v1/user/moemoepoint/log` | 登录 | `userH.GetMoemoepointLog` | 新增·对齐 | 自助流水；id 取 session 非路径参（无 IDOR）；`{items,has_more}` 对齐 |
-| `GET /api/v1/user/:id` | 可选登录 | `userH.GetUserInfo` | 对齐 | 14 字段对齐 UserInfo；OAuth 失败优雅降级 |
-| `GET /api/v1/user/:id/floating` | 公开 | `userH.GetUserFloating` | 对齐 | 悬浮卡；暂无 FE 调用方 |
+| `GET /api/v1/user/:id` | 可选登录 | `userH.GetUserInfo` | 对齐 | UserInfo；`follower_count`/`following_count`/`is_followed` 来自 community `followStates`（失败则省略计数） |
+| `GET /api/v1/user/:id/floating` | 公开 | `userH.GetUserFloating` | 对齐 | 悬浮卡；不调 community，因此省略关注计数 |
 | `GET /api/v1/user/:id/patch` | 公开 | `userH.GetUserPatches` | 对齐 | 低优先级遗留：`min=1` 使缺省补值成死代码（见 README）|
 | `GET /api/v1/user/:id/resource` | 公开 | `userH.GetUserResources` | 已修 | 个人页资源卡不读秘密字段 → `StripResourceSecrets` 清 content/code/password/s3_key |
 | `GET /api/v1/user/:id/favorite` | 公开 | `userH.GetUserFavorites` | 对齐 | EnrichPatches；NSFW 过滤 |
 | `GET /api/v1/user/:id/comment` | 公开 | `userH.GetUserComments` | 对齐 | total 为未过滤计数（filter-after-paginate，跨域一致）|
 | `GET /api/v1/user/:id/contribute` | 公开 | `userH.GetUserContributions` | 对齐 | 子查询 contribute_relation 正确 |
-| `GET /api/v1/user/:id/follower` | 可选登录 | `userH.GetFollowers` | 对齐 | 每行 is_followed（单查询）|
-| `GET /api/v1/user/:id/following` | 可选登录 | `userH.GetFollowing` | 对齐 | 方向正确（follower_id=:id）|
+| `GET /api/v1/user/:id/follower` | 可选登录 | `userH.GetFollowers` | 对齐 | cursor 分页 `{items,next_cursor?,total}`；每行 `is_followed` 来自 viewer 的 `followStates` |
+| `GET /api/v1/user/:id/following` | 可选登录 | `userH.GetFollowing` | 对齐 | 同上；`total` 为资料用户的 `following_count` |
 
 ## 6. 消息 `/message`（组级 `auth`）
 

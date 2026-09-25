@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 interface FollowItem {
   id: number
   name: string
@@ -8,8 +7,9 @@ interface FollowItem {
   is_followed: boolean
 }
 
-interface PaginatedResponse {
+interface FollowListResponse {
   items: FollowItem[]
+  next_cursor?: string
   total: number
 }
 
@@ -28,31 +28,41 @@ const api = useApi()
 const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
 
-const page = ref(1)
 const limit = 20
 const items = ref<FollowItem[]>([])
 const total = ref(0)
+const cursor = ref('')
 const pending = ref(false)
-const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
+const loadingMore = ref(false)
+const hasMore = computed(() => cursor.value !== '')
 
-const endpoint = computed(
-  () =>
-    `/user/${props.userId}/${props.mode}?page=${page.value}&limit=${limit}`
-)
-
-const load = async () => {
-  pending.value = true
+const load = async (append = false) => {
+  if (append) {
+    loadingMore.value = true
+  } else {
+    pending.value = true
+  }
   try {
-    const res = await api.get<PaginatedResponse>(endpoint.value)
+    const query = new URLSearchParams({ limit: String(limit) })
+    if (append && cursor.value) {
+      query.set('cursor', cursor.value)
+    }
+    const res = await api.get<FollowListResponse>(
+      `/user/${props.userId}/${props.mode}?${query.toString()}`
+    )
     if (res.code === 0 && res.data) {
-      items.value = res.data.items ?? []
+      const page = res.data.items ?? []
+      items.value = append ? [...items.value, ...page] : page
       total.value = res.data.total ?? 0
-    } else {
+      cursor.value = res.data.next_cursor ?? ''
+    } else if (!append) {
       items.value = []
       total.value = 0
+      cursor.value = ''
     }
   } finally {
     pending.value = false
+    loadingMore.value = false
   }
 }
 
@@ -60,15 +70,14 @@ watch(
   () => [open.value, props.mode, props.userId] as const,
   ([isOpen]) => {
     if (isOpen) {
-      page.value = 1
+      items.value = []
+      total.value = 0
+      cursor.value = ''
       load()
     }
   },
   { immediate: true }
 )
-watch(page, () => {
-  if (open.value) load()
-})
 
 const title = computed(() => (props.mode === 'follower' ? '粉丝' : '关注'))
 
@@ -103,7 +112,10 @@ const goToProfile = (id: number) => {
 <template>
   <KunModal v-model="open" inner-class-name="max-w-md" :aria-label="title">
     <div class="space-y-4">
-      <h3 class="text-lg font-semibold">{{ title }}</h3>
+      <h3 class="text-lg font-semibold">
+        {{ title }}
+        <span class="text-default-500 text-sm font-normal">{{ total }}</span>
+      </h3>
 
       <KunLoading v-if="pending && !items.length" description="加载中..." />
 
@@ -147,12 +159,17 @@ const goToProfile = (id: number) => {
         </div>
       </div>
 
-      <KunPagination
-        v-if="totalPage > 1"
-        v-model:current-page="page"
-        :total-page="totalPage"
-        :is-loading="pending"
-      />
+      <div v-if="hasMore" class="flex justify-center">
+        <KunButton
+          variant="light"
+          color="primary"
+          :loading="loadingMore"
+          :disabled="loadingMore"
+          @click="load(true)"
+        >
+          加载更多
+        </KunButton>
+      </div>
     </div>
   </KunModal>
 </template>

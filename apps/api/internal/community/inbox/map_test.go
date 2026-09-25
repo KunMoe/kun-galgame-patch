@@ -109,15 +109,67 @@ func TestMessageFor(t *testing.T) {
 	}
 }
 
+func TestFollowMessage(t *testing.T) {
+	actor := int64(5)
+	cases := []struct {
+		name string
+		n    communityclient.NotificationView
+		want mappedRow
+	}{
+		{
+			name: "single",
+			n:    communityclient.NotificationView{Kind: communityclient.NotificationKindFollowed, ActorID: &actor, ActorCount: 1},
+			want: mappedRow{Type: "follow", Content: "关注了您!", Link: "/user/5/resource"},
+		},
+		{
+			name: "fold",
+			n:    communityclient.NotificationView{Kind: communityclient.NotificationKindFollowed, ActorID: &actor, ActorCount: 4},
+			want: mappedRow{Type: "follow", Content: "等 4 人关注了您!", Link: "/user/5/resource"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := followMessage(tc.n); got != tc.want {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestKindsMoyuNeverShowsAreNotMirrored(t *testing.T) {
 	for _, kind := range []int32{
 		communityclient.NotificationKindThreadCreated,
 		communityclient.NotificationKindAnswerAccepted,
 		communityclient.NotificationKindFeedbackStatus,
+		communityclient.NotificationKindFolloweeThreadCreated,
 		99,
 	} {
 		if mirrored(kind) {
 			t.Errorf("kind %d is mirrored", kind)
 		}
+	}
+}
+
+func TestPartitionKeepsFollowedWithEmptyAnchor(t *testing.T) {
+	actor := int64(5)
+	follows, comments := partition([]communityclient.NotificationView{
+		{
+			ID: 11, UserID: 3, Kind: communityclient.NotificationKindFollowed,
+			ActorID: &actor, ActorCount: 1, ThreadID: 0, AnchorKind: 0, AnchorID: "",
+		},
+		{
+			ID: 12, UserID: 3, Kind: communityclient.NotificationKindFolloweeThreadCreated,
+			AnchorKind: communityclient.AnchorBoard, AnchorID: "1",
+		},
+		{
+			ID: 13, UserID: 3, Kind: communityclient.NotificationKindReplied,
+			AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
+		},
+	})
+	if len(follows) != 1 || follows[0].ID != 11 {
+		t.Errorf("follows = %+v", follows)
+	}
+	if len(comments) != 1 || comments[0].ID != 13 {
+		t.Errorf("comments = %+v", comments)
 	}
 }

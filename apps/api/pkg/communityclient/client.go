@@ -74,10 +74,12 @@ const (
 	msgUnbound = "client is not bound to a site"
 	// handler/errors.go mapErr: ErrNotAuthor, ErrContentBlocked, SandboxError,
 	// and service/writekey.go's ConflictError for a key reused on another body.
-	msgNotAuthor      = "not the post author"
-	msgContentBlocked = "content blocked by word list"
-	msgSandboxContent = "sandbox limit: too many "
-	msgKeyReused      = "Idempotency-Key was reused with a different request"
+	msgNotAuthor        = "not the post author"
+	msgContentBlocked   = "content blocked by word list"
+	msgSandboxContent   = "sandbox limit: too many "
+	msgKeyReused        = "Idempotency-Key was reused with a different request"
+	msgCannotFollowSelf = "cannot follow yourself"
+	msgFollowingLimit   = "following limit reached (max 5000)"
 )
 
 // Refusal names the community rule behind a refusal, so a caller can word it
@@ -90,6 +92,7 @@ const (
 	RefusalContentBlocked
 	RefusalSandbox
 	RefusalKeyReused
+	RefusalFollowingLimit
 )
 
 func RefusalOf(err error) Refusal {
@@ -106,6 +109,8 @@ func RefusalOf(err error) Refusal {
 		return RefusalSandbox
 	case e.Detail == msgKeyReused:
 		return RefusalKeyReused
+	case e.Detail == msgFollowingLimit:
+		return RefusalFollowingLimit
 	}
 	return RefusalOther
 }
@@ -128,7 +133,8 @@ func classify(status int, env envelope) upstream.Kind {
 		return upstream.Conflict
 	case http.StatusUnprocessableEntity:
 		// Every other 422 is a field of moyu's own request failing validation.
-		if env.Message == msgContentBlocked {
+		switch env.Message {
+		case msgContentBlocked, msgFollowingLimit, msgCannotFollowSelf:
 			return upstream.Rejected
 		}
 		return upstream.Internal

@@ -224,14 +224,14 @@ func New(cfg *config.Config) *App {
 	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors, communityInboxSvc))
 
 	userRepository := userRepo.New(db)
-	userSvc := userService.New(userRepository, usrCli, galgame, favorites, db, mpAwarder, commentSvc)
+	userSvc := userService.New(userRepository, usrCli, galgame, favorites, db, mpAwarder, commentSvc, communityCli)
 	userHdl := userHandler.New(userSvc, galgame, usrCli)
 
 	messageRepository := messageRepo.New(db)
 	messageSvc := messageService.New(messageRepository, communityInboxSvc)
 	messageHdl := messageHandler.New(messageSvc, usrCli, galgame)
 
-	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame, commentSvc)
+	adminSvc := adminService.New(adminRepository, rdb, settingSvc, patchSvc, galgame, commentSvc, communityCli)
 	adminHdl := adminHandler.New(adminSvc, galgame, usrCli)
 
 	trustCli := trustclient.New(trustclient.Config{

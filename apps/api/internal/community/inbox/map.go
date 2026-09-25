@@ -26,6 +26,32 @@ func mirrored(kind int32) bool {
 	return false
 }
 
+func partition(notes []communityclient.NotificationView) (follows, comments []communityclient.NotificationView) {
+	for _, n := range notes {
+		switch {
+		case n.Kind == communityclient.NotificationKindFollowed:
+			follows = append(follows, n)
+		case mirrored(n.Kind) && anchor.IsMoyu(n.AnchorKind, n.AnchorID):
+			comments = append(comments, n)
+		}
+	}
+	return
+}
+
+func followMessage(n communityclient.NotificationView) mappedRow {
+	row := mappedRow{Type: "follow", Content: "关注了您!"}
+	if n.ActorCount > 1 {
+		row.Content = fmt.Sprintf("等 %d 人关注了您!", n.ActorCount)
+	}
+	if n.ReadAt != "" {
+		row.Status = 1
+	}
+	if n.ActorID != nil && *n.ActorID > 0 {
+		row.Link = "/user/" + strconv.FormatInt(*n.ActorID, 10) + "/resource"
+	}
+	return row
+}
+
 // messageFor renders one notification as the inbox row this site shows. An
 // empty excerpt means the mentioning post could not be read.
 func messageFor(n communityclient.NotificationView, wall anchor.Target, excerpt string) mappedRow {

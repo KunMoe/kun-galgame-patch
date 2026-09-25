@@ -16,6 +16,7 @@ import (
 	"kun-galgame-patch-api/internal/user/dto"
 	"kun-galgame-patch-api/internal/user/model"
 	"kun-galgame-patch-api/internal/user/repository"
+	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
 
@@ -23,13 +24,16 @@ import (
 )
 
 type UserService struct {
-	repo      *repository.UserRepository
-	users     *userclient.Client
-	galgame   *galgameClient.Client
-	favorites *favorite.Service
-	db        *gorm.DB
-	mp        *moemoepoint.Awarder
-	comments  CommentStats
+	repo        *repository.UserRepository
+	users       *userclient.Client
+	galgame     *galgameClient.Client
+	favorites   *favorite.Service
+	db          *gorm.DB
+	mp          *moemoepoint.Awarder
+	comments    CommentStats
+	community   *communityclient.Client
+	presence    userPresence
+	briefLookup briefLookup
 }
 
 // CommentStats is what the profile still needs to know about comments now that
@@ -48,8 +52,12 @@ func New(
 	db *gorm.DB,
 	mp *moemoepoint.Awarder,
 	comments CommentStats,
+	community *communityclient.Client,
 ) *UserService {
-	return &UserService{repo: repo, users: users, galgame: galgame, favorites: favorites, db: db, mp: mp, comments: comments}
+	return &UserService{
+		repo: repo, users: users, galgame: galgame, favorites: favorites, db: db, mp: mp, comments: comments,
+		community: community, presence: repo, briefLookup: oauthBriefs{users},
+	}
 }
 
 func (s *UserService) commentCount(ctx context.Context, userID int) int64 {
@@ -102,13 +110,11 @@ func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoRe
 	}
 
 	resp := &dto.UserInfoResponse{
-		ID:             user.ID,
-		Moemoepoint:    user.Moemoepoint,
-		FollowerCount:  user.FollowerCount,
-		FollowingCount: user.FollowingCount,
-		RegisterTime:   user.Created.Format(time.RFC3339),
-		PatchCount:     s.repo.CountUserPatches(userID),
-		ResourceCount:  s.repo.CountUserResources(userID),
+		ID:            user.ID,
+		Moemoepoint:   user.Moemoepoint,
+		RegisterTime:  user.Created.Format(time.RFC3339),
+		PatchCount:    s.repo.CountUserPatches(userID),
+		ResourceCount: s.repo.CountUserResources(userID),
 	}
 
 	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
@@ -131,11 +137,7 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 
 	resp.CommentCount = s.commentCount(ctx, userID)
 	resp.FavoriteCount = s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit)
-
-	if currentUID > 0 && currentUID != userID {
-		_, err := s.repo.FindFollow(currentUID, userID)
-		resp.IsFollowed = err == nil
-	}
+	s.attachFollowState(ctx, resp, currentUID)
 
 	return resp, nil
 }
@@ -159,73 +161,9 @@ func (s *UserService) countFavorites(ctx context.Context, userID int, token stri
 }
 
 // GetUserFloating makes no catalog or community call because the game page
-// calls it on every view.
+// calls it on every view, so follow counts are omitted.
 func (s *UserService) GetUserFloating(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
 	return s.cardInfo(ctx, userID)
-}
-
-func (s *UserService) Follow(followerID, followingID int) error {
-	if followerID == followingID {
-		return fmt.Errorf("cannot follow yourself")
-	}
-
-	_, err := s.repo.FindFollow(followerID, followingID)
-	if err == nil {
-		return fmt.Errorf("already following this user")
-	}
-
-	if err := s.repo.CreateFollowAndIncrement(followerID, followingID); err != nil {
-		if strings.Contains(err.Error(), "violates foreign key") || strings.Contains(err.Error(), "23503") {
-			return fmt.Errorf("用户不存在")
-		}
-		return err
-	}
-	return nil
-}
-
-func (s *UserService) Unfollow(followerID, followingID int) error {
-	affected, err := s.repo.DeleteFollowAndDecrement(followerID, followingID)
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return fmt.Errorf("not following this user")
-	}
-	return nil
-}
-
-func (s *UserService) GetFollowers(ctx context.Context, userID, viewerID, page, limit int) ([]model.UserFollowItem, int64, error) {
-	ids, total, err := s.repo.GetFollowerIDs(userID, (page-1)*limit, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	return s.briefsToFollowItems(ctx, ids, viewerID), total, nil
-}
-
-func (s *UserService) GetFollowing(ctx context.Context, userID, viewerID, page, limit int) ([]model.UserFollowItem, int64, error) {
-	ids, total, err := s.repo.GetFollowingIDs(userID, (page-1)*limit, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	return s.briefsToFollowItems(ctx, ids, viewerID), total, nil
-}
-
-func (s *UserService) briefsToFollowItems(ctx context.Context, ids []int, viewerID int) []model.UserFollowItem {
-	briefs := userclient.BriefMapByInt(ctx, s.users, ids)
-	followed, _ := s.repo.WhichFollowed(viewerID, ids)
-	out := make([]model.UserFollowItem, 0, len(ids))
-	for _, id := range ids {
-		if b := briefs[id]; b != nil {
-			out = append(out, model.UserFollowItem{
-				ID:         int(b.ID),
-				Name:       b.Name,
-				Avatar:     b.Avatar,
-				Cosmetics:  b.Cosmetics,
-				IsFollowed: followed[int(b.ID)],
-			})
-		}
-	}
-	return out
 }
 
 func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) ([]model.UserBasic, error) {

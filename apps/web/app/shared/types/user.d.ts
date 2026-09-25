@@ -14,8 +14,8 @@ interface UserInfo {
   site_roles: string[]
   moemoepoint: number
   register_time: string
-  follower_count: number
-  following_count: number
+  follower_count?: number
+  following_count?: number
   patch_count: number
   resource_count: number
   comment_count: number

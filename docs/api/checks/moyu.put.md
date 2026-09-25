@@ -58,7 +58,7 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `PUT /api/v1/user/:id/follow` | 登录 | `userH.Follow` | 已修 | 被关注者无本地 user 行时原泄露 Postgres FK 串（SQLSTATE 23503）→ 识别 FK 冲突返回 `用户不存在`；自关注 guard + 已关注 guard 正常 |
+| `PUT /api/v1/user/:id/follow` | 登录 | `userH.Follow` | 对齐 | 幂等（重复关注仍 `Followed`）；自关注 `cannot follow yourself`；无本地 user 行 `用户不存在`；写入 community 关注图 |
 
 ## 5. 消息 `/message`（组级 `auth`）
 

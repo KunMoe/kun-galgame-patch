@@ -9,7 +9,6 @@ import (
 	authModel "kun-galgame-patch-api/internal/auth/model"
 	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
-	userModel "kun-galgame-patch-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
@@ -185,8 +184,6 @@ type PurgePreviewCounts struct {
 	Resources           int64
 	ResourceLikes       int64
 	Contributes         int64
-	Following           int64
-	Followers           int64
 	ChatMemberships     int64
 	ChatMessages        int64
 	PrivateMessages     int64
@@ -225,8 +222,6 @@ func (r *AdminRepository) PurgePreview(userID int, includeOwnedPatches bool) (*P
 	count(&c.Resources, r.db.Model(&patchModel.PatchResource{}).Where("user_id = ?", userID))
 	count(&c.ResourceLikes, r.db.Model(&patchModel.UserPatchResourceLikeRelation{}).Where("user_id = ?", userID))
 	count(&c.Contributes, r.db.Model(&patchModel.UserPatchContributeRelation{}).Where("user_id = ?", userID))
-	count(&c.Following, r.db.Model(&userModel.UserFollowRelation{}).Where("follower_id = ?", userID))
-	count(&c.Followers, r.db.Model(&userModel.UserFollowRelation{}).Where("following_id = ?", userID))
 	count(&c.ChatMemberships, r.db.Table("chat_member").Where("user_id = ?", userID))
 	count(&c.ChatMessages, r.db.Table("chat_message").Where("sender_id = ?", userID))
 	count(&c.PrivateMessages, r.db.Table("user_message").Where("sender_id = ? OR recipient_id = ?", userID, userID))
@@ -305,18 +300,11 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool, heirUID 
 		if err != nil {
 			return err
 		}
-		followingPeers, err := distinctInts("user_follow_relation", "following_id", "follower_id = ?", userID)
-		if err != nil {
-			return err
-		}
-		followerPeers, err := distinctInts("user_follow_relation", "follower_id", "following_id = ?", userID)
-		if err != nil {
-			return err
-		}
-		peers := unionInts(followingPeers, followerPeers)
 
-		if err := tx.Where("follower_id = ? OR following_id = ?", userID, userID).
-			Delete(&userModel.UserFollowRelation{}).Error; err != nil {
+		// Follows live in the community service now, but the frozen
+		// user_follow_relation keeps following_id -> user.id ON DELETE RESTRICT,
+		// so a followed user's row cannot be deleted while these rows remain.
+		if err := tx.Exec(`DELETE FROM user_follow_relation WHERE follower_id = ? OR following_id = ?`, userID, userID).Error; err != nil {
 			return err
 		}
 
@@ -394,14 +382,6 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool, heirUID 
 			if err := tx.Exec(`UPDATE patch_resource SET like_count =
 				(SELECT COUNT(*) FROM user_patch_resource_like_relation WHERE user_patch_resource_like_relation.resource_id = patch_resource.id)
 				WHERE id IN ?`, likedResourceIDs).Error; err != nil {
-				return err
-			}
-		}
-		if len(peers) > 0 {
-			if err := tx.Exec(`UPDATE "user" SET
-				follower_count  = (SELECT COUNT(*) FROM user_follow_relation WHERE user_follow_relation.following_id = "user".id),
-				following_count = (SELECT COUNT(*) FROM user_follow_relation WHERE user_follow_relation.follower_id = "user".id)
-				WHERE id IN ?`, peers).Error; err != nil {
 				return err
 			}
 		}

@@ -151,7 +151,7 @@ const toggleFollow = async () => {
                 >
                   粉丝
                   <span class="text-foreground font-semibold">
-                    {{ user.follower_count }}
+                    {{ user.follower_count ?? '—' }}
                   </span>
                 </button>
                 <button
@@ -161,7 +161,7 @@ const toggleFollow = async () => {
                 >
                   关注
                   <span class="text-foreground font-semibold">
-                    {{ user.following_count }}
+                    {{ user.following_count ?? '—' }}
                   </span>
                 </button>
               </div>

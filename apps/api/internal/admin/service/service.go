@@ -13,6 +13,7 @@ import (
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
+	"kun-galgame-patch-api/pkg/communityclient"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/upstream"
 
@@ -20,12 +21,13 @@ import (
 )
 
 type AdminService struct {
-	repo     *repository.AdminRepository
-	rdb      *redis.Client
-	setting  *settingService.Service
-	patch    *patchService.PatchService
-	galgame  *galgameClient.Client
-	comments CommentPurger
+	repo      *repository.AdminRepository
+	rdb       *redis.Client
+	setting   *settingService.Service
+	patch     *patchService.PatchService
+	galgame   *galgameClient.Client
+	comments  CommentPurger
+	community *communityclient.Client
 }
 
 // CommentPurger is the community primitive's side of erasing a user. Comments
@@ -36,8 +38,8 @@ type CommentPurger interface {
 	PurgeAuthor(ctx context.Context, userID int) (int64, error)
 }
 
-func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService, galgame *galgameClient.Client, comments CommentPurger) *AdminService {
-	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch, galgame: galgame, comments: comments}
+func New(repo *repository.AdminRepository, rdb *redis.Client, setting *settingService.Service, patch *patchService.PatchService, galgame *galgameClient.Client, comments CommentPurger, community *communityclient.Client) *AdminService {
+	return &AdminService{repo: repo, rdb: rdb, setting: setting, patch: patch, galgame: galgame, comments: comments, community: community}
 }
 
 func (s *AdminService) GetResources(search string, page, limit int) ([]patchModel.PatchResource, int64, error) {
@@ -66,6 +68,7 @@ func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, include
 		return nil, err
 	}
 	folders, items, folderErr := s.catalogFolders(ctx, userID, token)
+	following, followers := s.followCounts(ctx, userID)
 	return &dto.UserPurgePreview{
 		UserID:              userID,
 		UserExists:          c.UserExists,
@@ -73,8 +76,8 @@ func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, include
 		Resources:           c.Resources,
 		ResourceLikes:       c.ResourceLikes,
 		Contributes:         c.Contributes,
-		Following:           c.Following,
-		Followers:           c.Followers,
+		Following:           following,
+		Followers:           followers,
 		ChatMemberships:     c.ChatMemberships,
 		ChatMessages:        c.ChatMessages,
 		PrivateMessages:     c.PrivateMessages,
@@ -115,6 +118,24 @@ func (s *AdminService) catalogFolders(ctx context.Context, userID int, token str
 		items += int64(f.ItemCount)
 	}
 	return int64(len(folders)), items, ""
+}
+
+func (s *AdminService) followCounts(ctx context.Context, userID int) (following, followers *int64) {
+	if s.community == nil || !s.community.Configured() {
+		return nil, nil
+	}
+	res, err := s.community.FollowStates(ctx, 0, []int64{int64(userID)})
+	if err != nil {
+		communityclient.LogDegraded(ctx, "purge preview follow counts unavailable", err, "user_id", userID)
+		return nil, nil
+	}
+	for i := range res.States {
+		if res.States[i].UserID == int64(userID) {
+			g, f := res.States[i].FollowingCount, res.States[i].FollowersCount
+			return &g, &f
+		}
+	}
+	return nil, nil
 }
 
 func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {

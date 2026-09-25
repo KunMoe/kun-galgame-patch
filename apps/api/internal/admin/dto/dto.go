@@ -41,18 +41,18 @@ type PurgeUserRequest struct {
 }
 
 type UserPurgePreview struct {
-	UserID          int   `json:"user_id"`
-	UserExists      bool  `json:"user_exists"`
-	Comments        int64 `json:"comments"`
-	Resources       int64 `json:"resources"`
-	ResourceLikes   int64 `json:"resource_likes"`
-	Contributes     int64 `json:"contributes"`
-	Following       int64 `json:"following"`
-	Followers       int64 `json:"followers"`
-	ChatMemberships int64 `json:"chat_memberships"`
-	ChatMessages    int64 `json:"chat_messages"`
-	PrivateMessages int64 `json:"private_messages"`
-	OwnedPatches    int64 `json:"owned_patches"`
+	UserID          int    `json:"user_id"`
+	UserExists      bool   `json:"user_exists"`
+	Comments        int64  `json:"comments"`
+	Resources       int64  `json:"resources"`
+	ResourceLikes   int64  `json:"resource_likes"`
+	Contributes     int64  `json:"contributes"`
+	Following       *int64 `json:"following,omitempty"`
+	Followers       *int64 `json:"followers,omitempty"`
+	ChatMemberships int64  `json:"chat_memberships"`
+	ChatMessages    int64  `json:"chat_messages"`
+	PrivateMessages int64  `json:"private_messages"`
+	OwnedPatches    int64  `json:"owned_patches"`
 
 	OwnedPatchResources int64 `json:"owned_patch_resources"`
 

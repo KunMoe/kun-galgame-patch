@@ -52,7 +52,7 @@
 
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
-| `DELETE /api/v1/user/:id/follow` | 登录 | `userH.Unfollow` | 已修 | **无关注关系也照样 follower_count -1**（DeleteFollow 忽略 RowsAffected）→ 任意人可刷低他人粉丝数（实测复现 11→10）。改：返回 rowsAffected，仅确有删除才扣计数 |
+| `DELETE /api/v1/user/:id/follow` | 登录 | `userH.Unfollow` | 对齐 | 幂等（重复取消仍 `Unfollowed`）；无本地 user 行 `用户不存在`；写入 community 关注图 |
 
 ## 5. 管理 `/admin`（组级 `auth` + `RequireRole("admin","moderator")`）
 

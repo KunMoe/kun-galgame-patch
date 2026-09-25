@@ -7,14 +7,6 @@ import (
 	"kun-galgame-patch-api/pkg/userclient"
 )
 
-type UserFollowRelation struct {
-	ID          int `gorm:"primaryKey;autoIncrement" json:"id"`
-	FollowerID  int `gorm:"uniqueIndex:idx_follow;not null" json:"follower_id"`
-	FollowingID int `gorm:"uniqueIndex:idx_follow;not null;constraint:OnDelete:RESTRICT" json:"following_id"`
-}
-
-func (UserFollowRelation) TableName() string { return "user_follow_relation" }
-
 type UserMessage struct {
 	ID          int       `gorm:"primaryKey;autoIncrement" json:"id"`
 	Type        string    `gorm:"not null" json:"type"`
