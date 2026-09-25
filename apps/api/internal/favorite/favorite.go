@@ -79,11 +79,14 @@ func (s *Service) WorkIDs(ctx context.Context, ownerUID int, token string, isOwn
 		sh, err := s.shelf(ctx, ownerUID, token, true)
 		return sh.Works, err
 	}
-	folders, err := s.gal.V2().PublicFolders(ctx, int64(ownerUID))
-	if err != nil {
-		return nil, err
-	}
-	return walkWorks(ctx, folders, s.gal.V2().PublicFolderItems)
+	slot := s.cache.Slot(ctx, ownerUID, scope, "public")
+	return usercache.Fetch(ctx, slot, shelfTTL, func(ctx context.Context) ([]int64, error) {
+		folders, err := s.gal.V2().PublicFolders(ctx, int64(ownerUID))
+		if err != nil {
+			return nil, err
+		}
+		return walkWorks(ctx, folders, s.gal.V2().PublicFolderItems)
+	})
 }
 
 // Holds is the heart button on one game's page.

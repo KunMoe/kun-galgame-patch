@@ -60,7 +60,7 @@ const { data: chipUserInfo } = await useAsyncData<UserInfo | null>(
   () => `patch-chip-user-${chipUserId.value}`,
   async () => {
     if (!chipUserId.value) return null
-    const res = await api.get<UserInfo>(`/user/${chipUserId.value}`)
+    const res = await api.get<UserInfo>(`/user/${chipUserId.value}/floating`)
     return res.code === 0 ? res.data : null
   },
   { watch: [chipUserId] }
