@@ -29,7 +29,6 @@ type Brief struct {
 	AvatarImageHash string     `json:"avatar_image_hash"`
 	Bio             string     `json:"bio"`
 	Status          int        `json:"status"`
-	AnonymizedAt    *time.Time `json:"anonymized_at,omitempty"`
 	Roles           []string   `json:"roles"`
 	SiteRoles       []string   `json:"site_roles"`
 	Cosmetics       *Cosmetics `json:"cosmetics,omitempty"`
@@ -57,8 +56,6 @@ const (
 	// user_batch_handler.go Search); moyu's search box allows more.
 	searchMaxRunes = 50
 )
-
-const DeletedUserName = "已注销用户"
 
 type Config struct {
 	BaseURL      string
@@ -107,10 +104,6 @@ func New(cfg Config) *Client {
 		cacheTTL:    cfg.CacheTTL,
 		notFoundTTL: cfg.NotFoundTTL,
 	}
-}
-
-func (c *Client) Configured() bool {
-	return c != nil && c.baseURL != ""
 }
 
 func (c *Client) Users(ctx context.Context, ids []uint) (map[uint]*Brief, error) {
@@ -229,13 +222,10 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]*Brief, err
 	if err := c.do(req, "users/search", clientKind, &data); err != nil {
 		return nil, err
 	}
-	out := make([]*Brief, 0, len(data.Users))
+	out := make([]*Brief, len(data.Users))
 	for i := range data.Users {
-		if data.Users[i].AnonymizedAt != nil {
-			continue
-		}
 		u := data.Users[i]
-		out = append(out, &u)
+		out[i] = &u
 	}
 	return out, nil
 }
@@ -272,8 +262,8 @@ func (c *Client) fetchBatch(ctx context.Context, ids []uint) (map[uint]*Brief, [
 		}
 		users := make(map[uint]*Brief, len(data.Users))
 		for i := range data.Users {
-			u := normalizeBrief(data.Users[i])
-			users[u.ID] = u
+			u := data.Users[i]
+			users[u.ID] = &u
 		}
 		return result{users: users, notFound: data.NotFound}, nil
 	})
@@ -340,19 +330,6 @@ func (c *Client) do(req *http.Request, op string, kind func(status, code int) up
 		return fail(0, "", fmt.Errorf("decode data: %w", err))
 	}
 	return nil
-}
-
-func normalizeBrief(u Brief) *Brief {
-	if u.AnonymizedAt == nil {
-		return &u
-	}
-	return &Brief{
-		ID:           u.ID,
-		UUID:         u.UUID,
-		Name:         DeletedUserName,
-		Status:       u.Status,
-		AnonymizedAt: u.AnonymizedAt,
-	}
 }
 
 func chunk(ids []uint, n int) [][]uint {
