@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"kun-galgame-patch-api/internal/account/deletion"
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
 	adminService "kun-galgame-patch-api/internal/admin/service"
@@ -345,7 +346,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc)
+	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, deletion.New(db, usrCli))
 	stopBackground := func() {
 		cronStop()
 		storeStop()
