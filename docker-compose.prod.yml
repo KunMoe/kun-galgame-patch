@@ -70,6 +70,17 @@ x-moyu-api-env: &moyu-api-env
   # 通知由社区生成, API 每 20s 拉 /notifications/feed 镜像进 user_message。
   # 凭据回落到上面的 OAUTH_CLIENT_*。留空 = 评论降级 (读空墙 / 写 503), 不 panic。
   KUN_COMMUNITY_API_BASE: http://community:9282/api/v1/community
+  # ── 举报 = NextMoe trust 服务 ──
+  # 设了 BASE_URL, 举报就在这次部署上线: 启动时 API 用 OAUTH_CLIENT_* 向 trust 登记
+  # patch_resource (带下面的回调密钥) 和 user 两种举报对象。租户同评论区, 由
+  # community_site=moyu 派生, 不是 kungal。CALLBACK_SECRET 只管入站的执法回调
+  # (隐藏/删除资源): 留空 = 回调一律 401, 举报照收但裁决不落地。
+  KUN_TRUST_BASE_URL: http://trust:9283
+  KUN_TRUST_SITE: moyu
+  # 执法回调走内网别名 (同 kungal 的 kungal-api:2334), 不经 Cloudflare WAF;
+  # 不能写 web: infra 的 web 也用这个别名, 请求会在两者间轮转。
+  KUN_TRUST_CALLBACK_URL: http://moyu-api:5214/api/v1/trust/callback
+  KUN_TRUST_CALLBACK_SECRET: ${KUN_TRUST_CALLBACK_SECRET:-}
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
