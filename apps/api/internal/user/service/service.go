@@ -18,7 +18,6 @@ import (
 	"kun-galgame-patch-api/internal/user/repository"
 	"kun-galgame-patch-api/pkg/moemoepoint"
 	"kun-galgame-patch-api/pkg/userclient"
-	"kun-galgame-patch-api/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -96,7 +95,7 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, resources []patc
 	}
 }
 
-func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, token, contentLimit string) (*dto.UserInfoResponse, error) {
+func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found")
@@ -110,8 +109,6 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 		RegisterTime:   user.Created.Format(time.RFC3339),
 		PatchCount:     s.repo.CountUserPatches(userID),
 		ResourceCount:  s.repo.CountUserResources(userID),
-		CommentCount:   s.commentCount(ctx, userID),
-		FavoriteCount:  s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit),
 	}
 
 	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
@@ -122,6 +119,18 @@ func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, t
 		resp.Roles = b.Roles
 		resp.SiteRoles = b.SiteRoles
 	}
+
+	return resp, nil
+}
+
+func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, token, contentLimit string) (*dto.UserInfoResponse, error) {
+	resp, err := s.cardInfo(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.CommentCount = s.commentCount(ctx, userID)
+	resp.FavoriteCount = s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit)
 
 	if currentUID > 0 && currentUID != userID {
 		_, err := s.repo.FindFollow(currentUID, userID)
@@ -149,8 +158,10 @@ func (s *UserService) countFavorites(ctx context.Context, userID int, token stri
 	return 0
 }
 
+// GetUserFloating makes no catalog or community call because the game page
+// calls it on every view.
 func (s *UserService) GetUserFloating(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
-	return s.GetUserInfo(ctx, userID, 0, "", utils.ContentLimitSFW)
+	return s.cardInfo(ctx, userID)
 }
 
 func (s *UserService) Follow(followerID, followingID int) error {

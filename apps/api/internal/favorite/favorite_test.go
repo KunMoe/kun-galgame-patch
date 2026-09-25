@@ -131,6 +131,50 @@ func TestWorkIDsVisitorSeesOnlyPublicFolders(t *testing.T) {
 	}
 }
 
+func TestVisitorWalkIsCachedUntilTheOwnerForgets(t *testing.T) {
+	f := &face{body: map[string]string{
+		"/v2/folders": `{"object":"list","items":[
+			{"id":"12","owner_uid":"7","name":"b","visibility":"public","is_default":false,"item_count":1}
+		],"next_cursor":null}`,
+		"/v2/folders/12/items": `{"object":"list","items":[
+			{"folder_id":"12","work_id":"285","created_at":"2026-09-04T00:00:00Z"}
+		],"next_cursor":null}`,
+	}}
+	svc := f.cached(t)
+	ctx := context.Background()
+	for range 2 {
+		got, err := svc.WorkIDs(ctx, 7, "tok", false)
+		if err != nil {
+			t.Fatalf("WorkIDs: %v", err)
+		}
+		if len(got) != 1 || got[0] != 285 {
+			t.Fatalf("want [285], got %v", got)
+		}
+	}
+	n := 0
+	for _, p := range f.paths {
+		if p == "/v2/folders" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("two visitor reads spent %d /v2/folders requests, want 1", n)
+	}
+	svc.Forget(ctx, 7)
+	if _, err := svc.WorkIDs(ctx, 7, "tok", false); err != nil {
+		t.Fatal(err)
+	}
+	n = 0
+	for _, p := range f.paths {
+		if p == "/v2/folders" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("a visitor read after Forget spent %d /v2/folders requests, want 2", n)
+	}
+}
+
 // An empty folder is not worth a request.
 func TestWorkIDsSkipsEmptyFolders(t *testing.T) {
 	f := &face{body: map[string]string{
