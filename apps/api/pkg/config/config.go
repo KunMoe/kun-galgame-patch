@@ -103,6 +103,7 @@ func (c CommunityConfig) Configured() bool {
 type TrustConfig struct {
 	BaseURL        string
 	Site           string
+	CallbackURL    string
 	CallbackSecret string
 }
 
@@ -176,6 +177,7 @@ func Load() *Config {
 		Trust: TrustConfig{
 			BaseURL:        getEnvOptionalProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
 			Site:           getEnv("KUN_TRUST_SITE", "moyu"),
+			CallbackURL:    getEnv("KUN_TRUST_CALLBACK_URL", ""),
 			CallbackSecret: getEnv("KUN_TRUST_CALLBACK_SECRET", ""),
 		},
 		Community: CommunityConfig{
