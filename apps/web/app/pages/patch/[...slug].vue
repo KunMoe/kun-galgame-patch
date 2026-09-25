@@ -41,11 +41,7 @@ const target = await (async () => {
 })()
 
 if (!target) {
-  throw createError({
-    statusCode: 404,
-    statusMessage: '这个页面的地址已经变了，而且没有找到它的新位置',
-    fatal: true
-  })
+  throw kunPageError(404, '这个页面的地址已经变了，而且没有找到它的新位置')
 }
 
 useKunDisableSeo('页面已迁移')

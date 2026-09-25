@@ -41,8 +41,7 @@ const { data, pending } = await useAsyncData(
   { watch: [page, officialID] }
 )
 
-const notFound = () =>
-  createError({ statusCode: 404, statusMessage: '会社不存在', fatal: true })
+const notFound = () => kunPageError(404, '会社不存在')
 
 if (data.value?.code === VERDICT_NOT_FOUND) throw notFound()
 

@@ -16,8 +16,8 @@ const { data } = await useAsyncData(
 
 const answerFor = (code: number) =>
   code === VERDICT_NOT_FOUND
-    ? { statusCode: 404, statusMessage: '会社不存在' }
-    : { statusCode: 502, statusMessage: '会社解析服务暂时不可用' }
+    ? kunPageError(404, '会社不存在')
+    : kunPageError(502, '会社解析服务暂时不可用')
 
 const verdict = data.value
 if (verdict?.code === 0 && verdict.catalogId > 0) {
@@ -26,7 +26,7 @@ if (verdict?.code === 0 && verdict.catalogId > 0) {
     { redirectCode: 301 }
   )
 } else {
-  throw createError({ ...answerFor(verdict?.code ?? -1), fatal: true })
+  throw answerFor(verdict?.code ?? -1)
 }
 </script>
 

@@ -29,8 +29,7 @@ const { data, pending } = await useAsyncData(
   { watch: [page, seriesID] }
 )
 
-const notFound = () =>
-  createError({ statusCode: 404, statusMessage: '系列不存在', fatal: true })
+const notFound = () => kunPageError(404, '系列不存在')
 
 if (data.value?.code === VERDICT_NOT_FOUND) throw notFound()
 watch(data, (v) => {
