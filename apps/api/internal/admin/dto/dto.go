@@ -63,15 +63,14 @@ type UserPurgePreview struct {
 	CatalogFolders     int64  `json:"catalog_folders"`
 	CatalogFolderItems int64  `json:"catalog_folder_items"`
 	CatalogFolderError string `json:"catalog_folder_error,omitempty"`
-
-	CanDeleteUserRow bool `json:"can_delete_user_row"`
 }
 
 type UserPurgeResult struct {
-	UserID          int   `json:"user_id"`
-	UserRowDeleted  bool  `json:"user_row_deleted"`
-	SessionsRevoked int   `json:"sessions_revoked"`
-	CommentsPurged  int64 `json:"comments_purged"`
+	UserID            int   `json:"user_id"`
+	UserRowDeleted    bool  `json:"user_row_deleted"`
+	SessionsRevoked   int   `json:"sessions_revoked"`
+	CommentsPurged    int64 `json:"comments_purged"`
+	PatchesHandedOver int64 `json:"patches_handed_over"`
 	// Warning is set when the comments were purged upstream but the local purge
 	// did not complete; running the purge again finishes it.
 	Warning string `json:"warning,omitempty"`
