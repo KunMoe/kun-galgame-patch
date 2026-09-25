@@ -130,7 +130,12 @@ export const useSettingStore = defineStore('setting', {
   // own opt-in survives a hard refresh".
   persist: {
     key: 'kun-patch-setting-store',
-    storage: piniaPluginPersistedstate.cookies(),
+    // These options replace the global cookieOptions rather than merging,
+    // which is why sameSite is repeated here.
+    storage: piniaPluginPersistedstate.cookies({
+      maxAge: 60 * 60 * 24 * 400,
+      sameSite: 'lax'
+    }),
     // Narrowing the type above does nothing to a cookie already holding an old
     // string, and every reader of this field would then fall through to a label
     // that resolves to undefined and renders blank — a mode no button can
