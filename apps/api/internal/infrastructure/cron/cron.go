@@ -18,12 +18,18 @@ type NotificationSync interface {
 	Sync(ctx context.Context) (int, error)
 }
 
+type AccountDeletionSync interface {
+	Configured() bool
+	Sync(ctx context.Context) (int, error)
+}
+
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
 	img *imageclient.Client,
 	comments CommentImages,
 	notifications NotificationSync,
+	deletions AccountDeletionSync,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -133,6 +139,24 @@ func Start(
 		}))
 		if _, err := c.AddJob("@every 20s", job); err != nil {
 			slog.Error("注册社区通知同步任务失败", "error", err)
+		}
+	}
+
+	if deletions != nil && deletions.Configured() {
+		job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			n, err := deletions.Sync(ctx)
+			if err != nil {
+				slog.Error("注销账号清理失败", "error", err, "purged", n)
+				return
+			}
+			if n > 0 {
+				slog.Info("注销账号清理完成", "purged", n)
+			}
+		}))
+		if _, err := c.AddJob("23 * * * *", job); err != nil {
+			slog.Error("注册注销账号清理任务失败", "error", err)
 		}
 	}
 

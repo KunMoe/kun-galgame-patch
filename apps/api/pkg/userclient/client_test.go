@@ -2,6 +2,7 @@ package userclient
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -325,6 +326,136 @@ func TestCreatorApplicationNoneYet(t *testing.T) {
 	app, err := New(Config{BaseURL: srv.URL}).GetMyCreatorApplication(context.Background(), "tok")
 	require.NoError(t, err)
 	assert.Nil(t, app)
+}
+
+func TestUsers_AnonymizedAccountRendersAsDeleted(t *testing.T) {
+	at := time.Date(2026, 10, 2, 3, 0, 0, 123456000, time.UTC)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeBatchResp(w, []Brief{{
+			ID:              5,
+			UUID:            "uuid-5",
+			Name:            "已注销#5",
+			Avatar:          "https://img/a.webp",
+			AvatarImageHash: "abcd",
+			Bio:             "hi",
+			Status:          1,
+			AnonymizedAt:    &at,
+			Roles:           []string{"user"},
+			SiteRoles:       []string{"moyu"},
+			Cosmetics: &Cosmetics{
+				AvatarFrame: &Decoration{ItemID: 3, Name: "sakura", StaticURL: "https://img/d/a.png"},
+			},
+		}}, nil)
+	}))
+	defer srv.Close()
+
+	cli := New(Config{BaseURL: srv.URL, ClientID: "x", ClientSecret: "y"})
+	out, err := cli.Users(context.Background(), []uint{5})
+	require.NoError(t, err)
+	require.NotNil(t, out[5])
+	b := out[5]
+	assert.Equal(t, uint(5), b.ID)
+	assert.Equal(t, "uuid-5", b.UUID)
+	assert.Equal(t, 1, b.Status)
+	assert.Equal(t, DeletedUserName, b.Name)
+	assert.Empty(t, b.Avatar)
+	assert.Empty(t, b.AvatarImageHash)
+	assert.Empty(t, b.Bio)
+	assert.Nil(t, b.Roles)
+	assert.Nil(t, b.SiteRoles)
+	assert.Nil(t, b.Cosmetics)
+	require.NotNil(t, b.AnonymizedAt)
+	assert.True(t, b.AnonymizedAt.Equal(at))
+}
+
+func TestSearch_SkipsAnonymizedAccounts(t *testing.T) {
+	at := time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"users": []Brief{
+					{ID: 1, Name: "alice"},
+					{ID: 5, Name: "已注销#5", AnonymizedAt: &at},
+					{ID: 2, Name: "bob"},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cli := New(Config{BaseURL: srv.URL, ClientID: "x", ClientSecret: "y"})
+	users, err := cli.Search(context.Background(), "a", 10)
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+	assert.Equal(t, "alice", users[0].Name)
+	assert.Equal(t, "bob", users[1].Name)
+}
+
+func TestDeletedUsers_SendsCursorAndDecodes(t *testing.T) {
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("x:y"))
+	type seen struct {
+		path   string
+		cursor []string
+		limit  string
+		auth   string
+	}
+	var reqs []seen
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		reqs = append(reqs, seen{
+			path:   r.URL.Path,
+			cursor: q["cursor"],
+			limit:  q.Get("limit"),
+			auth:   r.Header.Get("Authorization"),
+		})
+		if _, ok := q["cursor"]; !ok {
+			writeJSONResp(w, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"users": []map[string]any{
+						{"id": 1024, "uuid": "u-1", "deleted_at": "2026-10-02T03:00:00.123456Z"},
+					},
+					"next_cursor": "1759374000123456000.1024",
+				},
+			})
+			return
+		}
+		writeJSONResp(w, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"users":       []any{},
+				"next_cursor": q.Get("cursor"),
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cli := New(Config{BaseURL: srv.URL, ClientID: "x", ClientSecret: "y"})
+	page, err := cli.DeletedUsers(context.Background(), "", 100)
+	require.NoError(t, err)
+	require.Len(t, page.Users, 1)
+	assert.Equal(t, uint(1024), page.Users[0].ID)
+	assert.Equal(t, "u-1", page.Users[0].UUID)
+	wantAt, err := time.Parse(time.RFC3339Nano, "2026-10-02T03:00:00.123456Z")
+	require.NoError(t, err)
+	assert.True(t, page.Users[0].DeletedAt.Equal(wantAt))
+	assert.Equal(t, "1759374000123456000.1024", page.NextCursor)
+
+	page, err = cli.DeletedUsers(context.Background(), "1759374000123456000.1024", 100)
+	require.NoError(t, err)
+	assert.Empty(t, page.Users)
+	assert.Equal(t, "1759374000123456000.1024", page.NextCursor)
+
+	require.Len(t, reqs, 2)
+	assert.Equal(t, "/users/deleted", reqs[0].path)
+	assert.Equal(t, wantAuth, reqs[0].auth)
+	assert.Equal(t, "100", reqs[0].limit)
+	assert.Nil(t, reqs[0].cursor)
+	assert.Equal(t, "/users/deleted", reqs[1].path)
+	assert.Equal(t, wantAuth, reqs[1].auth)
+	assert.Equal(t, "100", reqs[1].limit)
+	assert.Equal(t, []string{"1759374000123456000.1024"}, reqs[1].cursor)
 }
 
 func writeBatchResp(w http.ResponseWriter, users []Brief, notFound []uint) {
