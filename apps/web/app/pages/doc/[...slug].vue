@@ -33,11 +33,7 @@ const detail = computed<KunPostDetail | null>(() =>
 )
 
 if (!detail.value) {
-  throw createError({
-    statusCode: 404,
-    statusMessage: '文章未找到',
-    fatal: true
-  })
+  throw kunPageError(404, '文章未找到')
 }
 
 useKunSeoMeta({

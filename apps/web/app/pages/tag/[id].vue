@@ -17,15 +17,10 @@ const { data } = await useAsyncData(
 
 const answerFor = (code: number) => {
   if (code === VERDICT_GONE) {
-    return {
-      statusCode: 410,
-      statusMessage: '该标签已永久退役，没有对应的新词条'
-    }
+    return kunPageError(410, '该标签已永久退役，没有对应的新词条')
   }
-  if (code === VERDICT_NOT_FOUND) {
-    return { statusCode: 404, statusMessage: '标签不存在' }
-  }
-  return { statusCode: 502, statusMessage: '标签解析服务暂时不可用' }
+  if (code === VERDICT_NOT_FOUND) return kunPageError(404, '标签不存在')
+  return kunPageError(502, '标签解析服务暂时不可用')
 }
 
 const verdict = data.value
@@ -37,7 +32,7 @@ if (verdict?.code === 0 && verdict.catalogId > 0) {
     }
   )
 } else {
-  throw createError({ ...answerFor(verdict?.code ?? -1), fatal: true })
+  throw answerFor(verdict?.code ?? -1)
 }
 </script>
 

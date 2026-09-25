@@ -22,8 +22,7 @@ const { data, pending } = await useAsyncData(
   { watch: [staffID] }
 )
 
-const notFound = () =>
-  createError({ statusCode: 404, statusMessage: '制作人员不存在', fatal: true })
+const notFound = () => kunPageError(404, '制作人员不存在')
 
 if (data.value?.code === VERDICT_NOT_FOUND) throw notFound()
 watch(data, (v) => {

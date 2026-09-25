@@ -411,8 +411,16 @@ func globalErrorHandler(c fiber.Ctx, err error) error {
 		}
 		return response.Error(c, appErr)
 	}
-	if fe, ok := err.(*fiber.Error); ok && face.IsPath(c.Path()) {
-		return problem.Write(c, faceProblem(fe.Code, fe.Message))
+	if fe, ok := err.(*fiber.Error); ok {
+		if face.IsPath(c.Path()) {
+			return problem.Write(c, faceProblem(fe.Code, fe.Message))
+		}
+		// An unrouted path or a wrong method used to fall through to the 500
+		// below: scanners and stale clients filled the log with "Unhandled
+		// error" at ERROR and read the site's answer as a server fault.
+		if fe.Code < fiber.StatusInternalServerError {
+			return response.Error(c, errors.New(fe.Code*100, fe.Message, fe.Code))
+		}
 	}
 
 	slog.Error("Unhandled error", "error", err, "method", c.Method(), "path", c.Path())
