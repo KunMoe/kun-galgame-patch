@@ -2,19 +2,17 @@ package repository
 
 import (
 	"encoding/json"
-	stderrors "errors"
 	"fmt"
 	"time"
 
 	adminModel "kun-galgame-patch-api/internal/admin/model"
 	authModel "kun-galgame-patch-api/internal/auth/model"
+	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	userModel "kun-galgame-patch-api/internal/user/model"
 
 	"gorm.io/gorm"
 )
-
-var ErrUserOwnsPatches = stderrors.New("user still owns patches")
 
 type AdminRepository struct {
 	db *gorm.DB
@@ -280,20 +278,12 @@ func (r *AdminRepository) CollectUserArtifactUUIDs(userID int, includeOwnedPatch
 	return out, nil
 }
 
-func (r *AdminRepository) CountOwnedPatches(userID int) (int64, error) {
-	var n int64
-	err := r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID).Count(&n).Error
-	return n, err
-}
-
-func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool, heirUID int) (int64, error) {
+	var handedOver int64
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var ownedPatches int64
 		if err := tx.Model(&patchModel.Patch{}).Where("user_id = ?", userID).Count(&ownedPatches).Error; err != nil {
 			return err
-		}
-		if ownedPatches > 0 && !purgeOwnedPatches {
-			return ErrUserOwnsPatches
 		}
 
 		distinctInts := func(table, col, where string, args ...any) ([]int, error) {
@@ -336,29 +326,34 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		}
 
 		if err := tx.Exec(
-			`DELETE FROM user_message
-			 WHERE link IN (SELECT '/resource/' || id FROM patch_resource WHERE user_id = ?)`,
+			`DELETE FROM user_message m
+			 USING patch_resource r
+			 WHERE r.user_id = ?
+			   AND (m.link = '/resource/' || r.id OR m.link LIKE '/resource/' || r.id || '#%')`,
 			userID,
 		).Error; err != nil {
 			return err
 		}
 
 		if purgeOwnedPatches && ownedPatches > 0 {
+			// Same links PatchRepository.DeletePatch clears: pages are
+			// /galgame/<id> with the tab in a query since the route merge, so
+			// matching '/patch/' left every notice about the page behind.
 			if err := tx.Exec(
 				`DELETE FROM user_message m
 				 USING patch p
 				 WHERE p.user_id = ?
-				   AND (m.link = '/patch/' || p.id OR m.link LIKE '/patch/' || p.id || '/%')`,
+				   AND (m.link = '/galgame/' || p.id OR m.link LIKE '/galgame/' || p.id || '?%')`,
 				userID,
 			).Error; err != nil {
 				return err
 			}
 			if err := tx.Exec(
-				`DELETE FROM user_message
-				 WHERE link IN (
-				   SELECT '/resource/' || r.id FROM patch_resource r
-				   JOIN patch p ON p.id = r.galgame_id WHERE p.user_id = ?
-				 )`,
+				`DELETE FROM user_message m
+				 USING patch_resource r
+				 JOIN patch p ON p.id = r.galgame_id
+				 WHERE p.user_id = ?
+				   AND (m.link = '/resource/' || r.id OR m.link LIKE '/resource/' || r.id || '#%')`,
 				userID,
 			).Error; err != nil {
 				return err
@@ -366,6 +361,19 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 			if err := tx.Where("user_id = ?", userID).Delete(&patchModel.Patch{}).Error; err != nil {
 				return err
 			}
+		} else if ownedPatches > 0 {
+			res := tx.Exec(
+				`UPDATE patch SET user_id = COALESCE((
+					SELECT r.user_id FROM patch_resource r
+					WHERE r.galgame_id = patch.id AND r.user_id <> ?
+					ORDER BY r.created, r.id LIMIT 1), ?)
+				WHERE user_id = ?`,
+				userID, heirUID, userID,
+			)
+			if res.Error != nil {
+				return res.Error
+			}
+			handedOver = res.RowsAffected
 		}
 
 		if err := tx.Delete(&authModel.User{}, userID).Error; err != nil {
@@ -377,15 +385,8 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		// kept by settleFavoriteSideEffects; recomputing it from the frozen
 		// user_patch_favorite_relation rolled every affected game back to its
 		// snapshot value and threw away every heart since.
-		if len(affectedPatchIDs) > 0 {
-			// comment_count is deliberately absent. Comments live in the
-			// community primitive, so this query would reset every affected game
-			// to the frozen patch_comment's snapshot and throw away every comment
-			// since the cutover. PurgeAuthor settles it per wall instead.
-			if err := tx.Exec(`UPDATE patch SET
-				resource_count   = (SELECT COUNT(*) FROM patch_resource WHERE patch_resource.galgame_id = patch.id),
-				contribute_count = (SELECT COUNT(*) FROM user_patch_contribute_relation WHERE user_patch_contribute_relation.galgame_id = patch.id)
-				WHERE id IN ?`, affectedPatchIDs).Error; err != nil {
+		for _, id := range affectedPatchIDs {
+			if err := patchMerge.Recount(tx, id); err != nil {
 				return err
 			}
 		}
@@ -406,6 +407,7 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool) error {
 		}
 		return nil
 	})
+	return handedOver, err
 }
 
 func unionInts(slices ...[]int) []int {

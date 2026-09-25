@@ -26,13 +26,13 @@ interface UserPurgePreview {
   catalog_folders: number
   catalog_folder_items: number
   catalog_folder_error?: string
-  can_delete_user_row: boolean
 }
 interface UserPurgeResult {
   user_id: number
   user_row_deleted: boolean
   sessions_revoked: number
   comments_purged: number
+  patches_handed_over: number
   warning?: string
 }
 
@@ -95,11 +95,7 @@ const rows = computed<{ label: string; value: number; hint?: string }[]>(() => {
 })
 
 const canExecute = computed(
-  () =>
-    !!preview.value &&
-    preview.value.user_exists &&
-    preview.value.can_delete_user_row &&
-    !executing.value
+  () => !!preview.value && preview.value.user_exists && !executing.value
 )
 
 const execute = async () => {
@@ -107,7 +103,9 @@ const execute = async () => {
   if (!p || !uidValid.value) return
   const collateral = forcePurgePatches.value
     ? `并强删其创建的 ${p.owned_patches} 个补丁（连带 ${p.owned_patch_resources} 个资源，含其他用户的内容）。`
-    : ''
+    : p.owned_patches > 0
+      ? `其创建的 ${p.owned_patches} 个补丁页将转交他人保留。`
+      : ''
   const ok = await useKunAlert({
     title: '⚠️ 清除用户全部痕迹',
     type: 'danger',
@@ -122,9 +120,12 @@ const execute = async () => {
 
   executing.value = true
   try {
-    const res = await api.post<UserPurgeResult>(`/admin/user/${uidNum.value}/purge`, {
-      purge_owned_patches: forcePurgePatches.value
-    })
+    const res = await api.post<UserPurgeResult>(
+      `/admin/user/${uidNum.value}/purge`,
+      {
+        purge_owned_patches: forcePurgePatches.value
+      }
+    )
     if (res.code === 0 && !res.data.user_row_deleted) {
       useKunMessage(
         res.data.warning || '评论已清除，但本地数据清除失败，请重新执行清除',
@@ -133,8 +134,11 @@ const execute = async () => {
       await loadPreview()
     } else if (res.code === 0) {
       const r = res.data
+      const handedOver = r.patches_handed_over
+        ? `，转交补丁页 ${r.patches_handed_over} 个`
+        : ''
       useKunMessage(
-        `清除完成：账号已删除，撤销登录会话 ${r.sessions_revoked} 个`,
+        `清除完成：账号已删除${handedOver}，撤销登录会话 ${r.sessions_revoked} 个`,
         'success'
       )
       preview.value = null
@@ -154,8 +158,8 @@ const execute = async () => {
     <div>
       <h1 class="text-2xl font-bold">用户清除</h1>
       <p class="text-default-500 mt-1 text-sm">
-        清除某个用户在本站 (moyu) 的全部痕迹：评论、补丁资源 (含云端文件)、点赞 /
-        关注、聊天与私信，以及本地账号本身。常用于处理脚本恶意刷 spam
+        清除某个用户在本站 (moyu) 的全部痕迹：评论、补丁资源 (含云端文件)、点赞
+        / 关注、聊天与私信，以及本地账号本身。常用于处理脚本恶意刷 spam
         的账号。<strong class="text-danger">操作不可恢复</strong>，请先预览。
         收藏夹存在 catalog、属于中央账号，本操作不涉及。
       </p>
@@ -218,29 +222,30 @@ const execute = async () => {
           </p>
           <p v-else class="text-default-500 text-xs">
             该账号有 {{ preview.catalog_folders }} 个收藏夹、共
-            {{ preview.catalog_folder_items }} 个游戏。收藏夹属于中央账号，与 kungal
-            共用同一份，删除它们要在 catalog 侧单独操作。
+            {{ preview.catalog_folder_items }} 个游戏。收藏夹属于中央账号，与
+            kungal 共用同一份，删除它们要在 catalog 侧单独操作。
           </p>
         </div>
 
         <div class="border-default-200 space-y-3 rounded-lg border p-3">
           <KunCheckBox v-model="forcePurgePatches" color="danger">
-            强删该用户创建的补丁 (连带其下全部资源，含其他用户的内容)
+            删除该用户创建的补丁页 (连带其下全部资源，含其他用户的内容)
           </KunCheckBox>
 
           <p
             v-if="preview.owned_patches > 0 && forcePurgePatches"
             class="text-danger text-xs"
           >
-            将额外删除 {{ preview.owned_patch_resources }} 个资源 —— 其中可能包含其他用户的内容。
-            这些补丁下的评论区属于社区原语, 不随补丁删除, 会留在原锚点上。
+            将额外删除 {{ preview.owned_patch_resources }} 个资源 ——
+            其中可能包含其他用户的内容。 这些补丁下的评论区属于社区原语,
+            不随补丁删除, 会留在原锚点上。
           </p>
           <p
             v-else-if="preview.owned_patches > 0 && !forcePurgePatches"
-            class="text-warning text-xs"
+            class="text-default-500 text-xs"
           >
-            该用户创建了 {{ preview.owned_patches }} 个补丁，必须勾选上方选项才能删除其账号
-            (否则数据库外键会阻止删除)。
+            该用户创建的 {{ preview.owned_patches }}
+            个补丁页会保留，转交给该页最早的其他资源发布者；没有其他发布者的转交给你。
           </p>
         </div>
 

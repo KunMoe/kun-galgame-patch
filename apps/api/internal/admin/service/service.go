@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	stderrors "errors"
 	"log/slog"
 	"time"
 
@@ -85,7 +84,6 @@ func (s *AdminService) PurgeUserPreview(ctx context.Context, userID int, include
 		CatalogFolders:      folders,
 		CatalogFolderItems:  items,
 		CatalogFolderError:  folderErr,
-		CanDeleteUserRow:    c.OwnedPatches == 0 || includeOwnedPatches,
 	}, nil
 }
 
@@ -119,18 +117,12 @@ func (s *AdminService) catalogFolders(ctx context.Context, userID int, token str
 	return int64(len(folders)), items, ""
 }
 
-const ownsPatchesMsg = "该用户仍拥有补丁，必须勾选「强删该用户创建的补丁」才能删除其账号"
-
 func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatches bool, adminUID int) (*dto.UserPurgeResult, error) {
-	// Every check that can refuse runs before the community purge. The owned-patch
-	// check used to run after it, so the admin was told 400 while every comment
+	// Every check that can refuse runs before the community purge. A refusal
+	// used to run after it, so the admin was told 400 while every comment
 	// the user wrote was already tombstoned upstream.
-	owned, err := s.repo.CountOwnedPatches(userID)
-	if err != nil {
-		return nil, err
-	}
-	if owned > 0 && !purgeOwnedPatches {
-		return nil, errors.ErrBadRequest(ownsPatchesMsg)
+	if userID == adminUID {
+		return nil, errors.ErrBadRequest("不能清除自己的账号")
 	}
 
 	uuids, uErr := s.repo.CollectUserArtifactUUIDs(userID, purgeOwnedPatches)
@@ -148,15 +140,14 @@ func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatc
 	}
 
 	res := &dto.UserPurgeResult{UserID: userID, CommentsPurged: commentsPurged}
-	if err := s.repo.PurgeUser(userID, purgeOwnedPatches); err != nil {
+	handedOver, err := s.repo.PurgeUser(userID, purgeOwnedPatches, adminUID)
+	if err != nil {
 		slog.Error("PurgeUser: local purge failed after the community purge", "user_id", userID, "error", err)
 		res.Warning = "评论已清除，但本地数据清除失败，请重新执行清除"
-		if stderrors.Is(err, repository.ErrUserOwnsPatches) {
-			res.Warning = "评论已清除，但该用户刚刚创建了补丁，账号未删除：" + ownsPatchesMsg
-		}
 		return res, nil
 	}
 	res.UserRowDeleted = true
+	res.PatchesHandedOver = handedOver
 
 	if len(uuids) > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -176,6 +167,7 @@ func (s *AdminService) PurgeUser(ctx context.Context, userID int, purgeOwnedPatc
 		"target_user_id":      userID,
 		"purge_owned_patches": purgeOwnedPatches,
 		"sessions_revoked":    res.SessionsRevoked,
+		"patches_handed_over": res.PatchesHandedOver,
 	})
 	return res, nil
 }
