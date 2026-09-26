@@ -142,7 +142,7 @@
 OAuth 自己也会**花**萌萌点。目前只有一种：**修改用户名**。
 
 - 入口：`PATCH /auth/me { name }`（论坛 `PUT /user/username` 是它的代理）。
-- 价格：配置中心 `auth.name_change_cost`，默认 **17**（论坛旧 Nitro 端点的历史价）；置 0 即免费。
+- 价格：配置中心 `auth.name_change_cost`，默认 **17**（论坛旧 Nitro 端点的历史价）；置 0 即免费。它是公开键，随 [`GET /settings`](./14-settings.md) 下发——站点的改名确认框读它，不要把 17 写死。
 - 用户 → `oauth` sink，`reason=name_change`，`actor_user_id` = 用户本人，`note` 记「旧名 → 新名」。
 - 幂等键 `oauth:name_change:<userId>:<第几次>`。**不能**按「用户 + 目标名」构键：那样 A→B→A→B 的第四次会命中第一次的键，白送一次改名。
 - 余额不足 → `400/16006`，且**改名不发生**：改名、其余 profile 字段与扣费在同一个事务里。

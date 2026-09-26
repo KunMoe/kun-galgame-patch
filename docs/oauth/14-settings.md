@@ -78,6 +78,7 @@
 | `platform.notice` | string | `""` | 是 | 非空时在页面顶部展示这一行公告(≤ 500 字,单行);空不展示 |
 | `image.upload_enabled` | bool | `false` | 是 | `false` 时隐藏或禁用图片上传入口(图床对该站的上传此时回 503) |
 | `artifact.upload_enabled` | bool | `false` | 是 | `false` 时隐藏或禁用文件上传入口(artifact 服务对该站的上传此时回 503) |
+| `auth.name_change_cost` | int 0..10000 | `17` | 否 | 改名确认框里展示的萌萌点价格,`0` = 免费。只用于展示:扣费由 OAuth 在 `PATCH /auth/me` 里按同一个值执行(见 [06 §3.4](./06-moemoepoint.md)),站点不要自己扣,也不要把数字写死。首次拉取成功前不要显示具体价格 |
 
 「可按站点覆盖」= 管理员可以在控制台选中某个站点后单独设置(例如只让 letmoe 进入只读)。
 不可按站点覆盖的键,每个站点拿到的都是平台值。上传两个开关不只随读面下发:图床与 artifact

@@ -105,6 +105,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 
 ## 变更摘要
 
+> **2026-09-26 改名价格随配置下发**：`auth.name_change_cost` 标为公开键，出现在 `GET /settings` 的 `settings` 里（见 [14 §2](./14-settings.md)）。站点的改名确认框应读这个值，不要写死 17；`0` 表示免费。扣费仍只在 OAuth 的 `PATCH /auth/me` 里发生，站点无需改动扣费逻辑。
+
 > **2026-09-23 `preferences` 开放自助申请**：它已进入开发者平台的 `selfServiceUserScopes`，第三方自助注册的应用可以自己勾上这个 scope、直接在同意页向用户索取，不再需要运营在 OAuth 后台代勾（09-22 那条里「要用须在后台勾选」只对运营托管的 client 仍然成立）。能开放是因为约束不在白名单上：命名空间绑定把每个 client 关在自己 `client_id` + `global` 两格里、单份 64 KB 封顶、同意页对这个 scope 有自己的措辞。**它同时覆盖 `PUT /auth/me/nsfw`** 这次账号级写，是明知并接受的——边界是 `/oauth/authorize` 上那一次用户同意。裁定与理由见 [15 §三](./15-content-preferences.md#三新-scopepreferences)。
 
 > **2026-09-23 年龄确认退役（下游无需改动）**：账号一律视为成年账号——`adult_confirmed_at` 在账号创建时自动写入，存量账号已全部回填。**生效公式 `adult_confirmed ? nsfw_display : 'hide'` 一个字都没改，已经按它发版的下游继续原样工作**，只是左半边恒为 `true`。变动只有三处：① `PUT /auth/me/nsfw` 的年龄前置条件取消，`hide`/`blur`/`show` 三值无条件接受，**错误码 18008 退役**（不再被返回，号不回收，老下游映射表里那条分支成为死路）；② `POST /auth/me/adult-confirmation` 保留在线且幂等，但已无作用，新接入不必调用；③ `users.nsfw_display` 的列默认值从 `'blur'` 改为 `'hide'`。存量数据处理见 [15](./15-content-preferences.md#一内容分级)：13 万未确认账号在补确认时间**之前**先把 `'blur'` 翻成 `'hide'`，所以没有任何账号的观感发生变化。
