@@ -6,7 +6,7 @@
 
 返回 [README](./README.md)
 
-> **状态：已实现**（2026-09-23；2026-09-27 加入功能权益与兑换码）。物品类型：装扮 **头像框**、**主页背景**，功能 **主页介绍**，**兑换码**。实现见 `apps/api/internal/platform/shop`，路由注册见 `cmd/oauth/main.go`，扣费走 [06 萌萌点账本](./06-moemoepoint.md)。
+> **状态：已实现**（2026-09-23；2026-09-27 加入功能权益、兑换码与站点店面）。物品类型：装扮 **头像框**、**主页背景**，功能 **主页介绍**，**兑换码**。实现见 `apps/api/internal/platform/shop`，路由注册见 `cmd/oauth/main.go`，扣费走 [06 萌萌点账本](./06-moemoepoint.md)。
 
 ## 0. 定位
 
@@ -23,7 +23,7 @@
 | 码池 code | `shop_codes` | 兑换码类物品的库存：每个码卖出时记下订单与买家 |
 
 - **在哪买、到处戴**（Steam 模式）：物品可以是全站共享（`site_id` 为空）或站点独有（`site_id` 有值，只能在该站点的专区卖），但买到之后在所有站点都能显示。每个站点还可以单独选戴另一件（Discord 按服务器装饰的模式）。
-- **站点专区**：商品也有 `site_id`。全站商品出现在商店首页；站点商品按站点分组出现在账号中心商店的「专区」里，收入记到该站点的 sink `shop:site:<id>`。站点独有的物品只能放进它自己站点的商品里；全站物品也可以放进站点商品。
+- **站点专区**：商品也有 `site_id`。全站商品出现在商店首页；站点商品按站点分组出现在账号中心商店的「专区」里，收入记到该站点的 sink `shop:site:<id>`。站点也可以在自己的页面里开店，卖全站商品和本站专区（§3.4）。站点独有的物品只能放进它自己站点的商品里；全站物品也可以放进站点商品。
 - 物品只能**下架**，不能在发布后删除；已发布物品的素材**不可更换**（只能改名称和简介）——拥有者买的就是它现在的样子。
 - 最低价由配置中心 `shop.min_price` 决定（默认 **100**，公开键，可在 `GET /settings` 读到）。
 
@@ -112,14 +112,14 @@
 - 下游缓存用户资料（例如论坛的 10 分钟）意味着换装后最多那么久才在该站生效；URL 是内容寻址的，不会出现旧 URL 指向新图的问题。
 - **KunUI 接入**：把 `cosmetics.avatar_frame` 映射到 `KunUser.avatarDecoration = { src: static_url, animatedSrc: animated_url }`，`KunAvatar` / `KunUserChip` 会自动画出来；`KunAvatarGroup` 不画（头像之间只有 4px 间距，装不下每边伸出 10% 的头像框）。
 
-## 3. 用户端点（第一方会话专用）
+## 3. 用户端点（账号中心与站点店面）
 
-这些端点花的是用户的萌萌点，所以**只接受账号中心的第一方会话**；带 `client_id` 的 OAuth access token 一律 `403 / 19012`。站点商品也在账号中心买（站点专区）；站点想在自己页面里直接售卖，要另开授权方式（阶段 3）。
+这些端点花的是用户的萌萌点，所以**只接受账号中心的第一方会话**；带 `client_id` 的 OAuth access token 一律 `403 / 19012`。站点要在自己的页面里卖，走 §3.4 的 s2s 店面端点。
 
 | 端点 | 方法 | 用途 |
 |---|---|---|
 | `/shop/catalog` | GET | **公开**：在售商品，全站与各站点专区都在内；站点商品带 `site: { id, name, domain }`（`Cache-Control: public, max-age=60`）|
-| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单（兑换码订单带 `codes`）|
+| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单（兑换码订单带 `codes`），以及每件限购商品本期已买的次数 `limit_used`（键是商品 id）|
 | `/shop/orders` | POST | 购买 |
 | `/shop/me/loadout` | PUT | 穿戴 / 摘下 |
 
@@ -162,6 +162,30 @@
 
 `/shop/catalog` 里每件商品带 `per_user_limit`、`limit_period`（`""` 或 `"month"`）和 `remaining`：有库存的商品是库存减已售，兑换码商品是码池里可售的码，不限量时为 `null`。`remaining: 0` 即售罄。
 
+### 3.4 站点店面（s2s）
+
+站点可以在自己的页面里开萌萌点商店：列出商品、替登录的用户下单、换装。站点后端用 **OAuth Client Basic Auth** 调用（同 [06 §3](./06-moemoepoint.md)），用户 id 写在路径里，和 `/users/:id/moemoepoint/charges` 一样。
+
+- **谁能开店**：client 必须在萌萌点写入白名单里（`oauth_clients.moemoepoint_awarder = true`），并且属于某个站点（`site_id`），否则 `403 / 19017`。店面花的是用户的共享钱包，能扣费的站点才能开店，所以用同一份白名单。目前在白名单里的是论坛（含 App）和补丁站。
+- **卖什么**：全站商品，加上本站专区的商品。别的站点专区的商品不卖（`400 / 19002`）。账号中心仍然什么都卖。
+- **订单**：`order.site_id` 记下在哪个站点成交。收入仍然跟着商品走：全站商品进 `shop`，专区商品进 `shop:site:<id>`，和在账号中心买一样。
+- **付款前要让用户确认**：服务端只校验上架、余额、限购和库存，不会再问用户一次。站点必须先给用户看商品、价格和购买后的余额，由用户的点击触发下单。
+- 幂等键仍然按用户唯一。建议带上站点前缀，例如 `kungal:<uuid>`。
+
+| 端点 | 方法 | 用途 |
+|---|---|---|
+| `/shop/storefront` | GET | 本站店面：`{ site: { id, name, domain }, offers: [...] }`，`offers` 的形状同 `/shop/catalog`。可以缓存一分钟 |
+| `/users/:id/shop` | GET | 该用户的余额、物品、穿戴、订单和 `limit_used`，形状同 `/shop/me`（`no-store`）。订单里有兑换码，只能展示给用户本人 |
+| `/users/:id/shop/orders` | POST | 购买，请求和响应同 §3.1 |
+| `/users/:id/shop/loadout` | PUT | 穿戴 / 摘下，同 §3.2。`site_id` 只能是 `0`（全站）或本站，否则 `403` |
+
+接入时注意：
+
+- 入口放在顶栏头像菜单里（「萌萌点商店」），萌萌点的图标统一用 `lucide:lollipop`。
+- 商品卡用 `rewards[].item.preview` 画头像框和主页背景；功能和兑换码没有素材，按 `kind` 画图标或票券。
+- 按钮状态：已永久拥有（`items[]` 里 `active` 且没有 `expires_at`）显示「已拥有」；`remaining === 0` 显示「已售罄」；`limit_used[offer.id] >= per_user_limit` 显示「本月已买满」；余额不够显示还差多少。
+- 兑换码订单不能退款，确认框里要写明。
+
 ## 4. 管理端点（`/admin/shop/*`）
 
 权限领域 `shop`：`shop.manage`（素材、物品、商品的增改，提交审核）、`shop.publish`（发布 / 驳回 / 下架物品，上架 / 下架商品）、`shop.grant`（发放 / 收回物品，退款）。admin 与 ren 默认都有。
@@ -202,6 +226,7 @@
 | 19014 | `ErrShopIdemConflict` | 幂等键已用于另一件商品 |
 | 19015 | `ErrShopPriceBelowMinimum` | 价格低于 `shop.min_price` |
 | 19016 | `ErrShopPerkRequired` | 写主页介绍但没有「主页介绍」权益（`PATCH /auth/me`）|
+| 19017 | `ErrShopNotStorefront` | 调用店面端点的 client 不在萌萌点写入白名单里，或不属于任何站点（403）|
 
 余额不足沿用账本的 `400 / 16006`。
 
@@ -209,7 +234,6 @@
 
 | 以后要做的 | 已经留好的位置 |
 |---|---|
-| 站点在自己页面里售卖（阶段 3）| 站点专区已在账号中心上线；`order.site_id` 留给「在哪个店面成交」|
 | 赠送 | `order.recipient_user_id`（现在恒等于付款人）|
 | 以物易物 / 多种货币 | `costs[]` 是数组，`asset` 字段现在只收 `moemoepoint` |
 | 套装 | `rewards[]` 最多 10 件 |
