@@ -10,6 +10,7 @@ interface UserInfo {
   avatar: string
   cosmetics?: UserCosmetics
   bio: string
+  about_html?: string
   roles: string[]
   site_roles: string[]
   moemoepoint: number
