@@ -70,9 +70,12 @@ const statusOf = (c: ChatConversation) => {
     </div>
 
     <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">
+      <!-- The item is overflow-hidden, so as a flex child it shrank: forty
+           conversations were squeezed into ~17px rows instead of scrolling. -->
       <KunChatConversationItem
         v-for="c in items"
         :key="c.id"
+        class="shrink-0"
         :href="`/messages/${c.id}`"
         :kind="c.kind"
         :user="peer(c)"
@@ -109,7 +112,7 @@ const statusOf = (c: ChatConversation) => {
         v-if="chat.folders[folder].next"
         variant="light"
         size="sm"
-        class="mx-auto my-2"
+        class="mx-auto my-2 shrink-0"
         :loading="chat.folders[folder].loading"
         @click="chat.loadFolder(folder, true)"
       >
