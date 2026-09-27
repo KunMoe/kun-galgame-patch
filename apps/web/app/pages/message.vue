@@ -32,13 +32,6 @@ const navItems = [
 const currentKey = computed(
   () => route.path.split('/').filter(Boolean)[1] ?? ''
 )
-
-const navLinkClass = (key: string) => [
-  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-  currentKey.value === key
-    ? 'bg-primary text-white'
-    : 'text-default-600 hover:bg-default-100'
-]
 </script>
 
 <template>
@@ -47,30 +40,29 @@ const navLinkClass = (key: string) => [
       class="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 lg:hidden"
       aria-label="消息分类"
     >
-      <NuxtLink
+      <KunNavItem
         v-for="item in navItems"
         :key="item.key"
-        :to="item.href"
-        :class="[navLinkClass(item.key), 'shrink-0 whitespace-nowrap']"
-      >
-        <KunIcon :name="item.icon" class="size-4 shrink-0" />
-        {{ item.title }}
-      </NuxtLink>
+        :href="item.href"
+        :label="item.title"
+        :icon="item.icon"
+        :current="currentKey === item.key"
+        class-name="w-auto shrink-0 whitespace-nowrap"
+      />
     </nav>
 
     <div class="grid gap-4 lg:grid-cols-4">
       <aside class="hidden lg:col-span-1 lg:block">
         <KunCard :bordered="true">
           <nav class="flex flex-col gap-1" aria-label="消息分类">
-            <NuxtLink
+            <KunNavItem
               v-for="item in navItems"
               :key="item.key"
-              :to="item.href"
-              :class="navLinkClass(item.key)"
-            >
-              <KunIcon :name="item.icon" class="size-4 shrink-0" />
-              {{ item.title }}
-            </NuxtLink>
+              :href="item.href"
+              :label="item.title"
+              :icon="item.icon"
+              :current="currentKey === item.key"
+            />
           </nav>
         </KunCard>
       </aside>

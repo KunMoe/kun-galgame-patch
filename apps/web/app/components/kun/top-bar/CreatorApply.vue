@@ -68,12 +68,20 @@ const FLOW = [
   { title: '管理员审核', icon: 'lucide:user-round-check' },
   { title: '成为创作者', icon: 'lucide:party-popper' }
 ]
+const REVIEW_STEP = 2
 const currentStep = computed(() => {
   if (isCreator.value) return 3
-  if (isPending.value) return 2
+  if (isPending.value || isDeclined.value) return REVIEW_STEP
   if (isEligible.value) return 1
   return 0
 })
+const flow = computed(() =>
+  !isCreator.value && isDeclined.value
+    ? FLOW.map((step, i) =>
+        i === REVIEW_STEP ? { ...step, status: 'error' as const } : step
+      )
+    : FLOW
+)
 
 const BENEFITS = [
   '直接发布 Galgame 词条，无需排队等待审核',
@@ -144,7 +152,7 @@ const handleApply = async () => {
 
       <template v-else-if="status">
         <KunSteps
-          :items="FLOW"
+          :items="flow"
           :current="currentStep"
           color="primary"
           size="sm"
