@@ -81,6 +81,11 @@ x-moyu-api-env: &moyu-api-env
   # 不能写 web: infra 的 web 也用这个别名, 请求会在两者间轮转。
   KUN_TRUST_CALLBACK_URL: http://moyu-api:5214/api/v1/trust/callback
   KUN_TRUST_CALLBACK_SECRET: ${KUN_TRUST_CALLBACK_SECRET:-}
+  # ── following feed = community activities (wave 13) ──
+  # Pushes resources and resource edits into the network-wide 关注 feed. On here
+  # and nowhere else: a staging stack is https too and may be bound to a site in
+  # the production community. The pusher starts only in the server binary.
+  KUN_ACTIVITY_PUSH_ENABLED: "true"
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
