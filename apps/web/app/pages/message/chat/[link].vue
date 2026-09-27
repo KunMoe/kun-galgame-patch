@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
 
+definePageMeta({
+  middleware: (to) => {
+    if (!useRuntimeConfig().public.chatEnabled) return
+    const pair = String(to.params.link).match(/^(\d+)-(\d+)$/)
+    if (!pair) return
+    const peer = Number(pair[1]) === useUserStore().user.id ? pair[2] : pair[1]
+    return navigateTo(`/messages?peer=${peer}`, { replace: true })
+  }
+})
+
 useKunDisableSeo('聊天')
 
 const route = useRoute()

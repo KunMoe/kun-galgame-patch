@@ -86,6 +86,13 @@ x-moyu-api-env: &moyu-api-env
   # and nowhere else: a staging stack is https too and may be bound to a site in
   # the production community. The pusher starts only in the server binary.
   KUN_ACTIVITY_PUSH_ENABLED: "true"
+  # ── direct messages = NextMoe chat (infra plan 17) ──
+  # /api/v1/im/* relays to chat under the session's own token. KUN_CHAT_ENABLED
+  # is the cutover and flips in the same commit as the web's
+  # NUXT_PUBLIC_CHAT_ENABLED: on, the old PRIVATE rooms refuse writes, and infra
+  # must then re-run its import to sweep what was sent before the switch.
+  KUN_CHAT_API_BASE: http://chat:9285
+  KUN_CHAT_ENABLED: "false"
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
@@ -199,6 +206,8 @@ services:
       NUXT_PUBLIC_OAUTH_WEB_URL: https://account.nextmoe.com
       NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
+      # Flips together with the api's KUN_CHAT_ENABLED (see the api env above).
+      NUXT_PUBLIC_CHAT_ENABLED: "false"
     expose: ["3000"]
     depends_on:
       moyu-api: { condition: service_healthy }

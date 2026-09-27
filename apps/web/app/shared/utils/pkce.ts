@@ -121,7 +121,12 @@ const prepareAuthorizeUrl = async (
     // the right stance and only fails when it tries to change it. The client
     // must also carry `preferences` in its allowed_scopes upstream, or the
     // authorize call simply drops it.
-    scope: 'openid profile preferences catalog:edit folder:read folder:write',
+    // chat:read / chat:write are asked for before the 私信 switch goes on, so
+    // the sessions minted meanwhile already carry them: infra granted both to
+    // this client first, and an authorize call naming a scope the client lacks
+    // is refused whole. A session without them gets 40313 on /messages.
+    scope:
+      'openid profile preferences catalog:edit folder:read folder:write chat:read chat:write',
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'

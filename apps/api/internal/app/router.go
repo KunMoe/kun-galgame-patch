@@ -280,6 +280,11 @@ func (a *App) RegisterRoutes() {
 	chatRoutes.Delete("/message/:id", a.ChatHandler.DeleteMessage)
 	chatRoutes.Post("/message/:id/reaction", a.ChatHandler.ToggleReaction)
 
+	imRoutes := api.Group("/im", auth)
+	for _, method := range []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodPatch, fiber.MethodDelete} {
+		imRoutes.Add([]string{method}, "/*", a.IMRelay.Forward)
+	}
+
 	uploadRoutes := api.Group("/upload", auth)
 	uploadRoutes.Post("/init", a.UploadHandler.Init)
 	uploadRoutes.Post("/complete", a.UploadHandler.Complete)

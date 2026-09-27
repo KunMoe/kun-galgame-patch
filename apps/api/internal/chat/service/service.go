@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,12 +12,15 @@ import (
 	"github.com/rs/xid"
 )
 
+var ErrPrivateMoved = errors.New("private chat moved to NextMoe chat")
+
 type ChatService struct {
-	repo *repository.ChatRepository
+	repo         *repository.ChatRepository
+	privateMoved bool
 }
 
-func New(repo *repository.ChatRepository) *ChatService {
-	return &ChatService{repo: repo}
+func New(repo *repository.ChatRepository, privateMoved bool) *ChatService {
+	return &ChatService{repo: repo, privateMoved: privateMoved}
 }
 
 func (s *ChatService) ListRooms(userID int) ([]model.ChatRoom, error) {
@@ -40,6 +44,9 @@ func (s *ChatService) JoinRoomByLink(userID int, link string) (*model.ChatRoom, 
 }
 
 func (s *ChatService) StartPrivateChat(userID, peerUID int) (*model.ChatRoom, error) {
+	if s.privateMoved {
+		return nil, ErrPrivateMoved
+	}
 	return s.repo.FindOrCreatePrivateRoom(userID, peerUID)
 }
 
@@ -85,6 +92,9 @@ func (s *ChatService) CreateMessage(userID int, link string, content, fileURL st
 	if err != nil {
 		return nil, err
 	}
+	if s.privateMoved && room.Type == "PRIVATE" {
+		return nil, ErrPrivateMoved
+	}
 	if content == "" && fileURL == "" {
 		return nil, fmt.Errorf("消息内容不能为空")
 	}
@@ -116,6 +126,9 @@ func (s *ChatService) UpdateMessage(userID, messageID int, newContent string) er
 	if m.SenderID != userID {
 		return fmt.Errorf("仅发送者可以编辑消息")
 	}
+	if err := s.refuseMovedRoom(m.ChatRoomID); err != nil {
+		return err
+	}
 	if m.Status == "DELETED" {
 		return fmt.Errorf("已删除的消息无法编辑")
 	}
@@ -129,6 +142,9 @@ func (s *ChatService) DeleteMessage(userID int, isPrivileged bool, messageID int
 	}
 	if m.SenderID != userID && !isPrivileged {
 		return fmt.Errorf("仅发送者或版主可删除消息")
+	}
+	if err := s.refuseMovedRoom(m.ChatRoomID); err != nil {
+		return err
 	}
 	now := time.Now()
 	return s.repo.SoftDeleteMessage(messageID, userID, now)
@@ -146,6 +162,9 @@ func (s *ChatService) ToggleReaction(userID, messageID int, emoji string) (bool,
 	if !ok {
 		return false, fmt.Errorf("您不是该房间的成员")
 	}
+	if err := s.refuseMovedRoom(m.ChatRoomID); err != nil {
+		return false, err
+	}
 	return s.repo.ToggleReaction(messageID, userID, emoji)
 }
 
@@ -155,6 +174,20 @@ func (s *ChatService) MarkSeen(userID int, link string, messageIDs []int) error 
 		return err
 	}
 	return s.repo.MarkSeen(room.ID, userID, messageIDs)
+}
+
+func (s *ChatService) refuseMovedRoom(roomID int) error {
+	if !s.privateMoved {
+		return nil
+	}
+	room, err := s.repo.FindRoomByID(roomID)
+	if err != nil {
+		return fmt.Errorf("房间不存在")
+	}
+	if room.Type == "PRIVATE" {
+		return ErrPrivateMoved
+	}
+	return nil
 }
 
 func (s *ChatService) resolveRoomForMember(userID int, link string) (*model.ChatRoom, error) {

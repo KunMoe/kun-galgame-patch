@@ -107,6 +107,20 @@ func ErrCommunityUnavailable(msg string) *AppError {
 	return New(50321, msg, fiber.StatusServiceUnavailable)
 }
 
+// Not 40399: the chat client starts on every page, and 40399's long toast would
+// greet a pre-scope session on each one. The 私信 page asks for the re-login.
+func ErrChatScopeMissing() *AppError {
+	return New(40313, "本次登录未授予私信权限，请重新登录后再试", fiber.StatusForbidden)
+}
+
+func ErrChatUnavailable() *AppError {
+	return New(50322, "私信服务暂不可用，请稍后再试", fiber.StatusServiceUnavailable)
+}
+
+func ErrPrivateChatMoved() *AppError {
+	return New(41000, "私信已迁移到新版私信，请在「私信」页面继续聊天", fiber.StatusGone)
+}
+
 func ErrConflict(msg string) *AppError {
 	return New(40900, msg, fiber.StatusConflict)
 }

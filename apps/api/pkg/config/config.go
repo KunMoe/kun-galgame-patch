@@ -16,6 +16,7 @@ type Config struct {
 	Artifact     ArtifactConfig
 	Trust        TrustConfig
 	Community    CommunityConfig
+	Chat         ChatConfig
 	ActivityPush ActivityPushConfig
 	Dlsite       DlsiteConfig
 	CORS         CORSConfig
@@ -99,6 +100,18 @@ type CommunityConfig struct {
 
 func (c CommunityConfig) Configured() bool {
 	return c.BaseURL != "" && c.ClientID != "" && c.ClientSecret != ""
+}
+
+// ChatConfig points at NextMoe's chat service, which holds every direct message;
+// /api/v1/im relays to it under the session's own token.
+//
+// Enabled is the cutover and flips together with the web's
+// NUXT_PUBLIC_CHAT_ENABLED: once direct messages are served from chat, the old
+// PRIVATE rooms here refuse writes, because infra's import only sweeps what was
+// written before the switch.
+type ChatConfig struct {
+	BaseURL string
+	Enabled bool
 }
 
 // ActivityPushConfig switches on the push of this site's activity into the
@@ -193,6 +206,10 @@ func Load() *Config {
 			BaseURL:      getEnvOptionalProd("KUN_COMMUNITY_API_BASE", "http://127.0.0.1:9282/api/v1/community", mode),
 			ClientID:     getEnv("KUN_COMMUNITY_CLIENT_ID", getEnv("OAUTH_CLIENT_ID", "")),
 			ClientSecret: getEnv("KUN_COMMUNITY_CLIENT_SECRET", getEnv("OAUTH_CLIENT_SECRET", "")),
+		},
+		Chat: ChatConfig{
+			BaseURL: getEnvOptionalProd("KUN_CHAT_API_BASE", "http://127.0.0.1:9285", mode),
+			Enabled: getEnvBool("KUN_CHAT_ENABLED"),
 		},
 		ActivityPush: ActivityPushConfig{
 			Enabled: getEnvBool("KUN_ACTIVITY_PUSH_ENABLED"),
