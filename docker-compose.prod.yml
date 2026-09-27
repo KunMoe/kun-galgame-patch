@@ -92,7 +92,7 @@ x-moyu-api-env: &moyu-api-env
   # NUXT_PUBLIC_CHAT_ENABLED: on, the old PRIVATE rooms refuse writes, and infra
   # must then re-run its import to sweep what was sent before the switch.
   KUN_CHAT_API_BASE: http://chat:9285
-  KUN_CHAT_ENABLED: "false"
+  KUN_CHAT_ENABLED: "true"
   # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
   KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
   KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
@@ -207,7 +207,7 @@ services:
       NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
       NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
       # Flips together with the api's KUN_CHAT_ENABLED (see the api env above).
-      NUXT_PUBLIC_CHAT_ENABLED: "false"
+      NUXT_PUBLIC_CHAT_ENABLED: "true"
     expose: ["3000"]
     depends_on:
       moyu-api: { condition: service_healthy }
