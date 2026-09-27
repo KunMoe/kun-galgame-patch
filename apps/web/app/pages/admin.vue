@@ -27,22 +27,14 @@ const visibleMenu = computed(() =>
             管理面板
           </NuxtLink>
           <nav class="flex flex-col gap-1">
-            <NuxtLink
+            <KunNavItem
               v-for="item in visibleMenu"
               :key="item.href"
-              :to="item.href"
-              :class="
-                cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  route.path === item.href
-                    ? 'bg-primary text-white'
-                    : 'hover:bg-default-100'
-                )
-              "
-            >
-              <KunIcon :name="item.icon" class="size-4" />
-              {{ item.name }}
-            </NuxtLink>
+              :href="item.href"
+              :label="item.name"
+              :icon="item.icon"
+              :current="route.path === item.href"
+            />
           </nav>
         </KunCard>
       </aside>
