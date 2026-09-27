@@ -212,7 +212,8 @@ export default defineNuxtConfig({
       // `{base}/<aa>/<bb>/<hash>.webp`. Overridable at runtime so a domain
       // change is "改一处配置" (image_service 契约 04).
       imageBed:
-        process.env.NUXT_PUBLIC_IMAGE_BED || 'https://image.kungal.iloveren.link'
+        process.env.NUXT_PUBLIC_IMAGE_BED || 'https://image.kungal.iloveren.link',
+      chatEnabled: false
     }
   }
 })

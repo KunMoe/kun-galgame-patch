@@ -26,7 +26,12 @@ const navItems = [
     icon: 'lucide:refresh-cw'
   },
   { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog' },
-  { key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }
+  ...(useRuntimeConfig().public.chatEnabled
+    ? [
+        { key: 'messages', title: '私信', href: '/messages', icon: 'lucide:mail' },
+        { key: 'chat', title: '群聊', href: '/message/chat', icon: 'lucide:users' }
+      ]
+    : [{ key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }])
 ]
 
 const currentKey = computed(

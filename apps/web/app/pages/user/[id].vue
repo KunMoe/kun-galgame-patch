@@ -56,6 +56,8 @@ const openFollowList = (mode: 'follower' | 'following') => {
   followOpen.value = true
 }
 
+const chatEnabled = useRuntimeConfig().public.chatEnabled
+const chatActions = useChatActions()
 const startingChat = ref(false)
 const handleStartPrivateChat = async () => {
   if (!requireLogin()) return
@@ -65,6 +67,15 @@ const handleStartPrivateChat = async () => {
     return
   }
   startingChat.value = true
+  if (chatEnabled) {
+    const peer = user.value.id
+    const r = await chatActions.openDirect(peer)
+    startingChat.value = false
+    if (r.code === 0) await navigateTo(`/messages/${r.data.id}`)
+    else if (r.code === 40313) await navigateTo(`/messages?peer=${peer}`)
+    else useKunMessage(r.message || '无法发起私信', 'warn')
+    return
+  }
   try {
     const res = await api.post<{ link: string }>('/chat/room/private', {
       peer_uid: user.value.id

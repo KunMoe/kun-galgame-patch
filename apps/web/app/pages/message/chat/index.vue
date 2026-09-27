@@ -14,6 +14,11 @@ const { data: rooms, pending } = await useAsyncData<ChatRoomSummary[]>(
   { default: () => [] }
 )
 
+const chatEnabled = useRuntimeConfig().public.chatEnabled
+const shownRooms = computed(() =>
+  chatEnabled ? rooms.value.filter((r) => r.type !== 'PRIVATE') : rooms.value
+)
+
 const joining = ref(false)
 const joinTestGroup = async () => {
   if (!requireLogin()) return
@@ -33,13 +38,27 @@ const joinTestGroup = async () => {
 
 <template>
   <div class="space-y-4">
-    <KunHeader name="私聊" description="您的私聊与群聊列表" />
+    <KunHeader
+      :name="chatEnabled ? '群聊' : '私聊'"
+      :description="chatEnabled ? '您加入的群聊' : '您的私聊与群聊列表'"
+    />
+
+    <KunCard v-if="chatEnabled" :bordered="true">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-default-600 text-sm">
+          私信已迁移到新版，NextMoe 各站共用同一套私信，历史记录也一并迁移了过来
+        </p>
+        <KunButton color="primary" size="sm" href="/messages">
+          前往私信
+        </KunButton>
+      </div>
+    </KunCard>
 
     <KunLoading v-if="pending" description="正在加载聊天室..." />
 
     <template v-else>
       <NuxtLink
-        v-for="room in rooms"
+        v-for="room in shownRooms"
         :key="room.link"
         :to="`/message/chat/${room.link}`"
         class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"

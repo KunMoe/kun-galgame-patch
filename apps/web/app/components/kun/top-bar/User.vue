@@ -5,6 +5,7 @@ const api = useApi()
 const { refreshMe } = useRefreshMe()
 
 const { open: openAuthModal } = useAuthModal()
+const chatEnabled = useRuntimeConfig().public.chatEnabled
 
 const fetchUnread = async () => {
   const res = await api.get<string[]>('/message/unread')
@@ -43,6 +44,9 @@ onMounted(async () => {
 
     <template v-if="userStore.isLoggedIn">
       <KunTopBarFollowingButton />
+      <div v-if="chatEnabled" class="hidden sm:flex">
+        <KunTopBarChatButton />
+      </div>
       <KunTopBarUserMessageBell />
       <KunTopBarUserDropdown />
     </template>

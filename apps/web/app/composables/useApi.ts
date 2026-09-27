@@ -9,9 +9,11 @@
 //
 // On 401/auth-expired, we surface the error response to the caller; the
 // caller (typically a page or store) decides whether to redirect to login.
+type ApiBody = Record<string, unknown> | FormData
+
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  body?: Record<string, unknown>
+  body?: ApiBody
   headers?: Record<string, string>
 }
 
@@ -187,6 +189,7 @@ export const useApi = () => {
   ): Promise<ApiResponse<T>> => {
     const { method = 'GET', body, headers = {} } = options
     const url = `${baseUrl}${appendIncludeEmpty(appendContentLimit(endpoint))}`
+    const isForm = body instanceof FormData
 
     try {
       const res = await $fetch<ApiResponse<T>>(url, {
@@ -198,9 +201,9 @@ export const useApi = () => {
         // import.meta.server is a build-time constant, so the client bundle
         // keeps its no-timeout behavior (long uploads etc. are unaffected).
         timeout: import.meta.server ? 10000 : undefined,
-        body: body ? JSON.stringify(body) : undefined,
+        body: isForm ? body : body ? JSON.stringify(body) : undefined,
         headers: {
-          'Content-Type': 'application/json',
+          ...(isForm ? {} : { 'Content-Type': 'application/json' }),
           ...(ssrCookie ? { cookie: ssrCookie } : {}),
           ...headers
         },
@@ -245,7 +248,7 @@ export const useApi = () => {
 
   return {
     get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),
-    post: <T>(endpoint: string, body?: Record<string, unknown>) =>
+    post: <T>(endpoint: string, body?: ApiBody) =>
       request<T>(endpoint, { method: 'POST', body }),
     put: <T>(endpoint: string, body?: Record<string, unknown>) =>
       request<T>(endpoint, { method: 'PUT', body }),
