@@ -20,8 +20,10 @@ import (
 	commentService "kun-galgame-patch-api/internal/comment/service"
 	"kun-galgame-patch-api/internal/common"
 	uploadPkg "kun-galgame-patch-api/internal/common/upload"
+	"kun-galgame-patch-api/internal/community/activitypush"
 	communityAnchor "kun-galgame-patch-api/internal/community/anchor"
 	communityEngagement "kun-galgame-patch-api/internal/community/engagement"
+	communityFollowing "kun-galgame-patch-api/internal/community/following"
 	communityHandler "kun-galgame-patch-api/internal/community/handler"
 	communityInbox "kun-galgame-patch-api/internal/community/inbox"
 	docHandler "kun-galgame-patch-api/internal/doc/handler"
@@ -85,6 +87,7 @@ type App struct {
 	// from CommentHandler because it is addressed by the wall's anchor, not by
 	// a comment the reader wrote.
 	CommunityHandler *communityHandler.EngagementHandler
+	FollowingHandler *communityHandler.FollowingHandler
 	UserHandler      *userHandler.UserHandler
 	MessageHandler   *messageHandler.MessageHandler
 	AdminHandler     *adminHandler.AdminHandler
@@ -222,6 +225,7 @@ func New(cfg *config.Config) *App {
 	commentSvc := commentService.New(communityCli, commentRepository, commentAnchors, usrCli, galgame, db, mpAwarder, adminRepository, communityInboxSvc)
 	commentHdl := commentHandler.New(commentSvc, galgame, db)
 	communityHdl := communityHandler.NewEngagementHandler(communityEngagement.New(communityCli, commentAnchors, communityInboxSvc))
+	followingHdl := communityHandler.NewFollowingHandler(communityFollowing.New(communityCli, usrCli))
 
 	userRepository := userRepo.New(db)
 	userSvc := userService.New(userRepository, usrCli, galgame, favorites, db, mpAwarder, commentSvc, communityCli)
@@ -350,7 +354,9 @@ func New(cfg *config.Config) *App {
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
 	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc)
+	pushStop := startActivityPush(cfg, db, communityCli, galgame)
 	stopBackground := func() {
+		pushStop()
 		cronStop()
 		storeStop()
 	}
@@ -367,6 +373,7 @@ func New(cfg *config.Config) *App {
 		PatchHandler:     patchHdl,
 		CommentHandler:   commentHdl,
 		CommunityHandler: communityHdl,
+		FollowingHandler: followingHdl,
 		UserHandler:      userHdl,
 		MessageHandler:   messageHdl,
 		AdminHandler:     adminHdl,
@@ -378,6 +385,20 @@ func New(cfg *config.Config) *App {
 		TrustHandler:     trustHdl,
 		CronStop:         stopBackground,
 	}
+}
+
+func startActivityPush(cfg *config.Config, db *gorm.DB, community *communityclient.Client, galgame *galgameClient.Client) func() {
+	if !cfg.ActivityPush.Enabled {
+		slog.Info("activity push off (KUN_ACTIVITY_PUSH_ENABLED unset); nothing reaches the following feed")
+		return func() {}
+	}
+	origin := activitypush.Origin(cfg.OAuth.RedirectURI)
+	if origin == "" || !community.Configured() {
+		slog.Error("activity push NOT started: it needs an https OAUTH_REDIRECT_URI and a configured community client",
+			"redirect_uri", cfg.OAuth.RedirectURI, "community", community.Configured())
+		return func() {}
+	}
+	return activitypush.New(db, community, galgame, origin).Start()
 }
 
 // provisionBotUser writes the bot's local user row once at boot. The bot lane

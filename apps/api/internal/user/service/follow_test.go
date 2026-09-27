@@ -60,10 +60,10 @@ func TestFollowRepeatSucceeds(t *testing.T) {
 		}),
 		presence: fakePresence{8: true},
 	}
-	if err := svc.Follow(context.Background(), 3, 8); err != nil {
+	if _, err := svc.Follow(context.Background(), 3, 8); err != nil {
 		t.Fatalf("first Follow: %v", err)
 	}
-	if err := svc.Follow(context.Background(), 3, 8); err != nil {
+	if _, err := svc.Follow(context.Background(), 3, 8); err != nil {
 		t.Fatalf("repeat Follow: %v", err)
 	}
 	if n != 2 {
@@ -80,7 +80,7 @@ func TestFollowSelf(t *testing.T) {
 		}),
 		presence: fakePresence{3: true},
 	}
-	err := svc.Follow(context.Background(), 3, 3)
+	_, err := svc.Follow(context.Background(), 3, 3)
 	if !errors.Is(err, ErrFollowSelf) {
 		t.Errorf("err = %v", err)
 	}
@@ -98,7 +98,7 @@ func TestFollowUnknownTarget(t *testing.T) {
 		}),
 		presence: fakePresence{},
 	}
-	err := svc.Follow(context.Background(), 3, 8)
+	_, err := svc.Follow(context.Background(), 3, 8)
 	if !errors.Is(err, ErrUserMissing) {
 		t.Errorf("err = %v", err)
 	}

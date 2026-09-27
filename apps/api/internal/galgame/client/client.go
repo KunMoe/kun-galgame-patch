@@ -89,6 +89,17 @@ func (b *GalgameBrief) Names() KunLanguage {
 	}
 }
 
+// PreferredName is the one title a server-written string carries, where the
+// reader's 标题语言 setting cannot choose.
+func (b *GalgameBrief) PreferredName() string {
+	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw, b.DisplayName, b.Latin} {
+		if n != "" {
+			return n
+		}
+	}
+	return b.VndbID
+}
+
 // The company a card credits. The name travels as four slots rather than one
 // string because the reader's 标题语言 setting picks between them in the
 // browser, the same way it does for a work title.

@@ -128,3 +128,34 @@ func TestPlanSkipsFollowedWhenRecipientIsNotLocal(t *testing.T) {
 		t.Errorf("rows = %+v", rows)
 	}
 }
+
+func TestPlanMirrorsFolloweeActivityAndRetractsAnEmptyFold(t *testing.T) {
+	actor := int64(5)
+	in := New(nil, nil, nil)
+	in.localIDs = func([]int64) (map[int64]struct{}, error) {
+		return map[int64]struct{}{3: {}, 5: {}}, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{
+		{
+			ID: 21, UserID: 3, Kind: communityclient.NotificationKindFolloweeActivity, Seq: 40,
+			ActorID: &actor, ActorCount: 1, ItemCount: 2,
+			Activity: &communityclient.NotificationActivity{ObjectLabel: "Galgame 补丁", Title: "T", URL: "https://www.moyu.moe/resource/9"},
+		},
+		{ID: 22, UserID: 3, Kind: communityclient.NotificationKindFolloweeActivity, Seq: 41, ActorID: &actor},
+		{ID: 23, UserID: 4, Kind: communityclient.NotificationKindFolloweeActivity, Seq: 42, ActorID: &actor, ItemCount: 1},
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want the live fold and the retraction (recipient 4 is not local)", rows)
+	}
+	live, gone := rows[0], rows[1]
+	if live.Retract || live.Type != "followActivity" || live.Link != "/resource/9" || live.Seq != 40 ||
+		live.ThreadID != nil || live.SenderID == nil || *live.SenderID != 5 {
+		t.Errorf("live = %+v", live)
+	}
+	if !gone.Retract || gone.NotificationID != 22 || gone.Seq != 41 {
+		t.Errorf("retraction = %+v", gone)
+	}
+}

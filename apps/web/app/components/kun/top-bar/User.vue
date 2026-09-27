@@ -42,6 +42,7 @@ onMounted(async () => {
     </div>
 
     <template v-if="userStore.isLoggedIn">
+      <KunTopBarFollowingButton />
       <KunTopBarUserMessageBell />
       <KunTopBarUserDropdown />
     </template>

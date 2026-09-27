@@ -258,6 +258,15 @@ func (c *Client) UnfollowUser(ctx context.Context, userID, targetID int64) (*Fol
 	return &out, err
 }
 
+// SetFollowNotify changes an existing follow's level and never creates one:
+// a follow another tab just removed answers 404 (not following).
+func (c *Client) SetFollowNotify(ctx context.Context, userID, targetID int64, notify string) (*FollowNotifyResult, error) {
+	var out FollowNotifyResult
+	err := c.do(ctx, "setFollowNotify", http.MethodPatch, "/users/"+itoa(userID)+"/following/"+itoa(targetID),
+		FollowNotifyRequest{Notify: notify}, &out)
+	return &out, err
+}
+
 func (c *Client) ListFollowers(ctx context.Context, userID int64, cursor string, limit int) (*FollowListResponse, error) {
 	return c.listFollows(ctx, "listFollowers", "/users/"+itoa(userID)+"/followers", cursor, limit)
 }

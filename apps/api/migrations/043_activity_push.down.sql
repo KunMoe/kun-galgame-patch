@@ -1,0 +1,11 @@
+DROP TRIGGER IF EXISTS trg_activity_push_patch ON patch;
+DROP TRIGGER IF EXISTS trg_activity_push_revision ON patch_resource_revision;
+DROP TRIGGER IF EXISTS trg_activity_push_resource_update ON patch_resource;
+DROP TRIGGER IF EXISTS trg_activity_push_resource ON patch_resource;
+DROP FUNCTION IF EXISTS activity_push_patch();
+DROP FUNCTION IF EXISTS activity_push_revision();
+DROP FUNCTION IF EXISTS activity_push_resource();
+DROP FUNCTION IF EXISTS activity_push_enqueue(text, boolean);
+DROP FUNCTION IF EXISTS activity_edit_key(int, int, timestamptz);
+DROP TABLE IF EXISTS activity_push_sent;
+DROP TABLE IF EXISTS activity_push_queue;

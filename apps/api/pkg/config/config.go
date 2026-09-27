@@ -16,6 +16,7 @@ type Config struct {
 	Artifact     ArtifactConfig
 	Trust        TrustConfig
 	Community    CommunityConfig
+	ActivityPush ActivityPushConfig
 	Dlsite       DlsiteConfig
 	CORS         CORSConfig
 	Site         SiteConfig
@@ -98,6 +99,14 @@ type CommunityConfig struct {
 
 func (c CommunityConfig) Configured() bool {
 	return c.BaseURL != "" && c.ClientID != "" && c.ClientSecret != ""
+}
+
+// ActivityPushConfig switches on the push of this site's activity into the
+// network-wide following feed. An https OAuth redirect is not enough on its
+// own: a staging deployment is https too and may be bound to a site in the
+// production community, which is how letmoe-staging threads reached it.
+type ActivityPushConfig struct {
+	Enabled bool
 }
 
 type TrustConfig struct {
@@ -185,6 +194,9 @@ func Load() *Config {
 			ClientID:     getEnv("KUN_COMMUNITY_CLIENT_ID", getEnv("OAUTH_CLIENT_ID", "")),
 			ClientSecret: getEnv("KUN_COMMUNITY_CLIENT_SECRET", getEnv("OAUTH_CLIENT_SECRET", "")),
 		},
+		ActivityPush: ActivityPushConfig{
+			Enabled: getEnvBool("KUN_ACTIVITY_PUSH_ENABLED"),
+		},
 		Dlsite: DlsiteConfig{
 			LinkTemplate: getEnv("KUN_DLSITE_LINK_TEMPLATE", ""),
 			CouponURL:    getEnv("KUN_DLSITE_COUPON_URL", ""),
@@ -205,6 +217,11 @@ func Load() *Config {
 			UserID: int(getEnvUint64("KUN_BOT_SUBMIT_USER_ID", 0)),
 		},
 	}
+}
+
+func getEnvBool(key string) bool {
+	v, _ := strconv.ParseBool(os.Getenv(key))
+	return v
 }
 
 func getEnv(key, fallback string) string {

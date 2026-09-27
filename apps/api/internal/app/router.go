@@ -182,6 +182,7 @@ func (a *App) RegisterRoutes() {
 
 	userRoutes.Put("/:id/follow", auth, a.UserHandler.Follow)
 	userRoutes.Delete("/:id/follow", auth, a.UserHandler.Unfollow)
+	userRoutes.Patch("/:id/follow", auth, a.UserHandler.SetFollowNotify)
 
 	// The comment walls a reader follows, addressed by the wall's anchor. A
 	// read receipt is a POST the reader makes and is never inferred from the
@@ -191,6 +192,10 @@ func (a *App) RegisterRoutes() {
 	communityRoutes.Get("/unread", a.CommunityHandler.Unread)
 	communityRoutes.Post("/wall/read", a.CommunityHandler.ReadWall)
 	communityRoutes.Post("/wall/notification", a.CommunityHandler.SetWallNotification)
+	communityRoutes.Get("/following", a.FollowingHandler.Groups)
+	communityRoutes.Get("/following/unseen", a.FollowingHandler.Unseen)
+	communityRoutes.Put("/following/seen", a.FollowingHandler.MarkSeen)
+	communityRoutes.Get("/following/group/:id", a.FollowingHandler.GroupItems)
 
 	msgRoutes := api.Group("/message", auth)
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)

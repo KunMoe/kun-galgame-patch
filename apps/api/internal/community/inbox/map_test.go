@@ -152,7 +152,7 @@ func TestKindsMoyuNeverShowsAreNotMirrored(t *testing.T) {
 
 func TestPartitionKeepsFollowedWithEmptyAnchor(t *testing.T) {
 	actor := int64(5)
-	follows, comments := partition([]communityclient.NotificationView{
+	follows, activities, comments := partition([]communityclient.NotificationView{
 		{
 			ID: 11, UserID: 3, Kind: communityclient.NotificationKindFollowed,
 			ActorID: &actor, ActorCount: 1, ThreadID: 0, AnchorKind: 0, AnchorID: "",
@@ -165,11 +165,46 @@ func TestPartitionKeepsFollowedWithEmptyAnchor(t *testing.T) {
 			ID: 13, UserID: 3, Kind: communityclient.NotificationKindReplied,
 			AnchorKind: communityclient.AnchorSiteGame, AnchorID: "42",
 		},
+		{ID: 14, UserID: 3, Kind: communityclient.NotificationKindFolloweeActivity, ActorID: &actor, ItemCount: 1},
 	})
 	if len(follows) != 1 || follows[0].ID != 11 {
 		t.Errorf("follows = %+v", follows)
 	}
+	if len(activities) != 1 || activities[0].ID != 14 {
+		t.Errorf("activities = %+v", activities)
+	}
 	if len(comments) != 1 || comments[0].ID != 13 {
 		t.Errorf("comments = %+v", comments)
+	}
+}
+
+func TestActivityMessageRendersFromLabelTitleAndCount(t *testing.T) {
+	actor := int64(5)
+	act := func(label, title string) *communityclient.NotificationActivity {
+		return &communityclient.NotificationActivity{
+			Site: "moyu", Verb: "publish", ObjectKind: "whatever_kind", ObjectLabel: label, Title: title,
+			URL: "https://www.moyu.moe/resource/77?x=1",
+		}
+	}
+	cases := []struct {
+		count   int32
+		act     *communityclient.NotificationActivity
+		content string
+		link    string
+	}{
+		{1, act("Galgame 补丁", "千恋＊万花 · 汉化补丁"), "发布了 Galgame 补丁：「千恋＊万花 · 汉化补丁」", "/resource/77?x=1"},
+		{3, act("Galgame 补丁", "A"), "发布了 3 个 Galgame 补丁，最新：「A」", "/resource/77?x=1"},
+		{100, act("话题", "B"), "发布了 100+ 个话题，最新：「B」", "/resource/77?x=1"},
+		{2, act("", ""), "发布了 2 个内容", "/resource/77?x=1"},
+		{1, nil, "发布了新内容", "/user/5/resource"},
+	}
+	for _, c := range cases {
+		row := activityMessage(communityclient.NotificationView{
+			ID: 1, UserID: 3, Kind: communityclient.NotificationKindFolloweeActivity,
+			ActorID: &actor, ItemCount: c.count, Activity: c.act,
+		})
+		if row.Type != "followActivity" || row.Content != c.content || row.Link != c.link {
+			t.Errorf("count %d: row = %+v", c.count, row)
+		}
 	}
 }

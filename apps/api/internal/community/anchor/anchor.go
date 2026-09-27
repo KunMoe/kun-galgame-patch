@@ -157,7 +157,7 @@ func (r *Resolver) ResolveNamed(ctx context.Context, refs []Ref) (map[Ref]Target
 	}
 	names := make(map[int]string, len(briefs))
 	for i := range briefs {
-		names[briefs[i].ID] = displayName(&briefs[i])
+		names[briefs[i].ID] = briefs[i].PreferredName()
 	}
 	for ref, target := range targets {
 		if name := names[target.PatchID]; name != "" {
@@ -182,13 +182,4 @@ func patchLink(patchID int) string {
 
 func resourceLink(resourceID int) string {
 	return "/resource/" + strconv.Itoa(resourceID)
-}
-
-func displayName(b *galgameClient.GalgameBrief) string {
-	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw, b.DisplayName, b.Latin} {
-		if n != "" {
-			return n
-		}
-	}
-	return b.VndbID
 }

@@ -44,4 +44,15 @@ type UserInfoResponse struct {
 	CommentCount   int64                 `json:"comment_count"`
 	FavoriteCount  int64                 `json:"favorite_count"`
 	IsFollowed     bool                  `json:"is_followed"`
+	// FollowNotify is the viewer's level toward this user (all | feed), null
+	// when the viewer does not follow them.
+	FollowNotify *string `json:"follow_notify"`
+}
+
+type FollowNotifyRequest struct {
+	Notify string `json:"notify" validate:"required,oneof=all feed"`
+}
+
+type FollowNotifyResponse struct {
+	Notify string `json:"notify"`
 }

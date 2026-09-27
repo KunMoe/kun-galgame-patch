@@ -21,6 +21,7 @@ interface UserInfo {
   comment_count: number
   favorite_count: number
   is_followed: boolean
+  follow_notify: 'all' | 'feed' | null
 }
 
 // PatchSummary mirrors apps/api/internal/patch/model.PatchSummary -- the

@@ -104,8 +104,12 @@ type messageRow struct {
 	Created        time.Time
 	Updated        time.Time
 	NotificationID int64
+	Seq            int64
 	ThreadID       *int64
 	PostNumber     *int32
+	// Retract deletes the local copy: community emptied the fold (kind 10,
+	// item_count 0).
+	Retract bool
 }
 
 func (in *Inbox) applyPage(ctx context.Context, notes []communityclient.NotificationView, nextAfter int64) (int, error) {
@@ -115,7 +119,11 @@ func (in *Inbox) applyPage(ctx context.Context, notes []communityclient.Notifica
 	}
 	err = in.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i := range rows {
-			if err := upsertMessage(tx, &rows[i]); err != nil {
+			write := upsertMessage
+			if rows[i].Retract {
+				write = deleteMessage
+			}
+			if err := write(tx, &rows[i]); err != nil {
 				return err
 			}
 		}
@@ -128,8 +136,8 @@ func (in *Inbox) applyPage(ctx context.Context, notes []communityclient.Notifica
 }
 
 func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationView) ([]messageRow, error) {
-	follows, comments := partition(notes)
-	if len(follows) == 0 && len(comments) == 0 {
+	follows, activities, comments := partition(notes)
+	if len(follows) == 0 && len(activities) == 0 && len(comments) == 0 {
 		return nil, nil
 	}
 
@@ -144,8 +152,9 @@ func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationV
 		excerpts = in.mentionExcerpts(ctx, comments)
 	}
 
-	all := make([]communityclient.NotificationView, 0, len(follows)+len(comments))
+	all := make([]communityclient.NotificationView, 0, len(follows)+len(activities)+len(comments))
 	all = append(all, follows...)
+	all = append(all, activities...)
 	all = append(all, comments...)
 	users, err := in.lookupUsers(collectUserIDs(all))
 	if err != nil {
@@ -157,6 +166,15 @@ func (in *Inbox) plan(ctx context.Context, notes []communityclient.NotificationV
 	for _, n := range follows {
 		if row, ok := followRow(n, users, now); ok {
 			rows = append(rows, row)
+		}
+	}
+	for _, n := range activities {
+		if n.ItemCount == 0 {
+			rows = append(rows, messageRow{NotificationID: n.ID, Seq: n.Seq, Retract: true})
+			continue
+		}
+		if _, ok := users[n.UserID]; ok {
+			rows = append(rows, fillRow(n, activityMessage(n), users, now, false))
 		}
 	}
 	for _, n := range comments {
@@ -207,6 +225,7 @@ func fillRow(n communityclient.NotificationView, mapped mappedRow, users map[int
 		Created:        parseTime(n.UpdatedAt, now),
 		Updated:        now,
 		NotificationID: n.ID,
+		Seq:            n.Seq,
 		PostNumber:     n.PostNumber,
 	}
 	if withThread && n.ThreadID > 0 {
@@ -320,32 +339,41 @@ func parseTime(s string, fallback time.Time) time.Time {
 	return fallback
 }
 
-// upsertMessage keys a fold's version on `created`, which is the
-// notification's upstream updated_at: community moves it with every seq bump
-// (a fold that grew) and a local read never touches it. A page fetched before
-// the reader read the row locally used to write status 0 back over that read.
-// So an equal version keeps the local read, a newer one re-surfaces the row as
+// upsertMessage keys a fold's version on community's seq: it moves with every
+// fold update under the dispatcher lock, and a local read never touches it. So
+// an equal seq keeps the local read (a page fetched before the reader read the
+// row used to write status 0 back over it), a newer one re-surfaces the row as
 // unread, and an older one — a page another sync already moved past — is
-// skipped.
+// skipped. Rows mirrored before migration 044 carry no seq and count as 0.
 func upsertMessage(tx *gorm.DB, row *messageRow) error {
 	return tx.Exec(`
 		INSERT INTO user_message (
-			type, content, status, link, sender_id, recipient_id,
-			created, updated, community_notification_id, community_thread_id, community_post_number
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			type, content, status, link, sender_id, recipient_id, created, updated,
+			community_notification_id, community_seq, community_thread_id, community_post_number
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (community_notification_id) WHERE community_notification_id IS NOT NULL
 		DO UPDATE SET
 			content = EXCLUDED.content,
-			status = CASE WHEN EXCLUDED.created > user_message.created THEN EXCLUDED.status
+			status = CASE WHEN EXCLUDED.community_seq > COALESCE(user_message.community_seq, 0) THEN EXCLUDED.status
 				ELSE GREATEST(user_message.status, EXCLUDED.status) END,
 			link = EXCLUDED.link,
 			sender_id = EXCLUDED.sender_id,
 			created = EXCLUDED.created,
 			updated = EXCLUDED.updated,
+			community_seq = EXCLUDED.community_seq,
 			community_post_number = EXCLUDED.community_post_number
-		WHERE EXCLUDED.created >= user_message.created
+		WHERE EXCLUDED.community_seq >= COALESCE(user_message.community_seq, 0)
 	`, row.Type, row.Content, row.Status, row.Link, row.SenderID, row.RecipientID,
-		row.Created, row.Updated, row.NotificationID, row.ThreadID, row.PostNumber).Error
+		row.Created, row.Updated, row.NotificationID, row.Seq, row.ThreadID, row.PostNumber).Error
+}
+
+// deleteMessage drops a retracted fold, unless a newer update of the same row
+// is already here.
+func deleteMessage(tx *gorm.DB, row *messageRow) error {
+	return tx.Exec(`
+		DELETE FROM user_message
+		WHERE community_notification_id = ? AND COALESCE(community_seq, 0) < ?
+	`, row.NotificationID, row.Seq).Error
 }
 
 func readFeedCursor(db *gorm.DB) (int64, error) {

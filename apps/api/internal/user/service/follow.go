@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrFollowSelf  = fmt.Errorf("cannot follow yourself")
-	ErrUserMissing = fmt.Errorf("用户不存在")
+	ErrFollowSelf    = fmt.Errorf("cannot follow yourself")
+	ErrUserMissing   = fmt.Errorf("用户不存在")
+	ErrNotifyInvalid = fmt.Errorf("notify must be all or feed")
 )
 
 type userPresence interface {
@@ -29,19 +30,37 @@ func (o oauthBriefs) Briefs(ctx context.Context, ids []int) map[int]*userclient.
 	return userclient.BriefMapByInt(ctx, o.c, ids)
 }
 
-func (s *UserService) Follow(ctx context.Context, followerID, followingID int) error {
+// Follow answers the follow's level, which a follow that already stood keeps.
+func (s *UserService) Follow(ctx context.Context, followerID, followingID int) (string, error) {
 	if followerID == followingID {
-		return ErrFollowSelf
+		return "", ErrFollowSelf
 	}
 	ok, err := s.presence.Exists(followingID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !ok {
-		return ErrUserMissing
+		return "", ErrUserMissing
 	}
-	_, err = s.community.FollowUser(ctx, int64(followerID), int64(followingID))
-	return err
+	res, err := s.community.FollowUser(ctx, int64(followerID), int64(followingID))
+	if err != nil {
+		return "", err
+	}
+	return res.Notify, nil
+}
+
+// SetFollowNotify is the bell: all = notified of the followee's new work, feed
+// = the following feed only. It never creates a follow, so a click from a tab
+// that has not seen an unfollow answers not-found instead of bringing it back.
+func (s *UserService) SetFollowNotify(ctx context.Context, followerID, followingID int, notify string) (string, error) {
+	if notify != communityclient.FollowNotifyAll && notify != communityclient.FollowNotifyFeed {
+		return "", ErrNotifyInvalid
+	}
+	res, err := s.community.SetFollowNotify(ctx, int64(followerID), int64(followingID), notify)
+	if err != nil {
+		return "", err
+	}
+	return res.Notify, nil
 }
 
 func (s *UserService) Unfollow(ctx context.Context, followerID, followingID int) error {
@@ -130,6 +149,7 @@ func (s *UserService) attachFollowState(ctx context.Context, resp *dto.UserInfoR
 	resp.FollowerCount = &followers
 	resp.FollowingCount = &following
 	resp.IsFollowed = st.ViewerFollows
+	resp.FollowNotify = st.ViewerNotify
 }
 
 func (s *UserService) briefsToFollowItems(ctx context.Context, ids []int, states map[int64]communityclient.FollowStateView) []model.UserFollowItem {

@@ -46,6 +46,7 @@ const (
 	NotificationKindFeedbackStatus        = 7
 	NotificationKindFollowed              = 8
 	NotificationKindFolloweeThreadCreated = 9
+	NotificationKindFolloweeActivity      = 10
 )
 
 const (
@@ -266,6 +267,23 @@ type NotificationView struct {
 	CreatedAt       string `json:"created_at"`
 	UpdatedAt       string `json:"updated_at"`
 	Seq             int64  `json:"seq"`
+
+	// Activity is set only on kind 10, and is absent once the row is retracted
+	// (item_count 0).
+	Activity *NotificationActivity `json:"activity,omitempty"`
+}
+
+type NotificationActivity struct {
+	ID           int64  `json:"id"`
+	Site         string `json:"site"`
+	Key          string `json:"key"`
+	Verb         string `json:"verb"`
+	ObjectKind   string `json:"object_kind"`
+	ObjectLabel  string `json:"object_label"`
+	Title        string `json:"title"`
+	URL          string `json:"url"`
+	ContentLimit string `json:"content_limit"`
+	OccurredAt   string `json:"occurred_at"`
 }
 
 type NotificationFeedResponse struct {
@@ -316,6 +334,25 @@ type FollowResult struct {
 	Following  bool  `json:"following"`
 	Created    bool  `json:"created"`
 	Deleted    bool  `json:"deleted"`
+	// Notify echoes the follow's level on PUT; empty after a DELETE.
+	Notify string `json:"notify"`
+}
+
+// A follow's level: FollowNotifyAll sends kind 10 for the followee's new work,
+// FollowNotifyFeed keeps them in the following feed only.
+const (
+	FollowNotifyAll  = "all"
+	FollowNotifyFeed = "feed"
+)
+
+type FollowNotifyRequest struct {
+	Notify string `json:"notify"`
+}
+
+type FollowNotifyResult struct {
+	FollowerID int64  `json:"follower_id"`
+	FolloweeID int64  `json:"followee_id"`
+	Notify     string `json:"notify"`
 }
 
 type FollowView struct {
@@ -339,6 +376,9 @@ type FollowStateView struct {
 	FollowingCount int64 `json:"following_count"`
 	ViewerFollows  bool  `json:"viewer_follows"`
 	FollowsViewer  bool  `json:"follows_viewer"`
+	// ViewerNotify is the viewer's level toward this user, nil when the viewer
+	// does not follow them.
+	ViewerNotify *string `json:"viewer_notify"`
 }
 
 type FollowStatesResponse struct {

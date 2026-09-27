@@ -2,7 +2,11 @@ package inbox
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"kun-galgame-patch-api/internal/community/anchor"
 	"kun-galgame-patch-api/pkg/communityclient"
@@ -26,11 +30,13 @@ func mirrored(kind int32) bool {
 	return false
 }
 
-func partition(notes []communityclient.NotificationView) (follows, comments []communityclient.NotificationView) {
+func partition(notes []communityclient.NotificationView) (follows, activities, comments []communityclient.NotificationView) {
 	for _, n := range notes {
 		switch {
 		case n.Kind == communityclient.NotificationKindFollowed:
 			follows = append(follows, n)
+		case n.Kind == communityclient.NotificationKindFolloweeActivity:
+			activities = append(activities, n)
 		case mirrored(n.Kind) && anchor.IsMoyu(n.AnchorKind, n.AnchorID):
 			comments = append(comments, n)
 		}
@@ -50,6 +56,67 @@ func followMessage(n communityclient.NotificationView) mappedRow {
 		row.Link = "/user/" + strconv.FormatInt(*n.ActorID, 10) + "/resource"
 	}
 	return row
+}
+
+// activityMessage renders a kind-10 fold from its label, title and count
+// alone: kind 10 will carry object kinds this site has never heard of (the
+// ones community writes for its own posts), so nothing branches on the kind.
+func activityMessage(n communityclient.NotificationView) mappedRow {
+	row := mappedRow{Type: "followActivity", Content: "发布了新内容"}
+	if n.ReadAt != "" {
+		row.Status = 1
+	}
+	if n.ActorID != nil && *n.ActorID > 0 {
+		row.Link = "/user/" + strconv.FormatInt(*n.ActorID, 10) + "/resource"
+	}
+	a := n.Activity
+	if a == nil {
+		return row
+	}
+	if link := sitePath(a.URL); link != "" {
+		row.Link = link
+	}
+
+	label := a.ObjectLabel
+	if label == "" {
+		label = "内容"
+	}
+	if startsLatin(label) {
+		label = " " + label
+	}
+	switch {
+	case n.ItemCount >= 100:
+		row.Content = "发布了 100+ 个" + label
+	case n.ItemCount > 1:
+		row.Content = fmt.Sprintf("发布了 %d 个%s", n.ItemCount, label)
+	default:
+		row.Content = "发布了" + label
+	}
+	if a.Title != "" {
+		sep := "："
+		if n.ItemCount > 1 {
+			sep = "，最新："
+		}
+		row.Content += sep + "「" + truncateRunes(a.Title, mentionExcerptRunes) + "」"
+	}
+	return row
+}
+
+// sitePath keeps an activity link inside the site. Kind 10 is delivered to the
+// site the activity lives on, so its URL is always one of this site's.
+func sitePath(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.HasPrefix(u.RequestURI(), "/") {
+		return ""
+	}
+	return u.RequestURI()
+}
+
+func startsLatin(s string) bool {
+	for _, r := range s {
+		return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))
+	}
+	return false
 }
 
 // messageFor renders one notification as the inbox row this site shows. An

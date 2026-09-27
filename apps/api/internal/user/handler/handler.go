@@ -200,11 +200,33 @@ func (h *UserHandler) Follow(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	if err := h.service.Follow(c.Context(), user.ID, userID); err != nil {
+	notify, err := h.service.Follow(c.Context(), user.ID, userID)
+	if err != nil {
 		return followErr(c, err)
 	}
 
-	return response.OKMessage(c, "Followed")
+	return response.OK(c, dto.FollowNotifyResponse{Notify: notify})
+}
+
+func (h *UserHandler) SetFollowNotify(c fiber.Ctx) error {
+	userID, err := getUID(c)
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	var req dto.FollowNotifyRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+
+	user := middleware.MustGetUser(c)
+	notify, err := h.service.SetFollowNotify(c.Context(), user.ID, userID, req.Notify)
+	if stderrors.Is(err, service.ErrNotifyInvalid) {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	if err != nil {
+		return response.Upstream(c, err, "您还没有关注该用户")
+	}
+	return response.OK(c, dto.FollowNotifyResponse{Notify: notify})
 }
 
 func (h *UserHandler) Unfollow(c fiber.Ctx) error {

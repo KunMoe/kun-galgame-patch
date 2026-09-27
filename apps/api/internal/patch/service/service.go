@@ -927,15 +927,6 @@ func (s *PatchService) createDedupMessage(senderID, recipientID int, msgType, co
 	}
 }
 
-func galgameDisplayName(b *galgameClient.GalgameBrief) string {
-	for _, n := range []string{b.NameZhCn, b.NameJaJp, b.NameEnUs, b.NameZhTw, b.DisplayName, b.Latin} {
-		if n != "" {
-			return n
-		}
-	}
-	return b.VndbID
-}
-
 func (s *PatchService) resolveGalgameName(patchID int) string {
 	briefs, err := s.galgame.GalgameBatch(context.Background(), []int{patchID}, "")
 	if err != nil {
@@ -943,7 +934,7 @@ func (s *PatchService) resolveGalgameName(patchID int) string {
 	}
 	for i := range briefs {
 		if briefs[i].ID == patchID {
-			return galgameDisplayName(&briefs[i])
+			return briefs[i].PreferredName()
 		}
 	}
 	return ""

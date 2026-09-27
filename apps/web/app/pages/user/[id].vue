@@ -97,6 +97,34 @@ const toggleFollow = async () => {
     followLoading.value = false
   }
 }
+
+const notifyAll = computed(() => user.value?.follow_notify !== 'feed')
+const notifyLoading = ref(false)
+const toggleNotify = async () => {
+  if (!user.value?.is_followed || notifyLoading.value) return
+  notifyLoading.value = true
+  const notify = notifyAll.value ? 'feed' : 'all'
+  try {
+    const res = await api.patch<{ notify: 'all' | 'feed' }>(
+      `/user/${user.value.id}/follow`,
+      { notify }
+    )
+    if (res.code !== 0) {
+      useKunMessage(res.message || '操作失败', 'error')
+      await refresh()
+      return
+    }
+    user.value.follow_notify = res.data.notify
+    useKunMessage(
+      res.data.notify === 'all'
+        ? 'TA 发布新内容时会通知你'
+        : '不再通知, TA 的动态仍会出现在「关注动态」里',
+      'success'
+    )
+  } finally {
+    notifyLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -206,6 +234,24 @@ const toggleFollow = async () => {
               >
                 {{ user.is_followed ? '已关注' : '关注' }}
               </KunButton>
+              <KunTooltip
+                v-if="user.is_followed"
+                :text="notifyAll ? 'TA 发布新内容时通知我' : '只在「关注动态」中显示'"
+              >
+                <KunButton
+                  is-icon-only
+                  variant="flat"
+                  color="primary"
+                  :loading="notifyLoading"
+                  :aria-label="notifyAll ? '关闭发布通知' : '开启发布通知'"
+                  @click="toggleNotify"
+                >
+                  <KunIcon
+                    :name="notifyAll ? 'lucide:bell-ring' : 'lucide:bell-off'"
+                    class="size-4"
+                  />
+                </KunButton>
+              </KunTooltip>
               <KunButton
                 color="primary"
                 variant="bordered"
