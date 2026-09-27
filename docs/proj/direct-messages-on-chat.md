@@ -1,6 +1,6 @@
 # moyu 私信迁移到 NextMoe chat
 
-> 状态：**A 已完成（开关关着上线）**，B（切换）待发。
+> 状态：**A 于 2026-09-27 上线（#87，开关关着）；B 由本提交切换**，随后由 infra 跑 C 补齐。
 > 合同是 infra 的 `docs/chat/01-service-and-contract.md` 与 `docs/chat/openapi.yaml`
 > （线上 `GET https://api.nextmoe.dev/v2/chat/openapi.json`）。本文只记 moyu 这一侧
 > 的决定和上线顺序，不复述合同。参照实现是 letmoe（`kun-letmoe-community` #10 #11）。
