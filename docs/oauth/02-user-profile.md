@@ -52,6 +52,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 改显示名 | `PATCH /auth/me { name }` | 全局唯一，OAuth 后端拒重 |
 | 改头像（URL 或 hash） | `PATCH /auth/me` 或 `POST /auth/me/avatar` | 后者一步走完上传 + 写库 |
 | 改简介 | `PATCH /auth/me { bio }` | 纯展示，无安全性 |
+| 写主页介绍 | `PATCH /auth/me { about }` | ≤500 字 Markdown；非空时需要在萌萌点商店买到「主页介绍」权益，见 [16-shop.md](./16-shop.md) §1.3 |
 | 读写云端偏好 | `/auth/me/preferences/*` | 每个 client 一个命名空间 + 共享的 `global`，见 [15-content-preferences.md](./15-content-preferences.md) |
 
 **年龄确认已于 2026-09-23 退役**，账号一律视为成年账号（见 [15](./15-content-preferences.md#一内容分级)）：下游不要做年龄确认弹窗，`POST /auth/me/adult-confirmation` 保留在线但已无作用。成人向内容显示方式（`PUT /auth/me/nsfw`）技术上可代理，但放在账号中心 `https://account.nextmoe.com/settings` 更一致。
@@ -65,7 +66,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 端点 | 方法 | 层级 | 鉴权 | 用途 |
 |------|------|------|------|------|
 | `/auth/me` | GET | — | Bearer | 读自己完整资料（`email` 受 `email` scope 门控，见下） |
-| `/auth/me` | PATCH | 展示 | Bearer | 改 name / avatar / bio（响应同 GET，`email` 同样门控） |
+| `/auth/me` | PATCH | 展示 | Bearer | 改 name / avatar / bio / about（响应同 GET，`email` 同样门控） |
 | `/auth/me/avatar` | POST | 展示 | Bearer | 上传头像 multipart |
 | `/auth/email/send-code` | POST | 身份 | Bearer（仅 OAuth 前端） | 发送邮箱变更验证码到**旧**邮箱 |
 | `/auth/email` | PUT | 身份 | Bearer（仅 OAuth 前端） | 用验证码确认改邮箱 |
@@ -126,6 +127,16 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 > `GET /auth/me` 与 `PATCH /auth/me` 自 2026-09-22 起返回 `Cache-Control: no-store`。
 >
 > **2026-09-23 新增 `cosmetics`**：`GET /auth/me` 带上用户正在穿戴的装扮（第一方会话取全站默认，OAuth token 取签发 client 的站点），什么都没戴时省略；公开资料 `GET /users/:uuid` 同样带全站默认。字段形状与渲染规则见 [16-shop.md](./16-shop.md)。
+>
+> **2026-09-27 新增主页介绍 `about` / `about_html` 与权益 `perks`**：
+>
+> | 字段 | 出现在 | 说明 |
+> |---|---|---|
+> | `about` | `GET/PATCH /auth/me` | 主页介绍的 Markdown 原文（≤500 字），用于编辑；没写时省略 |
+> | `about_html` | `GET/PATCH /auth/me`、`GET /users/:uuid`、`/users/batch` | 服务端渲染并净化过的 HTML，可以直接 `v-html` / `KunContent`。公开资料和 batch 只在主人**当前**持有「主页介绍」权益时带它；`/auth/me` 总是带（主人自己能看到权益失效后被隐藏的内容） |
+> | `perks` | `GET/PATCH /auth/me` | 当前有效的功能权益，例如 `["profile_about"]`；没有时省略 |
+>
+> 渲染规则见 [16-shop.md](./16-shop.md) §1.3。
 
 ---
 
@@ -152,6 +163,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | avatar | string? | ≤255 字符 | 头像 URL（legacy；image_service 普及前继续用） |
 | avatar_image_hash | string? | ≤64 字符 | 头像的 image_service 哈希；前端 resolveAvatarUrl 优先用此字段 |
 | bio | string? | ≤107 字符 | 个人简介 |
+| about | string? | ≤500 字符，Markdown | 主页介绍。非空时需要当前持有 `profile_about` 权益，否则 `400 / 19016`；传空字符串随时可以清空。服务端同时写入渲染好的 `about_html` |
 
 字段都用指针类型语义：**没传 = 不动；传了 = 设为该值**（包括传空字符串 = 清空）。
 
@@ -164,6 +176,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 400  | 1    | JSON 格式错误 |
 | 400  | 7    | 字段约束未通过（name 长度、bio 长度等） |
 | 400  | 10007 | name 与其他用户重复 |
+| 400  | 19016 | 写主页介绍但没有「主页介绍」权益 |
 | 401  | 10001/10002/10003 | 未提供 / 无效 / 过期 token |
 
 **修改 email 不在这里** —— email 必须走 `/auth/email/send-code` + `/auth/email`（带验证码的两步流程，防止账号被劫持）。

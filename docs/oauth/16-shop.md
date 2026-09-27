@@ -6,7 +6,7 @@
 
 返回 [README](./README.md)
 
-> **状态：已实现**（2026-09-23）。装扮类型：**头像框**、**主页背景**。实现见 `apps/api/internal/platform/shop`，路由注册见 `cmd/oauth/main.go`，扣费走 [06 萌萌点账本](./06-moemoepoint.md)。
+> **状态：已实现**（2026-09-23；2026-09-27 加入功能权益与兑换码）。物品类型：装扮 **头像框**、**主页背景**，功能 **主页介绍**，**兑换码**。实现见 `apps/api/internal/platform/shop`，路由注册见 `cmd/oauth/main.go`，扣费走 [06 萌萌点账本](./06-moemoepoint.md)。
 
 ## 0. 定位
 
@@ -20,15 +20,24 @@
 | 订单 order | `shop_orders` | 一次购买，保存下单时的价格快照，关联账本转账 |
 | 拥有 entitlement | `shop_entitlements` | 用户拥有某件物品：来源（购买 / 发放）、到期时间、是否被收回 |
 | 穿戴 loadout | `shop_loadouts` | 用户在某个槽位、某个站点戴着哪件物品；站点 `0` = 全站默认 |
+| 码池 code | `shop_codes` | 兑换码类物品的库存：每个码卖出时记下订单与买家 |
 
 - **在哪买、到处戴**（Steam 模式）：物品可以是全站共享（`site_id` 为空）或站点独有（`site_id` 有值，只能在该站点的专区卖），但买到之后在所有站点都能显示。每个站点还可以单独选戴另一件（Discord 按服务器装饰的模式）。
 - **站点专区**：商品也有 `site_id`。全站商品出现在商店首页；站点商品按站点分组出现在账号中心商店的「专区」里，收入记到该站点的 sink `shop:site:<id>`。站点独有的物品只能放进它自己站点的商品里；全站物品也可以放进站点商品。
 - 物品只能**下架**，不能在发布后删除；已发布物品的素材**不可更换**（只能改名称和简介）——拥有者买的就是它现在的样子。
 - 最低价由配置中心 `shop.min_price` 决定（默认 **100**，公开键，可在 `GET /settings` 读到）。
 
-## 1. 装扮类型与渲染契约
+## 1. 物品类型
 
-每种类型对应一个同名的穿戴槽位，每个槽位同时只戴一件。类型的素材规格登记在 `shop/service/kinds.go`；新增一种类型 = 登记一条规格 + 管理台上传表单 + 各站的渲染代码，购买、账本、订单、退款不用动。
+类型登记在 `shop/service/kinds.go`，分三类：
+
+| 类 | 类型 `kind` | 买到的是 | 素材 | 能否穿戴 | 能否重复购买 |
+|---|---|---|---|---|---|
+| 装扮 | `avatar_frame` 头像框、`profile_background` 主页背景 | 一条拥有记录 | 必需（见下表）| 能，槽位与类型同名 | 永久的不能；限时的顺延 |
+| 功能 | `profile_about` 主页介绍 | 一条拥有记录（权益）| 不需要 | 不能 | 同装扮 |
+| 兑换码 | `redeem_code` | 码池里的一个码，写在订单上 | 不需要 | 不能 | 能（受限购约束）|
+
+装扮的每种类型对应一个同名的穿戴槽位，每个槽位同时只戴一件。新增一种装扮 = 登记一条规格 + 管理台上传表单 + 各站的渲染代码，购买、账本、订单、退款不用动。
 
 | 类型 `kind` / 槽位 `slot` | 静态图（必需）| 动图（可选，动态 WebP，与静态图同尺寸）| 尺寸 |
 |---|---|---|---|
@@ -53,6 +62,23 @@
 - 有动图时默认播放动图，`prefers-reduced-motion: reduce` 时用静态图；
 - 纯装饰：`alt=""`，不叠渐变遮罩；
 - 字段缺省时不留空框。
+
+### 1.3 主页介绍（`profile_about`）
+
+拥有这项权益的用户可以在主页写一段 **≤ 500 字的 Markdown** 介绍（`PATCH /auth/me { about }`，见 [02](./02-user-profile.md)）。它和 107 字的 `bio` 是两个字段：`bio` 仍是到处显示的一句话签名，`about` 只在**用户主页**显示。
+
+- 服务端在写入时把 Markdown 渲染成 HTML 并净化，下发 `about_html`，**渲染方直接用 `KunContent`（`compact`）或 `v-html`，不要自己再解析 Markdown**。支持：段落与换行、粗体 / 斜体 / 删除线、链接、列表、引用、代码、分隔线、表格；标题从 `h3` 起（`#` 渲染成 `h3`）；图片变成指向图片地址的链接；不支持 HTML；链接只允许 `http` / `https` / `mailto`，一律带 `rel="nofollow noopener"` 并在新窗口打开。
+- 权益失效（被收回或退款）后，原文保留，但公开资料和 `/users/batch` 不再下发 `about_html`；重新获得即恢复。
+- 字段缺省时不留空框。
+
+### 1.4 兑换码（`redeem_code`）
+
+每件兑换码物品有自己的码池（`shop_codes`），由管理员粘贴添加。买一次发一个码：
+
+- 先发**最早过期**的码；离过期（日本时间的最后可用日）**不足 3 天**的码不再出售；
+- 商品的剩余数量就是码池里可售的码（`remaining`），码池空了就是售罄（`19005`）；兑换码商品不能另填库存，也只能包含这一件物品、没有有效期；
+- 码写在订单上（`order.codes[]`），只有买家（`/shop/me`、购买响应）和商店管理员能看到；
+- 码一旦发出就收不回，所以**兑换码订单不能退款**（`19010`），兑换码物品也不能直接发放。
 
 ## 2. 读取：`cosmetics` 字段
 
@@ -93,7 +119,7 @@
 | 端点 | 方法 | 用途 |
 |---|---|---|
 | `/shop/catalog` | GET | **公开**：在售商品，全站与各站点专区都在内；站点商品带 `site: { id, name, domain }`（`Cache-Control: public, max-age=60`）|
-| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单 |
+| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单（兑换码订单带 `codes`）|
 | `/shop/orders` | POST | 购买 |
 | `/shop/me/loadout` | PUT | 穿戴 / 摘下 |
 
@@ -106,11 +132,18 @@
 - 整笔购买在**一个数据库事务**里：锁商品 → 检查上架状态、窗口、库存、每人限购、是否已永久拥有 → 写订单 → 账本扣费（`reason=purchase`、`source_app="shop"`，用户 → sink `shop`，站点商品进 `shop:site:<id>`，**服务端校验余额**）→ 发放拥有记录。任何一步失败，什么都不会发生。
 - `idempotency_key` 按用户唯一（≤ 64 字符）。重试同一个键返回第一次的订单，`replay: true`，不会再扣费；同一个键用于另一件商品 → `400 / 19014`。
 - 限时物品（`duration_days > 0`）再次购买时在**剩余时间上顺延**；已永久拥有的物品不能再买（`19003`）。
+- 每人限购 `per_user_limit` 按 `limit_period` 计数：`""` 为不分周期，`"month"` 为按北京时间的自然月（每月 1 日 00:00 重新计数）；退款的订单不计入。
 
 响应：
 
 ```json
 { "order": { "id": 88, "price": 120, "status": "completed", "rewards": [ … ], … }, "balance": 180, "replay": false }
+```
+
+兑换码商品的订单多一个 `codes`：
+
+```json
+"codes": [{ "item_id": 21, "code": "ABCD-EFGH-IJKL", "expires_on": "2026-10-31" }]
 ```
 
 ### 3.2 PUT /shop/me/loadout
@@ -125,6 +158,10 @@
 - 只能穿戴自己**当前有效**拥有的物品（`19006`），物品类型必须属于这个槽位。
 - 响应是该站点视角下新的 `cosmetics`。
 
+### 3.3 商品上的限购与剩余
+
+`/shop/catalog` 里每件商品带 `per_user_limit`、`limit_period`（`""` 或 `"month"`）和 `remaining`：有库存的商品是库存减已售，兑换码商品是码池里可售的码，不限量时为 `null`。`remaining: 0` 即售罄。
+
 ## 4. 管理端点（`/admin/shop/*`）
 
 权限领域 `shop`：`shop.manage`（素材、物品、商品的增改，提交审核）、`shop.publish`（发布 / 驳回 / 下架物品，上架 / 下架商品）、`shop.grant`（发放 / 收回物品，退款）。admin 与 ren 默认都有。
@@ -137,10 +174,13 @@
 | `POST /admin/shop/items/:id/{submit,reject,publish,retire,relist}` | manage（除 `submit` 外还需 publish）| 状态：草稿 → 待审 → 已发布 → 已下架 |
 | `GET/POST /admin/shop/offers`、`PUT /admin/shop/offers/:id` | manage | 商品；价格 ≥ `shop.min_price` |
 | `POST /admin/shop/offers/:id/{activate,retire}` | manage + publish | 上架前所有物品都必须已发布 |
+| `GET /admin/shop/codes?item_id=` | manage | 兑换码物品的码池：`total`、`sellable`、`sold`、`shelf_days` 和每个码 |
+| `POST /admin/shop/codes` | manage | `{ item_id, codes: [...], expires_on }` 添加（一次 ≤ 1000 个，`expires_on` 为 `YYYY-MM-DD` 或 `null`），已存在的码跳过并在 `duplicates` 里返回 |
+| `DELETE /admin/shop/codes/:id` | manage | 删除一个还没卖出的码 |
 | `GET /admin/shop/users/:uuid` | grant | 该用户的拥有记录（含已失效）、穿戴、订单 |
-| `POST /admin/shop/users/:uuid/grants` | grant | 直接发放（`source=grant`，不扣费），`duration_days` 0 = 永久 |
+| `POST /admin/shop/users/:uuid/grants` | grant | 直接发放（`source=grant`，不扣费），`duration_days` 0 = 永久；兑换码物品不能发放 |
 | `POST /admin/shop/entitlements/:id/revoke` | grant | 收回并摘下 |
-| `POST /admin/shop/orders/:id/refund` | grant | 退款：账本反向转账退回萌萌点，并收回**这笔订单**发放的物品（之后被别的购买或发放续期的不动）|
+| `POST /admin/shop/orders/:id/refund` | grant | 退款：账本反向转账退回萌萌点，并收回**这笔订单**发放的物品（之后被别的购买或发放续期的不动）；兑换码订单不能退款 |
 
 ## 5. 错误码（19xxx）
 
@@ -161,6 +201,7 @@
 | 19013 | `ErrShopOrderNotFound` | 订单不存在（404）|
 | 19014 | `ErrShopIdemConflict` | 幂等键已用于另一件商品 |
 | 19015 | `ErrShopPriceBelowMinimum` | 价格低于 `shop.min_price` |
+| 19016 | `ErrShopPerkRequired` | 写主页介绍但没有「主页介绍」权益（`PATCH /auth/me`）|
 
 余额不足沿用账本的 `400 / 16006`。
 
@@ -175,4 +216,5 @@
 | 限时租用 | `duration_days` + `expires_at` |
 | 新的装扮类型（铭牌、资料主题…）| `kinds.go` 登记规格 + 槽位；新类型要写渲染代码，新物品只需要数据 |
 | 勋章（展示多枚、有顺序；多数靠获得而非购买）| 需要给穿戴加位置列，并按规则自动发放；`source=grant` 已有 |
-| 消耗品（改名卡、置顶卡）| 需要数量与「使用」动作；现在同一件物品每人只能拥有一份 |
+| 消耗品（改名卡、置顶卡）| 一次性的码已由兑换码实现；站内「使用」型的消耗品仍需要数量与「使用」动作 |
+| 新的功能权益 | `kinds.go` 登记一条功能类；`/auth/me` 的 `perks` 自动带上，用它的服务按 `PerksFor` 判断 |
