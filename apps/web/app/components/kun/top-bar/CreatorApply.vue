@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { KunStepItem } from '@kungal/ui-vue'
+
 const open = defineModel<boolean>({ required: true })
 
 const api = useApi()
@@ -62,7 +64,7 @@ const canApply = computed(
   () => isEligible.value && !isPending.value && !isCreator.value
 )
 
-const FLOW = [
+const FLOW: KunStepItem[] = [
   { title: '达成条件', icon: 'lucide:target' },
   { title: '提交申请', icon: 'lucide:send' },
   { title: '管理员审核', icon: 'lucide:user-round-check' },
@@ -77,8 +79,9 @@ const currentStep = computed(() => {
 })
 const flow = computed(() =>
   !isCreator.value && isDeclined.value
-    ? FLOW.map((step, i) =>
-        i === REVIEW_STEP ? { ...step, status: 'error' as const } : step
+    ? FLOW.map(
+        (step, i): KunStepItem =>
+          i === REVIEW_STEP ? { ...step, status: 'error' } : step
       )
     : FLOW
 )
