@@ -103,10 +103,10 @@ func (s *UserService) attachPatchSummaries(ctx context.Context, resources []patc
 	}
 }
 
-func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
+func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoResponse, *userclient.Brief, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, nil, fmt.Errorf("user not found")
 	}
 
 	resp := &dto.UserInfoResponse{
@@ -117,7 +117,8 @@ func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoRe
 		ResourceCount: s.repo.CountUserResources(userID),
 	}
 
-	if b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]; b != nil {
+	b := userclient.BriefMapByInt(ctx, s.users, []int{userID})[userID]
+	if b != nil {
 		resp.Name = b.Name
 		resp.Avatar = b.Avatar
 		resp.Cosmetics = b.Cosmetics
@@ -126,15 +127,20 @@ func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoRe
 		resp.SiteRoles = b.SiteRoles
 	}
 
-	return resp, nil
+	return resp, b, nil
 }
 
 func (s *UserService) GetUserInfo(ctx context.Context, userID, currentUID int, token, contentLimit string) (*dto.UserInfoResponse, error) {
-	resp, err := s.cardInfo(ctx, userID)
+	resp, brief, err := s.cardInfo(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
+	// Infra's contract (16-shop.md §1.3) confines about_html to the profile
+	// page; the floating card and every list keep only bio.
+	if brief != nil {
+		resp.AboutHTML = brief.AboutHTML
+	}
 	resp.CommentCount = s.commentCount(ctx, userID)
 	resp.FavoriteCount = s.countFavorites(ctx, userID, token, currentUID == userID, contentLimit)
 	s.attachFollowState(ctx, resp, currentUID)
@@ -163,7 +169,8 @@ func (s *UserService) countFavorites(ctx context.Context, userID int, token stri
 // GetUserFloating makes no catalog or community call because the game page
 // calls it on every view, so follow counts are omitted.
 func (s *UserService) GetUserFloating(ctx context.Context, userID int) (*dto.UserInfoResponse, error) {
-	return s.cardInfo(ctx, userID)
+	resp, _, err := s.cardInfo(ctx, userID)
+	return resp, err
 }
 
 func (s *UserService) SearchUsers(ctx context.Context, query string, limit int) ([]model.UserBasic, error) {

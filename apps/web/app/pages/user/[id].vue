@@ -201,6 +201,12 @@ const toggleNotify = async () => {
           >
             {{ user.bio }}
           </p>
+          <KunContent
+            v-if="user.about_html"
+            class="mt-4"
+            compact
+            :content="user.about_html"
+          />
           <div class="text-default-500 mt-4 space-y-2 text-sm">
             <div class="flex items-center gap-2">
               <KunIcon name="lucide:calendar" class="size-4" />

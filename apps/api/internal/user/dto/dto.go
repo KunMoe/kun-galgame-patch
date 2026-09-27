@@ -33,6 +33,7 @@ type UserInfoResponse struct {
 	Avatar         string                `json:"avatar"`
 	Cosmetics      *userclient.Cosmetics `json:"cosmetics,omitempty"`
 	Bio            string                `json:"bio"`
+	AboutHTML      string                `json:"about_html,omitempty"`
 	Roles          []string              `json:"roles"`
 	SiteRoles      []string              `json:"site_roles"`
 	Moemoepoint    int                   `json:"moemoepoint"`
