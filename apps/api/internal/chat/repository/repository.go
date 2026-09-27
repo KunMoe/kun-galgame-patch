@@ -23,6 +23,12 @@ func (r *ChatRepository) FindRoomByLink(link string) (*model.ChatRoom, error) {
 	return &room, err
 }
 
+func (r *ChatRepository) FindRoomByID(id int) (*model.ChatRoom, error) {
+	var room model.ChatRoom
+	err := r.db.First(&room, id).Error
+	return &room, err
+}
+
 func (r *ChatRepository) ListRoomsByUser(userID int) ([]model.ChatRoom, error) {
 	var rooms []model.ChatRoom
 	err := r.db.

@@ -35,6 +35,7 @@ import (
 	faceService "kun-galgame-patch-api/internal/face/service"
 	"kun-galgame-patch-api/internal/favorite"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/im"
 	"kun-galgame-patch-api/internal/infrastructure/cache"
 	cronJobs "kun-galgame-patch-api/internal/infrastructure/cron"
 	"kun-galgame-patch-api/internal/infrastructure/database"
@@ -95,6 +96,7 @@ type App struct {
 	FaceHandler      *faceHandler.Handler
 	UploadHandler    *uploadPkg.Handler
 	ChatHandler      *chatHandler.ChatHandler
+	IMRelay          *im.Relay
 	DocHandler       *docHandler.DocHandler
 	TrustHandler     *trustHandler.TrustHandler
 
@@ -333,7 +335,7 @@ func New(cfg *config.Config) *App {
 	})
 
 	chatRepository := chatRepo.New(db)
-	chatSvc := chatService.New(chatRepository)
+	chatSvc := chatService.New(chatRepository, cfg.Chat.Enabled)
 	chatHdl := chatHandler.New(chatSvc, usrCli)
 
 	docRepo := docRepository.New(db)
@@ -381,6 +383,7 @@ func New(cfg *config.Config) *App {
 		FaceHandler:      faceHdl,
 		UploadHandler:    uploadHdl,
 		ChatHandler:      chatHdl,
+		IMRelay:          im.NewRelay(cfg.Chat.BaseURL),
 		DocHandler:       docHdl,
 		TrustHandler:     trustHdl,
 		CronStop:         stopBackground,

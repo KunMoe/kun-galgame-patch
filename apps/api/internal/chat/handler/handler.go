@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -27,6 +28,13 @@ type ChatHandler struct {
 
 func New(svc *service.ChatService, users *userclient.Client) *ChatHandler {
 	return &ChatHandler{svc: svc, users: users}
+}
+
+func writeError(err error) *errors.AppError {
+	if stderrors.Is(err, service.ErrPrivateMoved) {
+		return errors.ErrPrivateChatMoved()
+	}
+	return errors.ErrBadRequest(err.Error())
 }
 
 func (h *ChatHandler) attachMessageSenders(ctx context.Context, msgs []chatModel.ChatMessage) {
@@ -290,7 +298,7 @@ func (h *ChatHandler) StartPrivate(c fiber.Ctx) error {
 	}
 	room, err := h.svc.StartPrivateChat(user.ID, req.PeerUID)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return response.Error(c, writeError(err))
 	}
 	return response.OK(c, room)
 }
@@ -350,7 +358,7 @@ func (h *ChatHandler) CreateMessage(c fiber.Ctx) error {
 
 	msg, err := h.svc.CreateMessage(user.ID, link, req.Content, req.FileURL, req.ReplyToID)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return response.Error(c, writeError(err))
 	}
 	h.attachOneSender(c.Context(), msg)
 	one := []chatModel.ChatMessage{*msg}
@@ -371,7 +379,7 @@ func (h *ChatHandler) UpdateMessage(c fiber.Ctx) error {
 	}
 
 	if err := h.svc.UpdateMessage(user.ID, id, req.Content); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return response.Error(c, writeError(err))
 	}
 	return response.OKMessage(c, "消息已编辑")
 }
@@ -384,7 +392,7 @@ func (h *ChatHandler) DeleteMessage(c fiber.Ctx) error {
 	}
 	isPrivileged := middleware.IsModerator(c)
 	if err := h.svc.DeleteMessage(user.ID, isPrivileged, id); err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return response.Error(c, writeError(err))
 	}
 	return response.OKMessage(c, "消息已删除")
 }
@@ -403,7 +411,7 @@ func (h *ChatHandler) ToggleReaction(c fiber.Ctx) error {
 
 	added, err := h.svc.ToggleReaction(user.ID, id, req.Emoji)
 	if err != nil {
-		return response.Error(c, errors.ErrBadRequest(err.Error()))
+		return response.Error(c, writeError(err))
 	}
 	return response.OK(c, map[string]bool{"added": added})
 }
