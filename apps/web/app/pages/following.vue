@@ -42,6 +42,10 @@ const loadMore = async () => {
   nextCursor.value = res.data.next_cursor
 }
 
+const dropGroup = (id: number) => {
+  groups.value = groups.value.filter((g) => g.id !== id)
+}
+
 onMounted(() => {
   if (data.value?.seen_mark) markSeen(data.value.seen_mark)
 })
@@ -72,7 +76,12 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <FollowingGroup v-for="group in groups" :key="group.id" :group="group" />
+      <FollowingGroup
+        v-for="group in groups"
+        :key="group.id"
+        :group="group"
+        @vanish="dropGroup(group.id)"
+      />
       <div class="flex justify-center">
         <KunButton
           v-if="nextCursor"

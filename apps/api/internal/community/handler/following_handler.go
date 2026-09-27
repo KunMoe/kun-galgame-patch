@@ -30,6 +30,10 @@ type seenRequest struct {
 	At *time.Time `json:"at"`
 }
 
+type activitySettingRequest struct {
+	Hidden *bool `json:"hidden" validate:"required"`
+}
+
 func feedLimit(c fiber.Ctx) string {
 	return following.FeedLimit(utils.ContentLimitFromQuery(c))
 }
@@ -56,11 +60,34 @@ func (h *FollowingHandler) GroupItems(c fiber.Ctx) error {
 	if err := utils.ParseQueryAndValidate(c, &q); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
-	page, err := h.service.GroupItems(c.Context(), id, q.Cursor, q.Limit, feedLimit(c))
+	user := middleware.MustGetUser(c)
+	page, err := h.service.GroupItems(c.Context(), user.ID, id, q.Cursor, q.Limit, feedLimit(c))
 	if err != nil {
 		return response.Upstream(c, err, "这组动态已不存在")
 	}
 	return response.OK(c, page)
+}
+
+func (h *FollowingHandler) ActivitySetting(c fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	setting, err := h.service.ActivitySetting(c.Context(), user.ID)
+	if err != nil {
+		return response.Upstream(c, err, "")
+	}
+	return response.OK(c, setting)
+}
+
+func (h *FollowingHandler) SetActivitySetting(c fiber.Ctx) error {
+	var req activitySettingRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	user := middleware.MustGetUser(c)
+	setting, err := h.service.SetActivityHidden(c.Context(), user.ID, *req.Hidden)
+	if err != nil {
+		return response.Upstream(c, err, "")
+	}
+	return response.OK(c, setting)
 }
 
 func (h *FollowingHandler) Unseen(c fiber.Ctx) error {

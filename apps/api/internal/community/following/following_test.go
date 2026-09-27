@@ -20,8 +20,16 @@ func (f *fakeFeed) FollowingActivities(_ context.Context, _ int64, cursor string
 	return f.page, nil
 }
 
-func (f *fakeFeed) ActivityGroupItems(context.Context, int64, string, int, string) (*communityclient.ActivityItemPage, error) {
+func (f *fakeFeed) ActivityGroupItems(context.Context, int64, int64, string, int, string) (*communityclient.ActivityItemPage, error) {
 	return &communityclient.ActivityItemPage{}, nil
+}
+
+func (f *fakeFeed) ActivitySetting(context.Context, int64) (*communityclient.ActivitySetting, error) {
+	return &communityclient.ActivitySetting{}, nil
+}
+
+func (f *fakeFeed) SetActivityHidden(context.Context, int64, bool) (*communityclient.ActivitySetting, error) {
+	return &communityclient.ActivitySetting{}, nil
 }
 
 func (f *fakeFeed) FollowingActivitiesUnseen(context.Context, int64, string) (*communityclient.ActivityUnseen, error) {

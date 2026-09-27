@@ -127,6 +127,18 @@ type ActivityUnseen struct {
 	SeenAt      *time.Time `json:"seen_at"`
 }
 
+// ActivitySetting is account-wide: hiding takes the user's activities out of
+// everyone else's feed on every site. UpdatedAt is nil until it is first set.
+type ActivitySetting struct {
+	UserID    int64      `json:"user_id"`
+	Hidden    bool       `json:"hidden"`
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+type activitySettingRequest struct {
+	Hidden bool `json:"hidden"`
+}
+
 type activitySeenRequest struct {
 	At *time.Time `json:"at,omitempty"`
 }
@@ -169,9 +181,11 @@ func (c *Client) FollowingActivities(ctx context.Context, userID int64, cursor s
 	return &out, err
 }
 
-func (c *Client) ActivityGroupItems(ctx context.Context, groupID int64, cursor string, limit int, contentLimit string) (*ActivityItemPage, error) {
+// ActivityGroupItems is 404 when the group's author hides their activities,
+// unless viewerID is that author.
+func (c *Client) ActivityGroupItems(ctx context.Context, groupID, viewerID int64, cursor string, limit int, contentLimit string) (*ActivityItemPage, error) {
 	var out ActivityItemPage
-	q := map[string]string{"cursor": cursor, "content_limit": contentLimit}
+	q := map[string]string{"viewer_id": viewer(viewerID), "cursor": cursor, "content_limit": contentLimit}
 	if limit > 0 {
 		q["limit"] = strconv.Itoa(limit)
 	}
@@ -193,5 +207,18 @@ func (c *Client) MarkFollowingActivitiesSeen(ctx context.Context, userID int64, 
 	var out ActivitySeen
 	err := c.do(ctx, "markFollowingActivitiesSeen", http.MethodPost,
 		"/users/"+itoa(userID)+"/following/activities/seen", activitySeenRequest{At: at}, &out)
+	return &out, err
+}
+
+func (c *Client) ActivitySetting(ctx context.Context, userID int64) (*ActivitySetting, error) {
+	var out ActivitySetting
+	err := c.do(ctx, "getActivitySetting", http.MethodGet, "/users/"+itoa(userID)+"/activity-settings", nil, &out)
+	return &out, err
+}
+
+func (c *Client) SetActivityHidden(ctx context.Context, userID int64, hidden bool) (*ActivitySetting, error) {
+	var out ActivitySetting
+	err := c.do(ctx, "setActivitySetting", http.MethodPut, "/users/"+itoa(userID)+"/activity-settings",
+		activitySettingRequest{Hidden: hidden}, &out)
 	return &out, err
 }

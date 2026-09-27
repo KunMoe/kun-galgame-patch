@@ -78,6 +78,24 @@ func TestARetractionThatStartedEarlierStillDeletesTheFold(t *testing.T) {
 	}
 }
 
+func TestARetractionDeletesAFoldTheReaderAlreadyRead(t *testing.T) {
+	db := mirrorDB(t)
+	t0 := time.Date(2026, 9, 27, 4, 0, 0, 0, time.UTC)
+
+	if err := upsertMessage(db, fold(700004, 40, "发布了 Galgame 补丁", t0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE user_message SET status = 1 WHERE community_notification_id = 700004`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteMessage(db, &messageRow{NotificationID: 700004, Seq: 41, Retract: true}); err != nil {
+		t.Fatal(err)
+	}
+	if found, _, _ := mirrorRow(t, db, 700004); found {
+		t.Fatal("a read fold survived its retraction")
+	}
+}
+
 func TestAnOlderRetractionLeavesANewerFold(t *testing.T) {
 	db := mirrorDB(t)
 	t0 := time.Date(2026, 9, 26, 4, 0, 0, 0, time.UTC)

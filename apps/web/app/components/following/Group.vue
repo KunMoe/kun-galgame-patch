@@ -2,6 +2,7 @@
 import { followingGroupPhrase, followingSiteLabel } from '~/utils/following'
 
 const props = defineProps<{ group: FollowingActivityGroup }>()
+const emit = defineEmits<{ vanish: [] }>()
 
 const api = useApi()
 
@@ -26,6 +27,11 @@ const loadItems = async () => {
     `/community/following/group/${props.group.id}?${query}`
   )
   loading.value = false
+  // The author hid their activities, or removed every item, after the page loaded.
+  if (res.code === 40400) {
+    emit('vanish')
+    return
+  }
   if (res.code !== 0) {
     useKunMessage(res.message || '加载失败，请稍后再试', 'error')
     return

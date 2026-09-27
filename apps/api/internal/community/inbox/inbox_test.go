@@ -159,3 +159,23 @@ func TestPlanMirrorsFolloweeActivityAndRetractsAnEmptyFold(t *testing.T) {
 		t.Errorf("retraction = %+v", gone)
 	}
 }
+
+// Hiding one's activities retracts every kind-10 row naming them, and
+// community marks each retraction read so its prune cannot outrun the mirror.
+func TestPlanRetractsAFoldCommunityMarkedRead(t *testing.T) {
+	actor := int64(5)
+	in := New(nil, nil, nil)
+	in.localIDs = func([]int64) (map[int64]struct{}, error) {
+		return map[int64]struct{}{3: {}, 5: {}}, nil
+	}
+	rows, err := in.plan(context.Background(), []communityclient.NotificationView{{
+		ID: 21, UserID: 3, Kind: communityclient.NotificationKindFolloweeActivity, Seq: 50,
+		ActorID: &actor, ActorCount: 1, ReadAt: "2026-09-27T07:30:00Z",
+	}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(rows) != 1 || !rows[0].Retract || rows[0].Seq != 50 {
+		t.Errorf("rows = %+v", rows)
+	}
+}

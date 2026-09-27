@@ -19,9 +19,11 @@ const thisSite = "moyu"
 
 type Community interface {
 	FollowingActivities(ctx context.Context, userID int64, cursor string, limit int, contentLimit string) (*communityclient.ActivityGroupPage, error)
-	ActivityGroupItems(ctx context.Context, groupID int64, cursor string, limit int, contentLimit string) (*communityclient.ActivityItemPage, error)
+	ActivityGroupItems(ctx context.Context, groupID, viewerID int64, cursor string, limit int, contentLimit string) (*communityclient.ActivityItemPage, error)
 	FollowingActivitiesUnseen(ctx context.Context, userID int64, contentLimit string) (*communityclient.ActivityUnseen, error)
 	MarkFollowingActivitiesSeen(ctx context.Context, userID int64, at *time.Time) (*communityclient.ActivitySeen, error)
+	ActivitySetting(ctx context.Context, userID int64) (*communityclient.ActivitySetting, error)
+	SetActivityHidden(ctx context.Context, userID int64, hidden bool) (*communityclient.ActivitySetting, error)
 }
 
 type Briefs func(ctx context.Context, ids []int) map[int]*userclient.Brief
@@ -117,8 +119,8 @@ func (s *Service) Groups(ctx context.Context, viewerID int, cursor string, limit
 	return page, nil
 }
 
-func (s *Service) GroupItems(ctx context.Context, groupID int64, cursor string, limit int, contentLimit string) (*ItemPage, error) {
-	res, err := s.community.ActivityGroupItems(ctx, groupID, cursor, limit, contentLimit)
+func (s *Service) GroupItems(ctx context.Context, viewerID int, groupID int64, cursor string, limit int, contentLimit string) (*ItemPage, error) {
+	res, err := s.community.ActivityGroupItems(ctx, groupID, int64(viewerID), cursor, limit, contentLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +141,14 @@ func (s *Service) MarkSeen(ctx context.Context, viewerID int, at *time.Time) (ti
 		return time.Time{}, err
 	}
 	return res.SeenAt, nil
+}
+
+func (s *Service) ActivitySetting(ctx context.Context, userID int) (*communityclient.ActivitySetting, error) {
+	return s.community.ActivitySetting(ctx, int64(userID))
+}
+
+func (s *Service) SetActivityHidden(ctx context.Context, userID int, hidden bool) (*communityclient.ActivitySetting, error) {
+	return s.community.SetActivityHidden(ctx, int64(userID), hidden)
 }
 
 func items(in []communityclient.ActivityItemView) []Item {

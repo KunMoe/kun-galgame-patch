@@ -196,6 +196,8 @@ func (a *App) RegisterRoutes() {
 	communityRoutes.Get("/following/unseen", a.FollowingHandler.Unseen)
 	communityRoutes.Put("/following/seen", a.FollowingHandler.MarkSeen)
 	communityRoutes.Get("/following/group/:id", a.FollowingHandler.GroupItems)
+	communityRoutes.Get("/activity-settings", a.FollowingHandler.ActivitySetting)
+	communityRoutes.Put("/activity-settings", a.FollowingHandler.SetActivitySetting)
 
 	msgRoutes := api.Group("/message", auth)
 	msgRoutes.Get("/", a.MessageHandler.GetMessages)

@@ -1,4 +1,5 @@
-// Mirrors apps/api/internal/community/following (Item / Group / Page / ItemPage).
+// Mirrors apps/api/internal/community/following (Item / Group / Page / ItemPage)
+// and communityclient.ActivitySetting.
 interface FollowingActivityItem {
   id: number
   site: string
@@ -37,4 +38,10 @@ interface FollowingActivityPage {
 interface FollowingActivityItemPage {
   items: FollowingActivityItem[]
   next_cursor: string
+}
+
+interface FollowingActivitySetting {
+  user_id: number
+  hidden: boolean
+  updated_at: string | null
 }
