@@ -7,6 +7,7 @@ const isSafeMode = computed(() => stance.value === 'hide')
 <template>
   <KunBanner
     :model-value="isSafeMode"
+    size="sm"
     color="danger"
     variant="flat"
     icon="lucide:shield-check"
