@@ -108,16 +108,28 @@ func (r *resolver) resources(ctx context.Context, ids []int) (map[int]patchModel
 }
 
 func (r *resolver) works(ctx context.Context, resources map[int]patchModel.PatchResource) (map[int]*galgameClient.GalgameBrief, error) {
-	seen := map[int]bool{}
 	var ids []int
 	for _, res := range resources {
-		if res.Status == 0 && !patchModel.IsLocalOnly(res.GalgameID) && !seen[res.GalgameID] {
-			seen[res.GalgameID] = true
+		if res.Status == 0 {
 			ids = append(ids, res.GalgameID)
 		}
 	}
-	out := make(map[int]*galgameClient.GalgameBrief, len(ids))
-	for chunk := range slices.Chunk(ids, galgameClient.CatalogWorksIDsMax) {
+	return r.worksByID(ctx, ids)
+}
+
+// worksByID reads the works catalog still renders, both gates open. A
+// local-only id is never asked for: catalog cannot name it, so its page 404s.
+func (r *resolver) worksByID(ctx context.Context, ids []int) (map[int]*galgameClient.GalgameBrief, error) {
+	seen := map[int]bool{}
+	var ask []int
+	for _, id := range ids {
+		if !patchModel.IsLocalOnly(id) && !seen[id] {
+			seen[id] = true
+			ask = append(ask, id)
+		}
+	}
+	out := make(map[int]*galgameClient.GalgameBrief, len(ask))
+	for chunk := range slices.Chunk(ask, galgameClient.CatalogWorksIDsMax) {
 		briefs, err := r.catalog.GalgameBatch(ctx, chunk, "")
 		if err != nil {
 			return nil, err
@@ -191,25 +203,31 @@ func (r *resolver) editItem(key string, actorID int, res patchModel.PatchResourc
 func (r *resolver) baseItem(key string, actorID int, verb string, res patchModel.PatchResource, work *galgameClient.GalgameBrief, occurred time.Time) *communityclient.ActivityItem {
 	workID := int64(res.GalgameID)
 	at := occurred.UTC().Truncate(time.Microsecond)
-	title := cutRunes(singleLine(joinNonEmpty(" · ", work.PreferredName(), res.Name)), titleRunes)
-	if title == "" {
-		title = objectLabel
-	}
-	contentLimit := "nsfw"
-	if work.ContentLimit == "sfw" {
-		contentLimit = "sfw"
-	}
 	return &communityclient.ActivityItem{
 		Key:            key,
 		ActorID:        int64(actorID),
 		Verb:           verb,
 		ObjectKind:     objectKind,
 		ObjectLabel:    objectLabel,
-		Title:          title,
+		Title:          resourceTitle(res, work),
 		URL:            r.origin + "/resource/" + strconv.Itoa(res.ID),
 		CoverImageHash: coverHash(work.EffectiveBannerHash),
 		WorkID:         &workID,
-		ContentLimit:   contentLimit,
+		ContentLimit:   contentLimit(work),
 		OccurredAt:     &at,
 	}
+}
+
+func resourceTitle(res patchModel.PatchResource, work *galgameClient.GalgameBrief) string {
+	if title := cutRunes(singleLine(joinNonEmpty(" · ", work.PreferredName(), res.Name)), titleRunes); title != "" {
+		return title
+	}
+	return objectLabel
+}
+
+func contentLimit(work *galgameClient.GalgameBrief) string {
+	if work.ContentLimit == "sfw" {
+		return "sfw"
+	}
+	return "nsfw"
 }

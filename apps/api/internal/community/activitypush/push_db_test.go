@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -19,8 +20,8 @@ import (
 )
 
 // Runs only against the launcher-provided TEST_DATABASE_DSN, migrated through
-// 043 (`go run ./cmd/migrate -yes`), with `go test -count=1 -p 1`. The queue and
-// the ledger are emptied per test, so the database must be a throwaway one.
+// 045 (`go run ./cmd/migrate -yes`), with `go test -count=1 -p 1`. The queues and
+// the ledgers are emptied per test, so the database must be a throwaway one.
 func testDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_DSN")
@@ -32,8 +33,8 @@ func testDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	var migrated bool
-	if err := db.Raw(`SELECT to_regclass('activity_push_queue') IS NOT NULL`).Scan(&migrated).Error; err != nil || !migrated {
-		t.Fatalf("TEST_DATABASE_DSN is not migrated through 043 (go run ./cmd/migrate -yes): %v", err)
+	if err := db.Raw(`SELECT to_regclass('anchor_presentation_queue') IS NOT NULL`).Scan(&migrated).Error; err != nil || !migrated {
+		t.Fatalf("TEST_DATABASE_DSN is not migrated through 045 (go run ./cmd/migrate -yes): %v", err)
 	}
 	reset := func() {
 		db.Exec(`DELETE FROM patch_resource_revision WHERE resource_id IN (SELECT id FROM patch_resource WHERE galgame_id BETWEEN 990000 AND 990099)`)
@@ -41,6 +42,8 @@ func testDB(t *testing.T) *gorm.DB {
 		db.Exec(`DELETE FROM patch WHERE id BETWEEN 990000 AND 990099`)
 		db.Exec(`DELETE FROM activity_push_queue`)
 		db.Exec(`DELETE FROM activity_push_sent`)
+		db.Exec(`DELETE FROM anchor_presentation_queue`)
+		db.Exec(`DELETE FROM anchor_presentation_sent`)
 	}
 	reset()
 	t.Cleanup(reset)
@@ -106,6 +109,70 @@ type fakeCommunity struct {
 	reject  map[string]bool // a batch holding one of these answers 422
 	during  func()
 	stored  []communityclient.SiteActivity
+
+	presentations       [][]communityclient.AnchorPresentation
+	storedPresentations []communityclient.StoredAnchorPresentation
+	walls               []communityclient.AuthorPostView
+	wallsErr            error
+}
+
+func (f *fakeCommunity) WriteAnchorPresentations(_ context.Context, items []communityclient.AnchorPresentation) (*communityclient.AnchorPresentationWriteResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, it := range items {
+		if f.reject[it.AnchorID] {
+			return nil, &upstream.Error{Service: "community", Status: http.StatusUnprocessableEntity, Kind: upstream.Internal}
+		}
+	}
+	f.presentations = append(f.presentations, items)
+	out := &communityclient.AnchorPresentationWriteResponse{}
+	for _, it := range items {
+		outcome := communityclient.ActivityCreated
+		if it.Removed {
+			outcome = communityclient.ActivityRemoved
+		}
+		out.Results = append(out.Results, communityclient.AnchorPresentationOutcome{
+			AnchorKind: it.AnchorKind, AnchorID: it.AnchorID, Outcome: outcome,
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeCommunity) ListAnchorPresentations(context.Context, string, int) (*communityclient.AnchorPresentationPage, error) {
+	return &communityclient.AnchorPresentationPage{Presentations: f.storedPresentations}, nil
+}
+
+// ListSitePosts answers the walls one post per page, so a sweep has to follow
+// the cursor to see them all.
+func (f *fakeCommunity) ListSitePosts(_ context.Context, q communityclient.SitePostsQuery) (*communityclient.PostFeedResponse, error) {
+	if q.Kind != communityclient.KindComments || q.AnchorKind != communityclient.AnchorSiteGame {
+		return nil, errors.New("the wall sweep must ask for comments on game walls only")
+	}
+	if f.wallsErr != nil {
+		return nil, f.wallsErr
+	}
+	i := 0
+	if q.Cursor != "" {
+		i, _ = strconv.Atoi(q.Cursor)
+	}
+	if i >= len(f.walls) {
+		return &communityclient.PostFeedResponse{}, nil
+	}
+	next := ""
+	if i+1 < len(f.walls) {
+		next = strconv.Itoa(i + 1)
+	}
+	return &communityclient.PostFeedResponse{Posts: f.walls[i : i+1], NextCursor: next}, nil
+}
+
+func (f *fakeCommunity) sentPresentations() []communityclient.AnchorPresentation {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []communityclient.AnchorPresentation
+	for _, b := range f.presentations {
+		out = append(out, b...)
+	}
+	return out
 }
 
 func (f *fakeCommunity) WriteActivities(_ context.Context, items []communityclient.ActivityItem) (*communityclient.ActivityWriteResponse, error) {

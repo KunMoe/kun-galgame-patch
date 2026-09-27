@@ -18,6 +18,9 @@ const claimLimit = 100
 type Community interface {
 	WriteActivities(ctx context.Context, items []communityclient.ActivityItem) (*communityclient.ActivityWriteResponse, error)
 	ListSiteActivities(ctx context.Context, cursor string, limit int) (*communityclient.SiteActivityPage, error)
+	WriteAnchorPresentations(ctx context.Context, items []communityclient.AnchorPresentation) (*communityclient.AnchorPresentationWriteResponse, error)
+	ListAnchorPresentations(ctx context.Context, cursor string, limit int) (*communityclient.AnchorPresentationPage, error)
+	ListSitePosts(ctx context.Context, q communityclient.SitePostsQuery) (*communityclient.PostFeedResponse, error)
 }
 
 type Pusher struct {
@@ -102,51 +105,65 @@ func (p *Pusher) RunOnce(ctx context.Context) (int, error) {
 	return len(claims), nil
 }
 
-// send writes items and returns the ones community accepted. A 422 fails the
-// whole batch for one malformed item, so the batch is halved until that item
-// stands alone, and it alone is dropped; the daily reconcile finds it missing
-// and offers it again.
+// send writes items and returns the ones community accepted.
 func (p *Pusher) send(ctx context.Context, items []communityclient.ActivityItem) ([]sentRow, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-	res, err := p.community.WriteActivities(ctx, items)
-	if err != nil {
-		if e, ok := upstream.As(err); !ok || e.Status != http.StatusUnprocessableEntity {
-			return nil, err
-		}
-		if len(items) == 1 {
-			slog.Error("activity push: community rejected an item", "key", items[0].Key, "error", err)
-			return nil, nil
-		}
-		half := len(items) / 2
-		left, err := p.send(ctx, items[:half])
+	var accepted []sentRow
+	err := writeHalving(items, func(batch []communityclient.ActivityItem) error {
+		res, err := p.community.WriteActivities(ctx, batch)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		right, err := p.send(ctx, items[half:])
-		return append(left, right...), err
-	}
-	if len(res.Results) != len(items) {
-		return nil, fmt.Errorf("activity push: %d outcomes for %d items", len(res.Results), len(items))
-	}
+		if len(res.Results) != len(batch) {
+			return fmt.Errorf("activity push: %d outcomes for %d items", len(res.Results), len(batch))
+		}
+		for i, r := range res.Results {
+			it := batch[i]
+			if r.Key != it.Key {
+				return fmt.Errorf("activity push: outcome %d is for %q, sent %q", i, r.Key, it.Key)
+			}
+			if acceptedOutcome(r.Outcome, r.Reason, "key", it.Key) {
+				accepted = append(accepted, sentRow{Key: it.Key, ActorID: int(it.ActorID), Revision: it.Revision, Removed: it.Removed})
+			}
+		}
+		return nil
+	}, func(it communityclient.ActivityItem, err error) {
+		slog.Error("activity push: community rejected an item", "key", it.Key, "error", err)
+	})
+	return accepted, err
+}
 
-	accepted := make([]sentRow, 0, len(items))
-	for i, r := range res.Results {
-		it := items[i]
-		if r.Key != it.Key {
-			return nil, fmt.Errorf("activity push: outcome %d is for %q, sent %q", i, r.Key, it.Key)
-		}
-		switch r.Outcome {
-		case communityclient.ActivityCreated, communityclient.ActivityUpdated,
-			communityclient.ActivityRemoved, communityclient.ActivityRestored:
-			accepted = append(accepted, sentRow{Key: it.Key, ActorID: int(it.ActorID), Revision: it.Revision, Removed: it.Removed})
-		case communityclient.ActivityStale:
-		case communityclient.ActivityInvalid:
-			slog.Warn("activity push: community found an item invalid", "key", it.Key, "reason", r.Reason)
-		default:
-			slog.Warn("activity push: unknown outcome", "key", it.Key, "outcome", r.Outcome)
-		}
+// writeHalving writes items in one call. A 422 fails the whole batch for one
+// malformed item, so the batch is halved until that item stands alone, and it
+// alone is dropped; the daily reconcile finds it missing and offers it again.
+func writeHalving[T any](items []T, write func([]T) error, reject func(T, error)) error {
+	if len(items) == 0 {
+		return nil
 	}
-	return accepted, nil
+	err := write(items)
+	if e, ok := upstream.As(err); !ok || e.Status != http.StatusUnprocessableEntity {
+		return err
+	}
+	if len(items) == 1 {
+		reject(items[0], err)
+		return nil
+	}
+	half := len(items) / 2
+	if err := writeHalving(items[:half], write, reject); err != nil {
+		return err
+	}
+	return writeHalving(items[half:], write, reject)
+}
+
+func acceptedOutcome(outcome, reason string, id ...any) bool {
+	switch outcome {
+	case communityclient.ActivityCreated, communityclient.ActivityUpdated,
+		communityclient.ActivityRemoved, communityclient.ActivityRestored:
+		return true
+	case communityclient.ActivityStale:
+	case communityclient.ActivityInvalid:
+		slog.Warn("activity push: community found an item invalid", append(id, "reason", reason)...)
+	default:
+		slog.Warn("activity push: unknown outcome", append(id, "outcome", outcome)...)
+	}
+	return false
 }

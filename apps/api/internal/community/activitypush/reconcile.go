@@ -30,8 +30,7 @@ type ReconcileReport struct {
 // It first copies community's listing into activity_push_sent. That ledger is
 // what lets the drainer tombstone a key, and a crash between a push and its
 // record would otherwise leave a live item nothing can ever remove. A listed
-// key this site does not mint is left alone: once D5 ships, the listing will
-// also carry the rows community writes for itself under site=moyu.
+// key this site does not mint is left alone.
 func (p *Pusher) Reconcile(ctx context.Context) (ReconcileReport, error) {
 	var report ReconcileReport
 	stored, err := p.loadStored(ctx)

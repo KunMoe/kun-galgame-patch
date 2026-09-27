@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"kun-galgame-patch-api/internal/community/activitypush"
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/communityclient"
@@ -85,6 +86,10 @@ func (s *Service) Create(ctx context.Context, surface Surface, userID int, conte
 func (s *Service) afterCreate(ctx context.Context, surface Surface, userID int, post *communityclient.PostView) {
 	s.repo.BumpCommentCount(surface.PatchID, 1)
 	s.repo.EnsureContributor(userID, surface.PatchID)
+	if err := activitypush.EnsurePresented(ctx, s.db, surface.AnchorKind, surface.AnchorID); err != nil {
+		slog.Warn("comment: queueing the wall's presentation failed (best-effort)",
+			"anchor_kind", surface.AnchorKind, "anchor_id", surface.AnchorID, "error", err)
+	}
 
 	if owner := s.repo.PatchOwner(surface.PatchID); owner != 0 && owner != userID {
 		// The idempotency key is namespaced on the POST id, not the comment id the

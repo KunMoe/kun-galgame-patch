@@ -32,21 +32,29 @@ func Origin(redirectURI string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-// Start runs the drainer and the daily reconcile until the returned stop is
+// Start runs the drainers and the daily reconciles until the returned stop is
 // called.
 func (p *Pusher) Start() (stop func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Go(func() { p.drainLoop(ctx) })
+	wg.Go(func() { drainLoop(ctx, "activity push", p.RunOnce) })
+	wg.Go(func() { drainLoop(ctx, "anchor presentation push", p.RunPresentationsOnce) })
+	wg.Go(func() {
+		n, err := p.PresentWalls(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			slog.Error("anchor presentation wall sweep failed; the daily reconcile will retry", "error", err)
+			return
+		}
+		slog.Info("anchor presentation wall sweep done", "enqueued", n)
+	})
 
 	c := cron.New(cron.WithLocation(beijing))
 	job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
-		report, err := p.Reconcile(ctx)
-		if err != nil {
-			slog.Error("activity reconcile failed", "error", err, "enqueued", report.Enqueued)
-			return
-		}
-		slog.Info("activity reconcile done", "stored", report.Stored, "local", report.Local, "enqueued", report.Enqueued)
+		logReconcile(ctx, "activity reconcile", p.Reconcile)
+		logReconcile(ctx, "anchor presentation reconcile", p.ReconcilePresentations)
 	}))
 	if _, err := c.AddJob(reconcileSpec, job); err != nil {
 		slog.Error("activity reconcile not scheduled", "error", err)
@@ -61,12 +69,21 @@ func (p *Pusher) Start() (stop func()) {
 	}
 }
 
-func (p *Pusher) drainLoop(ctx context.Context) {
+func logReconcile(ctx context.Context, name string, run func(context.Context) (ReconcileReport, error)) {
+	report, err := run(ctx)
+	if err != nil {
+		slog.Error(name+" failed", "error", err, "enqueued", report.Enqueued)
+		return
+	}
+	slog.Info(name+" done", "stored", report.Stored, "local", report.Local, "enqueued", report.Enqueued)
+}
+
+func drainLoop(ctx context.Context, name string, runOnce func(context.Context) (int, error)) {
 	backoff := time.Duration(0)
 	for {
 		wait := idlePoll
 		tctx, cancel := context.WithTimeout(ctx, tickTimeout)
-		n, err := p.RunOnce(tctx)
+		n, err := runOnce(tctx)
 		cancel()
 		switch {
 		case ctx.Err() != nil:
@@ -74,7 +91,7 @@ func (p *Pusher) drainLoop(ctx context.Context) {
 		case err != nil:
 			backoff = min(max(backoff*2, backoffStart), backoffCap)
 			wait = backoff
-			slog.Warn("activity push failed; backing off", "error", err, "retry_in", wait)
+			slog.Warn(name+" failed; backing off", "error", err, "retry_in", wait)
 		default:
 			backoff = 0
 			if n > 0 {
