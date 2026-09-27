@@ -6,8 +6,9 @@
 // reads each key's current state and pushes it, and a daily reconcile repairs
 // whatever changed without touching a local row (a catalog rename, a rating).
 //
-// Comments are NOT pushed from here: community writes activities for the posts
-// it owns itself, and a site write under the `community:` key prefix is refused.
+// Comments are NOT pushed from here: the posts community owns are its own to
+// write (D5, planned), under the `community:` key prefix it reserves for them.
+// Community does not refuse a site write under that prefix yet.
 // Likes are not pushed either — no moyu page shows who liked a resource.
 package activitypush
 

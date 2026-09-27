@@ -29,7 +29,9 @@ type ReconcileReport struct {
 //
 // It first copies community's listing into activity_push_sent. That ledger is
 // what lets the drainer tombstone a key, and a crash between a push and its
-// record would otherwise leave a live item nothing can ever remove.
+// record would otherwise leave a live item nothing can ever remove. A listed
+// key this site does not mint is left alone: once D5 ships, the listing will
+// also carry the rows community writes for itself under site=moyu.
 func (p *Pusher) Reconcile(ctx context.Context) (ReconcileReport, error) {
 	var report ReconcileReport
 	stored, err := p.loadStored(ctx)
@@ -68,7 +70,7 @@ func (p *Pusher) Reconcile(ctx context.Context) (ReconcileReport, error) {
 				drift = append(drift, k)
 			}
 		}
-		if err := p.store.enqueue(ctx, drift); err != nil {
+		if err := p.store.enqueueBackfill(ctx, drift); err != nil {
 			return report, err
 		}
 		report.Enqueued += len(drift)
@@ -80,7 +82,7 @@ func (p *Pusher) Reconcile(ctx context.Context) (ReconcileReport, error) {
 			orphans = append(orphans, k)
 		}
 	}
-	if err := p.store.enqueue(ctx, orphans); err != nil {
+	if err := p.store.enqueueBackfill(ctx, orphans); err != nil {
 		return report, err
 	}
 	report.Enqueued += len(orphans)
@@ -96,7 +98,9 @@ func (p *Pusher) loadStored(ctx context.Context) (map[string]communityclient.Sit
 			return nil, err
 		}
 		for _, a := range page.Activities {
-			out[a.Key] = a
+			if _, ours := parseKey(a.Key); ours {
+				out[a.Key] = a
+			}
 		}
 		if page.NextCursor == "" || page.NextCursor == cursor || len(page.Activities) == 0 {
 			return out, nil

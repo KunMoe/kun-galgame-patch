@@ -15,12 +15,19 @@
 --     resource edited five times in a day is one edit, not five.
 -- Likes are not pushed: no page shows who liked a resource.
 --
--- activity_push_queue.notify is true only for a resource's INSERT and for a
--- resource coming back to status 0 (enabled again / restored from a moderation
--- hide). Community notifies only a key it has never seen whose occurred_at is
--- within 24 hours, so a restore of something already pushed notifies nobody.
--- A conflicting enqueue ORs notify and moves enqueued_at; the drainer deletes a
--- queue row only when enqueued_at is still the value it claimed.
+-- Whether a push notifies is decided when it is drained, not when it is
+-- enqueued: a publish notifies when community has never accepted the key and
+-- the queue row is not a backfill. Fixing it at enqueue time lost the first
+-- resource of a new work: inserted while catalog did not yet show the work, it
+-- pushed nothing, and the enqueue that followed the work going public carried
+-- no notify. Community itself notifies only a key it has never seen whose
+-- occurred_at is within 24 hours.
+--
+-- activity_push_queue.backfill marks the rows written below and by the
+-- pusher's daily reconcile; every trigger writes false, and a live enqueue
+-- clears the flag on a row still waiting. An enqueue that conflicts moves
+-- enqueued_at; the drainer deletes a queue row only when enqueued_at is still
+-- the value it claimed.
 --
 -- activity_push_sent is what community last accepted per key. A tombstone
 -- needs the actor after the row is gone, and a key community never accepted
@@ -28,12 +35,11 @@
 -- restore would then never notify.
 --
 -- Existing rows: every resource and every (resource, editor, day) of
--- patch_resource_revision is enqueued once below with notify=false (the
--- backfill), about 10k keys.
+-- patch_resource_revision is enqueued once below as backfill, about 10k keys.
 
 CREATE TABLE IF NOT EXISTS activity_push_queue (
     key         varchar(128) PRIMARY KEY,
-    notify      boolean NOT NULL DEFAULT false,
+    backfill    boolean NOT NULL DEFAULT false,
     enqueued_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
@@ -54,12 +60,11 @@ RETURNS text LANGUAGE sql STABLE AS $$
         || to_char(at AT TIME ZONE 'Asia/Shanghai', 'YYYYMMDD')
 $$;
 
-CREATE OR REPLACE FUNCTION activity_push_enqueue(k text, n boolean)
+CREATE OR REPLACE FUNCTION activity_push_enqueue(k text)
 RETURNS void LANGUAGE sql AS $$
-    INSERT INTO activity_push_queue (key, notify) VALUES (k, n)
+    INSERT INTO activity_push_queue (key) VALUES (k)
     ON CONFLICT (key) DO UPDATE
-    SET notify = activity_push_queue.notify OR EXCLUDED.notify,
-        enqueued_at = clock_timestamp()
+    SET backfill = false, enqueued_at = clock_timestamp()
 $$;
 
 -- A resource's title, visibility and work carry into its edit items, so a
@@ -68,19 +73,18 @@ CREATE OR REPLACE FUNCTION activity_push_resource()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        PERFORM activity_push_enqueue('patch_resource:' || OLD.id, false);
+        PERFORM activity_push_enqueue('patch_resource:' || OLD.id);
         RETURN NULL;
     END IF;
+    PERFORM activity_push_enqueue('patch_resource:' || NEW.id);
     IF TG_OP = 'INSERT' THEN
-        PERFORM activity_push_enqueue('patch_resource:' || NEW.id, true);
         RETURN NULL;
     END IF;
-    PERFORM activity_push_enqueue('patch_resource:' || NEW.id, OLD.status <> 0 AND NEW.status = 0);
     INSERT INTO activity_push_queue (key)
     SELECT DISTINCT activity_edit_key(resource_id, actor_id, created_at)
     FROM patch_resource_revision
     WHERE resource_id = NEW.id AND actor_id > 0
-    ON CONFLICT (key) DO UPDATE SET enqueued_at = clock_timestamp();
+    ON CONFLICT (key) DO UPDATE SET backfill = false, enqueued_at = clock_timestamp();
     RETURN NULL;
 END
 $$;
@@ -113,7 +117,7 @@ DECLARE
 BEGIN
     IF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;
     IF r.actor_id > 0 THEN
-        PERFORM activity_push_enqueue(activity_edit_key(r.resource_id, r.actor_id, r.created_at), false);
+        PERFORM activity_push_enqueue(activity_edit_key(r.resource_id, r.actor_id, r.created_at));
     END IF;
     RETURN NULL;
 END
@@ -138,7 +142,7 @@ BEGIN
     FROM patch_resource_revision v
     JOIN patch_resource r ON r.id = v.resource_id
     WHERE r.galgame_id = NEW.id AND v.actor_id > 0
-    ON CONFLICT (key) DO UPDATE SET enqueued_at = clock_timestamp();
+    ON CONFLICT (key) DO UPDATE SET backfill = false, enqueued_at = clock_timestamp();
     RETURN NULL;
 END
 $$;
@@ -151,10 +155,12 @@ CREATE TRIGGER trg_activity_push_patch
        OR OLD.content_limit IS DISTINCT FROM NEW.content_limit)
     EXECUTE FUNCTION activity_push_patch();
 
-INSERT INTO activity_push_queue (key)
-SELECT 'patch_resource:' || id FROM patch_resource
-UNION
-SELECT activity_edit_key(resource_id, actor_id, created_at)
-FROM patch_resource_revision
-WHERE actor_id > 0
+INSERT INTO activity_push_queue (key, backfill)
+SELECT k, true FROM (
+    SELECT 'patch_resource:' || id AS k FROM patch_resource
+    UNION
+    SELECT activity_edit_key(resource_id, actor_id, created_at)
+    FROM patch_resource_revision
+    WHERE actor_id > 0
+) keys
 ON CONFLICT (key) DO NOTHING;

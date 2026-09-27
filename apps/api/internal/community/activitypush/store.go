@@ -11,7 +11,7 @@ import (
 
 type claim struct {
 	Key        string
-	Notify     bool
+	Backfill   bool
 	EnqueuedAt time.Time
 }
 
@@ -31,7 +31,7 @@ type store struct{ db *gorm.DB }
 func (s store) claim(ctx context.Context, limit int) ([]claim, error) {
 	var out []claim
 	err := s.db.WithContext(ctx).Raw(
-		`SELECT key, notify, enqueued_at FROM activity_push_queue ORDER BY enqueued_at, key LIMIT ?`, limit,
+		`SELECT key, backfill, enqueued_at FROM activity_push_queue ORDER BY enqueued_at, key LIMIT ?`, limit,
 	).Scan(&out).Error
 	return out, err
 }
@@ -82,16 +82,18 @@ func (s store) ack(ctx context.Context, claims []claim) error {
 }
 
 type queueRow struct {
-	Key    string `gorm:"primaryKey"`
-	Notify bool
+	Key      string `gorm:"primaryKey"`
+	Backfill bool
 }
 
 func (queueRow) TableName() string { return "activity_push_queue" }
 
-func (s store) enqueue(ctx context.Context, keys []string) error {
+// enqueueBackfill queues keys the reconcile found drifted. A row a trigger
+// already queued keeps its backfill=false.
+func (s store) enqueueBackfill(ctx context.Context, keys []string) error {
 	rows := make([]queueRow, 0, len(keys))
 	for _, k := range slices.Compact(slices.Sorted(slices.Values(keys))) {
-		rows = append(rows, queueRow{Key: k})
+		rows = append(rows, queueRow{Key: k, Backfill: true})
 	}
 	if len(rows) == 0 {
 		return nil

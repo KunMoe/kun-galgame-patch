@@ -15,16 +15,22 @@ onMounted(check)
       color="default"
       aria-label="关注动态"
       href="/following"
-      class-name="relative"
     >
-      <KunIcon
-        name="lucide:rss"
-        :class="unseen > 0 ? 'text-primary size-6' : 'text-default-500 size-6'"
-      />
-      <span
-        v-if="unseen > 0"
-        class="bg-danger absolute right-1 bottom-1 size-2 rounded-full"
-      />
+      <KunBadge
+        variant="dot"
+        color="danger"
+        size="sm"
+        placement="bottom-right"
+        :show="unseen > 0"
+        aria-label="有新动态"
+      >
+        <KunIcon
+          name="lucide:rss"
+          :class="
+            unseen > 0 ? 'text-primary size-6' : 'text-default-500 size-6'
+          "
+        />
+      </KunBadge>
     </KunButton>
   </KunTooltip>
 </template>

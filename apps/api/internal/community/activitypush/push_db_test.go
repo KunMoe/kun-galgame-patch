@@ -149,15 +149,16 @@ func newTestPusher(db *gorm.DB, com *fakeCommunity, cat *fakeCatalog) *Pusher {
 	return New(db, com, cat, "https://www.moyu.moe")
 }
 
+// queued maps each queued key to its backfill flag.
 func queued(t *testing.T, db *gorm.DB) map[string]bool {
 	t.Helper()
 	var rows []claim
-	if err := db.Raw(`SELECT key, notify FROM activity_push_queue`).Scan(&rows).Error; err != nil {
+	if err := db.Raw(`SELECT key, backfill FROM activity_push_queue`).Scan(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	out := map[string]bool{}
 	for _, r := range rows {
-		out[r.Key] = r.Notify
+		out[r.Key] = r.Backfill
 	}
 	return out
 }
@@ -181,7 +182,7 @@ func TestInsertPushesThePublishWithNotify(t *testing.T) {
 	addPatch(t, db, 990010)
 	rid := addResource(t, db, 990010, "汉化补丁")
 
-	if n, ok := queued(t, db)[resourceKey(rid)]; !ok || !n {
+	if backfill, ok := queued(t, db)[resourceKey(rid)]; !ok || backfill {
 		t.Fatalf("queue after insert = %v", queued(t, db))
 	}
 	com := &fakeCommunity{}
@@ -262,7 +263,7 @@ func TestACatalogFailurePushesNothingAndKeepsTheQueue(t *testing.T) {
 	if items := com.sentItems(); len(items) != 0 {
 		t.Fatalf("pushed %+v during a catalog outage", items)
 	}
-	if n, ok := queued(t, db)[resourceKey(rid)]; !ok || !n {
+	if backfill, ok := queued(t, db)[resourceKey(rid)]; !ok || backfill {
 		t.Fatalf("queue = %v", queued(t, db))
 	}
 
@@ -296,7 +297,7 @@ func TestDeletingAPushedResourceTombstonesIt(t *testing.T) {
 	}
 
 	// Already a tombstone: nothing more to say about it.
-	if err := (store{db: db}).enqueue(context.Background(), []string{resourceKey(rid)}); err != nil {
+	if err := (store{db: db}).enqueueBackfill(context.Background(), []string{resourceKey(rid)}); err != nil {
 		t.Fatal(err)
 	}
 	drain(t, p)
@@ -348,8 +349,60 @@ func TestAChangeDuringTheTickKeepsTheQueueRow(t *testing.T) {
 	}
 	drain(t, p)
 	items := com.sentItems()
-	if len(items) != 2 || items[1].Title != "千恋＊万花 · after" || items[1].Notify != items[0].Notify {
+	if len(items) != 2 || items[1].Title != "千恋＊万花 · after" || !items[0].Notify || items[1].Notify {
 		t.Errorf("pushed %+v", items)
+	}
+}
+
+// Infra review of 1bf9c79b: notify used to be fixed at enqueue time, and the INSERT's
+// was spent on a drain that pushed nothing because catalog did not yet show a
+// newly claimed work. Its first resource never notified anyone.
+func TestAWorkShownAfterItsFirstResourceStillNotifies(t *testing.T) {
+	db := testDB(t)
+	addPatch(t, db, 990019)
+	rid := addResource(t, db, 990019, "x")
+	com := &fakeCommunity{}
+	cat := &fakeCatalog{gone: map[int]bool{990019: true}}
+	p := newTestPusher(db, com, cat)
+	drain(t, p)
+	if items := com.sentItems(); len(items) != 0 {
+		t.Fatalf("pushed %+v for a work catalog does not show", items)
+	}
+
+	cat.gone = nil
+	if err := db.Exec(`UPDATE patch SET published = true WHERE id = 990019`).Error; err != nil {
+		t.Fatal(err)
+	}
+	drain(t, p)
+	items := com.sentItems()
+	if len(items) != 1 || items[0].Key != resourceKey(rid) || !items[0].Notify {
+		t.Errorf("pushed %+v", items)
+	}
+}
+
+func TestABackfillRowNeverNotifiesUntilALiveChangeClearsIt(t *testing.T) {
+	db := testDB(t)
+	addPatch(t, db, 990020)
+	old := addResource(t, db, 990020, "old")
+	edited := addResource(t, db, 990020, "edited")
+	if err := db.Exec(`UPDATE activity_push_queue SET backfill = true`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE patch_resource SET name = 'renamed' WHERE id = ?`, edited).Error; err != nil {
+		t.Fatal(err)
+	}
+	if q := queued(t, db); !q[resourceKey(old)] || q[resourceKey(edited)] {
+		t.Fatalf("queue = %v", q)
+	}
+
+	com := &fakeCommunity{}
+	drain(t, newTestPusher(db, com, &fakeCatalog{}))
+	notify := map[string]bool{}
+	for _, it := range com.sentItems() {
+		notify[it.Key] = it.Notify
+	}
+	if len(notify) != 2 || notify[resourceKey(old)] || !notify[resourceKey(edited)] {
+		t.Errorf("notify by key = %v", notify)
 	}
 }
 
@@ -435,18 +488,23 @@ func TestReconcileRepairsDriftAndTombstonesWhatIsGone(t *testing.T) {
 	// A key community holds live that this site has no row for, and whose push
 	// was never recorded here: only community's listing names its actor.
 	orphan := communityclient.SiteActivity{Key: "patch_resource:989999", ActorID: 990002, Verb: "publish", Revision: 5}
-	com.stored = []communityclient.SiteActivity{stale, orphan}
+	// A row community writes for itself under this site: not ours to tombstone.
+	own := communityclient.SiteActivity{Key: "community:post:1", ActorID: 990002, Verb: "comment", Revision: 5}
+	com.stored = []communityclient.SiteActivity{stale, orphan, own}
 
 	report, err := p.Reconcile(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := queued(t, db)
-	if _, ok := q[resourceKey(live)]; !ok || report.Enqueued != 2 {
+	if _, ok := q[resourceKey(live)]; !ok || report.Enqueued != 2 || len(q) != 2 {
 		t.Fatalf("report %+v, queue %v", report, q)
 	}
-	if n := q[orphan.Key]; n {
-		t.Error("reconcile enqueued with notify")
+	if !q[orphan.Key] || !q[resourceKey(live)] {
+		t.Errorf("reconcile queued a live row: %v", q)
+	}
+	if sent, _ := (store{db: db}).sent(context.Background(), []string{own.Key}); len(sent) != 0 {
+		t.Errorf("community's own row reached the ledger: %+v", sent)
 	}
 
 	drain(t, p)

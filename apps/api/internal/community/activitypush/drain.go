@@ -74,7 +74,8 @@ func (p *Pusher) RunOnce(ctx context.Context) (int, error) {
 		case live != nil:
 			item := *live
 			item.Revision = rev
-			item.Notify = c.Notify && item.Verb == verbPublish
+			_, pushedBefore := sent[c.Key]
+			item.Notify = item.Verb == verbPublish && !pushedBefore && !c.Backfill
 			items = append(items, item)
 		default:
 			// Only a key community holds live gets a tombstone. One it never
