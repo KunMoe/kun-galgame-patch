@@ -65,9 +65,10 @@ func (j JSONArray) Value() (driver.Value, error) {
 }
 
 // LocalOnlyIDBase starts the id band for a page catalog cannot name. Every
-// other page id IS a catalog work id (migration 037); these 20 were parked out
-// of reach because leaving them on a small integer means catalog eventually
-// mints a work with that number and the two collide in silence.
+// other page id IS a catalog work id (migration 037). A page is parked here
+// because leaving it on a small integer means catalog eventually mints a work
+// with that number and the two collide in silence. The 27 the renumber parked
+// were all settled onto real works by cmd/settle-local-pages.
 const LocalOnlyIDBase = 1_500_000_000
 
 func IsLocalOnly(patchID int) bool { return patchID >= LocalOnlyIDBase }

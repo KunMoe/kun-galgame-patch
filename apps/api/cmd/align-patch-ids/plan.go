@@ -16,7 +16,7 @@ const (
 
 	// Permanent home for a page catalog cannot name. Leaving it on a small
 	// integer is what this whole change exists to end: catalog will eventually
-	// mint a work with that number and the two would collide silently. All 20
+	// mint a work with that number and the two would collide silently. All 27
 	// such pages already answer 404 today, so nothing reachable moves here.
 	localBase = 1_500_000_000
 )
