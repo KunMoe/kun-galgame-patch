@@ -31,7 +31,6 @@ onMounted(async () => {
       >
         登录
       </KunButton>
-      <KunTopBarNSFWSwitcher />
     </template>
 
     <SearchPalette />

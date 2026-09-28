@@ -6,7 +6,7 @@ interface NsfwDisplayReply {
 }
 
 // The single owner of "what stance is in force, and how does a switch change
-// it". Three surfaces render the switch (top bar, mobile menu, 系统设置) and
+// it". Three surfaces render the switch (avatar menu, mobile menu, 系统设置) and
 // each one used to carry its own write.
 export const useKunNsfwStance = () => {
   const settingStore = useSettingStore()

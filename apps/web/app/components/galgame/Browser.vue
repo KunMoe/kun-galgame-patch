@@ -311,8 +311,9 @@ watch(
             本站已经有补丁资源的 Galgame。想浏览本站暂无资源的作品资料请前往
             <KunLink to="/gallib">Galgame 信息资料库</KunLink>。
           </template>
-          本页面默认仅显示 SFW (内容安全) 的内容, 您可以在网站右上角切换显示全部
-          (包括 NSFW)。
+          本页面默认仅显示 SFW (内容安全) 的内容, 您可以在
+          <KunLink to="/settings/system">系统设置</KunLink> 中切换显示全部 (包括
+          NSFW)。
         </p>
       </template>
     </KunHeader>
