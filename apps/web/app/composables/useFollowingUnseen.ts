@@ -3,8 +3,8 @@ export const useFollowingUnseen = () => {
   const unseen = useState('following-unseen', () => 0)
   const generation = useState('following-unseen-generation', () => 0)
 
-  // Opening /following directly mounts the top bar first: its count request can
-  // land after the page marked the feed seen and paint the dot back.
+  // A count request still in flight when /following marks the feed seen lands
+  // after it and paints the stale count back.
   const check = async () => {
     const asked = generation.value
     const res = await api.get<{ unseen_count: number }>(

@@ -1,22 +1,32 @@
 <script setup lang="ts">
 const userStore = useUserStore()
 const messageStore = useMessageStore()
+const chat = useChatStore()
 
-const hasUnread = computed(() =>
+const hasNotice = computed(() =>
   messageStore.unreadTypes.some(
     (type) => !userStore.user.muted_message_types?.includes(type)
   )
 )
+const hasUnread = computed(() => hasNotice.value || chat.hasUnread)
+
+const href = computed(() =>
+  chat.hasUnread && !hasNotice.value ? '/messages' : '/message/notice'
+)
+const tooltip = computed(() => {
+  if (hasNotice.value) return '您有新消息!'
+  return chat.hasUnread ? '您有新私信' : '我的消息'
+})
 </script>
 
 <template>
-  <KunTooltip :text="hasUnread ? '您有新消息!' : '我的消息'" position="bottom">
+  <KunTooltip :text="tooltip" position="bottom">
     <KunButton
       is-icon-only
       variant="light"
       color="default"
       aria-label="我的消息"
-      href="/message/notice"
+      :href="href"
       class-name="relative"
     >
       <KunIcon

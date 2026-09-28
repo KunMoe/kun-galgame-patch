@@ -3,8 +3,17 @@ useKunDisableSeo('消息中心')
 
 const route = useRoute()
 
+const chatEnabled = useRuntimeConfig().public.chatEnabled
+const chat = useChatStore()
+
 const navItems = [
   { key: 'notice', title: '通知消息', href: '/message/notice', icon: 'lucide:bell' },
+  ...(chatEnabled
+    ? [
+        { key: 'messages', title: '私信', href: '/messages', icon: 'lucide:mail' },
+        { key: 'chat', title: '群聊', href: '/message/chat', icon: 'lucide:users' }
+      ]
+    : [{ key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }]),
   { key: 'follow', title: '关注消息', href: '/message/follow', icon: 'lucide:users' },
   { key: 'mention', title: '@ 消息', href: '/message/mention', icon: 'lucide:at-sign' },
   {
@@ -25,13 +34,7 @@ const navItems = [
     href: '/message/patch-resource-update',
     icon: 'lucide:refresh-cw'
   },
-  { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog' },
-  ...(useRuntimeConfig().public.chatEnabled
-    ? [
-        { key: 'messages', title: '私信', href: '/messages', icon: 'lucide:mail' },
-        { key: 'chat', title: '群聊', href: '/message/chat', icon: 'lucide:users' }
-      ]
-    : [{ key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }])
+  { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog' }
 ]
 
 const currentKey = computed(
@@ -53,7 +56,20 @@ const currentKey = computed(
         :icon="item.icon"
         :current="currentKey === item.key"
         class-name="w-auto shrink-0 whitespace-nowrap"
-      />
+      >
+        <template v-if="item.key === 'messages'" #icon>
+          <KunBadge
+            variant="dot"
+            color="danger"
+            size="sm"
+            placement="top-right"
+            :show="chat.hasUnread"
+            aria-label="有新私信"
+          >
+            <KunIcon :name="item.icon" class="size-4" />
+          </KunBadge>
+        </template>
+      </KunNavItem>
     </nav>
 
     <div class="grid gap-4 lg:grid-cols-4">
@@ -67,7 +83,20 @@ const currentKey = computed(
               :label="item.title"
               :icon="item.icon"
               :current="currentKey === item.key"
-            />
+            >
+              <template v-if="item.key === 'messages'" #icon>
+                <KunBadge
+                  variant="dot"
+                  color="danger"
+                  size="sm"
+                  placement="top-right"
+                  :show="chat.hasUnread"
+                  aria-label="有新私信"
+                >
+                  <KunIcon :name="item.icon" class="size-4" />
+                </KunBadge>
+              </template>
+            </KunNavItem>
           </nav>
         </KunCard>
       </aside>

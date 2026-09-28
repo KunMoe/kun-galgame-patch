@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { KnownAccount } from '~/composables/useKnownAccounts'
 import { kunMoyuMoe } from '~/config/moyu-moe'
+import { KUN_CONTENT_LIMIT_RADIO_OPTIONS } from '~/constants/top-bar'
 
 const userStore = useUserStore()
 const api = useApi()
 const { openLogoutModal } = useLogoutModal()
 const { accounts } = useKnownAccounts()
+const { contentStance } = useKunDisplayPreference()
+const contentOptions = KUN_CONTENT_LIMIT_RADIO_OPTIONS.map(
+  ({ value, label }) => ({ value, label })
+)
 
 const checking = ref(false)
 const logOpen = ref(false)
@@ -122,6 +127,17 @@ const handleCheckIn = async () => {
           <KunIcon name="lucide:chevron-right" class="text-foreground/40 size-4" />
         </span>
       </button>
+      <div class="space-y-1.5 px-2 py-1.5">
+        <p class="text-default-500 text-xs">内容显示</p>
+        <KunRadioGroup
+          v-model="contentStance"
+          :options="contentOptions"
+          variant="pill"
+          orientation="horizontal"
+          size="xs"
+          aria-label="内容显示"
+        />
+      </div>
       <NuxtLink
         :to="`/user/${userStore.user.id}/resource`"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
