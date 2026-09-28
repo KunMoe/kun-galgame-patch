@@ -10,7 +10,6 @@ const { y } = useWindowScroll()
 const scrolled = computed(() => y.value > 8)
 
 const { hasReleaseToday } = useGalgameReleaseToday()
-const chat = useChatStore()
 
 watch(
   () => route.path,
@@ -42,19 +41,10 @@ watch(
         aria-label="菜单"
         @click="isMenuOpen = !isMenuOpen"
       >
-        <KunBadge
-          variant="dot"
-          color="danger"
-          size="sm"
-          placement="bottom-right"
-          :show="chat.hasUnread && !isMenuOpen"
-          aria-label="有新私信"
-        >
-          <KunIcon
-            :name="isMenuOpen ? 'lucide:x' : 'lucide:menu'"
-            class="size-5"
-          />
-        </KunBadge>
+        <KunIcon
+          :name="isMenuOpen ? 'lucide:x' : 'lucide:menu'"
+          class="size-5"
+        />
       </KunButton>
 
       <KunTopBarBrand />
@@ -90,6 +80,7 @@ watch(
               <KunIcon :name="it.icon" class="text-default-600 size-4" />
               <span class="truncate">{{ it.label }}</span>
             </NuxtLink>
+            <KunTopBarRandomGalgameButton />
           </nav>
         </KunPopover>
 
@@ -113,7 +104,6 @@ watch(
               : item.name
           }}
         </NuxtLink>
-
       </div>
 
       <KunAdAIEroNav />

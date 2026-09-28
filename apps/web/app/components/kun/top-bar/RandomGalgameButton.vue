@@ -1,18 +1,4 @@
 <script setup lang="ts">
-interface Props {
-  isIconOnly?: boolean
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
-  variant?: 'solid' | 'bordered' | 'light' | 'flat' | 'shadow'
-  className?: string
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  isIconOnly: false,
-  size: 'sm',
-  variant: 'light',
-  className: ''
-})
-
 const api = useApi()
 const loading = ref(false)
 
@@ -34,16 +20,16 @@ const handleRandom = async () => {
 
 <template>
   <KunButton
-    :is-icon-only="props.isIconOnly"
-    :size="props.size"
-    :variant="props.variant"
+    variant="light"
     color="default"
-    :class-name="props.className"
+    size="sm"
+    full-width
+    rounded="lg"
+    class-name="text-default-700 justify-start gap-3 px-3 font-normal"
     :loading="loading"
-    aria-label="随机一部游戏"
     @click="handleRandom"
   >
-    <KunIcon name="lucide:dices" class="text-default-500 size-6" />
-    <template v-if="!props.isIconOnly"> 随机一部游戏 </template>
+    <KunIcon name="lucide:dices" class="text-default-600 size-4" />
+    随机一部游戏
   </KunButton>
 </template>

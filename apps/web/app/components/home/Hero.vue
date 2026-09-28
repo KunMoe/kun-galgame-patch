@@ -18,6 +18,7 @@ interface PinnedDoc {
 }
 
 const config = useRuntimeConfig()
+const userStore = useUserStore()
 const baseUrl = (
   import.meta.server && config.apiBaseSsr
     ? config.apiBaseSsr
@@ -48,7 +49,11 @@ const posts = computed<HomeCarouselMetadata[]>(() =>
 
 <template>
   <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-    <div class="pointer-events-none hidden select-none md:block">
+    <HomeFollowing
+      v-if="userStore.isLoggedIn"
+      class="order-last md:order-none md:aspect-video"
+    />
+    <div v-else class="pointer-events-none hidden select-none md:block">
       <KunImage
         src="/hero.webp"
         :alt="kunMoyuMoe.titleShort"

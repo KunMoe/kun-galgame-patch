@@ -17,8 +17,6 @@ const emit = defineEmits<{ 'update:isOpen': [value: boolean] }>()
 const closeMenu = () => emit('update:isOpen', false)
 
 const userStore = useUserStore()
-const chatEnabled = useRuntimeConfig().public.chatEnabled
-const chat = useChatStore()
 
 const { theme, contentStance } = useKunDisplayPreference()
 
@@ -176,28 +174,6 @@ onUnmounted(() => {
               class="text-default-500 size-5 shrink-0"
             />
             <span class="text-sm font-medium">系统和用户设置</span>
-            <KunIcon
-              name="lucide:chevron-right"
-              class="text-default-300 ml-auto size-4"
-            />
-          </NuxtLink>
-
-          <NuxtLink
-            v-if="chatEnabled && userStore.isLoggedIn"
-            to="/messages"
-            class="hover:bg-default-100 active:bg-default-200 border-default/20 bg-default-50/40 flex items-center gap-3 rounded-2xl border px-3 py-3.5 transition-colors"
-            @click="closeMenu"
-          >
-            <KunIcon
-              name="lucide:mail"
-              class="text-default-500 size-5 shrink-0"
-            />
-            <span class="text-sm font-medium">私信</span>
-            <span
-              v-if="chat.hasUnread"
-              class="bg-danger size-2 rounded-full"
-              aria-label="有新私信"
-            />
             <KunIcon
               name="lucide:chevron-right"
               class="text-default-300 ml-auto size-4"
