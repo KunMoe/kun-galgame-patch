@@ -247,6 +247,41 @@ a legacy row — under the old key the cron's upsert would have taken those rows
 over and `/patch/<n>` would have started 404ing for 24 working URLs. The key is
 `(scope, old_id)` now.
 
+## The local band, settled 2026-09-28
+
+The 27 pages the renumber parked at `LocalOnlyIDBase` all turned out to have a
+catalog work. `cmd/settle-local-pages` moved them in one transaction: 9
+renumbered onto a work with no page yet, 18 folded into the page already there.
+Snapshot at `/var/moyu-align/pre-settle-local-20260928-103710.dump`, output in
+`settle-local-apply.log` beside it.
+
+Two reasons they had stayed parked:
+
+- **19 were merged away before the renumber ran.** `workOfGID` looks the gid up
+  as a work id and does not follow catalog redirects, so a merged-away work read
+  as "catalog cannot name this". The merge cron cannot pick them up later
+  either: it keys on the page sitting at the old work id, and these pages sat at
+  `1.5e9 + gid`.
+- **8 were wiki-era gids.** The retired wiki's `galgame.catalog_work_id` names
+  every one of them, but nothing consulted it. **The N in a `wiki-N` vndb_id is
+  that old gid, not a work id.** Infra's 2026-09-28 census read it as one and
+  mapped three pages to a different game. For example, work 61345 is 箱舟キバウ,
+  but page 61345 was Grand Order 麻雀.
+
+The census raised two more problems, fixed in the same transaction:
+
+- 3567 and 5115 carried another game's VNDB number.
+- 69 rows carried a `wiki-N` whose N was no longer their id. That was not
+  cosmetic: publishing onto work N, when catalog has no vndb anchor for it,
+  writes `wiki-N` and trips the unique index. 16 live works were in that state.
+
+Two pieces were left for infra, because they live on its side:
+
+- The one real page, `1500007668` (秘恋 FD → 2755), had a 19-post wall in
+  community. Its anchor has to be moved to 2755 there.
+- Its 34 favourites never reached catalog folders during the favourites
+  cutover.
+
 ## Still owed by infra and kungal
 
 This closes moyu's half. The gid is **shared** — kungal's `galgame.id` is the
