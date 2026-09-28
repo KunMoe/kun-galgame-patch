@@ -5,9 +5,7 @@ const currentYear = new Date().getFullYear()
 <template>
   <footer class="border-default/20 mt-8 w-full border-t text-sm">
     <div class="mx-auto max-w-7xl px-4">
-      <div
-        class="flex flex-wrap justify-center gap-4 py-6 md:justify-between"
-      >
+      <div class="flex flex-wrap justify-center gap-4 py-6 md:justify-between">
         <NuxtLink to="/" class="flex items-center space-x-2">
           <KunImage
             src="/favicon.webp"
@@ -21,6 +19,9 @@ const currentYear = new Date().getFullYear()
 
         <div class="flex space-x-8">
           <NuxtLink to="/doc" class="flex items-center">使用指南</NuxtLink>
+          <NuxtLink to="/settings/system" class="flex items-center">
+            网站设置
+          </NuxtLink>
           <a
             href="https://nav.kungal.org"
             target="_blank"

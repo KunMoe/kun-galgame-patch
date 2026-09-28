@@ -450,7 +450,7 @@ const commentLoading = ref(false)
       <h1 class="text-2xl font-bold">该页面可能含有成人向内容</h1>
       <p class="text-default-500 text-sm leading-relaxed">
         您的账号当前设置为隐藏成人向内容。<br />
-        在右上角或系统设置中切换为 "模糊" 或 "直接显示" 后即可查看。
+        在系统设置中切换为 "模糊" 或 "直接显示" 后即可查看。
       </p>
     </div>
     <div class="flex flex-col gap-2 sm:flex-row">

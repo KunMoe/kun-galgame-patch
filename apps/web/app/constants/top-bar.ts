@@ -38,37 +38,18 @@ export const kunMobileAdminItem: KunNavItem[] = [
   { name: '管理系统', href: '/admin' }
 ]
 
-export const KUN_CONTENT_LIMIT_MAP: Record<string, string> = {
-  hide: '隐藏成人向内容',
-  blur: '模糊显示，点击单张即可查看',
-  show: '直接显示成人向内容'
-}
-
-export const KUN_CONTENT_LIMIT_LABEL: Record<string, string> = {
-  '': '全年龄',
-  hide: '全年龄',
-  blur: '模糊',
-  show: 'R18模式'
-}
-
-// The three surfaces that offer the switch (top bar, mobile menu, settings)
-// each kept their own copy of this list and had drifted in order, so dropping
-// the NSFW-only mode meant editing the same array three times.
-export const KUN_CONTENT_LIMIT_OPTIONS = [
-  { key: 'hide', icon: 'lucide:shield-check' },
-  { key: 'blur', icon: 'lucide:eye-off' },
-  { key: 'show', icon: 'lucide:circle-slash' }
-] as const satisfies ReadonlyArray<{ key: KunNsfwStance; icon: string }>
-
-// Radio-shaped view of the switch above, for the surfaces that render it as a
-// pill group (mobile menu, 系统设置) rather than a button list.
-export const KUN_CONTENT_LIMIT_RADIO_OPTIONS = KUN_CONTENT_LIMIT_OPTIONS.map(
-  (opt) => ({
-    value: opt.key,
-    label: KUN_CONTENT_LIMIT_LABEL[opt.key] ?? opt.key,
-    icon: opt.icon
-  })
-)
+// The surfaces that offer the switch (avatar menu, mobile menu, settings) each
+// kept their own copy of this list and had drifted in order, so dropping the
+// NSFW-only mode meant editing the same array three times.
+export const KUN_CONTENT_LIMIT_RADIO_OPTIONS = [
+  { value: 'hide', label: '全年龄', icon: 'lucide:shield-check' },
+  { value: 'blur', label: '模糊', icon: 'lucide:eye-off' },
+  { value: 'show', label: 'R18模式', icon: 'lucide:circle-slash' }
+] as const satisfies ReadonlyArray<{
+  value: KunNsfwStance
+  label: string
+  icon: string
+}>
 
 export type KunThemePreference = 'light' | 'dark' | 'system'
 
