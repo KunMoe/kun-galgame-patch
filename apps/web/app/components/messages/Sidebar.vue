@@ -70,19 +70,14 @@ const statusOf = (c: ChatConversation) => {
     </div>
 
     <div class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">
-      <!-- The item is overflow-hidden, so as a flex child it shrank: forty
-           conversations were squeezed into ~17px rows instead of scrolling. -->
       <KunChatConversationItem
         v-for="c in items"
         :key="c.id"
-        class="shrink-0"
         :href="`/messages/${c.id}`"
         :kind="c.kind"
         :user="peer(c)"
         :title="c.title ?? undefined"
-        :avatar="
-          c.photo_image_hash ? imageServiceUrl(c.photo_image_hash) : null
-        "
+        :avatar="c.photo_url"
         :last-message="c.last_message"
         :last-message-sender="senderLabel(c)"
         :users="users"

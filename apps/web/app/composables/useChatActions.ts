@@ -16,6 +16,7 @@ export interface ChatSendOptions {
     width: number
     height: number
     thumbhash?: string | null
+    url?: string | null
   }
   mediaGroupId?: string
 }
@@ -259,6 +260,7 @@ export const useChatActions = () => {
       width: number
       height: number
       thumbhash?: string
+      url: string
     }>('/im/images', form)
   }
 
