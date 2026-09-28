@@ -29,6 +29,7 @@ interface ChatConversation {
   title: string | null
   about: string | null
   photo_image_hash: string | null
+  photo_url: string | null
   peer_id: string | null
   member_count: number
   last_seq: number

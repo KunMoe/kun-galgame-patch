@@ -83,8 +83,6 @@ const persistDraft = async (id: string) => {
 }
 onBeforeUnmount(() => void persistDraft(props.id))
 
-const resolveMedia = (media: KunChatMedia) => imageServiceUrl(media.image_hash)
-
 const actions = (m: ChatMessage, own: boolean): KunChatMessageAction[] => {
   if (m.status === 'failed') return ['retry', 'delete']
   const out: KunChatMessageAction[] = ['reply', 'quote', 'copy']
@@ -251,7 +249,6 @@ const composerDisabled = computed(() => !!peer.value?.deleted)
     <KunChatPinnedBar
       v-if="pinned.length"
       :messages="pinned"
-      :resolve-media-url="resolveMedia"
       unpinnable
       @jump="(seq: number) => list?.scrollToSeq(seq) || jump(seq)"
       @unpin="(seq: number) => act.pin(conv!.id, seq, false)"
@@ -278,7 +275,6 @@ const composerDisabled = computed(() => !!peer.value?.deleted)
       :last-read-seq="openedReadSeq"
       :peer-read-seq="conv.peer_read_seq"
       :reaction-options="chat.reactions"
-      :resolve-media-url="resolveMedia"
       :actions="actions"
       :has-older="win.hasOlder"
       :has-newer="win.hasNewer"
