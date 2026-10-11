@@ -90,7 +90,7 @@ WHERE id = '<client_id>';
 #### kungal / moyu — `user` 表（头像已迁移）
 
 ```sql
--- 头像走离线迁移（cmd/migrate-avatars，已完成）：加 hash 列 + 老字段降级为迁移期 fallback
+-- 头像走离线迁移（已完成；一次性工具 cmd/migrate-avatars 已删除）：加 hash 列 + 老字段降级为迁移期 fallback
 ALTER TABLE "user"
     ADD COLUMN avatar_image_hash CHAR(64);
 

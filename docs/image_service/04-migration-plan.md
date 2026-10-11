@@ -12,7 +12,7 @@
 > - 旧 CDN 上的**所有**图片——用户头像、galgame banner、以及 **topic / 评论正文里内嵌的内容图**——**全部迁移**进 image_service（内容寻址、跨站去重、统一图床）。
 > - 内容内嵌图改用 **域名无关引用 `/image/<hash>` + 渲染期解析 + 后端 302 兜底**（见下方契约）。这是"换域名只改一处配置"的关键能力——**旧图床做不到、新图床能做到**，也正是必须全量迁移、彻底废弃旧图床的根本理由。
 >
-> 头像 / banner 已于 **2026-06-15 完成迁移**（`cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`）。剩余工作 = **内容内嵌图的全量迁移 + 引用改写**（调用方侧）。
+> 头像 / banner 已于 **2026-06-15 完成迁移**（一次性工具 `cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`，均已删除，见本仓 git 历史）。剩余工作 = **内容内嵌图的全量迁移 + 引用改写**（调用方侧）。
 
 ### 为什么推翻"已压缩老图豁免"
 
@@ -112,7 +112,7 @@ r.GET("/image/:hash", func(c *gin.Context) {
 
 ### 阶段 2：实体图迁移（已完成 2026-06-15）
 
-头像、banner 离线迁移脚本（断点续跑 / 配额自停 / 死链跳过 / 收尾 ref-ping），见 `cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`。脚本骨架与失败处理见本仓 git 历史与 [[avatar-migration-and-image-facts]]。
+头像、banner 离线迁移脚本（断点续跑 / 配额自停 / 死链跳过 / 收尾 ref-ping），原为 `cmd/migrate-avatars`、`cmd/migrate-galgame-banners-to-image-service`，均已删除。脚本骨架与失败处理见本仓 git 历史与 [[avatar-migration-and-image-facts]]。
 
 ### 阶段 2b：内容图迁移（待办，调用方侧）
 
