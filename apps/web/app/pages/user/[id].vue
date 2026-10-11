@@ -22,7 +22,7 @@ if (user.value && user.value.name) {
     description:
       user.value.bio ||
       `${user.value.name} 在鲲 Galgame 补丁站发布的补丁资源、Galgame 与评论`,
-    ogImage: user.value.avatar || undefined
+    ogImage: resolveAvatarUrl(user.value) || undefined
   })
 } else {
   useKunDisableSeo(`用户 ${userId.value}`)

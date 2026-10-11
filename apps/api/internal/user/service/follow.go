@@ -158,11 +158,12 @@ func (s *UserService) briefsToFollowItems(ctx context.Context, ids []int, states
 	for _, id := range ids {
 		if b := briefs[id]; b != nil {
 			out = append(out, model.UserFollowItem{
-				ID:         int(b.ID),
-				Name:       b.Name,
-				Avatar:     b.Avatar,
-				Cosmetics:  b.Cosmetics,
-				IsFollowed: states[int64(b.ID)].ViewerFollows,
+				ID:              int(b.ID),
+				Name:            b.Name,
+				Avatar:          b.Avatar,
+				AvatarImageHash: b.AvatarImageHash,
+				Cosmetics:       b.Cosmetics,
+				IsFollowed:      states[int64(b.ID)].ViewerFollows,
 			})
 		}
 	}

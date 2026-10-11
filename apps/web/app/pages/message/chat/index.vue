@@ -64,8 +64,8 @@ const joinTestGroup = async () => {
         class="border-default/20 bg-content1 shadow-kun-sm hover:bg-default-100 flex items-center gap-3 rounded-lg border p-3 transition-colors"
       >
         <KunImage
-          v-if="room.avatar"
-          :src="room.avatar"
+          v-if="resolveAvatarUrl(room)"
+          :src="resolveAvatarUrl(room)"
           :alt="room.name"
           class-name="bg-default-100 size-12 shrink-0 rounded-full"
         />

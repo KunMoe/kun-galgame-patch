@@ -33,9 +33,10 @@ type UserBasic struct {
 }
 
 type UserFollowItem struct {
-	ID         int                   `json:"id"`
-	Name       string                `json:"name"`
-	Avatar     string                `json:"avatar"`
-	Cosmetics  *userclient.Cosmetics `json:"cosmetics,omitempty"`
-	IsFollowed bool                  `json:"is_followed"`
+	ID              int                   `json:"id"`
+	Name            string                `json:"name"`
+	Avatar          string                `json:"avatar"`
+	AvatarImageHash string                `json:"avatar_image_hash"`
+	Cosmetics       *userclient.Cosmetics `json:"cosmetics,omitempty"`
+	IsFollowed      bool                  `json:"is_followed"`
 }
