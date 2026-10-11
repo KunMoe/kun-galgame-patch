@@ -10,6 +10,7 @@ useKunSeoMeta({
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 const month = computed({
   get: () => String(route.query.month ?? ''),
@@ -37,7 +38,7 @@ const { data, pending } = await useAsyncData<CalendarMonthResponse | null>(
     }
     return d
   },
-  { watch: [month] }
+  { watch: [month, blockKey] }
 )
 
 const curMonth = computed(() => data.value?.month ?? '')

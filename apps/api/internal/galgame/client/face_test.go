@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
 type faceRecorder struct {
@@ -43,7 +45,7 @@ func TestFaceSelection_WithKey(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("anonymous calendar read → v1 catalog + key", func(t *testing.T) {
-		if _, err := c.GetGalgameCalendar(ctx, "2026-07", ""); err != nil {
+		if _, err := c.GetGalgameCalendar(ctx, "2026-07", "", catalogv2.TagExclusion{}); err != nil {
 			t.Fatalf("GetGalgameCalendar: %v", err)
 		}
 		if rec.path != "/v2/catalog/calendar" {
@@ -82,7 +84,7 @@ func TestV1ReadRouting(t *testing.T) {
 		check(t, "/v2/catalog/works", func() error { _, e := c.SearchGalgame(ctx, SearchGalgameParams{Q: "x"}); return e })
 	})
 	t.Run("calendar → v2 catalog", func(t *testing.T) {
-		check(t, "/v2/catalog/calendar", func() error { _, e := c.GetGalgameCalendar(ctx, "", ""); return e })
+		check(t, "/v2/catalog/calendar", func() error { _, e := c.GetGalgameCalendar(ctx, "", "", catalogv2.TagExclusion{}); return e })
 	})
 	t.Run("vndb lookup → v2 works refs", func(t *testing.T) {
 		check(t, "/v2/catalog/works", func() error { _, _, e := c.CheckGalgameByVndbID(ctx, "v1"); return e })
@@ -239,7 +241,7 @@ func TestContentLimitCaliber(t *testing.T) {
 		}
 
 		srv.reset()
-		if _, err := c.GetGalgameCalendar(ctx, "2026-07", "nsfw"); err != nil {
+		if _, err := c.GetGalgameCalendar(ctx, "2026-07", "nsfw", catalogv2.TagExclusion{}); err != nil {
 			t.Fatalf("GetGalgameCalendar: %v", err)
 		}
 		q = srv.last().query
@@ -373,7 +375,7 @@ func TestTagPageCarriesSafetyFlag(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv.reset()
-			raw, handled, err := c.TaxonomyBrowse(ctx, "/tag/_?tag_id="+tc.tagID)
+			raw, handled, err := c.TaxonomyBrowse(ctx, "/tag/_?tag_id="+tc.tagID, catalogv2.TagExclusion{})
 			if err != nil || !handled {
 				t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 			}
@@ -436,7 +438,7 @@ func TestClaimStateGating(t *testing.T) {
 
 	t.Run("calendar keeps draft, drops hidden", func(t *testing.T) {
 		srv.reset()
-		cal, err := c.GetGalgameCalendar(ctx, "2026-07", "")
+		cal, err := c.GetGalgameCalendar(ctx, "2026-07", "", catalogv2.TagExclusion{})
 		if err != nil {
 			t.Fatalf("GetGalgameCalendar: %v", err)
 		}
@@ -516,7 +518,7 @@ func TestTaxonomyBrowseMembersAreGated(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv.reset()
-			raw, handled, err := c.TaxonomyBrowse(ctx, tc.path)
+			raw, handled, err := c.TaxonomyBrowse(ctx, tc.path, catalogv2.TagExclusion{})
 			if err != nil || !handled {
 				t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 			}
@@ -591,7 +593,7 @@ func TestCompanyMembersWalkTheRollup(t *testing.T) {
 	srv := newCatalogFake(t)
 	c := NewWithKey(srv.URL, "nm_test_key")
 
-	raw, handled, err := c.TaxonomyBrowse(context.Background(), "/official/_?official_id=31&page=1&limit=10")
+	raw, handled, err := c.TaxonomyBrowse(context.Background(), "/official/_?official_id=31&page=1&limit=10", catalogv2.TagExclusion{})
 	if err != nil || !handled {
 		t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 	}
@@ -650,7 +652,7 @@ func TestLocalizedNamesReachBothFaces(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("list brief folds the catalog tags onto the product columns", func(t *testing.T) {
-		raw, handled, err := c.TaxonomyBrowse(ctx, "/tag/_?tag_id=11")
+		raw, handled, err := c.TaxonomyBrowse(ctx, "/tag/_?tag_id=11", catalogv2.TagExclusion{})
 		if err != nil || !handled {
 			t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 		}
@@ -694,7 +696,7 @@ func TestLabelAliasRowsFlattenToValues(t *testing.T) {
 	srv := newCatalogFake(t)
 	c := NewWithKey(srv.URL, "nm_test_key")
 
-	raw, handled, err := c.TaxonomyBrowse(context.Background(), "/official/_?official_id=31")
+	raw, handled, err := c.TaxonomyBrowse(context.Background(), "/official/_?official_id=31", catalogv2.TagExclusion{})
 	if err != nil || !handled {
 		t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 	}
@@ -718,7 +720,7 @@ func TestLabelLogoHashReachesBothFaces(t *testing.T) {
 
 	t.Run("official browse header", func(t *testing.T) {
 		srv.reset()
-		raw, handled, err := c.TaxonomyBrowse(ctx, "/official/_?official_id=31")
+		raw, handled, err := c.TaxonomyBrowse(ctx, "/official/_?official_id=31", catalogv2.TagExclusion{})
 		if err != nil || !handled {
 			t.Fatalf("TaxonomyBrowse: handled=%v err=%v", handled, err)
 		}
@@ -758,11 +760,11 @@ func TestDeprecatedGalgameFaceIsUnreachable(t *testing.T) {
 	srv.reset()
 	_, _ = c.GalgameBatch(ctx, []int{7}, "")
 	_, _ = c.GetGalgame(ctx, 8, "")
-	_, _ = c.GetGalgameCalendar(ctx, "2026-07", "")
+	_, _ = c.GetGalgameCalendar(ctx, "2026-07", "", catalogv2.TagExclusion{})
 	_, _ = c.SearchGalgame(ctx, SearchGalgameParams{Q: "x"})
 	_, _, _ = c.CheckGalgameByVndbID(ctx, "v1")
-	_, _, _ = c.TaxonomyBrowse(ctx, "/tag/_?tag_id=5")
-	_, _, _ = c.TaxonomyBrowse(ctx, "/official/_?official_id=9")
+	_, _, _ = c.TaxonomyBrowse(ctx, "/tag/_?tag_id=5", catalogv2.TagExclusion{})
+	_, _, _ = c.TaxonomyBrowse(ctx, "/official/_?official_id=9", catalogv2.TagExclusion{})
 
 	for _, r := range srv.all() {
 		if strings.HasPrefix(r.path, "/v1/galgame") {
@@ -783,7 +785,7 @@ func TestRetiredTaxonomyListsAreUnhandled(t *testing.T) {
 		"/taxonomy/tag/42",
 	} {
 		rec.path = ""
-		if _, handled, err := c.TaxonomyBrowse(ctx, p); handled || err != nil {
+		if _, handled, err := c.TaxonomyBrowse(ctx, p, catalogv2.TagExclusion{}); handled || err != nil {
 			t.Errorf("TaxonomyBrowse(%q) = handled %v, err %v; want handled=false, err=nil", p, handled, err)
 		}
 		if rec.path != "" {

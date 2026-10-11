@@ -8,6 +8,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
@@ -94,9 +95,17 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 
 	if catalogLibraryRequest(req) {
-		return h.catalogLibrary(c, req, cl)
+		return h.catalogLibrary(c, req, cl, exclude)
+	}
+	excluded, err := h.excludedWorkIDs(c.Context(), exclude)
+	if err != nil {
+		return response.Upstream(c, err, "")
 	}
 	switch req.SortField {
 	case "popularity", "updated":
@@ -125,6 +134,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 		base = base.Where("resource_count > 0")
 	}
 	base = utils.ScopePatchContentLimit(base, cl)
+	base = utils.ScopeExcludedIDs(base, "patch.id", excluded)
 
 	var total int64
 	base.Session(&gorm.Session{}).Count(&total)
@@ -144,7 +154,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	})
 }
 
-func (h *CommonHandler) catalogLibrary(c fiber.Ctx, req galgameListRequest, cl string) error {
+func (h *CommonHandler) catalogLibrary(c fiber.Ctx, req galgameListRequest, cl string, exclude catalogv2.TagExclusion) error {
 	if h.galgame == nil {
 		return response.Error(c, errors.ErrInternal("Galgame 目录未启用"))
 	}
@@ -153,6 +163,7 @@ func (h *CommonHandler) catalogLibrary(c fiber.Ctx, req galgameListRequest, cl s
 		Sort:         catalogLibrarySort(req.SortField, req.SortOrder),
 		Page:         req.Page,
 		Limit:        req.Limit,
+		Exclude:      exclude,
 	}
 	if req.ReleasedFrom != "" {
 		if y, err := utils.ParseReleaseLowerBound(req.ReleasedFrom); err == nil && y != nil {

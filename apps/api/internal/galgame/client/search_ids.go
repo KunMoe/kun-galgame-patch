@@ -15,12 +15,13 @@ import (
 // id+name rows a v2 read answers by default are the whole payload. Adding a
 // block here buys nothing and makes the heaviest face on catalog answer twice
 // per search.
-func (c *Client) SearchGalgameIDs(ctx context.Context, q, contentLimit string, limit int) ([]int, error) {
+func (c *Client) SearchGalgameIDs(ctx context.Context, q, contentLimit string, limit int, exclude catalogv2.TagExclusion) ([]int, error) {
 	page, err := c.v2.ListWorks(ctx, catalogv2.WorksQuery{
 		Q:            q,
 		Limit:        limit,
 		NSFW:         true,
 		ContentLimit: gateFor(contentLimit).contentLimit,
+		Exclude:      exclude,
 	})
 	if err != nil {
 		return nil, err

@@ -101,6 +101,10 @@ onMounted(() => {
         </div>
       </KunCard>
 
+      <div id="tag-blocks" class="scroll-mt-24">
+        <SettingsTagBlocks />
+      </div>
+
       <div id="galgame-display" class="scroll-mt-24">
         <KunCard :bordered="true">
           <template #header>

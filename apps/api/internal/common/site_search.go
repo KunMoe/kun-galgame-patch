@@ -11,6 +11,7 @@ import (
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/galgame/enricher"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -93,7 +94,7 @@ func searchKeywords(raw string) []string {
 // before choosing one. A lane that fails is dropped rather than failing the
 // request — catalog and OAuth are both remote.
 func (h *CommonHandler) runSearchLanes(
-	ctx context.Context, raw, cl string, lim searchLaneLimits,
+	ctx context.Context, raw, cl string, lim searchLaneLimits, exclude catalogv2.TagExclusion,
 ) searchLanes {
 	out := searchLanes{
 		Galgames:  []enricher.GalgameCard{},
@@ -120,7 +121,7 @@ func (h *CommonHandler) runSearchLanes(
 	}
 
 	run("galgame", func() {
-		cards, total, err := h.searchGalgameLane(ctx, raw, 1, lim.galgame, galgameSearchFilter{})
+		cards, total, err := h.searchGalgameLane(ctx, raw, 1, lim.galgame, galgameSearchFilter{Exclude: exclude})
 		if err != nil {
 			slog.Warn("站内搜索 galgame lane 失败", "error", err)
 			return
@@ -141,7 +142,7 @@ func (h *CommonHandler) runSearchLanes(
 		})
 	}
 	run("resource", func() {
-		rows, total, appErr := h.searchResourceLane(ctx, raw, 1, lim.resource, cl, "")
+		rows, total, appErr := h.searchResourceLane(ctx, raw, 1, lim.resource, cl, "", exclude)
 		if appErr != nil {
 			slog.Warn("站内搜索 resource lane 失败", "error", appErr.Message)
 			return
@@ -172,6 +173,7 @@ type galgameSearchFilter struct {
 	ReleasedFrom int
 	ReleasedTo   int
 	Sort         string
+	Exclude      catalogv2.TagExclusion
 }
 
 // searchGalgameLane names every game the catalog holds, NSFW included: what a
@@ -193,6 +195,7 @@ func (h *CommonHandler) searchGalgameLane(
 		OfficialIDs:  companyIDs(f.CompanyID),
 		ReleasedFrom: f.ReleasedFrom,
 		ReleasedTo:   f.ReleasedTo,
+		Exclude:      f.Exclude,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -224,7 +227,7 @@ func companyIDs(id int) []int {
 // the note, so "claude" answers every 汉化 whose note mentions it; the narrow
 // lane is what "按模型搜索资源" meant before the search page was rewritten.
 func (h *CommonHandler) searchResourceLane(
-	ctx context.Context, raw string, page, limit int, cl, scope string,
+	ctx context.Context, raw string, page, limit int, cl, scope string, exclude catalogv2.TagExclusion,
 ) ([]patchModel.PatchResource, int64, *errors.AppError) {
 	keywords := searchKeywords(raw)
 	if len(keywords) == 0 {
@@ -232,9 +235,15 @@ func (h *CommonHandler) searchResourceLane(
 	}
 	modelOnly := scope == searchScopeModel
 
+	excluded, err := h.excludedWorkIDs(ctx, exclude)
+	if err != nil {
+		slog.Warn("资源搜索解析屏蔽标签失败", "error", err)
+		return nil, 0, errors.ErrCatalogUnavailable("")
+	}
+
 	var gids []int
 	if h.galgame != nil && !modelOnly {
-		matched, err := h.galgame.SearchGalgameIDs(ctx, raw, cl, searchResourceGalgameIDs)
+		matched, err := h.galgame.SearchGalgameIDs(ctx, raw, cl, searchResourceGalgameIDs, exclude)
 		if err != nil {
 			slog.Warn("资源搜索的游戏名匹配失败，降级为仅匹配上传者填写的内容", "error", err)
 		}
@@ -264,6 +273,7 @@ func (h *CommonHandler) searchResourceLane(
 			like, like, like, like)
 	}
 	base = utils.ScopePatchContentLimit(base, cl)
+	base = utils.ScopeExcludedIDs(base, "patch_resource.galgame_id", excluded)
 
 	var total int64
 	base.Session(&gorm.Session{}).Count(&total)

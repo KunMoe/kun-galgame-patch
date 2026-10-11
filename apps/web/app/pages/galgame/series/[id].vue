@@ -4,6 +4,7 @@ defineOptions({ name: 'series-detail' })
 const route = useRoute()
 const router = useRouter()
 const browse = useTaxonomyBrowse()
+const { blockKey } = useTagBlocks()
 
 const seriesID = computed(() => Number(route.params.id))
 const page = computed({
@@ -26,7 +27,7 @@ const { data, pending } = await useAsyncData(
     })
     return { code: res.code, detail: res.code === 0 ? res.data : null }
   },
-  { watch: [page, seriesID] }
+  { watch: [page, seriesID, blockKey] }
 )
 
 const notFound = () => kunPageError(404, '系列不存在')

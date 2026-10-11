@@ -10,6 +10,7 @@ defineOptions({ name: 'character-detail' })
 
 const route = useRoute()
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 const characterID = computed(() => Number(route.params.id))
 
@@ -23,7 +24,7 @@ const { data, pending } = await useAsyncData(
     )
     return { code: res.code, detail: res.code === 0 ? res.data : null }
   },
-  { watch: [characterID] }
+  { watch: [characterID, blockKey] }
 )
 
 const notFound = () => kunPageError(404, '角色不存在')

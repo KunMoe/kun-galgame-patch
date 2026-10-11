@@ -18,6 +18,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -100,6 +101,14 @@ const homeCommentCount = 6
 
 func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	excluded, err := h.excludedWorkIDs(c.Context(), exclude)
+	if err != nil {
+		return response.Upstream(c, err, "")
+	}
 
 	var patches []patchModel.Patch
 	var resources []patchModel.PatchResource
@@ -110,8 +119,10 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 		patchQuery = patchQuery.Where("resource_count > 0")
 	}
 	patchQuery = utils.ScopePatchContentLimit(patchQuery, cl)
+	patchQuery = utils.ScopeExcludedIDs(patchQuery, "patch.id", excluded)
 	patchQuery.Find(&patches)
-	h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6).Find(&resources)
+	resourceQuery := h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6)
+	utils.ScopeExcludedIDs(resourceQuery, "patch_resource.galgame_id", excluded).Find(&resources)
 
 	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
 
@@ -206,6 +217,14 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	cl := utils.ContentLimitForListBrowse(c)
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	excluded, xerr := h.excludedWorkIDs(c.Context(), exclude)
+	if xerr != nil {
+		return response.Upstream(c, xerr, "")
+	}
 
 	var resources []patchModel.PatchResource
 	var total int64
@@ -214,6 +233,7 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	if m := strings.TrimSpace(req.Model); m != "" {
 		base = base.Where("model_name ILIKE ?", "%"+m+"%")
 	}
+	base = utils.ScopeExcludedIDs(base, "patch_resource.galgame_id", excluded)
 	base.Session(&gorm.Session{}).Count(&total)
 
 	sortField := req.SortField
@@ -449,6 +469,14 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
 	cl := utils.ContentLimitForListBrowse(c)
 	sortBy := c.Query("sort_by", c.Query("sortBy", "view"))
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	excluded, xerr := h.excludedWorkIDs(c.Context(), exclude)
+	if xerr != nil {
+		return response.Upstream(c, xerr, "")
+	}
 
 	// The sort select offers comment and resource too. Without a case here they
 	// fell through to the default and the page served the view ranking under the
@@ -471,6 +499,7 @@ func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
 		q = q.Where("resource_count > 0")
 	}
 	q = utils.ScopePatchContentLimit(q, cl)
+	q = utils.ScopeExcludedIDs(q, "patch.id", excluded)
 	err := q.
 		Order(fmt.Sprintf("%s DESC, id DESC", column)).
 		Limit(60).
@@ -570,8 +599,12 @@ func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 	if _, err := time.Parse("2006-01", month); month != "" && err != nil {
 		return response.Error(c, errors.ErrBadRequest("月份格式应为 YYYY-MM"))
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 
-	merged, err := h.fetchCalendarMonth(c.Context(), month, cl)
+	merged, err := h.fetchCalendarMonth(c.Context(), month, cl, exclude)
 	if err != nil {
 		return response.Upstream(c, err, "")
 	}
@@ -587,10 +620,10 @@ func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 	})
 }
 
-func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string) (*galgameClient.GalgameCalendar, error) {
+func (h *CommonHandler) fetchCalendarMonth(ctx context.Context, month, cl string, exclude catalogv2.TagExclusion) (*galgameClient.GalgameCalendar, error) {
 	var merged *galgameClient.GalgameCalendar
 	for _, lim := range calendarContentLimits(cl) {
-		cal, err := h.galgame.GetGalgameCalendar(ctx, month, lim)
+		cal, err := h.galgame.GetGalgameCalendar(ctx, month, lim, exclude)
 		if err != nil {
 			return nil, err
 		}

@@ -34,13 +34,22 @@ const TIER_COLOR: Record<string, KunUIColor> = {
 
 const VERDICT_NOT_FOUND = 40400
 
+const { blockKey, modeOf, block, unblock } = useTagBlocks()
+const blockedMode = computed(() => modeOf(tagID.value))
+const toggling = ref(false)
+const toggleBlock = async () => {
+  toggling.value = true
+  await (blockedMode.value ? unblock(tagID.value) : block(tagID.value))
+  toggling.value = false
+}
+
 const { data, pending } = await useAsyncData(
   () => `tag-detail-${tagID.value}-${page.value}`,
   async () => {
     const res = await browse.tagDetail(tagID.value, { page: page.value, limit })
     return { code: res.code, detail: res.code === 0 ? res.data : null }
   },
-  { watch: [page, tagID] }
+  { watch: [page, tagID, blockKey] }
 )
 
 const notFound = () => kunPageError(404, '标签不存在')
@@ -90,6 +99,17 @@ if (tag.value && !tag.value.sexual) {
           <KunChip color="default" size="sm">
             {{ tag.galgame_count ?? 0 }} 个 Galgame
           </KunChip>
+          <KunButton
+            size="sm"
+            variant="flat"
+            :color="blockedMode ? 'default' : 'danger'"
+            :loading="toggling"
+            class-name="ml-auto"
+            @click="toggleBlock"
+          >
+            <KunIcon name="lucide:ban" class="size-4" />
+            {{ blockedMode ? '取消屏蔽' : '屏蔽此标签' }}
+          </KunButton>
         </div>
         <p
           v-if="tag.description"
@@ -115,7 +135,11 @@ if (tag.value && !tag.value.sexual) {
           <h2 class="text-xl font-bold">包含此标签的 Galgame</h2>
         </div>
 
-        <KunNull v-if="!galgames.length" description="暂无关联作品" />
+        <KunNull
+          v-if="!galgames.length && blockedMode"
+          :description="`您已屏蔽该标签${blockedMode === 'tree' ? '及其子标签' : ''}，带有它的 Galgame 不会出现在全站列表中`"
+        />
+        <KunNull v-else-if="!galgames.length" description="暂无关联作品" />
 
         <GalgameList v-else :items="galgames" />
 
