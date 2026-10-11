@@ -2,6 +2,7 @@
 defineOptions({ name: 'home-page' })
 
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 const { data } = await useAsyncData<HomeResponse>(
   'home',
@@ -13,7 +14,8 @@ const { data } = await useAsyncData<HomeResponse>(
     return response.data
   },
   {
-    default: () => ({ galgames: [], resources: [], comments: [] })
+    default: () => ({ galgames: [], resources: [], comments: [] }),
+    watch: [blockKey]
   }
 )
 

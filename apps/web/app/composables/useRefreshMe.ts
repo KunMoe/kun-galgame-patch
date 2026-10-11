@@ -34,6 +34,7 @@ export const useRefreshMe = () => {
   const userStore = useUserStore()
   const api = useApi()
   const { rememberUser } = useKnownAccounts()
+  const tagBlocks = useTagBlocks()
 
   const refreshMe = async (): Promise<void> => {
     if (!import.meta.client) return
@@ -57,6 +58,7 @@ export const useRefreshMe = () => {
         userStore.setUser(res.data)
         // Keep this account fresh in the local switch list (account switching §3.6).
         rememberUser(userStore.user)
+        await tagBlocks.refresh()
       }
     })().finally(() => {
       // Stamp even on failure so a transient error doesn't turn into a retry

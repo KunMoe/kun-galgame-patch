@@ -75,6 +75,10 @@ func (h *CommonHandler) SiteSearch(c fiber.Ctx) error {
 	if len(searchKeywords(req.Keywords)) == 0 {
 		return response.Error(c, errors.ErrBadRequest("搜索关键词不能为空"))
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 
 	switch req.Type {
 	case "galgame":
@@ -85,6 +89,7 @@ func (h *CommonHandler) SiteSearch(c fiber.Ctx) error {
 				ReleasedFrom: req.ReleasedFrom,
 				ReleasedTo:   req.ReleasedTo,
 				Sort:         req.Sort,
+				Exclude:      exclude,
 			})
 		if err != nil {
 			return response.Upstream(c, err, "")
@@ -93,7 +98,7 @@ func (h *CommonHandler) SiteSearch(c fiber.Ctx) error {
 	case "resource":
 		items, total, appErr := h.searchResourceLane(
 			c.Context(), req.Keywords, req.Page, req.Limit,
-			utils.ContentLimitForListBrowse(c), req.Scope)
+			utils.ContentLimitForListBrowse(c), req.Scope, exclude)
 		if appErr != nil {
 			return response.Error(c, appErr)
 		}
@@ -115,6 +120,10 @@ func (h *CommonHandler) SiteSearchOverview(c fiber.Ctx) error {
 	if len(searchKeywords(req.Keywords)) == 0 {
 		return response.Error(c, errors.ErrBadRequest("搜索关键词不能为空"))
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 
 	return response.OK(c, h.runSearchLanes(
 		c.Context(), req.Keywords, utils.ContentLimitForListBrowse(c),
@@ -123,7 +132,7 @@ func (h *CommonHandler) SiteSearchOverview(c fiber.Ctx) error {
 			entity:   searchOverviewEntityLimit,
 			resource: searchOverviewResourceLimit,
 			user:     searchOverviewUserLimit,
-		},
+		}, exclude,
 	))
 }
 
@@ -150,7 +159,7 @@ func (h *CommonHandler) SiteSearchEntity(c fiber.Ctx) error {
 
 type siteSearchEntityResolveRequest struct {
 	Family string `query:"family" validate:"required,oneof=company tag"`
-	IDs    string `query:"ids" validate:"required,max=107"`
+	IDs    string `query:"ids" validate:"required,max=1100"`
 }
 
 // SiteSearchEntityResolve turns the ids in a shared 高级筛选 link back into the
@@ -179,6 +188,10 @@ func (h *CommonHandler) SiteSearchQuick(c fiber.Ctx) error {
 	if len(searchKeywords(req.Keywords)) == 0 {
 		return response.Error(c, errors.ErrBadRequest("搜索关键词不能为空"))
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 
 	return response.OK(c, h.runSearchLanes(
 		c.Context(), req.Keywords, utils.ContentLimitForListBrowse(c),
@@ -186,6 +199,6 @@ func (h *CommonHandler) SiteSearchQuick(c fiber.Ctx) error {
 			galgame:  searchQuickLimit,
 			resource: searchQuickLimit,
 			user:     searchQuickLimit,
-		},
+		}, exclude,
 	))
 }

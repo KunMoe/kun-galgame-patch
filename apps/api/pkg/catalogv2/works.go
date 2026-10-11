@@ -43,6 +43,7 @@ type WorksQuery struct {
 	IDs            []int64
 	Refs           []Ref
 	SearchIntro    bool
+	Exclude        TagExclusion
 }
 
 func (c *Client) ListWorks(ctx context.Context, q WorksQuery) (*List[Work], error) {
@@ -112,6 +113,7 @@ func (c *Client) ListWorks(ctx context.Context, q WorksQuery) (*List[Work], erro
 	if q.SearchIntro {
 		v.Set("search_intro", "true")
 	}
+	q.Exclude.apply(v)
 	if len(q.IDs) > 0 {
 		v.Set("ids", joinIDs(q.IDs))
 		v.Set("limit", strconv.Itoa(batchIDsLimit))
@@ -168,7 +170,7 @@ func (c *Client) WorkByRef(ctx context.Context, source, externalID string, nsfw 
 	return &page.Items[0], nil
 }
 
-func (c *Client) Calendar(ctx context.Context, month string, nsfw bool, cursor string, limit int) (*List[Work], error) {
+func (c *Client) Calendar(ctx context.Context, month string, nsfw bool, cursor string, limit int, exclude TagExclusion) (*List[Work], error) {
 	v := url.Values{}
 	if month != "" {
 		v.Set("month", month)
@@ -187,6 +189,7 @@ func (c *Client) Calendar(ctx context.Context, month string, nsfw bool, cursor s
 		v.Set("nsfw", "false")
 	}
 	v.Set("include_total", "true")
+	exclude.apply(v)
 	var out List[Work]
 	if err := c.get(ctx, "/v2/catalog/calendar?"+v.Encode(), &out); err != nil {
 		return nil, err

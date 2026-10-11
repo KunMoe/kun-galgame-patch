@@ -6,6 +6,7 @@ defineOptions({ name: 'staff-detail' })
 
 const route = useRoute()
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 const staffID = computed(() => Number(route.params.id))
 
@@ -19,7 +20,7 @@ const { data, pending } = await useAsyncData(
     )
     return { code: res.code, detail: res.code === 0 ? res.data : null }
   },
-  { watch: [staffID] }
+  { watch: [staffID, blockKey] }
 )
 
 const notFound = () => kunPageError(404, '制作人员不存在')

@@ -47,12 +47,16 @@ func (h *CommonHandler) GetGalgameCharacter(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 	cl := utils.ContentLimitForListBrowse(c)
 	detail, cerr := h.galgame.GetCharacter(c.Context(), id, cl)
 	if cerr != nil {
 		return catalogEntityError(c, cerr, "角色")
 	}
-	page, werr := h.galgame.CharacterWorks(c.Context(), id, cl, "", entityWorksLimit(c))
+	page, werr := h.galgame.CharacterWorks(c.Context(), id, cl, "", entityWorksLimit(c), exclude)
 	if werr != nil {
 		slog.Warn("角色登场作品加载失败", "error", werr, "character", id)
 		return response.OK(c, characterDetailResponse{GalgameCharacterDetail: detail, Works: []entityWorkCard{}})
@@ -68,8 +72,12 @@ func (h *CommonHandler) GetGalgameCharacterWorks(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 	page, cerr := h.galgame.CharacterWorks(
-		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c),
+		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c), exclude,
 	)
 	if cerr != nil {
 		return catalogEntityError(c, cerr, "角色")
@@ -83,12 +91,16 @@ func (h *CommonHandler) GetGalgameStaff(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 	cl := utils.ContentLimitForListBrowse(c)
 	detail, cerr := h.galgame.GetStaff(c.Context(), id)
 	if cerr != nil {
 		return catalogEntityError(c, cerr, "制作人员")
 	}
-	page, werr := h.galgame.StaffWorks(c.Context(), id, cl, "", entityWorksLimit(c))
+	page, werr := h.galgame.StaffWorks(c.Context(), id, cl, "", entityWorksLimit(c), exclude)
 	if werr != nil {
 		slog.Warn("制作人员参与作品加载失败", "error", werr, "name", id)
 		return response.OK(c, staffDetailResponse{GalgameStaffDetail: detail, Works: []entityWorkCard{}})
@@ -104,8 +116,12 @@ func (h *CommonHandler) GetGalgameStaffWorks(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
 	page, cerr := h.galgame.StaffWorks(
-		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c),
+		c.Context(), id, utils.ContentLimitForListBrowse(c), c.Query("cursor"), entityWorksLimit(c), exclude,
 	)
 	if cerr != nil {
 		return catalogEntityError(c, cerr, "制作人员")

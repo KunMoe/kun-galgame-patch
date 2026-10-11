@@ -4,6 +4,7 @@
 // at most once. release fields live on the nested `galgame` object.
 export const useGalgameReleaseToday = () => {
   const api = useApi()
+  const { blockKey } = useTagBlocks()
 
   const { data } = useAsyncData<CalendarMonthResponse | null>(
     'galgame-release-today',
@@ -11,7 +12,7 @@ export const useGalgameReleaseToday = () => {
       const res = await api.get<CalendarMonthResponse>('/galgame/calendar')
       return res.code === 0 ? res.data : null
     },
-    { server: false }
+    { server: false, watch: [blockKey] }
   )
 
   const hasReleaseToday = computed(

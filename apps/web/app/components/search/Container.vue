@@ -82,11 +82,13 @@ const loadOverview = async (value: string) => {
   overviewPending.value = false
 }
 
+const { blockKey } = useTagBlocks()
+
 // Nothing awaits this on the server, so an SSR fetch is a request whose answer
 // is thrown away and then made again on hydration.
 watch(
-  keywords,
-  (value) => {
+  [keywords, blockKey],
+  ([value]) => {
     if (!import.meta.server) {
       loadOverview(value)
     }

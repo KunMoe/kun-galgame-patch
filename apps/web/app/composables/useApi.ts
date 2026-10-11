@@ -87,6 +87,7 @@ export const useApi = () => {
   // changes this value, and the per-patch confirm flow does the same.
   const setting = useSettingStore()
   const userStore = useUserStore()
+  const tagBlockStore = useTagBlockStore()
   const route = useRoute()
 
   const isDetailRoute = /^\/(galgame|resource)\/\d+/.test(route.path)
@@ -135,6 +136,18 @@ export const useApi = () => {
     if (/\/search(\/|\?|$)/.test(endpoint)) return endpoint
     const sep = endpoint.includes('?') ? '&' : '?'
     return `${endpoint}${sep}include_empty=true`
+  }
+
+  // The reader's blocked tags, read live like include_empty so a list refetched
+  // right after a block picks it up. GET only: no write takes them.
+  const appendTagBlocks = (endpoint: string, method: string): string => {
+    if (method !== 'GET') return endpoint
+    const query = tagBlockQuery(
+      resolveTagBlocks(tagBlockStore.$state, userStore.user.id)
+    )
+    if (!query) return endpoint
+    const sep = endpoint.includes('?') ? '&' : '?'
+    return `${endpoint}${sep}${query}`
   }
 
   // Centralized auto-logout on a definitively-unauthenticated response.
@@ -188,7 +201,7 @@ export const useApi = () => {
     options: ApiOptions = {}
   ): Promise<ApiResponse<T>> => {
     const { method = 'GET', body, headers = {} } = options
-    const url = `${baseUrl}${appendIncludeEmpty(appendContentLimit(endpoint))}`
+    const url = `${baseUrl}${appendTagBlocks(appendIncludeEmpty(appendContentLimit(endpoint)), method)}`
     const isForm = body instanceof FormData
 
     try {

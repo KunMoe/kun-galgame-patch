@@ -4,6 +4,7 @@ import { KUN_RANKING_LIMIT, KUN_RANKING_TABS } from '~/constants/ranking'
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 const sortBy = ref(String(route.query.sort_by ?? route.query.sortBy ?? 'view'))
 
@@ -21,7 +22,7 @@ const { data, pending, refresh } = await useAsyncData<GalgameCard[]>(
     )
     return res.code === 0 ? res.data : []
   },
-  { default: () => [] }
+  { default: () => [], watch: [blockKey] }
 )
 
 const sortOptions = [

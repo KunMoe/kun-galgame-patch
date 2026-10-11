@@ -10,7 +10,7 @@ import (
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
-func (c *Client) TaxonomyBrowse(ctx context.Context, pathAndQuery string) (data json.RawMessage, handled bool, err error) {
+func (c *Client) TaxonomyBrowse(ctx context.Context, pathAndQuery string, exclude catalogv2.TagExclusion) (data json.RawMessage, handled bool, err error) {
 	path, rawQuery := splitPathQuery(pathAndQuery)
 	q, _ := url.ParseQuery(rawQuery)
 	segs := strings.Split(strings.Trim(path, "/"), "/")
@@ -21,13 +21,13 @@ func (c *Client) TaxonomyBrowse(ctx context.Context, pathAndQuery string) (data 
 	if len(segs) == 2 && segs[1] != "search" {
 		switch segs[0] {
 		case "tag":
-			d, e := c.catalogTagDetail(ctx, q.Get("tag_id"), q)
+			d, e := c.catalogTagDetail(ctx, q.Get("tag_id"), q, exclude)
 			return d, true, e
 		case "official":
-			d, e := c.catalogLabelDetail(ctx, q.Get("official_id"), q)
+			d, e := c.catalogLabelDetail(ctx, q.Get("official_id"), q, exclude)
 			return d, true, e
 		case "series":
-			d, e := c.catalogSeriesDetail(ctx, q.Get("series_id"), q)
+			d, e := c.catalogSeriesDetail(ctx, q.Get("series_id"), q, exclude)
 			return d, true, e
 		}
 	}
@@ -155,7 +155,7 @@ func preferredIntro(rows []catalogIntroRow) string {
 	return ""
 }
 
-func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
+func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Values, exclude catalogv2.TagExclusion) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
 		return nil, catalogv2.Absent("GET /v2/catalog/tags/{id}")
@@ -165,7 +165,7 @@ func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Value
 	if err != nil {
 		return nil, err
 	}
-	members, total, err := c.taxonomyMembers(ctx, "tag_id", id, q, gate)
+	members, total, err := c.taxonomyMembers(ctx, "tag_id", id, q, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Value
 	})
 }
 
-func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
+func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Values, exclude catalogv2.TagExclusion) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
 		return nil, catalogv2.Absent("GET /v2/catalog/series/{id}")
@@ -197,7 +197,7 @@ func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Va
 	if err != nil {
 		return nil, err
 	}
-	members, total, err := c.taxonomyMembers(ctx, "series_id", id, q, gate)
+	members, total, err := c.taxonomyMembers(ctx, "series_id", id, q, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func (c *Client) catalogSeriesDetail(ctx context.Context, idStr string, q url.Va
 	})
 }
 
-func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Values) (json.RawMessage, error) {
+func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Values, exclude catalogv2.TagExclusion) (json.RawMessage, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 	if err != nil || id <= 0 {
 		return nil, catalogv2.Absent("GET /v2/catalog/companies/{id}")
@@ -225,7 +225,7 @@ func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Val
 	if err != nil {
 		return nil, err
 	}
-	roster, err := c.companyMembers(ctx, id, q, gate)
+	roster, err := c.companyMembers(ctx, id, q, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -255,12 +255,12 @@ func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Val
 
 const taxonomyMemberSort = "released_desc"
 
-func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64, q url.Values, gate catalogGate) ([]GalgameBrief, int64, error) {
+func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64, q url.Values, gate catalogGate, exclude catalogv2.TagExclusion) ([]GalgameBrief, int64, error) {
 	page, limit := taxonomyPageWindow(q)
 	query := catalogv2.WorksQuery{
 		Sort: taxonomyMemberSort, Page: page, Limit: limit, NSFW: true,
 		Include: listCardInclude, IncludeTotal: true,
-		Facets: []string{"olang"}, ContentLimit: gate.contentLimit,
+		Facets: []string{"olang"}, ContentLimit: gate.contentLimit, Exclude: exclude,
 	}
 	switch filterKey {
 	case "tag_id":

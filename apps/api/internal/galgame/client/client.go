@@ -212,6 +212,7 @@ func worksQueryFor(p SearchGalgameParams) catalogv2.WorksQuery {
 		IncludeTotal: true,
 		Facets:       []string{"olang"},
 		SearchIntro:  p.SearchIntro,
+		Exclude:      p.Exclude,
 	}
 	gate := gateFor(p.ContentLimit)
 	q.ContentLimit = gate.contentLimit
@@ -254,6 +255,7 @@ type SearchGalgameParams struct {
 	Sort         string
 	Page         int
 	Limit        int
+	Exclude      catalogv2.TagExclusion
 }
 
 // Closed on purpose: catalog answers an undeclared sort 400 UNKNOWN_SORT, and
@@ -460,7 +462,7 @@ const calendarPageLimit = 100
 
 const calendarMaxPages = 50
 
-func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit string) (*GalgameCalendar, error) {
+func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit string, exclude catalogv2.TagExclusion) (*GalgameCalendar, error) {
 	if month == "" {
 		month = time.Now().UTC().Format("2006-01")
 	}
@@ -476,7 +478,7 @@ func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit str
 	}
 	cursor := ""
 	for page := 0; page < calendarMaxPages; page++ {
-		data, err := c.v2.Calendar(ctx, month, true, cursor, calendarPageLimit)
+		data, err := c.v2.Calendar(ctx, month, true, cursor, calendarPageLimit, exclude)
 		if err != nil {
 			return nil, err
 		}
@@ -500,6 +502,18 @@ func (c *Client) GetGalgameCalendar(ctx context.Context, month, contentLimit str
 			break
 		}
 		cursor = data.Next()
+	}
+	return out, nil
+}
+
+func (c *Client) ExcludedWorkIDs(ctx context.Context, exclude catalogv2.TagExclusion) ([]int, error) {
+	ids, err := c.v2.ExcludedWorkIDs(ctx, exclude)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int, len(ids))
+	for i, id := range ids {
+		out[i] = int(id)
 	}
 	return out, nil
 }

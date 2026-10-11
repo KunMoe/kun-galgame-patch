@@ -26,13 +26,13 @@ type companyRoster struct {
 	imprint int64
 }
 
-func (c *Client) companyMembers(ctx context.Context, id int64, q url.Values, gate catalogGate) (*companyRoster, error) {
-	works, walked, err := c.companyRollupWorks(ctx, id, gate)
+func (c *Client) companyMembers(ctx context.Context, id int64, q url.Values, gate catalogGate, exclude catalogv2.TagExclusion) (*companyRoster, error) {
+	works, walked, err := c.companyRollupWorks(ctx, id, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
 	if !walked {
-		members, total, err := c.taxonomyMembers(ctx, "company_id", id, q, gate)
+		members, total, err := c.taxonomyMembers(ctx, "company_id", id, q, gate, exclude)
 		if err != nil {
 			return nil, err
 		}
@@ -83,13 +83,13 @@ func (c *Client) companyMembers(ctx context.Context, id int64, q url.Values, gat
 
 // walked is false when the rollup is larger than this page can honestly hold; the
 // caller then serves the direct attributions the paged face can answer.
-func (c *Client) companyRollupWorks(ctx context.Context, id int64, gate catalogGate) (works []catalogv2.Work, walked bool, err error) {
+func (c *Client) companyRollupWorks(ctx context.Context, id int64, gate catalogGate, exclude catalogv2.TagExclusion) (works []catalogv2.Work, walked bool, err error) {
 	cursor := ""
 	for {
 		data, err := c.v2.ListWorks(ctx, catalogv2.WorksQuery{
 			CompanyID: id, CompanyRollup: true, Cursor: cursor,
 			Limit: catalogRollupPageSize, NSFW: true, IncludeTotal: cursor == "",
-			Include: cardInclude, ContentLimit: gate.contentLimit,
+			Include: cardInclude, ContentLimit: gate.contentLimit, Exclude: exclude,
 		})
 		if err != nil {
 			return nil, false, err

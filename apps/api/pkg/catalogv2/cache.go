@@ -9,11 +9,12 @@ import (
 )
 
 const (
-	readCacheKeyPrefix   = "nmcache:moyu:v2:"
-	readCacheMaxBody     = 512 << 10
-	readCacheDetailTTL   = 15 * time.Second
-	readCacheListTTL     = 60 * time.Second
-	readCacheCalendarTTL = time.Hour
+	readCacheKeyPrefix    = "nmcache:moyu:v2:"
+	readCacheMaxBody      = 512 << 10
+	readCacheDetailTTL    = 15 * time.Second
+	readCacheListTTL      = 60 * time.Second
+	readCacheCalendarTTL  = time.Hour
+	readCacheExclusionTTL = 10 * time.Minute
 )
 
 // The public read faces, and only those. An allowlist rather than a list of
@@ -37,6 +38,7 @@ var readCachePaths = []string{
 	"/v2/catalog/series",
 	"/v2/catalog/tags",
 	"/v2/catalog/schemas",
+	tagExclusionPath,
 }
 
 // WithRedis turns on the shared read cache. A client without it behaves exactly
@@ -58,6 +60,9 @@ func readCacheable(path string) bool {
 
 func readCacheTTL(path string) time.Duration {
 	route, _, _ := strings.Cut(path, "?")
+	if route == tagExclusionPath {
+		return readCacheExclusionTTL
+	}
 	if route == "/v2/catalog/calendar" || strings.HasPrefix(route, "/v2/catalog/calendar/") {
 		return readCacheCalendarTTL
 	}

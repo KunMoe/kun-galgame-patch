@@ -11,6 +11,7 @@ import (
 	"kun-galgame-patch-api/internal/galgame/taxonomyid"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -22,7 +23,11 @@ func galgamePathFromRequest(c fiber.Ctx) string {
 }
 
 func (h *PatchHandler) GalgameTaxonomyDetailProxy(c fiber.Ctx) error {
-	raw, handled, err := h.galgame.TaxonomyBrowse(c.Context(), galgamePathFromRequest(c))
+	exclude, appErr := utils.TagExclusionFromQuery(c)
+	if appErr != nil {
+		return response.Error(c, appErr)
+	}
+	raw, handled, err := h.galgame.TaxonomyBrowse(c.Context(), galgamePathFromRequest(c), exclude)
 	if !handled && err == nil {
 		return response.Error(c, errors.ErrNotFound("词条不存在"))
 	}

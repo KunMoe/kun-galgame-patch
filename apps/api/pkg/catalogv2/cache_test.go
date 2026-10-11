@@ -37,7 +37,7 @@ func TestCalendarIsServedFromCacheOnTheSecondRead(t *testing.T) {
 	})
 	ctx := context.Background()
 	for range 3 {
-		if _, err := c.Calendar(ctx, "2026-09", false, "", 100); err != nil {
+		if _, err := c.Calendar(ctx, "2026-09", false, "", 100, catalogv2.TagExclusion{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -64,10 +64,10 @@ func TestContentLimitsNeverShareACacheKey(t *testing.T) {
 	})
 	ctx := context.Background()
 	for range 2 {
-		if _, err := c.Calendar(ctx, "2026-09", false, "", 100); err != nil {
+		if _, err := c.Calendar(ctx, "2026-09", false, "", 100, catalogv2.TagExclusion{}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := c.Calendar(ctx, "2026-09", true, "", 100); err != nil {
+		if _, err := c.Calendar(ctx, "2026-09", true, "", 100, catalogv2.TagExclusion{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -126,7 +126,7 @@ func TestAClientWithoutRedisStillReads(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := catalogv2.New(srv.URL, "nmk_test_abcdefghijklmnopqrstuvwx12")
 	for range 2 {
-		if _, err := c.Calendar(context.Background(), "2026-09", false, "", 100); err != nil {
+		if _, err := c.Calendar(context.Background(), "2026-09", false, "", 100, catalogv2.TagExclusion{}); err != nil {
 			t.Fatal(err)
 		}
 	}

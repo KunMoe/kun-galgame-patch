@@ -155,6 +155,12 @@ func (a *App) RegisterRoutes() {
 	folderRoutes.Patch("/:folderId", auth, a.PatchHandler.UpdateFolder)
 	folderRoutes.Delete("/:folderId", auth, a.PatchHandler.DeleteFolder)
 
+	tagBlockRoutes := api.Group("/tag-block", auth)
+	tagBlockRoutes.Get("", a.PatchHandler.MyTagBlocks)
+	tagBlockRoutes.Get("/:tagId", a.PatchHandler.MyTagBlock)
+	tagBlockRoutes.Put("/:tagId", a.PatchHandler.PutTagBlock)
+	tagBlockRoutes.Delete("/:tagId", a.PatchHandler.DeleteTagBlock)
+
 	userRoutes := api.Group("/user")
 
 	userRoutes.Post("/check-in", auth, a.UserHandler.CheckIn)

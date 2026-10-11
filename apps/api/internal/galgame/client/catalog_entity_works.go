@@ -29,7 +29,7 @@ type GalgameEntityWorkPage struct {
 	NextCursor string              `json:"next_cursor,omitempty"`
 }
 
-func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, cursor string, limit int) (*GalgameEntityWorkPage, error) {
+func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, cursor string, limit int, exclude catalogv2.TagExclusion) (*GalgameEntityWorkPage, error) {
 	gate := gateFor(contentLimit)
 	page, err := c.v2.CharacterAppearances(ctx, int64(id), true, cursor, entityWorksLimit(limit))
 	if err != nil {
@@ -39,7 +39,7 @@ func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, curso
 	for i := range page.Items {
 		works = append(works, page.Items[i].Work)
 	}
-	cards, err := c.entityWorkCards(ctx, works, gate)
+	cards, err := c.entityWorkCards(ctx, works, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (c *Client) CharacterWorks(ctx context.Context, id int, contentLimit, curso
 	return out, nil
 }
 
-func (c *Client) StaffWorks(ctx context.Context, id int, contentLimit, cursor string, limit int) (*GalgameEntityWorkPage, error) {
+func (c *Client) StaffWorks(ctx context.Context, id int, contentLimit, cursor string, limit int, exclude catalogv2.TagExclusion) (*GalgameEntityWorkPage, error) {
 	gate := gateFor(contentLimit)
 	page, err := c.v2.CreditNameCredits(ctx, int64(id), true, cursor, entityWorksLimit(limit))
 	if err != nil {
@@ -73,7 +73,7 @@ func (c *Client) StaffWorks(ctx context.Context, id int, contentLimit, cursor st
 	for i := range page.Items {
 		works = append(works, page.Items[i].Work)
 	}
-	cards, err := c.entityWorkCards(ctx, works, gate)
+	cards, err := c.entityWorkCards(ctx, works, gate, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func entityWorksLimit(limit int) int {
 // The sub-faces' own nsfw= reads content_rating, so nsfw=false there drops work
 // 2156 (AIR: r18 upstream, claimed sfw) — the very row this site shows to
 // everyone. They are asked wide open and content_limit= narrows here instead.
-func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, gate catalogGate) (map[int64]GalgameBrief, error) {
+func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, gate catalogGate, exclude catalogv2.TagExclusion) (map[int64]GalgameBrief, error) {
 	out := make(map[int64]GalgameBrief, len(works))
 	ids := make([]int64, 0, len(works))
 	seen := make(map[int64]bool, len(works))
@@ -129,7 +129,7 @@ func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, ga
 	}
 	page, err := c.v2.ListWorks(ctx, catalogv2.WorksQuery{
 		IDs: ids, NSFW: true, Include: listCardInclude,
-		ContentLimit: gate.contentLimit, Limit: CatalogWorksIDsMax,
+		ContentLimit: gate.contentLimit, Limit: CatalogWorksIDsMax, Exclude: exclude,
 	})
 	if err != nil {
 		return nil, err

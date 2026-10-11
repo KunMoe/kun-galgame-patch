@@ -4,6 +4,7 @@ defineOptions({ name: 'resource-list' })
 const route = useRoute()
 const router = useRouter()
 const api = useApi()
+const { blockKey } = useTagBlocks()
 
 useKunSeoMeta({
   title: '最新补丁资源',
@@ -32,7 +33,7 @@ const { data, pending, refresh } = await useAsyncData<ListResponse>(
     const res = await api.get<ListResponse>(`/resource?${params.toString()}`)
     return res.code === 0 ? res.data : { items: [], total: 0 }
   },
-  { default: () => ({ items: [], total: 0 }) }
+  { default: () => ({ items: [], total: 0 }), watch: [blockKey] }
 )
 
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))

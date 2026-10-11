@@ -12,7 +12,8 @@
     "icons": "node scripts/generate-icon-list.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
@@ -61,15 +62,19 @@
     "@iconify-json/fa6-brands": "^1.2.6",
     "@iconify-json/lucide": "^1.2.81",
     "@iconify-json/svg-spinners": "^1.2.4",
+    "@nuxt/test-utils": "4.0.3",
     "@nuxtjs/color-mode": "^4.0.0",
     "@nuxtjs/sitemap": "7.6.0",
     "@pinia/nuxt": "^0.11.3",
+    "@vue/test-utils": "2.4.10",
     "eslint": "^10.0.3",
+    "happy-dom": "20.9.0",
     "husky": "^9.1.7",
     "nuxt-umami": "^3.2.1",
     "pinia-plugin-persistedstate": "4.7.1",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "vitest": "4.1.7"
   }
 }

@@ -15,7 +15,8 @@
     "lint:fix": "pnpm -F @apps/web run lint:fix",
     "typecheck": "pnpm -F @apps/web run typecheck",
     "vet": "pnpm -F @apps/api run vet",
-    "test:api": "pnpm -F @apps/api run test"
+    "test:api": "pnpm -F @apps/api run test",
+    "test:web": "pnpm -F @apps/web run test"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

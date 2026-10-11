@@ -286,9 +286,9 @@ const onChangePage = (value: number) => {
   }
 }
 
-watch(
-  () => settingStore.data.showGalgamesWithoutResource,
-  () => apply(() => {})
+const { blockKey } = useTagBlocks()
+watch([() => settingStore.data.showGalgamesWithoutResource, blockKey], () =>
+  apply(() => {})
 )
 
 watch(

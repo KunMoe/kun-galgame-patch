@@ -85,8 +85,10 @@ const load = async () => {
   pending.value = false
 }
 
+const { blockKey } = useTagBlocks()
+
 watch(
-  [query, page],
+  [query, page, blockKey],
   async ([, nextPage], previous) => {
     // Paging keeps the rows it is paging through, dimmed under the loading
     // overlay; a new keyword or filter replaces them, and leaving the previous
