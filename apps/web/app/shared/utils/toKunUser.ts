@@ -1,12 +1,30 @@
 import type { KunAvatarDecoration } from '@kungal/ui-core'
 
-export const toKunUser = <T extends { cosmetics?: UserCosmetics | null }>(
+interface AvatarOwner {
+  avatar?: string | null
+  avatar_image_hash?: string | null
+  cosmetics?: UserCosmetics | null
+}
+
+// KunAvatar draws `avatar` verbatim, and an OAuth upload writes only
+// avatar_image_hash. Passing the raw field showed 131 users the picture they had
+// replaced and 5,394 a stock sticker, while every other site drew the new one.
+export const toKunUser = <T extends AvatarOwner>(
   user: T | null | undefined
-): (T & { avatarDecoration?: KunAvatarDecoration }) | null | undefined => {
-  const frame = user?.cosmetics?.avatar_frame
-  if (!user || !frame) return user
+):
+  | (T & { avatar: string; avatarDecoration?: KunAvatarDecoration })
+  | null
+  | undefined => {
+  if (!user) return user
+  const frame = user.cosmetics?.avatar_frame
   return {
     ...user,
-    avatarDecoration: { src: frame.static_url, animatedSrc: frame.animated_url }
+    avatar: resolveAvatarUrl(user),
+    ...(frame && {
+      avatarDecoration: {
+        src: frame.static_url,
+        animatedSrc: frame.animated_url
+      }
+    })
   }
 }

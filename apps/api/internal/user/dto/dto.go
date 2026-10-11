@@ -28,23 +28,24 @@ type SearchUserRequest struct {
 }
 
 type UserInfoResponse struct {
-	ID             int                   `json:"id"`
-	Name           string                `json:"name"`
-	Avatar         string                `json:"avatar"`
-	Cosmetics      *userclient.Cosmetics `json:"cosmetics,omitempty"`
-	Bio            string                `json:"bio"`
-	AboutHTML      string                `json:"about_html,omitempty"`
-	Roles          []string              `json:"roles"`
-	SiteRoles      []string              `json:"site_roles"`
-	Moemoepoint    int                   `json:"moemoepoint"`
-	FollowerCount  *int                  `json:"follower_count,omitempty"`
-	FollowingCount *int                  `json:"following_count,omitempty"`
-	RegisterTime   string                `json:"register_time"`
-	PatchCount     int64                 `json:"patch_count"`
-	ResourceCount  int64                 `json:"resource_count"`
-	CommentCount   int64                 `json:"comment_count"`
-	FavoriteCount  int64                 `json:"favorite_count"`
-	IsFollowed     bool                  `json:"is_followed"`
+	ID              int                   `json:"id"`
+	Name            string                `json:"name"`
+	Avatar          string                `json:"avatar"`
+	AvatarImageHash string                `json:"avatar_image_hash"`
+	Cosmetics       *userclient.Cosmetics `json:"cosmetics,omitempty"`
+	Bio             string                `json:"bio"`
+	AboutHTML       string                `json:"about_html,omitempty"`
+	Roles           []string              `json:"roles"`
+	SiteRoles       []string              `json:"site_roles"`
+	Moemoepoint     int                   `json:"moemoepoint"`
+	FollowerCount   *int                  `json:"follower_count,omitempty"`
+	FollowingCount  *int                  `json:"following_count,omitempty"`
+	RegisterTime    string                `json:"register_time"`
+	PatchCount      int64                 `json:"patch_count"`
+	ResourceCount   int64                 `json:"resource_count"`
+	CommentCount    int64                 `json:"comment_count"`
+	FavoriteCount   int64                 `json:"favorite_count"`
+	IsFollowed      bool                  `json:"is_followed"`
 	// FollowNotify is the viewer's level toward this user (all | feed), null
 	// when the viewer does not follow them.
 	FollowNotify *string `json:"follow_notify"`

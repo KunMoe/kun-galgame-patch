@@ -2,6 +2,7 @@ interface RankingUser {
   id: number
   name: string
   avatar: string
+  avatar_image_hash?: string
   cosmetics?: UserCosmetics
   moemoepoint: number
   patch_count: number

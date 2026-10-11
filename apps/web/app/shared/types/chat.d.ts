@@ -9,6 +9,7 @@ interface ChatRoomSummary {
   // identity (the room row itself has none).
   name: string
   avatar: string
+  avatar_image_hash?: string
   // One-line preview of the most recent message ("[贴纸]"/"[图片]"/"[消息已撤回]"
   // for non-text). Present on the room-list endpoint; absent on room detail.
   last_message?: string

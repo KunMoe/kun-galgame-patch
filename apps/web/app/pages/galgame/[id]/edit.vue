@@ -107,7 +107,7 @@ const withdraw = async (pid: number) => {
 const proposer = computed(() => ({
   id: userStore.user.id,
   name: userStore.user.name,
-  avatar: userStore.user.avatar
+  avatar: resolveAvatarUrl(userStore.user)
 }))
 
 const saving = ref(false)

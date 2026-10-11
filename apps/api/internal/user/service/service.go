@@ -121,6 +121,7 @@ func (s *UserService) cardInfo(ctx context.Context, userID int) (*dto.UserInfoRe
 	if b != nil {
 		resp.Name = b.Name
 		resp.Avatar = b.Avatar
+		resp.AvatarImageHash = b.AvatarImageHash
 		resp.Cosmetics = b.Cosmetics
 		resp.Bio = b.Bio
 		resp.Roles = b.Roles

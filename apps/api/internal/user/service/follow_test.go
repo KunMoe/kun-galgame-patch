@@ -181,7 +181,7 @@ func TestFollowListCursorTotalDropsAndIsFollowed(t *testing.T) {
 			}
 		}),
 		briefLookup: fakeBriefs{
-			3: {ID: 3, Name: "a"},
+			3: {ID: 3, Name: "a", Avatar: "https://image.kungal.com/avatar/user_3/avatar.webp", AvatarImageHash: "0f944b9e"},
 			4: {ID: 4, Name: "b"},
 		},
 	}
@@ -198,6 +198,9 @@ func TestFollowListCursorTotalDropsAndIsFollowed(t *testing.T) {
 	}
 	if !page.Items[0].IsFollowed || page.Items[1].IsFollowed {
 		t.Errorf("is_followed = %v / %v", page.Items[0].IsFollowed, page.Items[1].IsFollowed)
+	}
+	if page.Items[0].AvatarImageHash != "0f944b9e" {
+		t.Errorf("avatar_image_hash = %q; the legacy avatar alone is the picture the user replaced", page.Items[0].AvatarImageHash)
 	}
 }
 

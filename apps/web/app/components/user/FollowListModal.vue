@@ -3,6 +3,7 @@ interface FollowItem {
   id: number
   name: string
   avatar: string
+  avatar_image_hash?: string
   cosmetics?: UserCosmetics
   is_followed: boolean
 }

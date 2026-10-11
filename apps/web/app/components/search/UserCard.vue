@@ -42,7 +42,7 @@ const stats = computed(() => [
   >
     <div class="flex w-full gap-3 p-3">
       <KunAvatar
-        :user="user"
+        :user="toKunUser(user)"
         :is-navigation="false"
         :disable-floating="true"
         size="lg"

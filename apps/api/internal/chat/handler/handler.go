@@ -204,6 +204,7 @@ func (h *ChatHandler) ListRooms(c fiber.Ctx) error {
 			if b := peerBriefs[peerByRoom[r.ID]]; b != nil {
 				v.Name = b.Name
 				v.Avatar = b.Avatar
+				v.AvatarImageHash = b.AvatarImageHash
 			} else {
 				v.Name = "未知用户"
 			}

@@ -25,6 +25,7 @@ type RoomSummaryView struct {
 	Type            string    `json:"type"`
 	Name            string    `json:"name"`
 	Avatar          string    `json:"avatar"`
+	AvatarImageHash string    `json:"avatar_image_hash,omitempty"`
 	LastMessage     string    `json:"last_message"`
 	LastMessageTime time.Time `json:"last_message_time"`
 	Created         time.Time `json:"created"`

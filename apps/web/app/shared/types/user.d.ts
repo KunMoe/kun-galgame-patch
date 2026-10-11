@@ -8,6 +8,7 @@ interface UserInfo {
   id: number
   name: string
   avatar: string
+  avatar_image_hash?: string
   cosmetics?: UserCosmetics
   bio: string
   about_html?: string
