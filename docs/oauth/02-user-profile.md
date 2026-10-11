@@ -50,7 +50,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 操作 | 端点 | 说明 |
 |------|------|------|
 | 改显示名 | `PATCH /auth/me { name }` | 全局唯一，OAuth 后端拒重 |
-| 改头像（URL 或 hash） | `PATCH /auth/me` 或 `POST /auth/me/avatar` | 后者一步走完上传 + 写库 |
+| 改头像 | `POST /auth/me/avatar` 或 `PATCH /auth/me { avatar_image_hash }` | 前者一步走完上传 + 写库；头像只认 image_service 哈希，不收 URL |
 | 改简介 | `PATCH /auth/me { bio }` | 纯展示，无安全性 |
 | 写主页介绍 | `PATCH /auth/me { about }` | ≤500 字 Markdown；非空时需要在萌萌点商店买到「主页介绍」权益，见 [16-shop.md](./16-shop.md) §1.3 |
 | 读写云端偏好 | `/auth/me/preferences/*` | 每个 client 一个命名空间 + 共享的 `global`，见 [15-content-preferences.md](./15-content-preferences.md) |
@@ -66,7 +66,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 端点 | 方法 | 层级 | 鉴权 | 用途 |
 |------|------|------|------|------|
 | `/auth/me` | GET | — | Bearer | 读自己完整资料（`email` 受 `email` scope 门控，见下） |
-| `/auth/me` | PATCH | 展示 | Bearer | 改 name / avatar / bio / about（响应同 GET，`email` 同样门控） |
+| `/auth/me` | PATCH | 展示 | Bearer | 改 name / avatar_image_hash / bio / about（响应同 GET，`email` 同样门控） |
 | `/auth/me/avatar` | POST | 展示 | Bearer | 上传头像 multipart |
 | `/auth/email/send-code` | POST | 身份 | Bearer（仅 OAuth 前端） | 发送邮箱变更验证码到**旧**邮箱 |
 | `/auth/email` | PUT | 身份 | Bearer（仅 OAuth 前端） | 用验证码确认改邮箱 |
@@ -104,7 +104,8 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
     "uuid": "550e8400-e29b-...",
     "name": "kun",
     "email": "kun@kungal.com",
-    "avatar": "https://...",
+    "avatar": "https://image.kungal.iloveren.link/ab/c1/abc123def456....webp",
+    "avatar_image_hash": "abc123def456...",
     "bio": "...",
     "moemoepoint": 1234,
     "status": 0,
@@ -116,6 +117,8 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 }
 ```
 
+> **2026-10-11 `avatar` 由 `avatar_image_hash` 生成**：`avatar_image_hash` 是头像的唯一来源，`avatar` 是它的原图 URL（`<CDN>/<h[0:2]>/<h[2:4]>/<h>.webp`），没有哈希时为空字符串，两者不会再不一致。此前 `avatar` 是一个独立的旧列：用户重新上传头像只更新哈希，只读 `avatar` 的地方（包括私聊里的对方头像）就一直显示旧图。`/users/batch`、`/users/:uuid`、登录 / 注册 / 切换账号的响应、`GET /auth/sessions`、管理端用户接口、`/oauth/userinfo` 的 `picture` 和私聊的用户对象都遵循同一规则。只读 `avatar` 的下游不用改；要缩略图的仍用哈希拼 `_256` / `_100`。`PATCH /auth/me` 与管理端改资料**不再接受 `avatar`**：传了会被忽略。
+>
 > **2026-09-22 新增 `adult_confirmed_at` / `nsfw_display`**（见 [15-content-preferences.md](./15-content-preferences.md)）。`nsfw_display` 是账号存着的值，生效值 = `adult_confirmed_at != null ? nsfw_display : 'hide'`。
 >
 > **2026-09-23 起 `adult_confirmed_at` 恒存在且恒非 null**（年龄确认退役，账号一律视为成年账号）。该键原本在未确认时整个缺失，所以下游把它读成 `string | null | undefined` 的类型定义不需要改，只是永远走不到后两支了。
@@ -151,7 +154,6 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 ```json
 {
   "name": "newname",
-  "avatar": "https://...",
   "avatar_image_hash": "abc123...",
   "bio": "新简介"
 }
@@ -160,8 +162,7 @@ OAuth 的用户自助 API 在设计上分两层。下游接入时**不要**把�
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | name | string? | 1..17 字符；全局唯一；允许 Unicode 字母/数字 + `!~_@#$%^&*()+=-`，禁止零宽 / 不可见空白等 50+ 种字符（同注册规则，详见 [05-registration.md](./05-registration.md#post-authregistersend-code)） | 用户名 |
-| avatar | string? | ≤255 字符 | 头像 URL（legacy；image_service 普及前继续用） |
-| avatar_image_hash | string? | ≤64 字符 | 头像的 image_service 哈希；前端 resolveAvatarUrl 优先用此字段 |
+| avatar_image_hash | string? | ≤64 字符 | 头像的 image_service 哈希。响应里的 `avatar` 由它生成，没有可写的 `avatar` 字段（2026-10-11 起传了会被忽略） |
 | bio | string? | ≤107 字符 | 个人简介 |
 | about | string? | ≤500 字符，Markdown | 主页介绍。非空时需要当前持有 `profile_about` 权益，否则 `400 / 19016`；传空字符串随时可以清空。服务端同时写入渲染好的 `about_html` |
 
@@ -246,7 +247,7 @@ curl -X PATCH https://account.nextmoe.com/api/v1/auth/me \
 | `POST /auth/me/avatar`（**推荐**） | OAuth 内部 | 1 次 | 标准 web / 移动端"用户改头像" |
 | `PATCH /auth/me { avatar_image_hash }` | **下游自己** | 2 次（先上传到 image_service 拿 hash，再 PATCH） | 下游已有 image_service client（投稿 / 截图等场景），头像和别的图片走同一上传管线 |
 
-两种方式可以并存，下游想用哪种都行。`avatar` 和 `avatar_image_hash` 仍是独立字段（参见 PATCH /auth/me 节）。
+两种方式可以并存，下游想用哪种都行。两种方式写的都是 `avatar_image_hash`，响应里的 `avatar` 由它生成。
 
 **配额归属**：图片走的是 OAuth 自己的 image_service client，配额从 OAuth 这一侧扣，**下游 kungal / moyu 不需要为头像单独申请 image_service client**。
 

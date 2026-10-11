@@ -105,6 +105,8 @@ OAuth 一共有三种鉴权方式，按场景区分：
 
 ## 变更摘要
 
+> **2026-10-11 头像只有一个来源**：所有响应里的 `avatar` 都由 `avatar_image_hash` 生成，私聊用户对象也一样，用户换头像后旧列停在旧图上的问题不会再出现；`PATCH /auth/me` 与管理端改资料不再接受 `avatar`。只读 `avatar` 的下游无需改动。详见 [02](./02-user-profile.md#get-authme)。
+
 > **2026-09-26 改名价格随配置下发**：`auth.name_change_cost` 标为公开键，出现在 `GET /settings` 的 `settings` 里（见 [14 §2](./14-settings.md)）。站点的改名确认框应读这个值，不要写死 17；`0` 表示免费。扣费仍只在 OAuth 的 `PATCH /auth/me` 里发生，站点无需改动扣费逻辑。
 
 > **2026-09-23 `preferences` 开放自助申请**：它已进入开发者平台的 `selfServiceUserScopes`，第三方自助注册的应用可以自己勾上这个 scope、直接在同意页向用户索取，不再需要运营在 OAuth 后台代勾（09-22 那条里「要用须在后台勾选」只对运营托管的 client 仍然成立）。能开放是因为约束不在白名单上：命名空间绑定把每个 client 关在自己 `client_id` + `global` 两格里、单份 64 KB 封顶、同意页对这个 scope 有自己的措辞。**它同时覆盖 `PUT /auth/me/nsfw`** 这次账号级写，是明知并接受的——边界是 `/oauth/authorize` 上那一次用户同意。裁定与理由见 [15 §三](./15-content-preferences.md#三新-scopepreferences)。

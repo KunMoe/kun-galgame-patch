@@ -39,8 +39,8 @@
         "id": 1,
         "uuid": "9e00220a-8079-4e81-8e98-49e26ce23edc",
         "name": "kun",
-        "avatar": "https://image.kungal.com/avatar/user_1/avatar.webp",
-        "avatar_image_hash": "abc123...",
+        "avatar": "https://image.kungal.iloveren.link/ab/c1/abc123def456....webp",
+        "avatar_image_hash": "abc123def456...",
         "bio": "KUN IS THE CUTEST!",
         "status": 0,
         "roles": ["admin"],
@@ -57,7 +57,7 @@
 | users[].id | 用户 ID（与 kungal/moyu 中 `*_user_id` 外键对齐） |
 | users[].uuid | 用户 UUID |
 | users[].name | 用户名 |
-| users[].avatar | 头像 URL（可能为空字符串） |
+| users[].avatar | 头像原图 URL，由 `avatar_image_hash` 生成；没有哈希时为空字符串 |
 | users[].avatar_image_hash | 头像 image_service 哈希（可空） |
 | users[].bio | 个人简介 |
 | users[].status | 0=正常；非 0 时调用方应隐藏或脱敏渲染 |
