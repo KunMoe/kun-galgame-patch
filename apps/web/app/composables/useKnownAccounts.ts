@@ -129,7 +129,7 @@ export const useKnownAccounts = () => {
       id: user.id,
       name: user.name,
       // Resolve to a ready-to-render URL now; KunAvatar reads `avatar` verbatim.
-      avatar: resolveAvatarUrl(user) || user.avatar || '',
+      avatar: resolveAvatarUrl(user),
       avatar_image_hash: user.avatar_image_hash || '',
       cosmetics: user.cosmetics,
       roles: user.roles ?? []
