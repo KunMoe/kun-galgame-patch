@@ -19,8 +19,6 @@ export interface UserState {
   sub: string
   name: string
   avatar: string
-  // OAuth image_service hash for the avatar; preferred by resolveAvatarUrl
-  // over `avatar` once the image_service is live. See docs/oauth/api-reference.md.
   avatar_image_hash: string
   cosmetics: UserCosmetics | null
   bio: string
