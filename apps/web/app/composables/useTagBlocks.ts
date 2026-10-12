@@ -31,6 +31,13 @@ export const useTagBlocks = () => {
     return blocks.value.exact.includes(id) ? 'exact' : null
   }
 
+  const blockOf = (tagId: number, ancestorIds: number[]) => {
+    const own = modeOf(tagId)
+    if (own) return { tagId, mode: own }
+    const ancestor = ancestorIds.find((id) => blocks.value.tree.includes(id))
+    return ancestor ? { tagId: ancestor, mode: 'tree' as const } : null
+  }
+
   const refresh = async () => {
     const owner = uid.value
     if (owner <= 0) return false
@@ -88,6 +95,7 @@ export const useTagBlocks = () => {
     count,
     blockKey,
     modeOf,
+    blockOf,
     refresh,
     block,
     unblock

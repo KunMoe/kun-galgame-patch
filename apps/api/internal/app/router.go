@@ -253,6 +253,7 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Delete("/doc/:id", a.DocHandler.DeletePost)
 
 	api.Get("/tag/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
+	api.Get("/tag/:tagId/descendants", a.PatchHandler.TagDescendants)
 	api.Get("/official/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
 	api.Get("/series/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
 

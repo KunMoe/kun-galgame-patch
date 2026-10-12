@@ -34,14 +34,7 @@ const TIER_COLOR: Record<string, KunUIColor> = {
 
 const VERDICT_NOT_FOUND = 40400
 
-const { blockKey, modeOf, block, unblock } = useTagBlocks()
-const blockedMode = computed(() => modeOf(tagID.value))
-const toggling = ref(false)
-const toggleBlock = async () => {
-  toggling.value = true
-  await (blockedMode.value ? unblock(tagID.value) : block(tagID.value))
-  toggling.value = false
-}
+const { blockKey, blockOf } = useTagBlocks()
 
 const { data, pending } = await useAsyncData(
   () => `tag-detail-${tagID.value}-${page.value}`,
@@ -65,6 +58,14 @@ const galgames = computed<GalgameCard[]>(
 )
 const total = computed(() => data.value?.detail?.total ?? 0)
 const totalPage = computed(() => Math.max(1, Math.ceil(total.value / limit)))
+const isHiddenByBlock = computed(
+  () =>
+    !!tag.value &&
+    !!blockOf(
+      tag.value.id,
+      tag.value.ancestors.map((a) => a.id)
+    )
+)
 
 if (tag.value && !tag.value.sexual) {
   useKunSeoMeta({
@@ -99,18 +100,14 @@ if (tag.value && !tag.value.sexual) {
           <KunChip color="default" size="sm">
             {{ tag.galgame_count ?? 0 }} 个 Galgame
           </KunChip>
-          <KunButton
-            size="sm"
-            variant="flat"
-            :color="blockedMode ? 'default' : 'danger'"
-            :loading="toggling"
-            class-name="ml-auto"
-            @click="toggleBlock"
-          >
-            <KunIcon name="lucide:ban" class="size-4" />
-            {{ blockedMode ? '取消屏蔽' : '屏蔽此标签' }}
-          </KunButton>
+          <GalgameTagBlockMenu
+            :tag-id="tag.id"
+            :name="tag.name"
+            :descendant-count="tag.descendant_count"
+            class="ml-auto"
+          />
         </div>
+        <GalgameTagLineage :tag="tag" class="mt-3" />
         <p
           v-if="tag.description"
           class="text-default-700 mt-3 text-sm whitespace-pre-wrap"
@@ -127,6 +124,11 @@ if (tag.value && !tag.value.sexual) {
             {{ a }}
           </span>
         </div>
+        <GalgameTagSubtags
+          :subtags="tag.subtags"
+          :descendant-count="tag.descendant_count"
+          class="mt-4"
+        />
       </section>
 
       <section class="mt-6">
@@ -135,13 +137,10 @@ if (tag.value && !tag.value.sexual) {
           <h2 class="text-xl font-bold">包含此标签的 Galgame</h2>
         </div>
 
-        <KunNull
-          v-if="!galgames.length && blockedMode"
-          :description="`您已屏蔽该标签${blockedMode === 'tree' ? '及其子标签' : ''}，带有它的 Galgame 不会出现在全站列表中`"
-        />
-        <KunNull v-else-if="!galgames.length" description="暂无关联作品" />
+        <GalgameTagBlockNotice :tag="tag" class="mb-4" />
 
-        <GalgameList v-else :items="galgames" />
+        <GalgameList v-if="galgames.length" :items="galgames" />
+        <KunNull v-else-if="!isHiddenByBlock" description="暂无关联作品" />
 
         <KunPagination
           v-if="totalPage > 1"

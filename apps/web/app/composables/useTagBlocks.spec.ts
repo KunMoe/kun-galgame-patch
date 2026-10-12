@@ -125,4 +125,15 @@ describe('useTagBlocks', () => {
     expect(tb.count.value).toBe(100)
     expect(tb.modeOf(50)).toBe('exact')
   })
+
+  it('names the block that hides a tag: its own first, else the nearest tree-blocked ancestor', async () => {
+    const tb = useTagBlocks()
+    await tb.block(2, 'exact')
+    await tb.block(4)
+    await tb.block(3)
+    expect(tb.blockOf(7, [2, 4, 3])).toEqual({ tagId: 4, mode: 'tree' })
+    expect(tb.blockOf(7, [2, 5])).toBeNull()
+    await tb.block(7, 'exact')
+    expect(tb.blockOf(7, [4])).toEqual({ tagId: 7, mode: 'exact' })
+  })
 })

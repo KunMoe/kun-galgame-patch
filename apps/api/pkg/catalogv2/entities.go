@@ -99,17 +99,31 @@ type CharacterTrait struct {
 func (ch Character) IntID() (int64, bool) { return ParseID(ch.ID) }
 
 type Tag struct {
-	ID          string                   `json:"id"`
-	DisplayName string                   `json:"display_name"`
-	Tier        string                   `json:"tier"`
-	TagKind     string                   `json:"tag_kind"`
-	IsSexual    bool                     `json:"is_sexual"`
-	WorkCount   int                      `json:"work_count"`
-	Localized   map[string]LocalizedText `json:"localized"`
-	Intros      []Intro                  `json:"intros"`
+	ID              string                   `json:"id"`
+	DisplayName     string                   `json:"display_name"`
+	Tier            string                   `json:"tier"`
+	TagKind         string                   `json:"tag_kind"`
+	IsSexual        bool                     `json:"is_sexual"`
+	WorkCount       int                      `json:"work_count"`
+	DescendantCount int                      `json:"descendant_count"`
+	Localized       map[string]LocalizedText `json:"localized"`
+	Intros          []Intro                  `json:"intros"`
+	Parents         []TagNode                `json:"parents"`
+	Children        []TagNode                `json:"children"`
+	Ancestors       []TagNode                `json:"ancestors"`
+	Descendants     []TagNode                `json:"descendants"`
 }
 
 func (t Tag) IntID() (int64, bool) { return ParseID(t.ID) }
+
+type TagNode struct {
+	ID          string   `json:"id"`
+	DisplayName string   `json:"display_name"`
+	IsSexual    bool     `json:"is_sexual"`
+	ParentIDs   []string `json:"parent_ids"`
+}
+
+func (n TagNode) IntID() (int64, bool) { return ParseID(n.ID) }
 
 type Series struct {
 	Object      string `json:"object"`
@@ -136,7 +150,7 @@ var (
 	characterInclude  = []string{
 		"gender", "birthday", "image", "figure", "traits", "aliases", "intros", "refs",
 	}
-	tagInclude    = []string{"intros"}
+	tagInclude    = []string{"intros", "children", "ancestors"}
 	seriesInclude = []string{"intros"}
 )
 
@@ -200,6 +214,14 @@ func (c *Client) GetTag(ctx context.Context, id int64, nsfw bool) (*Tag, error) 
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (c *Client) TagDescendants(ctx context.Context, id int64) ([]TagNode, error) {
+	var out Tag
+	if err := c.get(ctx, entityPath("/v2/catalog/tags/", id, []string{"descendants"}, "", true), &out); err != nil {
+		return nil, err
+	}
+	return out.Descendants, nil
 }
 
 func (c *Client) EntityByRef(ctx context.Context, object, source, externalID string, nsfw bool) (id int64, err error) {
