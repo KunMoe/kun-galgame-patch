@@ -118,6 +118,11 @@ export const SEARCH_ENTITY_LIMIT = { all: 8, one: 24 }
 export const searchEntityPath = (item: SearchEntityItem) =>
   `${SEARCH_ENTITY_FAMILY_MAP[item.family].path}/${item.id}`
 
+export const searchEntityWorkCount = (item: SearchEntityItem) => {
+  const unit = SEARCH_ENTITY_FAMILY_MAP[item.family].countUnit
+  return unit && item.work_count ? `${item.work_count} ${unit}` : ''
+}
+
 export const isSearchEntityFamily = (
   value: unknown
 ): value is SearchEntityFamily =>

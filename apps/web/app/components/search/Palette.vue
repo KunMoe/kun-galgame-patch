@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { KunCommandGroup, KunCommandItem } from '@kungal/ui-vue'
 import { watchDebounced } from '@vueuse/core'
+import {
+  SEARCH_ENTITY_FAMILY_MAP,
+  searchEntityPath,
+  searchEntityWorkCount
+} from './items'
 
 // Mirrors the API's `max=107` on keywords: past it the request is a validation
 // error, and one per keystroke would be an error toast per keystroke.
@@ -50,7 +55,11 @@ watch(open, (isOpen) => {
 const hasHit = computed(() => {
   const hit = result.value
   return (
-    !!hit && hit.galgames.length + hit.resources.length + hit.users.length > 0
+    !!hit &&
+    (hit.galgames.length > 0 ||
+      hit.entities.some((group) => group.items.length > 0) ||
+      hit.resources.length > 0 ||
+      hit.users.length > 0)
   )
 })
 
@@ -59,11 +68,26 @@ const hasHit = computed(() => {
 const actionDescription = computed(() =>
   !pending.value && result.value && !hasHit.value
     ? '快速搜索没有匹配, 换个关键词试试'
-    : '在搜索页面查看 Galgame, 补丁资源与用户的全部结果'
+    : '在搜索页面查看 Galgame, 资料库, 补丁资源与用户的全部结果'
 )
 
 const label = (name: string, total: number) =>
   total > 0 ? `${name} · ${total}` : name
+
+const entityItem = (item: SearchEntityItem): KunCommandItem => {
+  const name = getPreferredLanguageText(item.name)
+  return {
+    value: searchEntityPath(item),
+    label: name,
+    description: [
+      getSecondaryLanguageText(item.name, name),
+      searchEntityWorkCount(item)
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    icon: SEARCH_ENTITY_FAMILY_MAP[item.family].icon
+  }
+}
 
 const groups = computed<KunCommandGroup[]>(() => {
   if (!keywords.value) {
@@ -101,7 +125,7 @@ const groups = computed<KunCommandGroup[]>(() => {
     return list
   }
 
-  const { galgames, resources, users, totals } = result.value
+  const { galgames, entities, resources, users, totals } = result.value
   if (galgames.length) {
     list.push({
       label: label('Galgame', totals.galgame),
@@ -122,6 +146,17 @@ const groups = computed<KunCommandGroup[]>(() => {
         }
       })
     })
+  }
+  for (const group of entities) {
+    if (group.items.length) {
+      list.push({
+        label: label(
+          SEARCH_ENTITY_FAMILY_MAP[group.family].textValue,
+          group.total
+        ),
+        items: group.items.map(entityItem)
+      })
+    }
   }
   if (resources.length) {
     list.push({
@@ -177,7 +212,7 @@ const handleSelect = (item: KunCommandItem) => {
     v-model:query="query"
     :items="groups"
     :loading="pending && !hasHit"
-    placeholder="搜索 Galgame, 补丁资源, 用户…"
+    placeholder="搜索 Galgame, 会社, 补丁资源, 用户…"
     empty-text="输入关键字以搜索整站"
     aria-label="站内搜索"
     @select="handleSelect"

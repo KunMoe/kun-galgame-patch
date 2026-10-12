@@ -76,8 +76,8 @@ interface SearchTotals {
 }
 
 // What GET /search/overview and GET /search/quick both answer: every lane at
-// once, plus the totals the category rail counts with. The palette asks for no
-// 资料库 rows, so entities is empty there.
+// once, plus the totals the category rail counts with. The palette asks for the
+// 会社 family alone, so entities holds at most that one group there.
 interface SearchLanes {
   galgames: GalgameCard[]
   entities: SearchEntityGroup[]

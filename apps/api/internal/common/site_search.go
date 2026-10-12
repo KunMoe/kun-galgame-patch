@@ -76,13 +76,16 @@ type searchLanes struct {
 	Totals    searchTotals               `json:"totals"`
 }
 
-// A zero entity limit skips the 资料库 lane: it is five upstream requests, which
-// the command palette cannot afford on a debounced keystroke.
+// A zero entity limit skips the 资料库 lane, and an empty entityFamily runs all
+// five families. Catalog's search face takes one object per request, so the
+// command palette names 会社 alone rather than paying five on a debounced
+// keystroke.
 type searchLaneLimits struct {
-	galgame  int
-	entity   int
-	resource int
-	user     int
+	galgame      int
+	entity       int
+	entityFamily string
+	resource     int
+	user         int
 }
 
 func searchKeywords(raw string) []string {
@@ -130,7 +133,7 @@ func (h *CommonHandler) runSearchLanes(
 	})
 	if lim.entity > 0 {
 		run("entity", func() {
-			groups, appErr := h.searchEntityLane(ctx, raw, "", 1, lim.entity, cl)
+			groups, appErr := h.searchEntityLane(ctx, raw, lim.entityFamily, 1, lim.entity, cl)
 			if appErr != nil {
 				slog.Warn("站内搜索 entity lane 失败", "error", appErr.Message)
 				return
