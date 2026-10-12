@@ -119,7 +119,7 @@
 | 端点 | 方法 | 用途 |
 |---|---|---|
 | `/shop/catalog` | GET | **公开**：在售商品，全站与各站点专区都在内；站点商品带 `site: { id, name, domain }`（`Cache-Control: public, max-age=60`）|
-| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单（兑换码订单带 `codes`），以及每件限购商品本期已买的次数 `limit_used`（键是商品 id）|
+| `/shop/me` | GET | 我的余额、拥有的物品、穿戴、最近 50 笔订单（兑换码订单带 `codes`），每件限购商品本期已买的次数 `limit_used`（键是商品 id），以及订阅了补货提醒的商品 id `restock_alerts`（§3.5）|
 | `/shop/orders` | POST | 购买 |
 | `/shop/me/loadout` | PUT | 穿戴 / 摘下 |
 
@@ -162,6 +162,8 @@
 
 `/shop/catalog` 里每件商品带 `per_user_limit`、`limit_period`（`""` 或 `"month"`）和 `remaining`：有库存的商品是库存减已售，兑换码商品是码池里可售的码，不限量时为 `null`。`remaining: 0` 即售罄。
 
+另有两个可以直接展示的数：`sold` 是这件商品累计卖出的份数（退款会减回去）；`restocked_at` 是兑换码商品最近一次往码池加码的时间，其他商品为 `null`。
+
 ### 3.4 站点店面（s2s）
 
 站点可以在自己的页面里开萌萌点商店：列出商品、替登录的用户下单、换装。站点后端用 **OAuth Client Basic Auth** 调用（同 [06 §3](./06-moemoepoint.md)），用户 id 写在路径里，和 `/users/:id/moemoepoint/charges` 一样。
@@ -175,9 +177,10 @@
 | 端点 | 方法 | 用途 |
 |---|---|---|
 | `/shop/storefront` | GET | 本站店面：`{ site: { id, name, domain }, offers: [...] }`，`offers` 的形状同 `/shop/catalog`。可以缓存一分钟 |
-| `/users/:id/shop` | GET | 该用户的余额、物品、穿戴、订单和 `limit_used`，形状同 `/shop/me`（`no-store`）。订单里有兑换码，只能展示给用户本人 |
+| `/users/:id/shop` | GET | 该用户的余额、物品、穿戴、订单、`limit_used` 和 `restock_alerts`（订阅了补货提醒的商品 id），形状同 `/shop/me`（`no-store`）。订单里有兑换码，只能展示给用户本人 |
 | `/users/:id/shop/orders` | POST | 购买，请求和响应同 §3.1 |
 | `/users/:id/shop/loadout` | PUT | 穿戴 / 摘下，同 §3.2。`site_id` 只能是 `0`（全站）或本站，否则 `403` |
+| `/users/:id/shop/restock-alerts/:offer_id` | PUT / DELETE | 订阅 / 取消补货提醒，见 §3.5。两个方法都幂等，响应 `{ offer_id, subscribed }` |
 
 接入时注意：
 
@@ -185,6 +188,17 @@
 - 商品卡用 `rewards[].item.preview` 画头像框和主页背景；功能和兑换码没有素材，按 `kind` 画图标或票券。
 - 按钮状态：已永久拥有（`items[]` 里 `active` 且没有 `expires_at`）显示「已拥有」；`remaining === 0` 显示「已售罄」；`limit_used[offer.id] >= per_user_limit` 显示「本月已买满」；余额不够显示还差多少。
 - 兑换码订单不能退款，确认框里要写明。
+
+### 3.5 补货提醒（站内信）
+
+用户可以在站点店面订阅一件**限量**商品（兑换码商品或有库存的商品）的补货提醒。商品从买不到变成能买时，订阅的人会在**订阅时所在站点**的站内信里收到一条通知。
+
+- **谁能订阅**：只能经站点店面订阅（`PUT /users/:id/shop/restock-alerts/:offer_id`），站点的 client 必须接入了社区（有社区站点），通知就投到那里；没有接入的是 `403 / 19017`。账号中心没有站内信，所以不提供订阅。
+- **能订阅什么**：本站店面在卖的、已上架的限量商品。不限量的商品是 `400 / 19009`，下架或别站专区的是 `400 / 19002`。订阅长期有效，每次补货都会提醒，直到用户取消。同一个人对同一件商品只有一条订阅，在另一个站点再订阅会把投递站点改过去。
+- **什么时候发**：只在商品从「买不到」变成「能买」的那一刻：售罄后往码池加码、调高售罄商品的库存，或者把下架的商品重新上架。还有货时再加码不会再发。
+- **发给谁**：订阅了这件商品、账号没有注销、而且本期还没买满限购的人。买满了的这次不发，下次补货再发。
+- **通知长什么样**：社区通知第 11 类（`notice`，见社区文档 §6），`notice.topic = "shop_restock"`，`notice.ref = "offer:<商品 id>"`，`notice.title` 形如「你订阅的「DLsite 1000 円优惠券」补货了」，`notice.url = "https://<订阅站点的域名>/shop"`。同一件商品没读的补货通知会合并成一条。站点按自己镜像社区通知的方式接入这一类，标题直接显示，点击打开 `url`。
+- 管理台的码池（`GET /admin/shop/codes`）带 `waiting`：订阅了这件物品所在商品的人数。
 
 ## 4. 管理端点（`/admin/shop/*`）
 
@@ -198,7 +212,7 @@
 | `POST /admin/shop/items/:id/{submit,reject,publish,retire,relist}` | manage（除 `submit` 外还需 publish）| 状态：草稿 → 待审 → 已发布 → 已下架 |
 | `GET/POST /admin/shop/offers`、`PUT /admin/shop/offers/:id` | manage | 商品；价格 ≥ `shop.min_price` |
 | `POST /admin/shop/offers/:id/{activate,retire}` | manage + publish | 上架前所有物品都必须已发布 |
-| `GET /admin/shop/codes?item_id=` | manage | 兑换码物品的码池：`total`、`sellable`、`sold`、`shelf_days` 和每个码 |
+| `GET /admin/shop/codes?item_id=` | manage | 兑换码物品的码池：`total`、`sellable`、`sold`、`shelf_days`、`waiting`（在等补货的人数）和每个码 |
 | `POST /admin/shop/codes` | manage | `{ item_id, codes: [...], expires_on }` 添加（一次 ≤ 1000 个，`expires_on` 为 `YYYY-MM-DD` 或 `null`），已存在的码跳过并在 `duplicates` 里返回 |
 | `DELETE /admin/shop/codes/:id` | manage | 删除一个还没卖出的码 |
 | `GET /admin/shop/users/:uuid` | grant | 该用户的拥有记录（含已失效）、穿戴、订单 |
@@ -226,7 +240,7 @@
 | 19014 | `ErrShopIdemConflict` | 幂等键已用于另一件商品 |
 | 19015 | `ErrShopPriceBelowMinimum` | 价格低于 `shop.min_price` |
 | 19016 | `ErrShopPerkRequired` | 写主页介绍但没有「主页介绍」权益（`PATCH /auth/me`）|
-| 19017 | `ErrShopNotStorefront` | 调用店面端点的 client 不在萌萌点写入白名单里，或不属于任何站点（403）|
+| 19017 | `ErrShopNotStorefront` | 调用店面端点的 client 不在萌萌点写入白名单里，或不属于任何站点；订阅补货提醒时还要求接入了社区（403）|
 
 余额不足沿用账本的 `400 / 16006`。
 
