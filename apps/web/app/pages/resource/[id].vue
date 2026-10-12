@@ -194,20 +194,30 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
         class="bg-content1 shadow-kun-sm mb-6 overflow-hidden rounded-3xl"
       >
         <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
-          <NuxtLink
+          <div
             v-if="detail.patch"
-            :to="`/galgame/${detail.patch.id}`"
-            class="group shrink-0"
+            class="mx-auto w-40 shrink-0 sm:mx-0 sm:w-44 lg:w-52"
           >
-            <KunImage
-              :src="resolveBannerUrl(detail.patch) || '/kungalgame-trans.webp'"
-              :alt="patchName"
-              :aspect-ratio="resolveBannerAspectRatio(detail.patch)"
-              :thumbhash="resolveBannerThumbhash(detail.patch)"
-              class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg sm:w-72"
-              image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
-            />
-          </NuxtLink>
+            <KunNsfwMask
+              :nsfw="detail.patch.content_limit !== 'sfw'"
+              rounded="rounded-2xl"
+              label="封面含成人向内容"
+            >
+              <NuxtLink :to="`/galgame/${detail.patch.id}`" class="group block">
+                <KunImage
+                  :src="
+                    resolveCoverUrl(detail.patch) || '/kungalgame-trans.webp'
+                  "
+                  :alt="patchName"
+                  aspect-ratio="3/4"
+                  object-fit="cover"
+                  :thumbhash="resolveCoverThumbhash(detail.patch)"
+                  class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg"
+                  image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </NuxtLink>
+            </KunNsfwMask>
+          </div>
 
           <div class="flex min-w-0 flex-1 flex-col gap-3">
             <p
