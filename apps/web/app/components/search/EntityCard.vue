@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { SEARCH_ENTITY_FAMILY_MAP, searchEntityPath } from './items'
+import {
+  SEARCH_ENTITY_FAMILY_MAP,
+  searchEntityPath,
+  searchEntityWorkCount
+} from './items'
 import { imageServiceUrl } from '~/shared/utils/resolveBannerUrl'
 
 const props = defineProps<{
@@ -20,11 +24,7 @@ const src = computed(() => imageServiceUrl(props.item.image_hash ?? ''))
 // — centring it on a 220x320 bust cuts the face off. A logo is drawn whole.
 const isPortrait = computed(() => props.item.family === 'character')
 
-const workCount = computed(() =>
-  meta.value.countUnit && props.item.work_count
-    ? `${props.item.work_count} ${meta.value.countUnit}`
-    : ''
-)
+const workCount = computed(() => searchEntityWorkCount(props.item))
 </script>
 
 <template>

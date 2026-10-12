@@ -1,12 +1,19 @@
 package common
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
 	"kun-galgame-patch-api/pkg/userclient"
 
 	"github.com/gofiber/fiber/v3"
@@ -125,5 +132,94 @@ func TestSearchKeywordsSplitsOnTheSpaceChineseKeyboardsType(t *testing.T) {
 	got := searchKeywords("　汉化　补丁　")
 	if len(got) != 2 || got[0] != "汉化" || got[1] != "补丁" {
 		t.Fatalf("searchKeywords = %q, want [汉化 补丁]", got)
+	}
+}
+
+type paletteCatalog struct {
+	mu          sync.Mutex
+	searches    []url.Values
+	companyDown bool
+}
+
+func (f *paletteCatalog) server(t *testing.T) *httptest.Server {
+	t.Helper()
+	company, err := os.ReadFile("../galgame/client/testdata/catalog_company_detail_prod.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v2/catalog/search":
+			f.mu.Lock()
+			f.searches = append(f.searches, r.URL.Query())
+			f.mu.Unlock()
+			if f.companyDown {
+				catalogv2test.Problem(w, r, "SERVICE_UNAVAILABLE", "", nil)
+				return
+			}
+			_, _ = w.Write([]byte(`{"object":"list","items":[{"object":"search_result","target_object":"company","id":"1",` +
+				`"display_name":"ブロッコリー","latin":null,"localized":{"ja":{"value":"株式会社ブロッコリー","is_machine":false}},` +
+				`"sources":["vndb"],"content_rating":null,"tier":null,"tag_kind":null,"is_sexual":null,"trait_path":null}],"total":1}`))
+		case "/v2/catalog/companies":
+			_, _ = w.Write([]byte(`{"object":"list","items":[` + string(company) + `],"missing":[]}`))
+		case "/v2/catalog/works":
+			_, _ = w.Write([]byte(`{"object":"list","items":[],"total":3}`))
+		default:
+			_, _ = w.Write([]byte(`{"object":"list","items":[],"total":0}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func paletteSearch(t *testing.T, cat *paletteCatalog) searchLanes {
+	t.Helper()
+	db, _ := recordingDB(t)
+	h := NewHandler(db, galgameClient.NewWithKey(cat.server(t).URL, "nm_test_key"), nil, nil, nil, noComments{})
+	app := fiber.New()
+	app.Get("/search/quick", h.SiteSearchQuick)
+
+	status, body := get(t, app, "/search/quick?keywords=broccoli")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, body)
+	}
+	var res struct {
+		Data searchLanes `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &res); err != nil {
+		t.Fatal(err)
+	}
+	return res.Data
+}
+
+func TestThePaletteFindsACompanyInOneCatalogSearch(t *testing.T) {
+	cat := &paletteCatalog{}
+	lanes := paletteSearch(t, cat)
+
+	if len(cat.searches) != 1 || cat.searches[0].Get("object") != "company" ||
+		cat.searches[0].Get("limit") != strconv.Itoa(searchQuickLimit) {
+		t.Fatalf("catalog searches = %v, want one company search of %d", cat.searches, searchQuickLimit)
+	}
+	if len(lanes.Entities) != 1 || lanes.Entities[0].Family != galgameClient.EntityFamilyCompany {
+		t.Fatalf("entities = %+v, want the company group alone", lanes.Entities)
+	}
+	group := lanes.Entities[0]
+	if group.Total != 1 || lanes.Totals.Entity != 1 || len(group.Items) != 1 {
+		t.Fatalf("company group = %+v, totals = %+v", group, lanes.Totals)
+	}
+	if item := group.Items[0]; item.ID != 1 || item.WorkCount != 9 || item.ImageHash == "" {
+		t.Errorf("company = %+v, want id 1 with its logo and 9 works", item)
+	}
+}
+
+func TestAFailedCompanySearchLeavesTheOtherPaletteLanes(t *testing.T) {
+	lanes := paletteSearch(t, &paletteCatalog{companyDown: true})
+
+	if len(lanes.Entities) != 0 {
+		t.Errorf("entities = %+v, want none", lanes.Entities)
+	}
+	if lanes.Totals.Galgame != 3 {
+		t.Errorf("galgame total = %d, want the 3 catalog answered", lanes.Totals.Galgame)
 	}
 }

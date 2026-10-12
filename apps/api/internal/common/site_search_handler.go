@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
@@ -196,9 +197,11 @@ func (h *CommonHandler) SiteSearchQuick(c fiber.Ctx) error {
 	return response.OK(c, h.runSearchLanes(
 		c.Context(), req.Keywords, utils.ContentLimitForListBrowse(c),
 		searchLaneLimits{
-			galgame:  searchQuickLimit,
-			resource: searchQuickLimit,
-			user:     searchQuickLimit,
+			galgame:      searchQuickLimit,
+			entity:       searchQuickLimit,
+			entityFamily: galgameClient.EntityFamilyCompany,
+			resource:     searchQuickLimit,
+			user:         searchQuickLimit,
 		}, exclude,
 	))
 }
