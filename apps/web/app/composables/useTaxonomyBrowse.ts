@@ -32,6 +32,10 @@ export interface BrowseTag {
   kind: 'content' | 'meta' | string
   description: string
   galgame_count: number
+  descendant_count: number
+  parents: TagRef[]
+  ancestors: TagTreeNode[]
+  subtags: TagSubtag[]
 }
 
 export interface BrowseOfficial {

@@ -47,11 +47,13 @@ func IsEntityFamily(family string) bool {
 // EntitySearchItem is one 资料库 card. Name travels on all four slots for the
 // same reason a work title does — the reader's 标题语言 picks in the browser.
 type EntitySearchItem struct {
-	ID        int         `json:"id"`
-	Family    string      `json:"family"`
-	Name      KunLanguage `json:"name"`
-	ImageHash string      `json:"image_hash,omitempty"`
-	WorkCount int         `json:"work_count"`
+	ID              int         `json:"id"`
+	Family          string      `json:"family"`
+	Name            KunLanguage `json:"name"`
+	ImageHash       string      `json:"image_hash,omitempty"`
+	WorkCount       int         `json:"work_count"`
+	DescendantCount int         `json:"descendant_count,omitempty"`
+	IsSexual        bool        `json:"is_sexual,omitempty"`
 }
 
 // Tags are the one family whose rows this site drops after catalog has counted
@@ -137,9 +139,10 @@ func (c *Client) attachEntityFacts(
 	}
 
 	type fact struct {
-		imageHash string
-		workCount int
-		sexual    bool
+		imageHash   string
+		workCount   int
+		descendants int
+		sexual      bool
 	}
 	facts := make(map[int]fact, len(ids))
 	var err error
@@ -166,7 +169,7 @@ func (c *Client) attachEntityFacts(
 		if rows, err = c.v2.TagsByIDs(ctx, ids, true); err == nil {
 			for _, r := range rows {
 				id, _ := r.IntID()
-				facts[int(id)] = fact{workCount: r.WorkCount, sexual: r.IsSexual}
+				facts[int(id)] = fact{workCount: r.WorkCount, descendants: r.DescendantCount, sexual: r.IsSexual}
 			}
 		}
 	case EntityFamilySeries:
@@ -200,6 +203,7 @@ func (c *Client) attachEntityFacts(
 			continue
 		}
 		item.ImageHash, item.WorkCount = f.imageHash, f.workCount
+		item.DescendantCount, item.IsSexual = f.descendants, f.sexual
 		out = append(out, item)
 	}
 	return out
@@ -247,6 +251,7 @@ func (c *Client) ResolveEntities(ctx context.Context, family string, ids []int) 
 			id, _ := r.IntID()
 			items = append(items, EntitySearchItem{
 				ID: int(id), Family: family, WorkCount: r.WorkCount,
+				DescendantCount: r.DescendantCount, IsSexual: r.IsSexual,
 				Name: catalogEntityNames(localizedFrom(r.Localized), r.DisplayName, "zh-Hans", ""),
 			})
 		}

@@ -61,15 +61,19 @@ func atoiDefault(s string, def int) int {
 }
 
 type catalogTagBrief struct {
-	ID           int64    `json:"id"`
-	Name         string   `json:"name"`
-	Aliases      []string `json:"aliases"`
-	Category     string   `json:"category"`
-	Sexual       bool     `json:"sexual"`
-	Description  string   `json:"description"`
-	GalgameCount int      `json:"galgame_count"`
-	Tier         string   `json:"tier"`
-	Kind         string   `json:"kind"`
+	ID              int64       `json:"id"`
+	Name            string      `json:"name"`
+	Aliases         []string    `json:"aliases"`
+	Category        string      `json:"category"`
+	Sexual          bool        `json:"sexual"`
+	Description     string      `json:"description"`
+	GalgameCount    int         `json:"galgame_count"`
+	Tier            string      `json:"tier"`
+	Kind            string      `json:"kind"`
+	DescendantCount int         `json:"descendant_count"`
+	Parents         []TagRef    `json:"parents"`
+	Ancestors       []TagNode   `json:"ancestors"`
+	Subtags         []TagSubtag `json:"subtags"`
 }
 
 type catalogSeriesBrief struct {
@@ -170,17 +174,22 @@ func (c *Client) catalogTagDetail(ctx context.Context, idStr string, q url.Value
 		return nil, err
 	}
 	tid, _ := rec.IntID()
+	hideSexual := gate.contentLimit == "sfw"
 	return json.Marshal(map[string]any{
 		"tag": catalogTagBrief{
-			ID:           tid,
-			Name:         rec.DisplayName,
-			Aliases:      []string{},
-			Category:     tagCategoryFor(rec.IsSexual),
-			Sexual:       rec.IsSexual,
-			Description:  preferredIntro(introRowsFrom(rec.Intros)),
-			GalgameCount: int(total),
-			Tier:         rec.Tier,
-			Kind:         rec.TagKind,
+			ID:              tid,
+			Name:            rec.DisplayName,
+			Aliases:         []string{},
+			Category:        tagCategoryFor(rec.IsSexual),
+			Sexual:          rec.IsSexual,
+			Description:     preferredIntro(introRowsFrom(rec.Intros)),
+			GalgameCount:    int(total),
+			Tier:            rec.Tier,
+			Kind:            rec.TagKind,
+			DescendantCount: rec.DescendantCount,
+			Parents:         tagRefs(rec.Parents, hideSexual),
+			Ancestors:       tagNodes(rec.Ancestors),
+			Subtags:         c.subtags(ctx, rec.Children, hideSexual),
 		},
 		"galgames": members,
 		"total":    total,

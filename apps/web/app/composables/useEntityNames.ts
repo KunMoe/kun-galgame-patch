@@ -46,5 +46,5 @@ export const useEntityNames = () => {
     )
   }
 
-  return { remember, labelOf, itemsOf, resolve }
+  return { remember, itemOf, labelOf, itemsOf, resolve }
 }

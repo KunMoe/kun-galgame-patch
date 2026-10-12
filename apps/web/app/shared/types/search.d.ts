@@ -1,12 +1,6 @@
 // Matches apps/api/internal/common/site_search.go.
 
-type SearchType =
-  | 'all'
-  | 'galgame'
-  | 'entity'
-  | 'resource'
-  | 'user'
-  | 'comment'
+type SearchType = 'all' | 'galgame' | 'entity' | 'resource' | 'user' | 'comment'
 
 // 全部 pages nothing, 资料库 pages one family at a time through its own endpoint,
 // and 评论 is keyset — it answers a cursor and no total, so it cannot ride the
@@ -14,12 +8,7 @@ type SearchType =
 type SearchPagedType = Exclude<SearchType, 'all' | 'entity' | 'comment'>
 
 // No engine: catalog indexes one, moyu has no /galgame/engine/:id to open.
-type SearchEntityFamily =
-  | 'character'
-  | 'company'
-  | 'staff'
-  | 'tag'
-  | 'series'
+type SearchEntityFamily = 'character' | 'company' | 'staff' | 'tag' | 'series'
 
 // The 补丁资源 lane's match width. 'model' narrows it to the AI model the
 // uploader recorded — the wide lane matches that field too, but alongside the
@@ -56,6 +45,8 @@ interface SearchEntityItem {
   // A staff row never carries one — catalog holds no credit-name photos.
   image_hash?: string
   work_count: number
+  descendant_count?: number
+  is_sexual?: boolean
 }
 
 interface SearchEntityGroup {
