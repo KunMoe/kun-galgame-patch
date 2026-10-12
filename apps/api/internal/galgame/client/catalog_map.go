@@ -135,11 +135,29 @@ func dlsiteWorknoOf(refs []catalogRef) string {
 	return storeclient.PickProductID(ids)
 }
 
+// The refs block carries no link kind because catalog sends exact anchors only:
+// a related link such as work 3993's 批评空间 4774 never reaches it.
+func numericRefOf(refs []catalogRef, source string) *int {
+	for _, r := range refs {
+		if r.Source != source || !isDigits(r.ExternalID) {
+			continue
+		}
+		if id, err := strconv.Atoi(r.ExternalID); err == nil && id > 0 {
+			return &id
+		}
+	}
+	return nil
+}
+
 func isVndbWorkID(s string) bool {
-	if len(s) < 2 || s[0] != 'v' {
+	return len(s) >= 2 && s[0] == 'v' && isDigits(s[1:])
+}
+
+func isDigits(s string) bool {
+	if s == "" {
 		return false
 	}
-	for i := 1; i < len(s); i++ {
+	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
@@ -226,6 +244,8 @@ func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 		ID:                       it.publicGID(),
 		ForumGID:                 it.ClaimedBy.forumGID(),
 		VndbID:                   vndbIDOf(it.Refs),
+		BangumiID:                numericRefOf(it.Refs, "bangumi"),
+		ErogamescapeID:           numericRefOf(it.Refs, "erogamescape"),
 		DlsiteWorkno:             dlsiteWorknoOf(it.Refs),
 		ClaimState:               claimStateOf(it.ClaimedBy),
 		NameJaJp:                 names.JaJp,
@@ -389,6 +409,8 @@ func catalogWorkToFull(w *catalogWork, revealSexual bool) GalgameFull {
 		ID:                    w.publicGID(),
 		ForumGID:              w.ClaimedBy.forumGID(),
 		VndbID:                vndbIDOf(w.Refs),
+		BangumiID:             numericRefOf(w.Refs, "bangumi"),
+		ErogamescapeID:        numericRefOf(w.Refs, "erogamescape"),
 		ClaimState:            claimStateOf(w.ClaimedBy),
 		NameJaJp:              names.JaJp,
 		NameZhCn:              names.ZhCn,

@@ -162,7 +162,9 @@ export const KUN_EXTERNAL_RATING_MAP: Record<string, ExternalRatingMeta> = {
     // is stricter here than the other sources' 名作 lines: the famous "80点 =
     // 上位34%" figure describes single VOTES, and per-work medians are far more
     // concentrated — only ~8.5% of works clear 80.
-    tier: { cutoffs: [60, 70, 80, 85], minVotes: 10 }
+    tier: { cutoffs: [60, 70, 80, 85], minVotes: 10 },
+    link: (ref) =>
+      `https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/game.php?game=${ref}`
   },
   dlsite: {
     label: 'DLsite',

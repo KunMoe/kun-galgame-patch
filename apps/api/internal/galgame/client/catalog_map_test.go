@@ -58,3 +58,63 @@ func TestVndbIDOfPicksTheWorkAnchor(t *testing.T) {
 		})
 	}
 }
+
+func TestNumericRefOfReadsTheFirstNumericAnchor(t *testing.T) {
+	work1781 := []catalogRef{
+		{Source: "vndb", ExternalID: "v8437"},
+		{Source: "bangumi", ExternalID: "26450"},
+		{Source: "erogamescape", ExternalID: "16280"},
+	}
+	cases := []struct {
+		name   string
+		refs   []catalogRef
+		source string
+		want   int
+	}{
+		{name: "bangumi subject", refs: work1781, source: "bangumi", want: 26450},
+		{name: "erogamescape game", refs: work1781, source: "erogamescape", want: 16280},
+		{
+			name: "a later row of the same source does not displace the first",
+			refs: []catalogRef{
+				{Source: "erogamescape", ExternalID: "16280"},
+				{Source: "erogamescape", ExternalID: "12345"},
+			},
+			source: "erogamescape",
+			want:   16280,
+		},
+		{
+			name: "non-numeric ids are skipped",
+			refs: []catalogRef{
+				{Source: "bangumi", ExternalID: ""},
+				{Source: "bangumi", ExternalID: "s26450"},
+				{Source: "bangumi", ExternalID: "+26450"},
+				{Source: "bangumi", ExternalID: "-1"},
+				{Source: "bangumi", ExternalID: "0"},
+				{Source: "bangumi", ExternalID: "99999999999999999999"},
+				{Source: "bangumi", ExternalID: "26450"},
+			},
+			source: "bangumi",
+			want:   26450,
+		},
+		{
+			name: "another source's id is never borrowed",
+			refs: []catalogRef{
+				{Source: "vndb", ExternalID: "v8437"},
+				{Source: "erogamescape", ExternalID: "16280"},
+			},
+			source: "bangumi",
+		},
+		{name: "no refs at all", source: "erogamescape"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := numericRefOf(tc.refs, tc.source)
+			switch {
+			case tc.want == 0 && got != nil:
+				t.Errorf("numericRefOf = %d, want nil", *got)
+			case tc.want != 0 && (got == nil || *got != tc.want):
+				t.Errorf("numericRefOf = %v, want %d", got, tc.want)
+			}
+		})
+	}
+}

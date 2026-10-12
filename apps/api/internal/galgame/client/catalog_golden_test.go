@@ -76,6 +76,21 @@ func TestProdWorkDetailDecodes(t *testing.T) {
 		}
 	})
 
+	t.Run("external ids come off refs", func(t *testing.T) {
+		brief := catalogItemToBrief(ptr(workToListItem(w)))
+		for face, ids := range map[string][2]*int{
+			"detail": {full.BangumiID, full.ErogamescapeID},
+			"brief":  {brief.BangumiID, brief.ErogamescapeID},
+		} {
+			if ids[0] == nil || *ids[0] != 78544 {
+				t.Errorf("%s bangumi_id = %v, want 78544", face, ids[0])
+			}
+			if ids[1] != nil {
+				t.Errorf("%s erogamescape_id = %d, want nil: work 3 has no 批评空间 ref", face, *ids[1])
+			}
+		}
+	})
+
 	t.Run("ratings", func(t *testing.T) {
 		if len(full.Ratings) != 2 {
 			t.Fatalf("ratings = %+v, want vndb and bangumi", full.Ratings)

@@ -43,6 +43,8 @@ type GalgameBrief struct {
 	ID                         int               `json:"id"`
 	ForumGID                   int               `json:"forum_gid,omitempty"`
 	VndbID                     string            `json:"vndb_id"`
+	BangumiID                  *int              `json:"bangumi_id,omitempty"`
+	ErogamescapeID             *int              `json:"erogamescape_id,omitempty"`
 	ClaimState                 string            `json:"claim_state"`
 	NameEnUs                   string            `json:"name_en_us"`
 	NameZhCn                   string            `json:"name_zh_cn"`
@@ -312,6 +314,8 @@ type GalgameFull struct {
 	ID                    int      `json:"id"`
 	ForumGID              int      `json:"forum_gid,omitempty"`
 	VndbID                string   `json:"vndb_id"`
+	BangumiID             *int     `json:"bangumi_id,omitempty"`
+	ErogamescapeID        *int     `json:"erogamescape_id,omitempty"`
 	ClaimState            string   `json:"claim_state"`
 	NameEnUs              string   `json:"name_en_us"`
 	NameZhCn              string   `json:"name_zh_cn"`

@@ -201,6 +201,23 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
             </a>
           </span>
         </div>
+        <div
+          v-if="detail.erogamescape_id"
+          class="flex items-center gap-2 text-sm"
+        >
+          <KunIcon name="lucide:chart-column-big" class="size-4" />
+          <span>
+            批评空间 ID:
+            <a
+              :href="`https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/game.php?game=${detail.erogamescape_id}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:underline"
+            >
+              {{ detail.erogamescape_id }}
+            </a>
+          </span>
+        </div>
       </div>
     </section>
 
@@ -208,6 +225,7 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
       :ratings="detail.ratings ?? []"
       :vndb-id="detail.vndb_id"
       :bangumi-id="detail.bangumi_id"
+      :erogamescape-id="detail.erogamescape_id"
     />
 
     <section v-if="detail.tags?.length" class="space-y-4">
