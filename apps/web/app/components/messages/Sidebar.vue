@@ -1,20 +1,29 @@
 <script setup lang="ts">
 const props = defineProps<{ openId: string | null }>()
 
+const route = useRoute()
 const chat = useChatStore()
 const folder = ref<ChatFolder>('inbox')
+const requestCount = computed(() => chat.state?.request_count ?? 0)
 
 const tabs = computed(() => [
   { value: 'inbox', textValue: '全部' },
   {
     value: 'requests',
-    textValue: chat.state?.request_count
-      ? `消息请求 ${chat.state.request_count}`
+    textValue: requestCount.value
+      ? `消息请求 ${requestCount.value}`
       : '消息请求'
   },
   { value: 'archive', textValue: '已归档' }
 ])
 
+watch(
+  () => route.query.folder,
+  (f) => {
+    if (isChatFolder(f)) folder.value = f
+  },
+  { immediate: true }
+)
 watch(folder, (f) => void chat.loadFolder(f), { immediate: true })
 
 const openFolder = computed(() => {
@@ -30,6 +39,13 @@ watch(
 )
 
 const items = computed(() => chat.list(folder.value))
+const emptyText = computed(() => {
+  if (folder.value === 'requests') return '没有待处理的消息请求'
+  if (folder.value === 'archive') return '没有归档的对话'
+  return requestCount.value
+    ? '陌生人发来的第一条私信会先放进「消息请求」'
+    : '还没有私信，去用户主页打个招呼吧'
+})
 const users = computed(() => chat.users)
 
 const peer = (c: ChatConversation) =>
@@ -92,16 +108,21 @@ const statusOf = (c: ChatConversation) => {
         :selected="c.id === props.openId"
       />
 
-      <KunNull
+      <div
         v-if="!items.length && chat.folders[folder].loaded"
-        :description="
-          folder === 'requests'
-            ? '没有待处理的消息请求'
-            : folder === 'archive'
-              ? '没有归档的对话'
-              : '还没有私信，去用户主页打个招呼吧'
-        "
-      />
+        class="flex flex-col items-center gap-3 pb-6"
+      >
+        <KunNull :description="emptyText" />
+        <KunButton
+          v-if="folder === 'inbox' && requestCount"
+          color="primary"
+          variant="flat"
+          size="sm"
+          @click="folder = 'requests'"
+        >
+          你有 {{ requestCount }} 条消息请求
+        </KunButton>
+      </div>
 
       <KunButton
         v-if="chat.folders[folder].next"

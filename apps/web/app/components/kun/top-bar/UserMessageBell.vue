@@ -3,6 +3,13 @@ const userStore = useUserStore()
 const messageStore = useMessageStore()
 const chat = useChatStore()
 
+const CHAT_TOOLTIP: Record<ChatNotice, string> = {
+  none: '我的消息',
+  unread: '您有新私信',
+  requests: '您有新的消息请求',
+  scope: '重新登录一次即可收到私信'
+}
+
 const hasNotice = computed(() =>
   messageStore.unreadTypes.some(
     (type) => !userStore.user.muted_message_types?.includes(type)
@@ -11,12 +18,11 @@ const hasNotice = computed(() =>
 const hasUnread = computed(() => hasNotice.value || chat.hasUnread)
 
 const href = computed(() =>
-  chat.hasUnread && !hasNotice.value ? '/messages' : '/message/notice'
+  chat.hasUnread && !hasNotice.value ? chat.href : '/message/notice'
 )
-const tooltip = computed(() => {
-  if (hasNotice.value) return '您有新消息!'
-  return chat.hasUnread ? '您有新私信' : '我的消息'
-})
+const tooltip = computed(() =>
+  hasNotice.value ? '您有新消息!' : CHAT_TOOLTIP[chat.notice]
+)
 </script>
 
 <template>

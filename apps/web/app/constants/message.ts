@@ -1,5 +1,4 @@
 export const MESSAGE_TYPE = [
-  'apply',
   'pm',
   'likeResource',
   'likeComment',
@@ -9,7 +8,6 @@ export const MESSAGE_TYPE = [
   'commentWatch',
   'follow',
   'followActivity',
-  'pr',
   'mention',
   'patchResourceCreate',
   'patchResourceUpdate',
@@ -19,7 +17,7 @@ export const MESSAGE_TYPE = [
 
 export const MESSAGE_TYPE_MAP: Record<string, string> = {
   apply: '申请',
-  pm: '私聊',
+  pm: '私信',
   // Each like/favorite interaction is its own type so the message center can tell
   // them apart (resource like vs comment like vs resource favorite vs patch
   // favorite). `like` is a legacy mixed type (resource + comment likes) kept only

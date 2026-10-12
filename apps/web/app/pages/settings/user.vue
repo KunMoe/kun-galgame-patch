@@ -107,7 +107,9 @@ const oauthProfileUrl = computed(() => {
   return `${oauthWebUrl}/profile?return=${encodeURIComponent(window.location.href)}`
 })
 
-const visibleTypes = MESSAGE_TYPE.filter((t) => t) as string[]
+const visibleTypes = MESSAGE_TYPE.filter(
+  (t) => t && (t !== 'pm' || config.public.chatEnabled)
+) as string[]
 const isEnabled = (type: string) =>
   !(userStore.user.muted_message_types ?? []).includes(type)
 const toggleType = (type: string) => {
@@ -261,7 +263,7 @@ const currentAvatarUrl = computed(() => {
         </template>
         <div class="space-y-4 text-sm">
           <p class="text-default-600">
-            选择您想要接收通知的消息类型。如果下面的选项无法点击，请尝试清除网站数据。
+            选择您想要接收通知的消息类型。关闭后，该类消息不会再点亮顶栏的铃铛，但仍然可以在消息中心查看。如果下面的选项无法点击，请尝试清除网站数据。
           </p>
           <div class="grid grid-cols-2 gap-3">
             <KunCheckBox
@@ -275,7 +277,7 @@ const currentAvatarUrl = computed(() => {
             />
           </div>
           <p class="text-default-500 text-xs">
-            消息通知设置保存在浏览器本地，不会同步到服务器，更换设备需要重新设置。
+            消息通知设置会同步到您的 NextMoe 账号，在其他设备登录后同样生效。
           </p>
         </div>
       </KunCard>

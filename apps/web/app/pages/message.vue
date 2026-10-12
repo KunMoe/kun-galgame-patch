@@ -6,11 +6,11 @@ const route = useRoute()
 const chatEnabled = useRuntimeConfig().public.chatEnabled
 const chat = useChatStore()
 
-const navItems = [
+const navItems = computed(() => [
   { key: 'notice', title: '通知消息', href: '/message/notice', icon: 'lucide:bell' },
   ...(chatEnabled
     ? [
-        { key: 'messages', title: '私信', href: '/messages', icon: 'lucide:mail' },
+        { key: 'messages', title: '私信', href: chat.href, icon: 'lucide:mail' },
         { key: 'chat', title: '群聊', href: '/message/chat', icon: 'lucide:users' }
       ]
     : [{ key: 'chat', title: '私聊', href: '/message/chat', icon: 'lucide:mail' }]),
@@ -35,7 +35,7 @@ const navItems = [
     icon: 'lucide:refresh-cw'
   },
   { key: 'system', title: '系统消息', href: '/message/system', icon: 'lucide:monitor-cog' }
-]
+])
 
 const currentKey = computed(
   () => route.path.split('/').filter(Boolean)[1] ?? ''

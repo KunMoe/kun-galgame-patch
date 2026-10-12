@@ -17,6 +17,7 @@ const COUNTED: ReadonlySet<ChatUpdateKind> = new Set([
 
 export const useChatStore = defineStore('chat', () => {
   const api = useApi()
+  const userStore = useUserStore()
   const model = reactive<ChatModel>({
     me: '',
     conversations: {},
@@ -24,7 +25,7 @@ export const useChatStore = defineStore('chat', () => {
     users: {}
   })
   const state = ref<ChatState | null>(null)
-  const status = ref<'idle' | 'ready' | 'scope' | 'down'>('idle')
+  const status = ref<ChatStatus>('idle')
   const folders = reactive<
     Record<ChatFolder, { next?: string; loaded: boolean; loading: boolean }>
   >({
@@ -43,12 +44,15 @@ export const useChatStore = defineStore('chat', () => {
   let stateTimer: ReturnType<typeof setTimeout> | null = null
 
   const users = computed(() => Object.values(model.users))
-  const hasUnread = computed(
-    () =>
-      !!state.value &&
-      (state.value.unread_conversation_count > 0 ||
-        state.value.request_count > 0)
+  const notice = computed(() =>
+    chatNoticeOf(
+      status.value,
+      state.value,
+      !!userStore.user.muted_message_types?.includes('pm')
+    )
   )
+  const hasUnread = computed(() => notice.value !== 'none')
+  const href = computed(() => chatNoticeHref(notice.value))
 
   const list = (folder: ChatFolder) =>
     Object.values(model.conversations)
@@ -320,7 +324,9 @@ export const useChatStore = defineStore('chat', () => {
     refetch,
     putConversation,
     state,
+    notice,
     hasUnread,
+    href,
     status,
     folders,
     reactions,
