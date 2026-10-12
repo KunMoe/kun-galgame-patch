@@ -48,9 +48,11 @@ GROUP 房间在用（`link=kun` 这类，群组阶段 W6 再迁），PRIVATE 部
 - `/messages/[[id]]`：`definePageMeta({ key: 'messages' })`，切会话不重挂整页；
   依赖 chat 状态的部分都在 `<ClientOnly>` 里。`?peer=<uid>` 打开与该用户的会话，
   老会话重新登录后经 `returnTo` 回到这里接着开。
-- 入口：顶栏信封（`sm` 以上，未读 = `unread_conversation_count > 0 || request_count > 0`），
-  手机上在汉堡菜单里并在汉堡按钮上打点；用户主页「发消息」= `PUT /im/direct/{uid}`；
-  消息中心「私信」标签。
+- 入口：顶栏铃铛和消息中心「私信」标签共用 `chatStore.notice` 一个红点：有未读对话、
+  有消息请求、或会话缺 chat scope（40313）时点亮；设置里关掉「私信」（沿用旧的 `pm`
+  键，已存的偏好照旧生效）则都不点。只剩消息请求时落到 `/messages?folder=requests`，
+  其余落到 `/messages`，缺 scope 的老会话在那里看到「重新登录」。用户主页「发消息」=
+  `PUT /im/direct/{uid}`。
 - 多图发送同一个 `media_group_id`，对方按相册显示。
 
 ## 3. 开关与上线顺序

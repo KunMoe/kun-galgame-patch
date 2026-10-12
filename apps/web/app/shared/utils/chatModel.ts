@@ -32,6 +32,28 @@ export const chatMuted = (c: ChatConversation, now = Date.now()): boolean =>
 export const chatFolderOf = (c: ChatConversation): ChatFolder =>
   !c.me.accepted ? 'requests' : c.me.archived ? 'archive' : 'inbox'
 
+export const isChatFolder = (v: unknown): v is ChatFolder =>
+  v === 'inbox' || v === 'archive' || v === 'requests'
+
+export type ChatStatus = 'idle' | 'ready' | 'scope' | 'down'
+
+export type ChatNotice = 'none' | 'unread' | 'requests' | 'scope'
+
+export const chatNoticeOf = (
+  status: ChatStatus,
+  state: ChatState | null,
+  muted: boolean
+): ChatNotice => {
+  if (muted) return 'none'
+  if (status === 'scope') return 'scope'
+  if (!state) return 'none'
+  if (state.unread_conversation_count > 0) return 'unread'
+  return state.request_count > 0 ? 'requests' : 'none'
+}
+
+export const chatNoticeHref = (notice: ChatNotice): string =>
+  notice === 'requests' ? '/messages?folder=requests' : '/messages'
+
 export const compareChatConversations = (
   a: ChatConversation,
   b: ChatConversation
