@@ -197,14 +197,15 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
           <NuxtLink
             v-if="detail.patch"
             :to="`/galgame/${detail.patch.id}`"
-            class="group shrink-0"
+            class="group mx-auto w-40 shrink-0 sm:mx-0 sm:w-44 lg:w-52"
           >
             <KunImage
-              :src="resolveBannerUrl(detail.patch) || '/kungalgame-trans.webp'"
+              :src="resolveCoverUrl(detail.patch) || '/kungalgame-trans.webp'"
               :alt="patchName"
-              :aspect-ratio="resolveBannerAspectRatio(detail.patch)"
-              :thumbhash="resolveBannerThumbhash(detail.patch)"
-              class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg sm:w-72"
+              aspect-ratio="3/4"
+              object-fit="cover"
+              :thumbhash="resolveCoverThumbhash(detail.patch)"
+              class-name="border-default/20 bg-default-100 w-full overflow-hidden rounded-2xl border shadow-lg"
               image-class-name="transition-transform duration-300 group-hover:scale-[1.02]"
             />
           </NuxtLink>

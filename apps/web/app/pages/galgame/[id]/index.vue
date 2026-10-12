@@ -98,21 +98,11 @@ const displayName = computed(() =>
   patch.value ? getPreferredLanguageText(patch.value.name) : ''
 )
 
-// The header box is 3/4 and crops, so it wants catalog's portrait slot. That
-// slot is filled from ANY cover when the work has no portrait-shaped one, so
-// falling back to the banner only matters for works with no cover at all.
 const heroSrc = computed(
-  () =>
-    resolvePortraitUrl(patch.value) ||
-    resolveBannerUrl(patch.value) ||
-    '/kungalgame-trans.webp'
+  () => resolveCoverUrl(patch.value) || '/kungalgame-trans.webp'
 )
 
-const heroThumbhash = computed(() =>
-  resolvePortraitUrl(patch.value)
-    ? resolvePortraitThumbhash(patch.value)
-    : resolveBannerThumbhash(patch.value)
-)
+const heroThumbhash = computed(() => resolveCoverThumbhash(patch.value))
 
 const releaseDate = computed(
   () => patch.value?.release_date?.slice(0, 10) ?? ''

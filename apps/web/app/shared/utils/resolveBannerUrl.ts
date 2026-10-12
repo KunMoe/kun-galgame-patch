@@ -25,8 +25,6 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 type BannerMeta = {
   effective_banner_hash?: string | null
   banner?: string | null
-  effective_banner_width?: number | null
-  effective_banner_height?: number | null
   effective_banner_thumbhash?: string | null
 }
 
@@ -41,6 +39,12 @@ type PortraitMeta = {
 
 type PortraitSource = PortraitMeta & {
   galgame?: PortraitMeta | null
+}
+
+type CoverMeta = BannerMeta & PortraitMeta
+
+type CoverSource = CoverMeta & {
+  galgame?: CoverMeta | null
 }
 
 const IMAGE_BED = kunMoyuMoe.domain.imageBed.replace(/\/$/, '')
@@ -103,20 +107,6 @@ export const imageAspectRatio = (
   fallback = '16 / 9'
 ): string => (width && height ? `${width} / ${height}` : fallback)
 
-// resolveBannerAspectRatio / resolveBannerThumbhash read the pinned cover's
-// intrinsic metadata off the same dual-shape source resolveBannerUrl accepts
-// (nested galgame preferred, then top-level). Used to give a galgame card /
-// detail banner its real aspect-ratio + a ThumbHash blur-up placeholder.
-export const resolveBannerAspectRatio = (
-  source: BannerSource | null | undefined,
-  fallback = '16 / 9'
-): string =>
-  imageAspectRatio(
-    source?.galgame?.effective_banner_width ?? source?.effective_banner_width,
-    source?.galgame?.effective_banner_height ?? source?.effective_banner_height,
-    fallback
-  )
-
 export const resolveBannerThumbhash = (
   source: BannerSource | null | undefined
 ): string | undefined =>
@@ -168,3 +158,20 @@ export const resolvePortraitThumbhash = (
     source?.effective_portrait_thumbhash ??
     ''
   ).trim() || undefined
+
+// resolveCoverUrl is the cover for a cropped 3/4 header box, and both the intro
+// and the resource page read it. The resource page used to read the banner
+// slot, which catalog fills with a landscape screenshot when a work has no wide
+// cover, and readers took that screenshot for the wrong game's patch. The
+// portrait slot is filled from ANY cover when no portrait-shaped one exists, so
+// the banner fallback only matters for a work with no cover at all.
+export const resolveCoverUrl = (
+  source: CoverSource | null | undefined
+): string => resolvePortraitUrl(source) || resolveBannerUrl(source)
+
+export const resolveCoverThumbhash = (
+  source: CoverSource | null | undefined
+): string | undefined =>
+  resolvePortraitUrl(source)
+    ? resolvePortraitThumbhash(source)
+    : resolveBannerThumbhash(source)
