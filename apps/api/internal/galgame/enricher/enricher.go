@@ -25,6 +25,7 @@ type GalgameCard struct {
 	Name               KunLanguage                 `json:"name"`
 	VndbID             string                      `json:"vndb_id"`
 	BangumiID          *int                        `json:"bangumi_id"`
+	ErogamescapeID     *int                        `json:"erogamescape_id"`
 	Banner             string                      `json:"banner"`
 	View               int                         `json:"view"`
 	Download           int                         `json:"download"`
@@ -266,6 +267,7 @@ type PatchDetailCard struct {
 // card. Every field it writes is a read-only projection of the registry: moyu
 // stores none of it and never writes any of it back.
 func applyCatalogEntities(base *PatchDetailCard, g *galgameClient.GalgameFull) {
+	base.BangumiID, base.ErogamescapeID = g.BangumiID, g.ErogamescapeID
 	base.Characters = g.Characters
 	base.Staff = g.Staff
 	base.Ratings = g.Ratings
@@ -339,9 +341,18 @@ func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users
 		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
 
-	base.Galgame = &galgameClient.GalgameBrief{
+	base.Galgame = detailBrief(g)
+
+	applyCatalogEntities(base, g)
+	return base
+}
+
+func detailBrief(g *galgameClient.GalgameFull) *galgameClient.GalgameBrief {
+	return &galgameClient.GalgameBrief{
 		ID:                         g.ID,
 		VndbID:                     g.VndbID,
+		BangumiID:                  g.BangumiID,
+		ErogamescapeID:             g.ErogamescapeID,
 		NameEnUs:                   g.NameEnUs,
 		NameZhCn:                   g.NameZhCn,
 		NameJaJp:                   g.NameJaJp,
@@ -367,9 +378,6 @@ func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users
 		Covers:                     g.Covers,
 		Screenshots:                g.Screenshots,
 	}
-
-	applyCatalogEntities(base, g)
-	return base
 }
 
 func collectGalgameIDs(patches []patchModel.Patch) []int {
@@ -388,11 +396,13 @@ func collectGalgameIDs(patches []patchModel.Patch) []int {
 	return ids
 }
 
+// bangumi_id comes from catalog's refs and never from patch.bangumi_id: 883 of
+// that column's 6,094 values disagreed with catalog, and the ones checked named
+// a soundtrack or an artbook instead of the game.
 func baseCard(p *patchModel.Patch) GalgameCard {
 	return GalgameCard{
 		ID:                 p.ID,
 		VndbID:             p.VndbID,
-		BangumiID:          p.BangumiID,
 		View:               p.View,
 		Download:           p.Download,
 		Type:               p.Type,
@@ -417,6 +427,7 @@ func applyGalgame(card *GalgameCard, g *galgameClient.GalgameBrief) {
 	card.Name = g.Names()
 	card.Banner = g.Banner
 	card.ContentLimit = g.ContentLimit
+	card.BangumiID, card.ErogamescapeID = g.BangumiID, g.ErogamescapeID
 	card.Galgame = g
 	// Lifted, not copied: the card prints the shelf at top level and the brief
 	// travels nested inside that same card.
@@ -546,34 +557,7 @@ func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users
 		ZhCn: markdown.MustRender(g.IntroZhCn),
 		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
-	base.Galgame = &galgameClient.GalgameBrief{
-		ID:                         g.ID,
-		VndbID:                     g.VndbID,
-		NameEnUs:                   g.NameEnUs,
-		NameZhCn:                   g.NameZhCn,
-		NameJaJp:                   g.NameJaJp,
-		NameZhTw:                   g.NameZhTw,
-		DisplayName:                g.DisplayName,
-		Latin:                      g.Latin,
-		NameMachineTranslated:      g.NameMachineTranslated,
-		Banner:                     g.Banner,
-		ContentLimit:               g.ContentLimit,
-		AgeLimit:                   g.AgeLimit,
-		OriginalLanguage:           g.OriginalLanguage,
-		ReleaseDate:                g.ReleaseDate,
-		ReleasePrecision:           g.ReleasePrecision,
-		EffectiveBannerHash:        g.EffectiveBannerHash,
-		EffectiveBannerWidth:       g.EffectiveBannerWidth,
-		EffectiveBannerHeight:      g.EffectiveBannerHeight,
-		EffectiveBannerThumbhash:   g.EffectiveBannerThumbhash,
-		EffectivePortraitHash:      g.EffectivePortraitHash,
-		EffectivePortraitWidth:     g.EffectivePortraitWidth,
-		EffectivePortraitHeight:    g.EffectivePortraitHeight,
-		EffectivePortraitThumbhash: g.EffectivePortraitThumbhash,
-		Maker:                      g.Maker,
-		Covers:                     g.Covers,
-		Screenshots:                g.Screenshots,
-	}
+	base.Galgame = detailBrief(g)
 	applyCatalogEntities(base, g)
 	return base
 }

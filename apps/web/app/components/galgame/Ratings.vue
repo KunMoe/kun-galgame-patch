@@ -9,12 +9,16 @@ const props = defineProps<{
   ratings: PatchDetailRating[]
   vndbId?: string
   bangumiId?: number | null
+  erogamescapeId?: number | null
 }>()
 
 const refOf = (source: string) => {
-  if (source === 'vndb') return props.vndbId ?? ''
-  if (source === 'bangumi') return props.bangumiId ? String(props.bangumiId) : ''
-  return ''
+  const ids: Record<string, string | number | null | undefined> = {
+    vndb: props.vndbId,
+    bangumi: props.bangumiId,
+    erogamescape: props.erogamescapeId
+  }
+  return ids[source] ? String(ids[source]) : ''
 }
 
 const cards = computed(() => {
@@ -29,6 +33,7 @@ const cards = computed(() => {
     .sort((a, b) => rank(a.source) - rank(b.source))
     .map((row) => {
       const meta = externalRatingMeta(row.source)
+      const ref = refOf(row.source)
       const counts = new Map(
         (row.distribution ?? []).map((b) => [b.score, b.count])
       )
@@ -46,7 +51,7 @@ const cards = computed(() => {
         votes: row.vote_count.toLocaleString('en-US'),
         tier: ratingTierBadge(meta, row.score, row.vote_count),
         rank: row.rank,
-        href: meta.link?.(refOf(row.source)) ?? '',
+        href: ref ? (meta.link?.(ref) ?? '') : '',
         bars: counts.size
           ? meta.buckets.map((key) => ({
               key,
