@@ -47,10 +47,10 @@ func TestRegisterSubjectKindsDeclaresTheCallback(t *testing.T) {
 	if got.path != "/api/v1/trust/subject-kinds/ensure" || got.auth == "" {
 		t.Fatalf("called %q with auth %q", got.path, got.auth)
 	}
-	if len(got.kinds) != 2 {
+	if len(got.kinds) != 3 {
 		t.Fatalf("declared %d kinds: %+v", len(got.kinds), got.kinds)
 	}
-	resource, user := got.kinds[0], got.kinds[1]
+	resource, user, rating := got.kinds[0], got.kinds[1], got.kinds[2]
 	if resource["key"] != "patch_resource" ||
 		resource["callback_url"] != "https://www.moyu.moe/api/v1/trust/callback" ||
 		resource["callback_secret"] != "cb-secret" || resource["notify_on_dismiss"] != true {
@@ -58,6 +58,9 @@ func TestRegisterSubjectKindsDeclaresTheCallback(t *testing.T) {
 	}
 	if user["key"] != "user" || len(user) != 1 {
 		t.Errorf("user must carry no callback: %+v", user)
+	}
+	if rating["key"] != "galgame_rating" || len(rating) != 1 {
+		t.Errorf("galgame_rating must carry no callback: %+v", rating)
 	}
 }
 

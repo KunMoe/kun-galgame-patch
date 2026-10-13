@@ -229,13 +229,14 @@ onMounted(async () => {
 
 provide('patch', patch)
 
-// One page, three panels. These were three routes — /patch/:id/introduction,
+// One page, four panels. Three of them were routes — /patch/:id/introduction,
 // /resource and /comment — and the tab now rides a query so a link can still
 // name one. `intro` is the default and carries no query, which keeps the
 // canonical URL a bare /galgame/<id>.
 const TABS = [
   { value: 'intro', textValue: 'Galgame 信息' },
   { value: 'resource', textValue: '补丁资源下载' },
+  { value: 'rating', textValue: '玩家评分' },
   { value: 'comment', textValue: '游戏评论' }
 ]
 
@@ -254,6 +255,7 @@ const currentTab = computed({
 })
 
 const resourceLoading = ref(false)
+const ratingLoading = ref(false)
 const commentLoading = ref(false)
 </script>
 
@@ -391,6 +393,10 @@ const commentLoading = ref(false)
            made. -->
       <KunTabPanel value="resource" mount="lazy" :loading="resourceLoading">
         <PatchPanelResource @update:loading="resourceLoading = $event" />
+      </KunTabPanel>
+
+      <KunTabPanel value="rating" mount="lazy" :loading="ratingLoading">
+        <PatchPanelRating @update:loading="ratingLoading = $event" />
       </KunTabPanel>
 
       <KunTabPanel value="comment" mount="lazy" :loading="commentLoading">
