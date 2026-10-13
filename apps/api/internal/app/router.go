@@ -114,6 +114,11 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Get("/:id/folder", auth, a.PatchHandler.FoldersForPatch)
 	patchRoutes.Put("/:id/folder", auth, a.PatchHandler.SetPatchFolders)
 
+	patchRoutes.Get("/:id/rating", optionalAuth, a.RatingHandler.List)
+	patchRoutes.Get("/:id/record", auth, a.RatingHandler.GetRecord)
+	patchRoutes.Put("/:id/record", auth, a.RatingHandler.PutRecord)
+	patchRoutes.Delete("/rating/:ratingId", auth, a.RatingHandler.Delete)
+
 	patchRoutes.Get("/:id/catalog-edit", auth, a.PatchHandler.CatalogEditBootstrap)
 	patchRoutes.Post("/:id/catalog-edit", auth, a.PatchHandler.CatalogEditSubmit)
 	patchRoutes.Get("/:id/catalog-edit/proposals", auth, a.PatchHandler.CatalogEditProposals)

@@ -114,6 +114,7 @@ const pointBuckets = (max: number) =>
 const decimal = (score: number) => String(Number(score.toFixed(2)))
 
 export const KUN_EXTERNAL_RATING_ORDER = [
+  'nextmoe',
   'vndb',
   'bangumi',
   'erogamescape',
@@ -121,6 +122,19 @@ export const KUN_EXTERNAL_RATING_ORDER = [
 ] as const
 
 export const KUN_EXTERNAL_RATING_MAP: Record<string, ExternalRatingMeta> = {
+  nextmoe: {
+    label: 'NextMoe',
+    max: 10,
+    suffix: '/10',
+    hint: 'NextMoe 全站玩家评分的贝叶斯平均，本站与鲲 Galgame 等 NextMoe 站点共用同一份评分',
+    format: (score) => score.toFixed(1),
+    buckets: pointBuckets(10),
+    bucketLabel: String,
+    // The forum's lines for the same score. The bayesian prior already pulls a
+    // thin sample to the middle, so they sit tighter than VNDB's and 3 votes
+    // are enough to grade.
+    tier: { cutoffs: [6.8, 7.3, 7.9, 8.3], minVotes: 3 }
+  },
   vndb: {
     label: 'VNDB',
     max: 10,

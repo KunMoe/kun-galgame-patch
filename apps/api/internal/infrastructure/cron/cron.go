@@ -18,12 +18,18 @@ type NotificationSync interface {
 	Sync(ctx context.Context) (int, error)
 }
 
+type RatingSync interface {
+	Configured() bool
+	Sync(ctx context.Context) (int, error)
+}
+
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
 	img *imageclient.Client,
 	comments CommentImages,
 	notifications NotificationSync,
+	ratings RatingSync,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -133,6 +139,24 @@ func Start(
 		}))
 		if _, err := c.AddJob("@every 20s", job); err != nil {
 			slog.Error("注册社区通知同步任务失败", "error", err)
+		}
+	}
+
+	if ratings != nil && ratings.Configured() {
+		job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			n, err := ratings.Sync(ctx)
+			if err != nil {
+				slog.Error("评分镜像同步失败", "error", err, "applied", n)
+				return
+			}
+			if n > 0 {
+				slog.Info("评分镜像同步完成", "applied", n)
+			}
+		}))
+		if _, err := c.AddJob("@every 2m", job); err != nil {
+			slog.Error("注册评分镜像同步任务失败", "error", err)
 		}
 	}
 

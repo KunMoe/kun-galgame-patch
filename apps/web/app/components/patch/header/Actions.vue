@@ -68,6 +68,12 @@ const onFoldersSaved = (payload: { favorited: boolean }) => {
   favorite.value = payload.favorited
 }
 
+const recordOpen = ref(false)
+const openRecord = () => {
+  if (!requireLogin()) return
+  recordOpen.value = true
+}
+
 const handleShare = () => {
   const name = getPreferredLanguageText(props.patch.name)
   const link = `${name} - ${window.location.origin}/galgame/${props.patch.id}`
@@ -157,13 +163,18 @@ const onMenuSelect = (item: { key: string }) => {
     </div>
 
     <div class="flex flex-col items-start gap-2 sm:items-end">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <PatchDlsitePurchase
           v-if="props.patch.dlsite_purchase_url"
           :purchase-url="props.patch.dlsite_purchase_url"
           :coupon-url="props.patch.dlsite_coupon_url"
           :campaign-name="props.patch.dlsite_campaign_name"
         />
+
+        <KunButton variant="flat" color="primary" size="md" @click="openRecord">
+          <KunIcon name="lucide:star-half" class="size-4" />
+          标记 / 评分
+        </KunButton>
 
         <KunReaction
           v-model="favorite"
@@ -261,9 +272,15 @@ const onMenuSelect = (item: { key: string }) => {
     </div>
   </KunModal>
 
-    <PatchFolderPickerModal
-      v-model="pickerOpen"
-      :patch-id="props.patch.id"
-      @saved="onFoldersSaved"
-    />
+  <PatchFolderPickerModal
+    v-model="pickerOpen"
+    :patch-id="props.patch.id"
+    @saved="onFoldersSaved"
+  />
+
+  <RatingRecordModal
+    v-model="recordOpen"
+    :work-id="props.patch.id"
+    :work-name="getPreferredLanguageText(props.patch.name)"
+  />
 </template>

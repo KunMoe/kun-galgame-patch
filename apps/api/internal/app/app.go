@@ -48,8 +48,10 @@ import (
 	patchHandler "kun-galgame-patch-api/internal/patch/handler"
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
+	"kun-galgame-patch-api/internal/rating"
 	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/internal/trust/enforce"
+	"kun-galgame-patch-api/internal/trust/gate"
 	trustHandler "kun-galgame-patch-api/internal/trust/handler"
 	trustService "kun-galgame-patch-api/internal/trust/service"
 	userHandler "kun-galgame-patch-api/internal/user/handler"
@@ -99,6 +101,7 @@ type App struct {
 	IMRelay          *im.Relay
 	DocHandler       *docHandler.DocHandler
 	TrustHandler     *trustHandler.TrustHandler
+	RatingHandler    *rating.Handler
 
 	CronStop func()
 }
@@ -296,6 +299,11 @@ func New(cfg *config.Config) *App {
 	}
 	trustHdl := trustHandler.NewTrustHandler(trustSvc, trustEnforce, cfg.Trust.CallbackSecret)
 
+	ratingStore := rating.NewStore(db)
+	ratingSvc := rating.NewService(ratingStore, galgame.V2(), usrCli, gate.New(trustCli))
+	ratingHdl := rating.NewHandler(ratingSvc, galgame)
+	ratingMirror := rating.NewMirror(db, galgame.V2(), ratingStore)
+
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
 	imgCfg := cfg.ImageService
 	if imgCfg.ClientID == "" {
@@ -355,7 +363,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc)
+	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror)
 	pushStop := startActivityPush(cfg, db, communityCli, galgame)
 	stopBackground := func() {
 		pushStop()
@@ -386,6 +394,7 @@ func New(cfg *config.Config) *App {
 		IMRelay:          im.NewRelay(cfg.Chat.BaseURL),
 		DocHandler:       docHdl,
 		TrustHandler:     trustHdl,
+		RatingHandler:    ratingHdl,
 		CronStop:         stopBackground,
 	}
 }

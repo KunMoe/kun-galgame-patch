@@ -68,8 +68,8 @@ const cards = computed(() => {
 <template>
   <section v-if="cards.length" class="space-y-4">
     <KunHeader
-      name="外部评分"
-      description="各站点各自的刻度, 分级按各来源自己的标准独立计算, 不跨站点换算"
+      name="评分"
+      description="NextMoe 评分来自本站与鲲 Galgame 等站点的玩家；各来源刻度不同，分级按各来源自己的标准独立计算，不跨站点换算"
       scale="h2"
     />
 

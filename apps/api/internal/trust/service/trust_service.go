@@ -10,6 +10,7 @@ import (
 
 	"kun-galgame-patch-api/internal/trust"
 	"kun-galgame-patch-api/internal/trust/dto"
+	"kun-galgame-patch-api/internal/trust/gate"
 	"kun-galgame-patch-api/pkg/trustclient"
 	"kun-galgame-patch-api/pkg/upstream"
 )
@@ -84,7 +85,9 @@ func (s *TrustService) RegisterSubjectKinds(ctx context.Context, callbackURL, ca
 	if callbackSecret != "" {
 		resource.CallbackURL, resource.CallbackSecret = &callbackURL, &callbackSecret
 	}
-	results, err := s.trust.EnsureSubjectKinds(ctx, []trustclient.SubjectKind{resource, {Key: "user"}})
+	results, err := s.trust.EnsureSubjectKinds(ctx, []trustclient.SubjectKind{
+		resource, {Key: "user"}, {Key: gate.SubjectKindGalgameRating},
+	})
 	if err != nil {
 		attrs := []any{"error", err}
 		if e, ok := upstream.As(err); ok {
