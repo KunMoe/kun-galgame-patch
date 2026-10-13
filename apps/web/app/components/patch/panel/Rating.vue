@@ -61,7 +61,7 @@ const onDeleted = (id: number) => {
       <template #headerEndContent>
         <KunButton color="primary" size="sm" @click="openRecord">
           <KunIcon name="lucide:star" class="size-4" />
-          标记 / 评分
+          评分
         </KunButton>
       </template>
     </KunHeader>

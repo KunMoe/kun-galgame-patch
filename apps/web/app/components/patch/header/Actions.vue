@@ -173,7 +173,7 @@ const onMenuSelect = (item: { key: string }) => {
 
         <KunButton variant="flat" color="primary" size="md" @click="openRecord">
           <KunIcon name="lucide:star-half" class="size-4" />
-          标记 / 评分
+          评分
         </KunButton>
 
         <KunReaction
