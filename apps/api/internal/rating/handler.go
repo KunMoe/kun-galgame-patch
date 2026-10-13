@@ -70,10 +70,9 @@ func workIDParam(c fiber.Ctx) (int64, *errors.AppError) {
 	return id, nil
 }
 
-// Catalog folds the token's site roles into its own, so a site-only moyu
-// moderator passes catalog.rating.moderate: as IsModerator this handed 39 of
-// production's 41 a delete over every site's ratings. Only admin and ren are
-// staff here, the forum's rating.delete_any.
+// Only admin and ren delete another reader's rating, the forum's
+// rating.delete_any: the delete removes it from every NextMoe site, which
+// IsModerator once offered to every moyu site moderator.
 func viewerOf(c fiber.Ctx) Viewer {
 	return Viewer{ID: middleware.GetUserID(c), Admin: middleware.IsAdmin(c)}
 }

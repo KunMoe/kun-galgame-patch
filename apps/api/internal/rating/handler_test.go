@@ -34,8 +34,8 @@ func listedCanDelete(t *testing.T, ta *testutil.TestApp, session string) bool {
 	return page.Items[0].CanDelete
 }
 
-// Catalog grants a site moderator catalog.rating.moderate, so moyu is the only
-// gate between 39 site-only moderators and every site's ratings.
+// A moyu site moderator is not staff for ratings: a delete reaches every
+// NextMoe site.
 func TestASiteModeratorCannotDeleteAnotherReadersRating(t *testing.T) {
 	cat := &fakeCatalog{}
 	ta := ratingApp(t, cat)
