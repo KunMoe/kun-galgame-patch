@@ -340,6 +340,19 @@ interface PatchDetailSeries {
   galgame_count: number
 }
 
+// One related work, every relation to it merged and the strongest first. The
+// API has already sorted the list and dropped what the reader may not see.
+interface PatchDetailRelated {
+  id: number
+  medium: string
+  name: KunLanguage
+  content_limit: string
+  release_date: string
+  effective_portrait_hash: string
+  effective_portrait_thumbhash: string
+  phrases: string[]
+}
+
 interface PatchDetail extends GalgameCard {
   introduction_markdown: KunLanguage
   introduction_html: KunLanguage
@@ -350,5 +363,6 @@ interface PatchDetail extends GalgameCard {
   staff: PatchDetailStaffGroup[]
   ratings: PatchDetailRating[]
   series: PatchDetailSeries[]
+  relations?: PatchDetailRelated[]
   wiki_engine_ids: number[]
 }

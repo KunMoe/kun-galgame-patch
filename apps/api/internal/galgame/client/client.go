@@ -341,6 +341,7 @@ type GalgameFull struct {
 	Staff      []GalgameStaffGroup   `json:"staff"`
 	Ratings    []GalgameRating       `json:"ratings"`
 	Series     []GalgameSeries       `json:"series"`
+	Relations  []GalgameRelated      `json:"relations"`
 
 	EffectiveBannerHash        string            `json:"effective_banner_hash"`
 	EffectiveBannerWidth       int               `json:"effective_banner_width,omitempty"`
@@ -381,6 +382,7 @@ func (c *Client) GetGalgame(ctx context.Context, gid int, contentLimit string) (
 	if !gateFor(contentLimit).allows(full.ContentLimit) {
 		return nil, catalogv2.Absent("GET /v2/catalog/works/{id}")
 	}
+	full.Relations = relatedWorks(w.Relations, contentLimit)
 	return &GalgameDetailEnvelope{Galgame: full}, nil
 }
 

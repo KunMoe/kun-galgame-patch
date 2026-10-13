@@ -261,6 +261,7 @@ type PatchDetailCard struct {
 	Staff                []galgameClient.GalgameStaffGroup `json:"staff"`
 	Ratings              []galgameClient.GalgameRating     `json:"ratings"`
 	Series               []galgameClient.GalgameSeries     `json:"series"`
+	Relations            []galgameClient.GalgameRelated    `json:"relations"`
 }
 
 // applyCatalogEntities copies the catalog-owned entity graph onto the detail
@@ -272,6 +273,7 @@ func applyCatalogEntities(base *PatchDetailCard, g *galgameClient.GalgameFull) {
 	base.Staff = g.Staff
 	base.Ratings = g.Ratings
 	base.Series = g.Series
+	base.Relations = g.Relations
 	for _, t := range g.Tag {
 		base.Tags = append(base.Tags, PatchDetailTag{
 			ID:           t.Tag.ID,
