@@ -11,15 +11,22 @@ export const KUN_RATING_PLAY_STATE_OPTIONS = [
 ] as const
 
 export type KunRatingPlayState =
-  (typeof KUN_RATING_PLAY_STATE_OPTIONS)[number]['value']
+  | (typeof KUN_RATING_PLAY_STATE_OPTIONS)[number]['value']
+  | 'done'
 
-// `done` is what catalog answers when another application recorded a finish
-// without saying how much; the form never offers it.
+// A finish another application recorded without saying how much. The form
+// offers it only to the reader who already has it, so a save leaves it as is.
+export const KUN_RATING_PLAY_STATE_DONE = {
+  value: 'done',
+  label: '已通关',
+  icon: 'lucide:flag'
+} as const
+
 export const KUN_RATING_PLAY_STATE_MAP: Record<string, string> = {
   ...Object.fromEntries(
     KUN_RATING_PLAY_STATE_OPTIONS.map((o) => [o.value, o.label])
   ),
-  done: '已通关'
+  [KUN_RATING_PLAY_STATE_DONE.value]: KUN_RATING_PLAY_STATE_DONE.label
 }
 
 export const KUN_RATING_RECOMMEND_OPTIONS = [

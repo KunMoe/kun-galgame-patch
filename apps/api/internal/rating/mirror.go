@@ -36,8 +36,6 @@ func (m *Mirror) Configured() bool {
 	return m != nil && m.feed != nil && m.feed.Configured()
 }
 
-// Sync drains /v2/ratings/changes into galgame_rating, every work and every
-// site, and returns how many rows it wrote or dropped.
 func (m *Mirror) Sync(ctx context.Context) (int, error) {
 	cursor, err := m.readCursor()
 	if err != nil {

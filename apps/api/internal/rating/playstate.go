@@ -11,14 +11,16 @@ const (
 	OnHold       = "on_hold"
 	Dropped      = "dropped"
 
-	// Done is read-only: catalog answers state=done with no completion when
-	// another application reported a finish without saying how much.
+	// Finished with how much left unstated, which another application can
+	// record. The form never offers it, but sends it back as it found it: read
+	// as one route it was rewritten on every site by a save that only added a
+	// rating.
 	Done = "done"
 )
 
 func toCatalogState(flat string) (state, completion string, ok bool) {
 	switch flat {
-	case Wish, Doing, OnHold, Dropped:
+	case Wish, Doing, OnHold, Dropped, Done:
 		return flat, "", true
 	case DoneOneRoute:
 		return "done", "one_route", true

@@ -185,8 +185,9 @@ type RatingChangePage struct {
 	NextCursor string
 }
 
-// RatingChanges reads the ratings mirror channel with the application key,
-// oldest change first, across every site and every work.
+// RatingChanges answers every site's ratings on every work, not only the works
+// a site carries: letmoe kept only its own works' and lost the ratings of a
+// work that arrived after them.
 func (c *Client) RatingChanges(ctx context.Context, cursor string) (RatingChangePage, error) {
 	q := url.Values{"limit": {strconv.Itoa(RatingChangesLimit)}}
 	if cursor != "" {

@@ -184,6 +184,18 @@ func TestPutRecordWithoutRatingDropsIt(t *testing.T) {
 	}
 }
 
+func TestPutRecordWritesAnUnstatedFinishBackUnchanged(t *testing.T) {
+	cat := &fakeCatalog{record: &catalogv2.WorkRecord{}}
+	_, err := newTestService(cat, &fakeStore{}, newTrust(gate.DecisionAllow)).
+		PutRecord(context.Background(), "tok", 2, 58, RecordInput{PlayState: Done})
+	if err != nil {
+		t.Fatalf("PutRecord: %v", err)
+	}
+	if ws := cat.puts[0].WorkState; ws == nil || ws.State != "done" || ws.Completion != "" {
+		t.Errorf("work_state = %+v, want done with no completion", ws)
+	}
+}
+
 func TestRecordReadsPlaytimeUnderTheFloorAsNone(t *testing.T) {
 	cat := &fakeCatalog{record: &catalogv2.WorkRecord{State: "done", Minutes: playtimeFloor - 1}}
 	rec, err := newTestService(cat, &fakeStore{}, newTrust(gate.DecisionAllow)).Record(context.Background(), "tok", 58)
@@ -242,7 +254,7 @@ func TestRecordInputValidation(t *testing.T) {
 		req  recordRequest
 		want string
 	}{
-		{"done is read-only", recordRequest{PlayState: Done}, "游玩状态"},
+		{"unknown play state", recordRequest{PlayState: "finished"}, "游玩状态"},
 		{"minutes over catalog's ceiling", recordRequest{Minutes: minutesMax + 1}, "时长"},
 		{"overall out of range", ok(&ratingRequest{Overall: 0, Recommend: "yes"}), "总体评分"},
 		{"unknown recommend", ok(&ratingRequest{Overall: 5, Recommend: "maybe"}), "推荐"},

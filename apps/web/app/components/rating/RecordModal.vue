@@ -3,6 +3,7 @@ import {
   KUN_PLAYTIME_HOURS_MAX,
   KUN_PLAYTIME_MINUTES_FLOOR,
   KUN_RATING_ASPECTS,
+  KUN_RATING_PLAY_STATE_DONE,
   KUN_RATING_PLAY_STATE_OPTIONS,
   KUN_RATING_RECOMMEND_OPTIONS,
   KUN_RATING_SPOILER_OPTIONS,
@@ -30,6 +31,7 @@ const loaded = ref<GalgameWorkRecord | null>(null)
 
 const status = ref<KunRatingPlayState | ''>('')
 const hours = ref<number | null>(null)
+const loadedHours = ref<number | null>(null)
 
 const ratingOn = ref(false)
 const overall = ref(0)
@@ -52,23 +54,30 @@ const aspects = ref<GalgameRatingAspects>(emptyAspects())
 
 const isWish = computed(() => status.value === 'wish')
 const hadRating = computed(() => !!loaded.value?.rating)
-const minutes = computed(() => Math.round((hours.value ?? 0) * 60))
+
+const stateOptions = computed(() =>
+  loaded.value?.play_state === KUN_RATING_PLAY_STATE_DONE.value
+    ? [KUN_RATING_PLAY_STATE_DONE, ...KUN_RATING_PLAY_STATE_OPTIONS]
+    : KUN_RATING_PLAY_STATE_OPTIONS
+)
+
+// The field shows hours to one decimal; an untouched field sends the minutes
+// it was filled from, or every save would round the reader's playtime.
+const minutes = computed(() =>
+  hours.value === loadedHours.value
+    ? (loaded.value?.minutes ?? 0)
+    : Math.round((hours.value ?? 0) * 60)
+)
 
 const fill = (record: GalgameWorkRecord) => {
   loaded.value = record
-  const known = KUN_RATING_PLAY_STATE_OPTIONS.some(
-    (o) => o.value === record.play_state
-  )
-  // The read-only `done` has no completion; the closest one the form can
-  // write back is the least of them.
-  status.value =
-    record.play_state === 'done'
-      ? 'done_one_route'
-      : known
-        ? (record.play_state as KunRatingPlayState)
-        : ''
+  const known = [KUN_RATING_PLAY_STATE_DONE, ...KUN_RATING_PLAY_STATE_OPTIONS]
+  status.value = known.some((o) => o.value === record.play_state)
+    ? (record.play_state as KunRatingPlayState)
+    : ''
   hours.value =
     record.minutes > 0 ? Math.round((record.minutes / 60) * 10) / 10 : null
+  loadedHours.value = hours.value
 
   const r = record.rating
   ratingOn.value = !!r
@@ -107,7 +116,7 @@ const body = computed<GalgameWorkRecordInput>(() => {
       overall: overall.value,
       recommend: recommend.value,
       spoiler_level: spoilerLevel.value,
-      short_summary: shortSummary.value.trim(),
+      short_summary: shortSummary.value,
       aspect_scores: aspectsOpen.value ? aspects.value : null
     }
   }
@@ -196,7 +205,7 @@ const save = async () => {
           </div>
           <KunRadioGroup
             v-model="status"
-            :options="KUN_RATING_PLAY_STATE_OPTIONS"
+            :options="stateOptions"
             variant="pill"
             orientation="horizontal"
             size="sm"

@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	recordStates  = []string{Wish, Doing, DoneOneRoute, DoneMain, DoneAll, OnHold, Dropped}
+	recordStates  = []string{Wish, Doing, Done, DoneOneRoute, DoneMain, DoneAll, OnHold, Dropped}
 	recommends    = []string{"strong_no", "no", "neutral", "yes", "strong_yes"}
 	spoilerLevels = []string{"none", "portion", "serious"}
 )

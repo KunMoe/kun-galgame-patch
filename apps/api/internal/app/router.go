@@ -114,9 +114,6 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Get("/:id/folder", auth, a.PatchHandler.FoldersForPatch)
 	patchRoutes.Put("/:id/folder", auth, a.PatchHandler.SetPatchFolders)
 
-	// A rating is NextMoe's, one per person per work on every site. The record
-	// is the reader's play state, playtime and rating, which one form saves
-	// together with their own token.
 	patchRoutes.Get("/:id/rating", optionalAuth, a.RatingHandler.List)
 	patchRoutes.Get("/:id/record", auth, a.RatingHandler.GetRecord)
 	patchRoutes.Put("/:id/record", auth, a.RatingHandler.PutRecord)
