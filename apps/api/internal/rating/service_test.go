@@ -77,8 +77,14 @@ func (f *fakeStore) Get(id int64) (Row, error) {
 	return r, nil
 }
 
-func (f *fakeStore) ListByWork(int64, int, int) ([]Row, int64, error) {
-	return nil, 0, nil
+func (f *fakeStore) ListByWork(workID int64, _, _ int) ([]Row, int64, error) {
+	var rows []Row
+	for _, r := range f.rows {
+		if r.WorkID == workID {
+			rows = append(rows, r)
+		}
+	}
+	return rows, int64(len(rows)), nil
 }
 
 type fakeTrust struct {
@@ -229,14 +235,14 @@ func TestDeleteTakesTheAuthorOrTheModerationPath(t *testing.T) {
 
 	refusal := &upstream.Error{Service: "catalog", Kind: upstream.Rejected, Status: 403, Code: "PERMISSION_REQUIRED"}
 	cat, st = &fakeCatalog{modErr: refusal}, &fakeStore{rows: rows}
-	err := newTestService(cat, st, nil).Delete(ctx, "tok", Viewer{ID: 3, Moderator: true}, 501)
+	err := newTestService(cat, st, nil).Delete(ctx, "tok", Viewer{ID: 3, Admin: true}, 501)
 	if !errors.Is(err, refusal) || len(st.dropped) != 0 {
 		t.Fatalf("refused moderation: err %v, dropped %v; want the refusal and the row kept", err, st.dropped)
 	}
 
 	gone := &upstream.Error{Service: "catalog", Kind: upstream.NotFound, Status: 404, Code: "NOT_FOUND"}
 	cat, st = &fakeCatalog{modErr: gone}, &fakeStore{rows: rows}
-	if err := newTestService(cat, st, nil).Delete(ctx, "tok", Viewer{ID: 3, Moderator: true}, 501); err != nil {
+	if err := newTestService(cat, st, nil).Delete(ctx, "tok", Viewer{ID: 3, Admin: true}, 501); err != nil {
 		t.Fatalf("moderation delete of a rating already gone upstream: %v", err)
 	}
 	if len(cat.moderated) != 1 || cat.moderated[0] != 501 || len(st.dropped) != 1 {

@@ -14,7 +14,7 @@ import (
 
 var (
 	ErrContentRejected = stderrors.New("rating summary refused by the trust check")
-	ErrNotAuthor       = stderrors.New("only the author or a moderator may delete a rating")
+	ErrNotAuthor       = stderrors.New("only the author or an admin may delete a rating")
 )
 
 // Catalog stores a playtime report under this floor but leaves it out of every
@@ -79,12 +79,12 @@ func itemOf(r Row) Item {
 }
 
 type Viewer struct {
-	ID        int
-	Moderator bool
+	ID    int
+	Admin bool
 }
 
 func (v Viewer) canDelete(r Row) bool {
-	return v.ID > 0 && (v.ID == r.UserID || v.Moderator)
+	return v.ID > 0 && (v.ID == r.UserID || v.Admin)
 }
 
 // List leaves out the ratings of authors OAuth marks banned or deleted; the
@@ -192,9 +192,9 @@ func (s *Service) PutRecord(ctx context.Context, token string, userID int, workI
 	return recordOf(after), nil
 }
 
-// Delete removes the rating from every NextMoe site. A moderator here is not
-// necessarily one in the catalog: NextMoe judges catalog.rating.moderate on the
-// token, and its PERMISSION_REQUIRED reaches the caller as it is.
+// Delete removes the rating from every NextMoe site. NextMoe judges
+// catalog.rating.moderate on the token itself, and its PERMISSION_REQUIRED
+// reaches the caller as it is.
 func (s *Service) Delete(ctx context.Context, token string, viewer Viewer, ratingID int64) error {
 	r, err := s.store.Get(ratingID)
 	if err != nil {
@@ -203,7 +203,7 @@ func (s *Service) Delete(ctx context.Context, token string, viewer Viewer, ratin
 	switch {
 	case r.UserID == viewer.ID:
 		err = s.catalog.DeleteMyRating(ctx, token, r.WorkID)
-	case viewer.Moderator:
+	case viewer.Admin:
 		err = s.catalog.ModerationDeleteRating(ctx, token, r.ID)
 		if catalogv2.IsNotFound(err) {
 			err = nil
