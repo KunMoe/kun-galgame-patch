@@ -6,7 +6,10 @@ const OTHER_LIMIT = 6
 const MEDIUM_LABEL: Record<string, string> = {
   anime: '动画',
   manga: '漫画',
-  novel: '小说'
+  novel: '小说',
+  asmr: '音声',
+  doujin_game: '同人游戏',
+  music: '音乐'
 }
 
 const games = computed(() =>
