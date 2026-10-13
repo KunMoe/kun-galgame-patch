@@ -28,6 +28,7 @@ type Work struct {
 	Characters       *[]WorkCharacter         `json:"characters"`
 	Companies        *[]WorkCompany           `json:"companies"`
 	Series           *[]WorkSeriesRef         `json:"series"`
+	Relations        *[]WorkRelation          `json:"relations"`
 	ViaCompany       *ViaCompany              `json:"via_company"`
 }
 
@@ -44,6 +45,14 @@ type WorkSeriesRef struct {
 	DisplayName string `json:"display_name"`
 	Source      string `json:"source"`
 	MemberCount int    `json:"member_count"`
+}
+
+// Phrase is worded from the requested work's side; RelationType is the same
+// token in both directions.
+type WorkRelation struct {
+	RelationType string `json:"relation_type"`
+	Phrase       string `json:"phrase"`
+	Work         Work   `json:"work"`
 }
 
 func (w Work) IntID() (int64, bool) { return ParseID(w.ID) }

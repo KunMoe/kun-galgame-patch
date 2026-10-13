@@ -331,6 +331,8 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
       </div>
     </section>
 
+    <GalgameRelated :relations="detail.relations ?? []" />
+
     <GalgameCharacters :characters="detail.characters ?? []" />
 
     <GalgameStaff :staff="staffGroups" />

@@ -163,6 +163,9 @@ func (f *catalogFake) workDetail(req *http.Request) string {
 	if strings.Contains(req.URL.Query().Get("include"), "credits") {
 		credits = `,"credits":` + detailCreditsJSON
 	}
+	if strings.Contains(req.URL.Query().Get("include"), "relations") {
+		credits += `,"relations":` + detailRelationsJSON
+	}
 	return `{"object":"work","id":"` + strconv.FormatInt(id, 10) + `","medium":"galgame","display_name":"タイトル","latin":null,` +
 		`"olang":"ja","content_rating":"` + ratingForCatalogID(id) + `","content_limit":"` + workLimitFor(id) + `",` +
 		`"release_date":"2026-07-14","release_date_precision":"day","release_status":"released",` +
@@ -223,6 +226,24 @@ const detailCharactersJSON = `[` +
 	`"roster_role":"secondary","spoiler":"minor","identity":"r1700","voices":[],` +
 	`"image":{"url":"https://cdn/aa/bb/chara2.webp","hash":"chara2","width":250,"height":300,"thumbhash":"c2","sexual":"suggestive","violence":null,"source":""},` +
 	`"figure":null}]`
+
+func relatedWorkJSON(id, medium, name, limit, rating, releaseDate, cover, claim string) string {
+	return `{"object":"work","id":"` + id + `","medium":"` + medium + `","display_name":"` + name + `","latin":null,` +
+		`"localized":{"ja":{"value":"` + name + `","is_machine":false}},"olang":"ja",` +
+		`"content_rating":"` + rating + `","content_limit":"` + limit + `",` +
+		`"release_date":` + releaseDate + `,"release_date_precision":null,"release_status":"unknown",` +
+		`"cover":` + cover + `,"banner":null,"claim":` + claim + `,` +
+		`"created_at":"2026-07-06T10:45:40Z","updated_at":"2026-09-23T03:11:15Z"}`
+}
+
+// Shaped after a live read of work 198 (Rewrite) on the local stack,
+// 2026-10-13. Release dates and covers are null there until infra 2.48.0.
+var detailRelationsJSON = `[` +
+	`{"relation_type":"remake_of","phrase":"重制自","work":` + relatedWorkJSON("849", "galgame", "Rewrite Harvest festa!", "sfw", "all_ages", "null", "null", `{"site":"kungal","site_work_id":"849","state":"live","content_limit":"sfw"}`) + `},` +
+	`{"relation_type":"fandisc_of","phrase":"有 Fandisc","work":` + relatedWorkJSON("849", "galgame", "Rewrite Harvest festa!", "sfw", "all_ages", "null", "null", `{"site":"kungal","site_work_id":"849","state":"live","content_limit":"sfw"}`) + `},` +
+	`{"relation_type":"adaptation_of","phrase":"被改编为","work":` + relatedWorkJSON("214301", "anime", "Rewrite", "sfw", "all_ages", "null", "null", "null") + `},` +
+	`{"relation_type":"side_story_of","phrase":"有外传","work":` + relatedWorkJSON("2680", "galgame", "Rewrite IF", "nsfw", "r18", `"2012-01-01"`, coverSlotJSON("hash9", 600, 800, "vndb"), `{"site":"kungal","site_work_id":"2680","state":"live","content_limit":"nsfw"}`) + `},` +
+	`{"relation_type":"side_story_of","phrase":"有外传","work":` + relatedWorkJSON("2681", "galgame", "Hidden", "sfw", "all_ages", "null", "null", `{"site":"kungal","site_work_id":"2681","state":"hidden","content_limit":"sfw"}`) + `}]`
 
 const detailRatingsJSON = `[` +
 	`{"source":"vndb","score":8.1,"vote_count":500,"rank":null,"distribution":[{"score":9,"count":126},{"score":10,"count":38}],` +

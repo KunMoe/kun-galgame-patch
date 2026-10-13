@@ -11,7 +11,7 @@ const batchIDsLimit = 100
 
 var workDetailInclude = []string{
 	"titles", "refs", "credits", "ratings", "tags", "intros", "covers",
-	"screenshots", "characters", "companies", "series",
+	"screenshots", "characters", "companies", "series", "relations",
 }
 
 // The spoiler ceiling of the tags block, defaulting to none upstream. moyu
