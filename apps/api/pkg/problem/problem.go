@@ -18,7 +18,7 @@ import (
 
 // Codes and their titles are reused verbatim from infra's closed registry
 // (apps/api/internal/platform/apiv2/problem/registry.go) so one decoder covers
-// both faces. Only the subset a read-only face can produce is here.
+// both faces. Only the subset this face can produce is here.
 const (
 	CodeInvalidParameter   = "INVALID_PARAMETER"
 	CodeUnknownEnumValue   = "UNKNOWN_ENUM_VALUE"
@@ -27,6 +27,7 @@ const (
 	CodeInvalidCursor      = "INVALID_CURSOR"
 	CodeUnknownInclude     = "UNKNOWN_INCLUDE"
 	CodeUnknownSort        = "UNKNOWN_SORT"
+	CodeScopeRequired      = "SCOPE_REQUIRED"
 	CodeNotFound           = "NOT_FOUND"
 	CodeMethodNotAllowed   = "METHOD_NOT_ALLOWED"
 	CodeInternalError      = "INTERNAL_ERROR"
@@ -65,6 +66,7 @@ var registry = map[string]definition{
 	CodeInvalidCursor:      {"Invalid cursor", fiber.StatusBadRequest, "invalid-cursor"},
 	CodeUnknownInclude:     {"Unknown include", fiber.StatusBadRequest, "unknown-include"},
 	CodeUnknownSort:        {"Unknown sort", fiber.StatusBadRequest, "unknown-sort"},
+	CodeScopeRequired:      {"Scope required", fiber.StatusForbidden, "scope-required"},
 	CodeNotFound:           {"Not found", fiber.StatusNotFound, "not-found"},
 	CodeMethodNotAllowed:   {"Method not allowed", fiber.StatusMethodNotAllowed, "method-not-allowed"},
 	CodeInternalError:      {"Internal error", fiber.StatusInternalServerError, "internal-error"},

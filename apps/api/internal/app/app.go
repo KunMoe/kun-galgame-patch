@@ -328,7 +328,7 @@ func New(cfg *config.Config) *App {
 	}
 
 	commonHdl := common.NewHandler(db, galgame, favorites, usrCli, artCli, commentSvc)
-	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, cfg.Site.BaseURL))
+	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, artCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
 
 	markdown.SetContentImageResolver(imgCli.VariantURL)

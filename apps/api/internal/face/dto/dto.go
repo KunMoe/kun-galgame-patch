@@ -129,3 +129,18 @@ type Resource struct {
 
 	Publisher *User `json:"publisher,omitempty"`
 }
+
+// ResourceFile is what Resource withholds: the download link and the archive
+// password. It is the one answer on this face that depends on the caller, and
+// only a key an operator granted `moyu:files` receives it.
+type ResourceFile struct {
+	Object       string `json:"object"`
+	ResourceID   string `json:"resource_id"`
+	ArtifactUUID string `json:"artifact_uuid"`
+	DownloadURL  string `json:"download_url"`
+	Filename     string `json:"filename"`
+	Bytes        int64  `json:"bytes"`
+	Blake3       string `json:"blake3"`
+	Password     string `json:"password"`
+	UpdatedAt    string `json:"updated_at"`
+}

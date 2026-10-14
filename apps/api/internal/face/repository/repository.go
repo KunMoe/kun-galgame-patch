@@ -173,6 +173,17 @@ func (r *Repository) GetResource(id int) (*patchModel.PatchResource, error) {
 	return &row, nil
 }
 
+// HashOfReplacedFile reports whether hash belongs to a file this resource has
+// since replaced. Replacing a file never rewrote patch_resource.blake3, so on
+// those rows the column names the previous upload's bytes.
+func (r *Repository) HashOfReplacedFile(resourceID int, hash string) (bool, error) {
+	var n int64
+	err := r.db.Model(&patchModel.PatchResourceFileHistory{}).
+		Where("resource_id = ? AND old_blake3 = ?", resourceID, hash).
+		Count(&n).Error
+	return n > 0, err
+}
+
 // jsonArrayAny ORs the values: asking for two languages asks for either, not
 // for a page whose resources cover both.
 func jsonArrayAny(q *gorm.DB, column string, values []string) *gorm.DB {

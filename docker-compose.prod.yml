@@ -147,12 +147,16 @@ services:
     # caller's nmk_ key is valid and within budget, and only then forwards. It
     # asks for no scope — a free read-only face admits any valid key (infra PR
     # #168); verified 2026-09-08 against production, where a key carrying only
-    # catalog:read is answered 204 for face=moyu. Nothing strips the prefix, so
-    # the API serves /v2/moyu/* verbatim.
+    # catalog:read is answered 204 for face=moyu. The one scoped route checks its
+    # scope itself (below). Nothing strips the prefix, so the API serves
+    # /v2/moyu/* verbatim.
     #
-    # authResponseHeaders is what makes the three X-NextMoe-* headers
+    # authResponseHeaders is what makes the four X-NextMoe-* headers
     # trustworthy: Traefik overwrites whatever the client sent with what oauth
-    # answered.
+    # answered, and passes an unlisted header through untouched.
+    # X-NextMoe-Scopes is the one the API decides on: /v2/moyu/resources/{id}/file
+    # answers a patch's link and password only when it names moyu:files, so
+    # dropping it from this list lets any key send the header itself.
     #
     # The explicit priority is not decoration. infra runs a catch-all
     # `Host(api.nextmoe.dev) && PathPrefix(/v2)` router (infra-v2-pub) that sets
@@ -178,7 +182,7 @@ services:
       traefik.http.routers.moyu-face-pub-http.middlewares: redirect-to-https@file
       traefik.http.routers.moyu-face-pub-http.service: moyu-face-pub
       traefik.http.middlewares.moyu-face-forwardauth.forwardauth.address: http://oauth:9277/internal/devapi/forward-auth?face=moyu
-      traefik.http.middlewares.moyu-face-forwardauth.forwardauth.authResponseHeaders: X-NextMoe-Client-Id,X-NextMoe-Key-Id,X-NextMoe-Tier
+      traefik.http.middlewares.moyu-face-forwardauth.forwardauth.authResponseHeaders: X-NextMoe-Client-Id,X-NextMoe-Key-Id,X-NextMoe-Tier,X-NextMoe-Scopes
       traefik.http.services.moyu-face-pub.loadbalancer.server.port: '5214'
     # postgres/redis live in the infra app (no depends_on for them; restart
     # reconnects). DO wait for `migrate` to finish so the API never serves an

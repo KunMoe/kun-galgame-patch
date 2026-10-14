@@ -592,6 +592,11 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 		existing.S3Key = update.S3Key
 		existing.ArtifactUUID = update.ArtifactUUID
 		existing.Content = update.Content
+		if fileChanged {
+			// An artifact upload records no BLAKE3; keeping the column named the
+			// replaced file's bytes, on 119 live rows by 2026-10-14.
+			existing.Blake3 = ""
+		}
 		existing.Type = update.Type
 		existing.Language = update.Language
 		existing.Platform = update.Platform

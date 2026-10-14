@@ -9,10 +9,12 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/etag"
 )
 
-// faceCache matches catalog /v2's public lane verbatim. Every response here is
-// viewer-independent, so a shared cache is correct; the cost, accepted by infra
-// in §16.5, is that a request Cloudflare answers is one the platform never
-// meters.
+// faceCache matches catalog /v2's public lane verbatim. Every response here but
+// the file route's is viewer-independent, so a shared cache is correct; the
+// cost, accepted by infra in §16.5, is that a request Cloudflare answers is one
+// the platform never meters. The file route overrides it with no-store: a
+// shared copy would hand its link and password to callers the gateway never
+// checked.
 const faceCache = "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600"
 
 // faceCORS is deliberately not the site's CORS. The site allows a fixed origin
@@ -53,4 +55,5 @@ func mountFace(app *fiber.App, h *faceHandler.Handler) {
 	face.Get("/patches/:id", h.GetPatch)
 	face.Get("/patches/:id/resources", h.ListPatchResources)
 	face.Get("/resources/:id", h.GetResource)
+	face.Get("/resources/:id/file", h.GetResourceFile)
 }

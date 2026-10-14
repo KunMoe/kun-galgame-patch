@@ -11,7 +11,7 @@ import (
 )
 
 func TestResourceDTOCarriesNoWayToDownload(t *testing.T) {
-	svc := New(nil, nil, nil, "https://www.moyu.moe")
+	svc := New(nil, nil, nil, nil, "https://www.moyu.moe")
 	row := patchModel.PatchResource{
 		ID:        7,
 		GalgameID: 42,
@@ -56,7 +56,7 @@ func TestResourceDTOCarriesNoWayToDownload(t *testing.T) {
 }
 
 func TestPatchDTOShape(t *testing.T) {
-	svc := New(nil, nil, nil, "https://www.moyu.moe")
+	svc := New(nil, nil, nil, nil, "https://www.moyu.moe")
 	limit := "nsfw"
 	released := time.Date(2016, 11, 25, 0, 0, 0, 0, time.UTC)
 	row := patchModel.Patch{
@@ -126,7 +126,7 @@ func TestMissingAnchorsEchoesTheCallersSpelling(t *testing.T) {
 }
 
 func TestUserDTOCarriesWebURL(t *testing.T) {
-	svc := New(nil, nil, nil, "https://www.moyu.moe")
+	svc := New(nil, nil, nil, nil, "https://www.moyu.moe")
 	for name, brief := range map[string]*userclient.Brief{
 		"resolved":            {Name: "鲲"},
 		"profile unavailable": nil,
