@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.4.0
+  version: 1.5.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -330,6 +330,46 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v2/moyu/changes:
+    get:
+      operationId: listResourceChanges
+      tags: [patches]
+      summary: Resource change feed
+      description: |
+        What happened to each resource, oldest first, so a mirror can follow
+        moyu instead of re-reading every page. The log starts on 2026-10-14
+        with no backfill: take one full scan through the collections first,
+        then follow this from an empty cursor. Replaying a page is safe.
+
+        `next_cursor` is always set. Keep it and ask again; a page shorter
+        than `limit` means you are caught up. Entries appear once every
+        transaction that started before them has finished, so a long write
+        can delay the feed for its duration but never makes it skip one.
+
+        `kind` says which way to react:
+        - `created`, `file_replaced`, `updated`, `restored`: read the
+          resource again (`GET /v2/moyu/resources/{id}`).
+        - `hidden`, `deleted`: it is no longer public. `hidden` may come back
+          as `restored`.
+
+        Counter changes (downloads, likes) are not events, and nor are edits
+        made while a resource is not public.
+
+        Never cached: `Cache-Control: no-store`.
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      responses:
+        '200':
+          description: A page of the feed.
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControlNoStore' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceChangeList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
   securitySchemes:
     apiKey:
@@ -351,6 +391,9 @@ components:
     CacheControl:
       description: '`public, max-age=300, s-maxage=1800, stale-while-revalidate=3600`'
       schema: { type: string, const: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=3600' }
+    CacheControlNoStore:
+      description: '`no-store`'
+      schema: { type: string, const: 'no-store' }
     CacheControlPrivate:
       description: '`private, no-store`'
       schema: { type: string, const: 'private, no-store' }
@@ -598,6 +641,43 @@ components:
         publisher:
           description: Only with `include=publisher`.
           $ref: '#/components/schemas/User'
+    ResourceChangeList:
+      type: object
+      required: [object, items, next_cursor, total]
+      properties:
+        object: { type: string, const: list }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ResourceChange' }
+        next_cursor:
+          type: string
+          pattern: '^cur_[A-Za-z0-9._~-]+$'
+          description: Where to resume. Always set.
+        total: { type: 'null' }
+    ResourceChange:
+      type: object
+      required: [object, seq, resource_id, catalog_work_id, storage, kind, changed_at]
+      properties:
+        object: { type: string, const: patch_resource_change }
+        seq:
+          type: string
+          pattern: '^[0-9]+$'
+          description: |
+            Unique per entry, for deduplicating a replayed page. It is not the
+            feed's order; the cursor is.
+        resource_id: { type: string, pattern: '^[0-9]+$' }
+        catalog_work_id:
+          type: string
+          pattern: '^[0-9]+$'
+          description: The page the resource was on when it changed. A moved resource reports `updated` with its new page.
+        storage:
+          type: string
+          enum: [s3, user]
+          description: Only `s3` resources have a file on moyu.
+        kind:
+          type: string
+          enum: [created, file_replaced, updated, hidden, restored, deleted]
+        changed_at: { type: string, format: date-time }
     ResourceFile:
       type: object
       description: The file behind a hosted resource.

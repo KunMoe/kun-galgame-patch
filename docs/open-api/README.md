@@ -4,7 +4,7 @@ moyu 在 NextMoe 开发者平台上的公开只读面。**代码、契约、网�
 
 | 文件 | 内容 |
 |---|---|
-| [moyu-openapi.yaml](./moyu-openapi.yaml) | 面的 OpenAPI 3.1 契约（5 op，`redocly lint` 0 warning） |
+| [moyu-openapi.yaml](./moyu-openapi.yaml) | 面的 OpenAPI 3.1 契约（6 op，`redocly lint` 0 warning） |
 
 ## 1. 三十秒版本
 
@@ -22,6 +22,7 @@ GET /v2/moyu/patches/{id}                ?include
 GET /v2/moyu/patches/{id}/resources      ?limit&cursor&include_total&include
 GET /v2/moyu/resources/{id}              ?include
 GET /v2/moyu/resources/{id}/file         （需 moyu:files）
+GET /v2/moyu/changes                     ?limit&cursor   资源变更流，no-store
 ```
 
 `ids` / `refs` 是**批量查询**：一次最多 100 个锚，没命中的原样回在 `missing` 里。
