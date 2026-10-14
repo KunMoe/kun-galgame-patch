@@ -102,6 +102,7 @@ type App struct {
 	DocHandler       *docHandler.DocHandler
 	TrustHandler     *trustHandler.TrustHandler
 	RatingHandler    *rating.Handler
+	LibraryHandler   *rating.LibraryHandler
 
 	CronStop func()
 }
@@ -302,6 +303,7 @@ func New(cfg *config.Config) *App {
 	ratingStore := rating.NewStore(db)
 	ratingSvc := rating.NewService(ratingStore, galgame.V2(), usrCli, gate.New(trustCli))
 	ratingHdl := rating.NewHandler(ratingSvc, galgame)
+	libraryHdl := rating.NewLibraryHandler(rating.NewLibrary(galgame.V2(), galgame, ratingStore))
 	ratingMirror := rating.NewMirror(db, galgame.V2(), ratingStore)
 
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
@@ -395,6 +397,7 @@ func New(cfg *config.Config) *App {
 		DocHandler:       docHdl,
 		TrustHandler:     trustHdl,
 		RatingHandler:    ratingHdl,
+		LibraryHandler:   libraryHdl,
 		CronStop:         stopBackground,
 	}
 }

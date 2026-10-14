@@ -174,6 +174,8 @@ func (a *App) RegisterRoutes() {
 
 	userRoutes.Get("/creator/status", auth, a.UserHandler.CreatorStatus)
 	userRoutes.Post("/creator/apply", auth, a.UserHandler.CreatorApply)
+	userRoutes.Get("/privacy", auth, a.LibraryHandler.GetPrivacy)
+	userRoutes.Patch("/privacy", auth, a.LibraryHandler.SetPrivacy)
 
 	userRoutes.Get("/:id", optionalAuth, a.UserHandler.GetUserInfo)
 	userRoutes.Get("/:id/floating", a.UserHandler.GetUserFloating)
@@ -186,6 +188,7 @@ func (a *App) RegisterRoutes() {
 	// favourites.
 	userRoutes.Get("/:id/favorite", optionalAuth, a.UserHandler.GetUserFavorites)
 	userRoutes.Get("/:id/folder", optionalAuth, a.PatchHandler.UserFolders)
+	userRoutes.Get("/:id/library", optionalAuth, a.LibraryHandler.Get)
 	userRoutes.Get("/:id/comment", a.CommentHandler.GetUserComments)
 	userRoutes.Get("/:id/contribute", a.UserHandler.GetUserContributions)
 	userRoutes.Get("/:id/follower", optionalAuth, a.UserHandler.GetFollowers)

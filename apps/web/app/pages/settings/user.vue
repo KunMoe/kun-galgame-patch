@@ -257,6 +257,8 @@ const currentAvatarUrl = computed(() => {
 
       <FollowingHideSetting />
 
+      <UserLibraryPrivacySetting />
+
       <KunCard :bordered="true">
         <template #header>
           <h2 class="px-1 pt-1 text-xl font-medium">消息通知设置</h2>

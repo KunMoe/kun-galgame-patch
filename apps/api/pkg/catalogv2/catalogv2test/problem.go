@@ -51,6 +51,7 @@ var registry = map[string]def{
 	"INTERNAL_ERROR":                  {"platform", 500, "Internal error"},
 	"SERVICE_UNAVAILABLE":             {"platform", 503, "Service unavailable"},
 	"ENTITY_MERGED":                   {"catalog", 404, "Entity merged"},
+	"PLAY_RECORDS_PRIVATE":            {"catalog", 403, "Play records private"},
 	"USER_IDENTITY_REQUIRED":          {"me", 403, "User identity required"},
 	"SITE_NOT_BOUND":                  {"me", 403, "Site not bound"},
 	"RELEASE_CREATION_DISABLED":       {"me", 403, "Release creation disabled"},

@@ -52,11 +52,12 @@ func (p *Problem) Error() string {
 }
 
 const (
-	CodeScopeRequired     = "SCOPE_REQUIRED"
-	CodeInvalidCredential = "INVALID_CREDENTIAL"
-	CodeValidationFailed  = "VALIDATION_FAILED"
-	CodeEntityMerged      = "ENTITY_MERGED"
-	CodeDuplicateSuspects = "DUPLICATE_SUSPECTS"
+	CodeScopeRequired      = "SCOPE_REQUIRED"
+	CodeInvalidCredential  = "INVALID_CREDENTIAL"
+	CodeValidationFailed   = "VALIDATION_FAILED"
+	CodeEntityMerged       = "ENTITY_MERGED"
+	CodeDuplicateSuspects  = "DUPLICATE_SUSPECTS"
+	CodePlayRecordsPrivate = "PLAY_RECORDS_PRIVATE"
 )
 
 // Every code in catalog's closed registry
@@ -95,6 +96,7 @@ var problemKinds = map[string]upstream.Kind{
 	"INTERNAL_ERROR":                  upstream.Unavailable,
 	"SERVICE_UNAVAILABLE":             upstream.Unavailable,
 	CodeEntityMerged:                  upstream.NotFound,
+	CodePlayRecordsPrivate:            upstream.Rejected,
 	"USER_IDENTITY_REQUIRED":          upstream.Internal,
 	"SITE_NOT_BOUND":                  upstream.Internal,
 	"RELEASE_CREATION_DISABLED":       upstream.Rejected,
