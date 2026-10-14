@@ -795,7 +795,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/HouseError"
           description: Error
-      summary: Soft-delete an artifact (GC reclaims after TTL)
+      summary: Soft-delete an artifact (GC reclaims after TTL); other sites' composites over it are deleted
       tags:
         - artifacts
     get:

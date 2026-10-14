@@ -10,13 +10,14 @@
 
 | 项 | 决策 |
 |----|------|
-| 形态 | 组合 = 有序的字节段列表,每段取自本站某个 artifact 或随组合一起存的内联字节(glue)。不预生成、不复制本体 |
+| 形态 | 组合 = 有序的字节段列表,每段取自本站(或许可的来源站)某个 artifact 或随组合一起存的内联字节(glue)。不预生成、不复制本体 |
+| 跨站来源 | 仅 **letmoe → moyu** 一个方向(代码内白名单 `foreignSourceSites`):补丁归原作者,forge 的 STORE 重打包作为 moyu artifact 挂在 moyu 原补丁资源下,letmoe 组合引用它。2026-10-14 产品负责人裁定 |
 | 存储 | 元数据在 `kun_artifacts`(`composites` + `composite_sources`);供边缘读取的 manifest 写进同一个桶的 `c/{site}/{id}` |
 | id | **内容寻址**:sha256(站点 + 规范化计划) 前 128 位,32 位小写 hex。同站同计划 = 同 id,创建天然幂等 |
 | 下载 | `https://dl.imoe.uk/c/{site}/{id}{.ext}`,公开、无 token,与现有公开 artifact 同一模型 |
 | 边缘 | 独立 Worker `workers/dl-composite`,路由 `dl.imoe.uk/c/*`;现有下载 Worker 不动 |
 | 钉住 | 组合存活期间,它引用的 artifact 即使被软删,artifact-gc 也不物理回收 |
-| 下架 | 站点删组合 → manifest 同步删除;ren 在控制台删 artifact → 连带删除引用它的全部组合 |
+| 下架 | 站点删组合 → manifest 同步删除;来源站删自己的 artifact → 连带删除**别站**引用它的组合;ren 在控制台删 artifact → 连带删除引用它的全部组合 |
 | 配额 | 组合不计入每日文件数 / 字节数配额(只存 KB 级 manifest) |
 
 ## 1. API(artifact 服务,S2S)
@@ -51,7 +52,7 @@
 ```
 
 - `sources[]` 每项**恰好**一个 `artifact_uuid` 或 `data`;`size` 可选,给了就必须等于该来源真实字节数(防止拿错对象做的计划)。
-- artifact 来源必须是**调用方本站的、已完成上传、未删除、`public=true`** 的 artifact——组合挂在公开 URL 上,私有 artifact 不能经它外泄。
+- artifact 来源必须是**调用方本站的(或白名单许可的来源站的)、已完成上传、未删除、`public=true`** 的 artifact——组合挂在公开 URL 上,私有 artifact 不能经它外泄。目前唯一许可是 letmoe 组合引用 moyu 的 artifact;其它站的 artifact 一律按「不存在」回 422 `50002`。
 - 内联来源合计 ≤ **8 MiB**;更大的 glue 照常作为 artifact 上传后按 artifact 引用(能用,只是边缘多几次子请求)。
 - 每个来源至少被一个段引用;段必须落在来源范围内;段长之和必须等于 `size`。
 - `blake3` 不由服务重算,原样作为 ETag;正确性由调用方 verify(forge `compose verify`)。
@@ -110,15 +111,19 @@
 ### 2.3 钉住、删除与下架
 
 - `composite_sources`(composite_id, position, artifact_id)外键 `RESTRICT` 到 `artifacts`;artifact-gc 的软删回收查询排除仍被钉住的 artifact。删掉最后一个引用它的组合后,软删超过 TTL 的 artifact 在下一轮 GC 被回收。
-- 站点 `DELETE /api/v1/artifacts/{uuid}` 照旧只软删:**被钉住的字节继续供组合下载**(letmoe 的「原版换包后旧组合照常可下」靠这一点)。「原版下架 → 合成版一并下架」是调用方的事:删组合。
-- ren 在控制台删 artifact(`DELETE /api/v1/admin/artifact/{uuid}`)是平台级下架:先删除所有引用它的组合(manifest + 行),再软删 artifact;响应多一个 `composites_deleted`。oauth 进程没有存储凭证时这一步返回 503,artifact 不被软删。
+- 站点 `DELETE /api/v1/artifacts/{uuid}` 软删本站 artifact,然后**删除别站引用它的全部组合**(manifest + 行)——来源站撤回字节,别站的合成版不能继续分发。**本站自己的组合不受影响**:被钉住的字节继续供它们下载(letmoe 的「原版换包后旧组合照常可下」靠这一点;「原版下架 → 合成版一并下架」仍是调用方的事:删组合)。
+  - 连带删除只作用于**组合实际钉住的那个 artifact**。moyu 删除或替换补丁资源时,必须一并删除挂在其下的重打包 artifact;只删原加密包不会动到 letmoe 的组合。
+  - manifest 删除失败 → 500 `50013`,artifact 已软删、未删完的组合仍在。**重试同一 DELETE 会补完连带删除**并回 `deleted:true`;再无可删时回 404——调用方把删除时的 404 当作已完成。
+  - 被连带删除的组合没有推送通知:它从 GET(404)和列表里消失,边缘在 manifest 缓存过期(≤ 5 分钟)后停服。引用方自行对账。
+- ren 在控制台删 artifact(`DELETE /api/v1/admin/artifact/{uuid}`)是平台级下架:软删 artifact,再删除所有引用它的组合(manifest + 行);响应多一个 `composites_deleted`。oauth 进程没有存储凭证且存在引用它的组合时返回 503,artifact 不被软删。
+- 两条删除路径都**先软删、后查组合**,创建组合则在事务里对来源行加 `FOR SHARE` 并复核仍存活:并发的创建要么因来源已删回 422,要么在查找之前提交、被一并删除。反过来的顺序会让一个组合恰好落在两步之间,永久钉住已下架的 artifact(`TestTakedownWaitsForACreateHoldingItsSource` 钉住)。
 - id 内容寻址意味着同站同计划共享一个组合;调用方若有多行引用同一 id,自行引用计数,最后一行消失时再 `DELETE`。
 
 ## 3. 部署(Cloudflare 侧,需要账号权限)
 
 1. **Workers Paid**:免费档每次请求 50 个子请求、10 ms CPU,大组合撑不住。
-2. 在 B2 建一把**只读**、限定桶 `kungal-artifact-v1` 的 application key(可与现有下载 Worker 的只读 key 共用)。
-3. `cd workers/dl-composite && pnpm install && pnpm exec wrangler secret put B2_KEY_ID && pnpm exec wrangler secret put B2_APP_KEY && pnpm run deploy`。`wrangler.jsonc` 已含路由 `dl.imoe.uk/c/*`(zone `imoe.uk`)与 `workers_dev: false`。
+2. 在 B2 建一把**只读**、限定桶 `kungal-artifact-v1`、**不设 namePrefix** 的 application key——Worker 要读 `c/`、`letmoe/` 和跨站来源 `moyu/`(可与现有下载 Worker 的整桶只读 key 共用)。
+3. `cd workers/dl-composite && pnpm install && pnpm run deploy`,然后 `pnpm exec wrangler secret put B2_KEY_ID`、`pnpm exec wrangler secret put B2_APP_KEY`(每次 `secret put` 立即生效)。先部署再放 secret,是为了避开 `secret put` 对尚不存在的 Worker 弹出的「是否新建」交互;部署到放好 secret 之间 `/c/*` 回 500。`wrangler.jsonc` 已含路由 `dl.imoe.uk/c/*`(zone `imoe.uk`)与 `workers_dev: false`;登录看到多个账号时须指定 `account_id`。
 4. 冒烟:建一个组合 → `curl -I` 其 URL 应 200 + 精确 `Content-Length` + `ETag`;`curl -r 0-99` 应 206。
 
 本地联调:`docker-compose.dev.yml` 的 MinIO + `.dev.vars`(`B2_ENDPOINT=http://127.0.0.1:9000`、`B2_REGION=us-east-1`、`B2_BUCKET=<桶>`、`B2_KEY_ID` / `B2_APP_KEY`)→ `pnpm start`。
