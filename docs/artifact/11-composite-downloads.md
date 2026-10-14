@@ -55,7 +55,7 @@
 - artifact 来源必须是**调用方本站的(或白名单许可的来源站的)、已完成上传、未删除、`public=true`** 的 artifact——组合挂在公开 URL 上,私有 artifact 不能经它外泄。目前唯一许可是 letmoe 组合引用 moyu 的 artifact;其它站的 artifact 一律按「不存在」回 422 `50002`。
 - 内联来源合计 ≤ **8 MiB**;更大的 glue 照常作为 artifact 上传后按 artifact 引用(能用,只是边缘多几次子请求)。
 - 每个来源至少被一个段引用;段必须落在来源范围内;段长之和必须等于 `size`。
-- `blake3` 不由服务重算,原样作为 ETag;正确性由调用方 verify(forge `compose verify`)。
+- `blake3` **可选**(2026-10-14 起),给了就原样作为 ETag,不由服务重算;不给时 ETag 为带引号的组合 `id`——`id` 本身就是规范化计划的哈希,而 artifact 字节不可变,同一计划永远拼出同样的字节,所以它同样是强校验器。同一计划带与不带 `blake3` 是两个不同的 `id`。正确性由调用方 verify:全部条目自动合并(不再人工挑选)后,建议至少经组合 URL 用 Range 校验结构(EOCD、中央目录、每个本地文件头);条目数据是不可变 artifact 的原样字节区间,不必为算 `blake3` 把底包整读一遍。
 - 上限:`sources` ≤ 64,`segments` ≤ 100,000,请求体 ≤ 16 MiB。
 - 请求体不接受多余字段(Huma 默认 `additionalProperties: false`):forge 的 `plan.json` 需映射——去掉 `role` / `ref` / `overridden` / `added` 等记账字段,glue 放进一个 `{data}` 来源。
 
@@ -74,14 +74,14 @@
 }
 ```
 
-`url` = 站点 `artifact_cdn_base` + `/c/{site}/{id}` + 文件名扩展名;站点没配 `cdn_base` 时缺省。`artifacts` 是被钉住的 artifact uuid(按来源顺序,不含内联来源)。重放同一计划返回同一个 id,不新建行、不重写 manifest。
+创建时没给 `blake3` 的组合,响应里没有 `blake3` 字段。`url` = 站点 `artifact_cdn_base` + `/c/{site}/{id}` + 文件名扩展名;站点没配 `cdn_base` 时缺省。`artifacts` 是被钉住的 artifact uuid(按来源顺序,不含内联来源)。重放同一计划返回同一个 id,不新建行、不重写 manifest。
 
 ### 1.3 错误
 
 | HTTP | code | 何时 |
 |------|------|------|
 | 422 | 50002 `ErrArtifactInvalid` | 计划不成立;`message` 指出哪一项(哪个来源 / 哪个段) |
-| 422 / 400 | 50011 | 请求体不合 schema(缺字段、多字段、`blake3` 格式等) |
+| 422 / 400 | 50011 | 请求体不合 schema(缺字段、多字段、给了但格式不对的 `blake3` 等) |
 | 401 / 403 | 50006–50010 / 50016 | 鉴权失败 / 站点未开通 / 用户 JWT |
 | 404 | 50001 | 组合不存在或不属于本站 |
 | 503 | 50014 | 上传总开关关闭(只影响创建) |
@@ -94,7 +94,7 @@
 一行 JSON + `\n` + 各内联来源字节按来源顺序拼接:
 
 ```
-{"v":1,"size":…,"content_type":…,"content_disposition":…,"etag":"\"<blake3>\"","last_modified":…,
+{"v":1,"size":…,"content_type":…,"content_disposition":…,"etag":"\"<blake3 或 id>\"","last_modified":…,
  "sources":[{"key":"letmoe/<uuid>.zip"},{"inline":3180}],"segments":[[0,0,118615353],[1,0,85],…]}\n<glue bytes>
 ```
 
@@ -105,7 +105,7 @@
 - 路由 `dl.imoe.uk/c/*`(Cloudflare 路由不允许中缀通配,所以站点段放在 `/c/` 之后);路径 `^/c/{site}/{32hex}(.ext)?$`,其它一律 404。
 - 读 manifest(isolate 内缓存 5 分钟)→ 按请求区间映射到段 → 直连 B2 S3 端点(SigV4,`aws4fetch`,`cache: 'no-store'`)取段。每个子响应必须是 **206 且 `Content-Range` 精确匹配**,否则报错——不会把「首次 Range 回 200 整文件」拼进下载里。
 - 取段:≥ 1 MiB 的段单独取、原生 `pipeTo` 透传(不过 JS);更小的同来源段间隔 ≤ 64 KiB 的合并成一次请求在 Worker 内切片,内联 glue 可夹在其间。本地实测:310 段的组合整包下载 7 次子请求。
-- 响应:`Content-Length` 精确(`FixedLengthStream`);`Range` → 206,不可满足 → 416 + `Content-Range: bytes */size`,多段 Range 按整包 200 回;`If-Range` 认强 ETag 或与 `Last-Modified` 精确相等的日期;`If-None-Match` → 304;`ETag` = 带引号的 blake3;`Content-Disposition` 与 artifact 相同的 RFC 5987 编码;`Cache-Control: public, max-age=14400, no-transform`。Worker 不写边缘缓存,206 自然也不会被缓存。
+- 响应:`Content-Length` 精确(`FixedLengthStream`);`Range` → 206,不可满足 → 416 + `Content-Range: bytes */size`,多段 Range 按整包 200 回;`If-Range` 认强 ETag 或与 `Last-Modified` 精确相等的日期;`If-None-Match` → 304;`ETag` = 带引号的 blake3(未提供时为带引号的 `id`);`Content-Disposition` 与 artifact 相同的 RFC 5987 编码;`Cache-Control: public, max-age=14400, no-transform`。Worker 不写边缘缓存,206 自然也不会被缓存。
 - 删除后的停服延迟 = manifest 缓存(≤ 5 分钟)+ 浏览器侧 `max-age`。
 - 限流:形如组合的路径先过 Rate Limiting 绑定 `PER_IP`——每个 IPv4 地址或 IPv6 /64 每 60 秒 600 次,超出回 429 + `Retry-After: 60`,不读 manifest、不碰 B2;计数按 Cloudflare 机房各自独立。路径不合法的请求直接 404,不计数。这是 Worker 内的兜底;zone 级 WAF 限流规则在 Worker 之前拦截,被拦的请求不计 Worker 请求费。
 - CPU:`limits.cpu_ms = 5000`(付费档默认 30 s)。上限按**字节**定,不按观测 p99 定:2026-10-14 首个真实组合(150 MB、8 段)48 次请求的 CPU p50 2.8 ms / p99 14.8 ms,但那是几乎全走原生 `pipeTo` 的形状;小段合并后在 JS 里切片的路径实测 0.06–0.15 ms/MB(node,64 KiB / 16 KiB 分块),一个由大量小文件组成的数百 MB 补丁层就会超过「5×p99」的 75 ms,在下载中途被掐断。5 s 按 0.3 ms/MB 的保守估计可容约 16 GB 的切片字节,同时把失控请求的 CPU 费用封顶在约 $0.0001/次。

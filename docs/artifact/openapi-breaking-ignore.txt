@@ -1,0 +1,17 @@
+# Declared breaking changes for docs/artifact/openapi.yaml.
+#
+# oasdiff --err-ignore matches by SUBSTRING: an entry suppresses a breaking
+# change when the entry line CONTAINS oasdiff's own error text verbatim
+# ("in API <METHOD> <path> <description>"), so prose may surround an entry but
+# never interrupt it. Lines that match nothing — this header included — are
+# inert. Removing an entry re-arms the gate for that change.
+#
+# 2026-10-14: blake3 became optional on composite create, at letmoe's request.
+# Every eligible pair is now merged automatically, and requiring the BLAKE3 of
+# the assembled file meant forge had to read about 2.1 TB of bases once. A
+# composite created without one is served with its id as the ETag and answers
+# without a blake3 field, so the response property is optional too. letmoe and
+# forge, the only consumers, asked for it.
+in API GET /api/v1/artifacts/composites the response property `data/items/items/blake3` became optional for the status `200`
+in API POST /api/v1/artifacts/composites the response property `data/blake3` became optional for the status `200`
+in API GET /api/v1/artifacts/composites/{id} the response property `data/blake3` became optional for the status `200`

@@ -106,6 +106,7 @@ components:
             - array
             - "null"
         blake3:
+          description: Absent when the plan was created without one
           type: string
         content_type:
           type: string
@@ -136,7 +137,6 @@ components:
         - filename
         - content_type
         - size
-        - blake3
         - artifacts
         - segment_count
         - inline_bytes
@@ -193,7 +193,7 @@ components:
           readOnly: true
           type: string
         blake3:
-          description: BLAKE3 of the assembled file, lowercase hex. Served as the ETag; not recomputed by the service.
+          description: Optional BLAKE3 of the assembled file, lowercase hex, served as the ETag; not recomputed by the service. Without it the ETag is the composite id, which already hashes the plan.
           pattern: ^[0-9a-f]{64}$
           type: string
         content_type:
@@ -232,7 +232,6 @@ components:
         - filename
         - content_type
         - size
-        - blake3
         - sources
         - segments
       type: object
