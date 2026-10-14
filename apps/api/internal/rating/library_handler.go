@@ -1,9 +1,11 @@
 package rating
 
 import (
+	stderrors "errors"
 	"strconv"
 
 	"kun-galgame-patch-api/internal/middleware"
+	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
@@ -53,7 +55,7 @@ func (h *LibraryHandler) Get(c fiber.Ctx) error {
 		ContentLimit: utils.ContentLimitForListBrowse(c),
 	})
 	if err != nil {
-		return fail(c, err)
+		return libraryFail(c, err)
 	}
 	return response.OK(c, page)
 }
@@ -61,7 +63,7 @@ func (h *LibraryHandler) Get(c fiber.Ctx) error {
 func (h *LibraryHandler) GetPrivacy(c fiber.Ctx) error {
 	private, err := h.library.Private(c.Context(), middleware.GetAccessToken(c))
 	if err != nil {
-		return fail(c, err)
+		return libraryFail(c, err)
 	}
 	return response.OK(c, privacyOf(private))
 }
@@ -76,7 +78,17 @@ func (h *LibraryHandler) SetPrivacy(c fiber.Ctx) error {
 	}
 	private, err := h.library.SetPrivate(c.Context(), middleware.GetAccessToken(c), req.PlayRecords == "private")
 	if err != nil {
-		return fail(c, err)
+		return libraryFail(c, err)
 	}
 	return response.OK(c, privacyOf(private))
+}
+
+func libraryFail(c fiber.Ctx, err error) error {
+	switch {
+	case stderrors.Is(err, catalogv2.ErrNoAccessToken):
+		return response.Error(c, errors.ErrUnauthorized())
+	case catalogv2.ReauthRequired(err):
+		return response.Error(c, errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
+	}
+	return response.Upstream(c, err, "")
 }

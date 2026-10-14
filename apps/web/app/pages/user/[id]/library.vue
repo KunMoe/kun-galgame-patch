@@ -29,8 +29,7 @@ const { data, pending } = await useAsyncData(
   async () => {
     const res = await fetchPage()
     return res.code === 0 ? res.data : null
-  },
-  { watch: [state] }
+  }
 )
 
 const items = ref<GalgameLibraryItem[]>([])
