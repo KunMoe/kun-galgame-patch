@@ -2,7 +2,9 @@ package repository
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/utils"
@@ -193,6 +195,29 @@ func (r *Repository) GetRepack(resourceID int) (*patchModel.PatchResourceRepack,
 		return nil, nil
 	}
 	return &rows[0], nil
+}
+
+type ChangeRow struct {
+	Seq        int64
+	Txid       int64
+	ResourceID int
+	PatchID    int
+	Storage    string
+	Kind       string
+	ChangedAt  time.Time
+}
+
+// ListChanges reads the feed after (txid, seq). The xmin bound is what keeps
+// it gapless; migration 048 says why.
+func (r *Repository) ListChanges(afterTxid, afterSeq int64, limit int) ([]ChangeRow, error) {
+	var rows []ChangeRow
+	err := r.db.Raw(`SELECT seq, txid::text::bigint AS txid, resource_id, patch_id, storage, kind, changed_at
+		FROM patch_resource_change
+		WHERE (txid, seq) > (?::text::xid8, ?)
+		  AND txid < pg_snapshot_xmin(pg_current_snapshot())
+		ORDER BY txid, seq
+		LIMIT ?`, strconv.FormatInt(afterTxid, 10), afterSeq, limit).Scan(&rows).Error
+	return rows, err
 }
 
 // jsonArrayAny ORs the values: asking for two languages asks for either, not

@@ -14,7 +14,7 @@ import (
 // cost, accepted by infra in §16.5, is that a request Cloudflare answers is one
 // the platform never meters. The file route overrides it with no-store: a
 // shared copy would hand its link and password to callers the gateway never
-// checked.
+// checked. So does the change feed, whose cached tail would hide new changes.
 const faceCache = "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600"
 
 // faceCORS is deliberately not the site's CORS. The site allows a fixed origin
@@ -56,4 +56,5 @@ func mountFace(app *fiber.App, h *faceHandler.Handler) {
 	face.Get("/patches/:id/resources", h.ListPatchResources)
 	face.Get("/resources/:id", h.GetResource)
 	face.Get("/resources/:id/file", h.GetResourceFile)
+	face.Get("/changes", h.ListChanges)
 }

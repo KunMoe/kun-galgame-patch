@@ -13,7 +13,7 @@ import (
 // without these the submit lane asks for an artifact_uuid the caller has no way
 // to mint -- the only alternative being to hand moyu's artifact client secret
 // to the forge, which would let it write under this site's key unsupervised.
-var botUploadTier = constants.CreatorUploadTier
+var botUploadTier = constants.BotUploadTier
 
 func (h *Handler) BotInit(c fiber.Ctx, userID int) error {
 	var req InitRequest

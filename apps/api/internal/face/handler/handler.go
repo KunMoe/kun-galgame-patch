@@ -98,6 +98,23 @@ func (h *Handler) GetResource(c fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+func (h *Handler) ListChanges(c fiber.Ctx) error {
+	c.Set(fiber.HeaderCacheControl, "no-store")
+	after, prob := service.ParseChangeCursor(c)
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
+	limit, prob := service.ParseLimit(c, false)
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
+	out, prob := h.svc.ListChanges(c.Context(), after, limit)
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
+	return c.JSON(out)
+}
+
 const filesScope = "moyu:files"
 
 func (h *Handler) GetResourceFile(c fiber.Ctx) error {

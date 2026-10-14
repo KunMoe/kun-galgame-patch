@@ -160,3 +160,15 @@ type ResourceRepack struct {
 	SourceBlake3       string `json:"source_blake3"`
 	CreatedAt          string `json:"created_at"`
 }
+
+// ResourceChange is one entry of the change feed. ResourceID and CatalogWorkID
+// name the resource and the page it was on when it changed.
+type ResourceChange struct {
+	Object        string `json:"object"`
+	Seq           string `json:"seq"`
+	ResourceID    string `json:"resource_id"`
+	CatalogWorkID string `json:"catalog_work_id"`
+	Storage       string `json:"storage"`
+	Kind          string `json:"kind"`
+	ChangedAt     string `json:"changed_at"`
+}

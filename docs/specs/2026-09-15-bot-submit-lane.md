@@ -9,7 +9,7 @@
 
 ### 上传
 
-`POST /bot/upload/init` → `POST /bot/upload/complete`，断点续传走 `POST /bot/upload/resume`。body 与 `/api/v1/upload/*` 完全一致，只是用 bot key 而不是会话鉴权，配额按 creator 档（单文件 5 GB / 每日 100 GB）。
+`POST /bot/upload/init` → `POST /bot/upload/complete`，断点续传走 `POST /bot/upload/resume`。body 与 `/api/v1/upload/*` 完全一致，只是用 bot key 而不是会话鉴权。配额走 bot 自己的档：单文件 20 GiB，每日 1 TiB。2026-10-14 从 creator 档（5 GB / 100 GB）调上来，因为 forge 要为 letmoe 合并下载重打包每一个可整合的补丁。制品服务对 moyu 站点另有每日配额，归 infra 管。
 
 站点资源只接受 `.zip` / `.rar` / `.7z`。
 
