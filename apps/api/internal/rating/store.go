@@ -4,6 +4,7 @@ import (
 	stderrors "errors"
 	"time"
 
+	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
 
 	"gorm.io/gorm"
@@ -143,4 +144,19 @@ func (s *Store) ListByWork(workID int64, offset, limit int) ([]Row, int64, error
 	err := s.db.Raw(`SELECT `+ratingColumns+` FROM galgame_rating WHERE work_id = ?
 		ORDER BY created_at DESC, id DESC OFFSET ? LIMIT ?`, workID, offset, limit).Scan(&rows).Error
 	return rows, total, err
+}
+
+func (s *Store) PatchRows(ids []int) (map[int]patchModel.Patch, error) {
+	out := make(map[int]patchModel.Patch, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []patchModel.Patch
+	if err := s.db.Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, p := range rows {
+		out[p.ID] = p
+	}
+	return out, nil
 }

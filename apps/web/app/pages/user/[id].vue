@@ -41,6 +41,7 @@ const tabs = computed(() => [
   { key: 'contribute', title: '贡献', href: `/user/${userId.value}/contribute` },
   { key: 'favorite', title: '收藏', href: `/user/${userId.value}/favorite` },
   { key: 'folder', title: '收藏夹', href: `/user/${userId.value}/folder` },
+  { key: 'library', title: '游戏库', href: `/user/${userId.value}/library` },
   { key: 'comment', title: '评论', href: `/user/${userId.value}/comment` }
 ])
 

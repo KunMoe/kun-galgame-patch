@@ -91,3 +91,12 @@ export const KUN_PLAYTIME_HOURS_MAX = 1000
 export const KUN_PLAYTIME_MINUTES_FLOOR = 10
 
 export const KUN_RATING_SUMMARY_MAX = 2000
+
+export const KUN_LIBRARY_TABS = [
+  { value: 'all', label: '全部' },
+  { value: 'wish', label: '想玩' },
+  { value: 'doing', label: '在玩' },
+  { value: 'done', label: '玩过' },
+  { value: 'on_hold', label: '搁置' },
+  { value: 'dropped', label: '抛弃' }
+] as const

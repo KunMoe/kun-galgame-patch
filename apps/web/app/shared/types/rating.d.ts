@@ -49,3 +49,22 @@ interface GalgameWorkRecordInput {
   minutes?: number
   rating?: GalgameRatingInput
 }
+
+interface GalgameLibraryItem extends GalgameCard {
+  play_state: string
+  minutes: number
+  overall: number | null
+}
+
+interface GalgameLibraryPage {
+  visibility: 'public' | 'owner_only' | 'hidden'
+  items: GalgameLibraryItem[]
+  next_cursor: string
+  // The first page carries the counts of every state, whichever tab is open.
+  total: number
+  counts?: Record<string, number>
+}
+
+interface PlayRecordsPrivacy {
+  play_records: 'public' | 'private'
+}
