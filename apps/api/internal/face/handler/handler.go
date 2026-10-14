@@ -1,15 +1,18 @@
 // Package handler is the HTTP edge of the public developer-platform face.
 //
-// It reads no credential and no identity header. The gateway has already
-// decided who may call: Traefik runs ForwardAuth against oauth's
+// It reads no credential. The gateway has already decided who may call:
+// Traefik runs ForwardAuth against oauth's
 // /internal/devapi/forward-auth?face=moyu, which validates the nmk_ key,
 // spends the key's rate and quota budget and meters the admitted request.
-// Nothing reaches here unkeyed from the public internet, and every answer is
-// the same for every caller -- which is what makes the whole face cacheable.
+// Nothing reaches here unkeyed from the public internet, and every answer but
+// the file route's is the same for every caller -- which is what makes the
+// rest of the face cacheable.
 package handler
 
 import (
+	"slices"
 	"strconv"
+	"strings"
 
 	"kun-galgame-patch-api/internal/face/service"
 	"kun-galgame-patch-api/pkg/problem"
@@ -89,6 +92,28 @@ func (h *Handler) GetResource(c fiber.Ctx) error {
 		return problem.Write(c, prob)
 	}
 	out, prob := h.svc.GetResource(c.Context(), id, include)
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
+	return c.JSON(out)
+}
+
+const filesScope = "moyu:files"
+
+func (h *Handler) GetResourceFile(c fiber.Ctx) error {
+	c.Set(fiber.HeaderCacheControl, "private, no-store")
+	// Trusted only because docker-compose.prod.yml lists X-NextMoe-Scopes in the
+	// forwardauth authResponseHeaders: Traefik overwrites a listed header and
+	// passes an unlisted one through exactly as the client sent it.
+	if !slices.Contains(strings.Fields(c.Get("X-NextMoe-Scopes")), filesScope) {
+		return problem.WriteCode(c, problem.CodeScopeRequired,
+			"this operation needs the "+filesScope+" scope, which an operator grants")
+	}
+	id, prob := pathID(c, "id")
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
+	out, prob := h.svc.GetResourceFile(c.Context(), id)
 	if prob != nil {
 		return problem.Write(c, prob)
 	}

@@ -8,6 +8,7 @@ import (
 	"kun-galgame-patch-api/internal/face/dto"
 	"kun-galgame-patch-api/internal/face/repository"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/imageclient"
 	"kun-galgame-patch-api/pkg/problem"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -19,11 +20,14 @@ type Service struct {
 	repo    *repository.Repository
 	users   *userclient.Client
 	img     *imageclient.Client
+	art     *artifactclient.Client
 	siteURL string
 }
 
-func New(repo *repository.Repository, users *userclient.Client, img *imageclient.Client, siteURL string) *Service {
-	return &Service{repo: repo, users: users, img: img, siteURL: siteURL}
+func New(
+	repo *repository.Repository, users *userclient.Client, img *imageclient.Client, art *artifactclient.Client, siteURL string,
+) *Service {
+	return &Service{repo: repo, users: users, img: img, art: art, siteURL: siteURL}
 }
 
 func (s *Service) ListPatches(ctx context.Context, q *PatchQuery) (dto.List[dto.Patch], *problem.Problem) {

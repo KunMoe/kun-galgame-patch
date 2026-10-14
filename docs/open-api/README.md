@@ -4,14 +4,15 @@ moyu 在 NextMoe 开发者平台上的公开只读面。**代码、契约、网�
 
 | 文件 | 内容 |
 |---|---|
-| [moyu-openapi.yaml](./moyu-openapi.yaml) | 面的 OpenAPI 3.1 契约（4 op，`redocly lint` 0 warning） |
+| [moyu-openapi.yaml](./moyu-openapi.yaml) | 面的 OpenAPI 3.1 契约（5 op，`redocly lint` 0 warning） |
 
 ## 1. 三十秒版本
 
 - 这个面回答一个问题：**这个游戏，moyu 上有哪些补丁资源**。入口是调用方手里已有的锚——VNDB 号或 catalog work id。
 - **不带游戏名、封面、标签、角色、Staff**。那些是 catalog 的，moyu 一份都不存；同一把 key 同时能读 `/v2/catalog/works`，每行都带 `catalog_work_id` 就是为了那一跳。
 - **不带下载链接、提取码、密码**。站内取链是另一条按资源限流的请求，存在的理由就是链接不能被批量抓走；闸门放行任意有效 key，这里给链接等于把那条限流端点作废。每行给 `web_url`。
-- 鉴权本服务一行没写。B 档 ForwardAuth 在网关上做完了。
+  - 唯一例外是 `GET /v2/moyu/resources/{id}/file`（2026-10-14，letmoe「本体 + 补丁合并下载」要用）：回托管资源的下载地址与解压密码，只给持运营发放 scope `moyu:files` 的 key，其余一律 403 `SCOPE_REQUIRED`；所有回答（含拒绝）都是 `Cache-Control: private, no-store`。
+- 鉴权本服务只读一个头：file 路由看 `X-NextMoe-Scopes`。它可信全靠 `docker-compose.prod.yml` 把它列进 forwardauth 的 `authResponseHeaders`——Traefik 只覆盖列出来的头，没列的会把客户端自带的原样透传。其余 B 档 ForwardAuth 在网关上做完了。
 
 ## 2. 面
 
@@ -20,6 +21,7 @@ GET /v2/moyu/patches                     ?limit&cursor&include_total&include&ids
 GET /v2/moyu/patches/{id}                ?include
 GET /v2/moyu/patches/{id}/resources      ?limit&cursor&include_total&include
 GET /v2/moyu/resources/{id}              ?include
+GET /v2/moyu/resources/{id}/file         （需 moyu:files）
 ```
 
 `ids` / `refs` 是**批量查询**：一次最多 100 个锚，没命中的原样回在 `missing` 里。
@@ -40,7 +42,7 @@ GET /v2/moyu/patches?refs=vndb:v65869,catalog:61311,vndb:v-nope
 - 关联走 `include=`，缺省什么都不带
 - 时间是 RFC 3339 UTC，日期是 `YYYY-MM-DD`
 - 错误是 RFC 9457 `application/problem+json`，`code` 取自平台封闭注册表
-- 缓存头逐字沿用 catalog `/v2` 公开档：`public, max-age=300, s-maxage=1800, stale-while-revalidate=3600` + ETag/304
+- 缓存头逐字沿用 catalog `/v2` 公开档：`public, max-age=300, s-maxage=1800, stale-while-revalidate=3600` + ETag/304（file 路由除外，见 §1）
 - `limit > 100` 报 `LIMIT_TOO_LARGE` 而**不静默截断**——被截断的页会让调用方以为自己读完了
 
 站内 `/api/v1` 不受影响，仍是 `{code,message,data}` 信封 + cookie 会话；`globalErrorHandler` 按路径分流，两套错误语言互不干扰。
