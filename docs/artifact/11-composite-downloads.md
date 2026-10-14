@@ -108,7 +108,7 @@
 - 响应:`Content-Length` 精确(`FixedLengthStream`);`Range` → 206,不可满足 → 416 + `Content-Range: bytes */size`,多段 Range 按整包 200 回;`If-Range` 认强 ETag 或与 `Last-Modified` 精确相等的日期;`If-None-Match` → 304;`ETag` = 带引号的 blake3;`Content-Disposition` 与 artifact 相同的 RFC 5987 编码;`Cache-Control: public, max-age=14400, no-transform`。Worker 不写边缘缓存,206 自然也不会被缓存。
 - 删除后的停服延迟 = manifest 缓存(≤ 5 分钟)+ 浏览器侧 `max-age`。
 - 限流:形如组合的路径先过 Rate Limiting 绑定 `PER_IP`——每个 IPv4 地址或 IPv6 /64 每 60 秒 600 次,超出回 429 + `Retry-After: 60`,不读 manifest、不碰 B2;计数按 Cloudflare 机房各自独立。路径不合法的请求直接 404,不计数。这是 Worker 内的兜底;zone 级 WAF 限流规则在 Worker 之前拦截,被拦的请求不计 Worker 请求费。
-- CPU:先不设 `limits.cpu_ms`(付费档默认 30 s)。大组合会流好几分钟,合并小段时 JS 逐块切片会累计 CPU,拍脑袋的上限会在下载中途掐断;等验收后从 Workers observability 读出每请求 CPU 的 p99,再按约 5 倍设上限。
+- CPU:`limits.cpu_ms = 5000`(付费档默认 30 s)。上限按**字节**定,不按观测 p99 定:2026-10-14 首个真实组合(150 MB、8 段)48 次请求的 CPU p50 2.8 ms / p99 14.8 ms,但那是几乎全走原生 `pipeTo` 的形状;小段合并后在 JS 里切片的路径实测 0.06–0.15 ms/MB(node,64 KiB / 16 KiB 分块),一个由大量小文件组成的数百 MB 补丁层就会超过「5×p99」的 75 ms,在下载中途被掐断。5 s 按 0.3 ms/MB 的保守估计可容约 16 GB 的切片字节,同时把失控请求的 CPU 费用封顶在约 $0.0001/次。
 
 ### 2.3 钉住、删除与下架
 
