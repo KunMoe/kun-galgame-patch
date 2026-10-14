@@ -23,6 +23,11 @@ type RatingSync interface {
 	Sync(ctx context.Context) (int, error)
 }
 
+type RepackPurge interface {
+	Configured() bool
+	Purge(ctx context.Context) (int, error)
+}
+
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
@@ -30,6 +35,7 @@ func Start(
 	comments CommentImages,
 	notifications NotificationSync,
 	ratings RatingSync,
+	repacks RepackPurge,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -157,6 +163,24 @@ func Start(
 		}))
 		if _, err := c.AddJob("@every 2m", job); err != nil {
 			slog.Error("注册评分镜像同步任务失败", "error", err)
+		}
+	}
+
+	if repacks != nil && repacks.Configured() {
+		job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			n, err := repacks.Purge(ctx)
+			if err != nil {
+				slog.Error("repack 制品删除失败", "error", err, "purged", n)
+				return
+			}
+			if n > 0 {
+				slog.Info("repack 制品删除完成", "purged", n)
+			}
+		}))
+		if _, err := c.AddJob("@every 1m", job); err != nil {
+			slog.Error("注册 repack 制品删除任务失败", "error", err)
 		}
 	}
 

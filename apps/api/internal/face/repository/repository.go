@@ -184,6 +184,17 @@ func (r *Repository) HashOfReplacedFile(resourceID int, hash string) (bool, erro
 	return n > 0, err
 }
 
+func (r *Repository) GetRepack(resourceID int) (*patchModel.PatchResourceRepack, error) {
+	var rows []patchModel.PatchResourceRepack
+	if err := r.db.Where("resource_id = ?", resourceID).Limit(1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
 // jsonArrayAny ORs the values: asking for two languages asks for either, not
 // for a page whose resources cover both.
 func jsonArrayAny(q *gorm.DB, column string, values []string) *gorm.DB {

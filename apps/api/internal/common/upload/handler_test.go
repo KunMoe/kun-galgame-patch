@@ -52,7 +52,7 @@ func TestUploadErrorAnswers(t *testing.T) {
 		{"the site's daily quota", artifactErr(upstream.RateLimited, 429, artifactclient.ErrQuotaExceeded), 429, 42900},
 		{"a store outage", artifactErr(upstream.Unavailable, 500, nil), 503, 50300},
 		{"resume after completion", artifactErr(upstream.Conflict, 409, nil), 409, 40900},
-		{"someone else's upload", errNotUploadOwner, 403, 40300},
+		{"someone else's upload", ErrNotUploadOwner, 403, 40300},
 		{"a published file", errArtifactInUse, 409, 40900},
 		{"the reader's own quota", errOverDailyUpload, 400, 40000},
 	} {

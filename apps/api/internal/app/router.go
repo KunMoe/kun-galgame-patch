@@ -57,6 +57,10 @@ func (a *App) RegisterRoutes() {
 		bot.Post("/upload/resume", func(c fiber.Ctx) error {
 			return a.UploadHandler.BotResume(c, botUser)
 		})
+		bot.Put("/resources/:id/repack", func(c fiber.Ctx) error {
+			return a.RepackHandler.Attach(c, botUser)
+		})
+		bot.Delete("/resources/:id/repack", a.RepackHandler.Withdraw)
 	}
 
 	patchRoutes := api.Group("/patch")

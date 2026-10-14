@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strconv"
 
 	"kun-galgame-patch-api/internal/face/dto"
@@ -34,10 +35,16 @@ func (s *Service) GetResourceFile(ctx context.Context, id int) (*dto.ResourceFil
 			hash = ""
 		}
 	}
-	return s.resourceFile(ctx, row, hash)
+	repack, err := s.repo.GetRepack(row.ID)
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	return s.resourceFile(ctx, row, hash, repack)
 }
 
-func (s *Service) resourceFile(ctx context.Context, row *patchModel.PatchResource, hash string) (*dto.ResourceFile, *problem.Problem) {
+func (s *Service) resourceFile(
+	ctx context.Context, row *patchModel.PatchResource, hash string, repack *patchModel.PatchResourceRepack,
+) (*dto.ResourceFile, *problem.Problem) {
 	meta, err := s.art.Get(ctx, row.ArtifactUUID)
 	if err != nil {
 		return nil, artifactProblem(row.ID, err)
@@ -46,7 +53,7 @@ func (s *Service) resourceFile(ctx context.Context, row *patchModel.PatchResourc
 	if err != nil {
 		return nil, artifactProblem(row.ID, err)
 	}
-	return &dto.ResourceFile{
+	out := &dto.ResourceFile{
 		Object:       "patch_resource_file",
 		ResourceID:   strconv.Itoa(row.ID),
 		ArtifactUUID: row.ArtifactUUID,
@@ -56,7 +63,30 @@ func (s *Service) resourceFile(ctx context.Context, row *patchModel.PatchResourc
 		Blake3:       hash,
 		Password:     row.Password,
 		UpdatedAt:    stamp(row.UpdateTime),
-	}, nil
+	}
+	if repack == nil {
+		return out, nil
+	}
+	repackDL, err := s.art.Download(ctx, repack.ArtifactUUID)
+	if errors.Is(err, artifactclient.ErrNotFound) {
+		slog.Warn("repack row outlived its artifact", "resource_id", row.ID, "artifact_uuid", repack.ArtifactUUID)
+		return out, nil
+	}
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	out.Repack = &dto.ResourceRepack{
+		Object:             "patch_resource_repack",
+		ArtifactUUID:       repack.ArtifactUUID,
+		DownloadURL:        repackDL.Url,
+		Blake3:             repack.Blake3,
+		Bytes:              repack.Bytes,
+		FileCount:          repack.FileCount,
+		SourceArtifactUUID: repack.SourceArtifactUUID,
+		SourceBlake3:       repack.SourceBlake3,
+		CreatedAt:          stamp(repack.CreatedAt),
+	}
+	return out, nil
 }
 
 func artifactProblem(resourceID int, err error) *problem.Problem {

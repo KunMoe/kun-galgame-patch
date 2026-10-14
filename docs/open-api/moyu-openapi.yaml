@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.3.0
+  version: 1.4.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -611,6 +611,7 @@ components:
         - blake3
         - password
         - updated_at
+        - repack
       properties:
         object: { type: string, const: patch_resource_file }
         resource_id: { type: string, pattern: '^[0-9]+$' }
@@ -643,6 +644,39 @@ components:
           type: string
           format: date-time
           description: When the resource was last edited, its file or anything else.
+        repack:
+          description: |
+            The passwordless STORE-zip copy letmoe's forge attached, or null.
+            moyu deletes it when the resource is deleted or its file replaced,
+            so a null after a non-null means it is gone.
+          oneOf:
+            - $ref: '#/components/schemas/ResourceRepack'
+            - type: 'null'
+    ResourceRepack:
+      type: object
+      required:
+        - object
+        - artifact_uuid
+        - download_url
+        - blake3
+        - bytes
+        - file_count
+        - source_artifact_uuid
+        - source_blake3
+        - created_at
+      properties:
+        object: { type: string, const: patch_resource_repack }
+        artifact_uuid: { type: string, format: uuid }
+        download_url: { type: string, format: uri }
+        blake3: { type: string, pattern: '^[0-9a-f]{64}$' }
+        bytes: { type: integer, format: int64, minimum: 1 }
+        file_count: { type: integer, minimum: 1 }
+        source_artifact_uuid:
+          type: string
+          format: uuid
+          description: The resource file this was built from. Always the current one.
+        source_blake3: { type: string, pattern: '^[0-9a-f]{64}$' }
+        created_at: { type: string, format: date-time }
     User:
       type: object
       description: |

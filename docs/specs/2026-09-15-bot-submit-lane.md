@@ -31,6 +31,32 @@
 - `language` / `platform` 走站点完整闭集。
 - 页不存在时先 `CreatePatchByGalgameID` 再挂资源。
 
+### repack（2026-10-14，letmoe「本体 + 补丁合并下载」）
+
+forge 从 `/v2/moyu/resources/{id}/file` 取原文件，重打成确定性 STORE zip（去掉解压密码），经上面的上传接口传成 moyu 的 artifact，再挂回原资源。repack 归原资源与原作者所有，没有自己的页面、计数、通知或萌萌点。每个资源最多一个。
+
+`PUT /bot/resources/:id/repack`，body：
+
+```json
+{"artifact_uuid":"…","source_artifact_uuid":"…","blake3":"<64 hex>","bytes":123,"file_count":42,"source_blake3":"<64 hex>"}
+```
+
+- `source_artifact_uuid` 必须等于资源**当前**的 `artifact_uuid`，否则 409：作者在 forge 干活期间换了文件，重读 `/file` 重打。过期判断按 uuid 而不是 BLAKE3，因为 moyu 自 2026-06-04 起不记 BLAKE3。
+- 资源须为 `status=0` 的托管资源，否则 404。
+- artifact 须是 bot 7 天内自己发起的上传、已完成、`public`、大小等于 `bytes`，且不是任何资源的原文件、不在待删队列里。否则 422。
+- 同一 `artifact_uuid` 重放：200，原样返回，不改任何东西。换一个 artifact：替换旧行，旧 repack 进入待删队列。
+- 返回 `{resource_id, artifact_uuid, source_artifact_uuid, blake3, bytes, file_count, source_blake3, created_at}`。
+
+`DELETE /bot/resources/:id/repack` → `{resource_id, deleted}`；没有 repack 时 `deleted:false`，仍是 200。
+
+**删除由数据库触发器负责**（迁移 047）。以下情况会把 repack 的 artifact 放进 `patch_resource_repack_purge`：
+
+- repack 行被删：撤回、资源被删，包括页面或用户被删时的外键级联；
+- repack 被替换；
+- 资源换了文件。
+
+API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小时，404 视为已删。infra 收到 moyu 的 artifact 删除后，会连带删掉钉住它的 letmoe 组合。资源被禁用（1）或隐藏（2）时 repack **不删**：`/file` 此时回 404，由 letmoe 自己下线组合，资源恢复后再用同一计划重建。
+
 ## 已知边界
 
 bot 投稿的页面**不会**在 catalog 认领该 work。`claimOnFirstResource` 走 `POST /v2/me/claims`，需要发布者本人的 OAuth token，bot key 不是。页面在本站 `published=true`（`MarkIndexed`）正常可见，但 catalog 那边这个 work 仍未被 kungal 站点认领。要补齐得由 infra 发一个 bot 用户 token，不是代码层面能关掉的口子。
