@@ -47,11 +47,12 @@ func TestResourceFileShape(t *testing.T) {
 	row := patchModel.PatchResource{
 		ID:           7007,
 		ArtifactUUID: uuid,
+		Blake3:       strings.Repeat("ab", 32),
 		Password:     "moyu.moe",
 		UpdateTime:   time.Date(2026, 10, 14, 18, 30, 0, 0, time.FixedZone("CST", 8*3600)),
 	}
 
-	got, prob := svc.resourceFile(context.Background(), &row, strings.Repeat("ab", 32), nil)
+	got, prob := svc.resourceFile(context.Background(), &row, nil)
 	if prob != nil {
 		t.Fatal(prob)
 	}
@@ -81,7 +82,7 @@ func TestResourceFileArtifactFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := New(nil, nil, nil, fakeArtifacts(t, tc.status, tc.body, ""), "https://www.moyu.moe")
 			row := patchModel.PatchResource{ID: 7007, ArtifactUUID: "u1"}
-			_, prob := svc.resourceFile(context.Background(), &row, "", nil)
+			_, prob := svc.resourceFile(context.Background(), &row, nil)
 			if prob == nil || prob.Code != tc.code {
 				t.Fatalf("problem = %+v, want code %s", prob, tc.code)
 			}
@@ -99,7 +100,7 @@ func TestResourceFileCarriesItsRepack(t *testing.T) {
 		CreatedAt: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC),
 	}
 
-	got, prob := New(nil, nil, nil, fakeArtifacts(t, 200, meta, ""), "").resourceFile(context.Background(), &row, "", &repack)
+	got, prob := New(nil, nil, nil, fakeArtifacts(t, 200, meta, ""), "").resourceFile(context.Background(), &row, &repack)
 	if prob != nil {
 		t.Fatal(prob)
 	}
@@ -114,7 +115,7 @@ func TestResourceFileCarriesItsRepack(t *testing.T) {
 
 	// An operator can delete an artifact from the console without moyu
 	// hearing of it. The original is still served; only the repack reads null.
-	got, prob = New(nil, nil, nil, fakeArtifacts(t, 200, meta, repacked), "").resourceFile(context.Background(), &row, "", &repack)
+	got, prob = New(nil, nil, nil, fakeArtifacts(t, 200, meta, repacked), "").resourceFile(context.Background(), &row, &repack)
 	if prob != nil {
 		t.Fatal(prob)
 	}

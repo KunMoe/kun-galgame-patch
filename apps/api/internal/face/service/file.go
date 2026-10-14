@@ -25,25 +25,15 @@ func (s *Service) GetResourceFile(ctx context.Context, id int) (*dto.ResourceFil
 	if row.ArtifactUUID == "" {
 		return nil, problem.New(problem.CodeNotFound, "resource "+strconv.Itoa(id)+" is a link its publisher hosts elsewhere, not a file on moyu")
 	}
-	hash := row.Blake3
-	if hash != "" {
-		replaced, err := s.repo.HashOfReplacedFile(row.ID, hash)
-		if err != nil {
-			return nil, unavailable(err)
-		}
-		if replaced {
-			hash = ""
-		}
-	}
 	repack, err := s.repo.GetRepack(row.ID)
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	return s.resourceFile(ctx, row, hash, repack)
+	return s.resourceFile(ctx, row, repack)
 }
 
 func (s *Service) resourceFile(
-	ctx context.Context, row *patchModel.PatchResource, hash string, repack *patchModel.PatchResourceRepack,
+	ctx context.Context, row *patchModel.PatchResource, repack *patchModel.PatchResourceRepack,
 ) (*dto.ResourceFile, *problem.Problem) {
 	meta, err := s.art.Get(ctx, row.ArtifactUUID)
 	if err != nil {
@@ -60,7 +50,7 @@ func (s *Service) resourceFile(
 		DownloadURL:  dl.Url,
 		Filename:     meta.Name,
 		Bytes:        meta.FileSize,
-		Blake3:       hash,
+		Blake3:       row.Blake3,
 		Password:     row.Password,
 		UpdatedAt:    stamp(row.UpdateTime),
 	}
