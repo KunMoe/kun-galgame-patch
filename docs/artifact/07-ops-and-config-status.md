@@ -44,7 +44,7 @@
 - CI：`build.yml` 矩阵加 `infra-artifact`。
 - 单测：纯函数（MIME 白名单 / 文件名清洗 / RFC5987 编码）。
 - 文档：`docs/artifact/01–07`。
-- **本地 dev 已打通**：本地库名已与生产对齐（`kun_artifacts`，不再用 `_dev`/`_test` — 见 `reset_all.sh` / `initdb`），`cmd/migrate-artifact` 建表 + `cmd/migrate` 加 `oauth_clients.artifact_*` 列；`apps/api/.env` artifact 段已配（`KUN_ARTIFACTS_PG_DATABASE=kun_artifacts` + B2）。
+- **本地 dev 已打通**：本地库名已与生产对齐（`kun_artifacts`，不再用 `_dev`/`_test` — 见 `docker/initdb.d`），`cmd/migrate-artifact` 建表 + `cmd/migrate` 加 `oauth_clients.artifact_*` 列；`apps/api/.env` artifact 段已配（`KUN_ARTIFACTS_PG_DATABASE=kun_artifacts` + B2）。
 - **2026-06-21 加固 + 本地 B2 接通**：
   - **修 multipart 泄漏**：`CompleteMultipart` 失败时补 `AbortMultipart`（之前只置 `status=2`，泄漏的分片永不回收——孤儿 GC 只扫 `status=0`；B2 按未完成 multipart 分片计费）。对齐 [01 风险表](./01-design.md)「multipart 完成失败 → status=2 + Abort」。
   - **删未接线脚手架**：移除 `internal/platform/artifact/pipeline/`（`Checksum`/`VirusScan`/`ManifestValidator` 全是 TODO no-op、零引用），避免「以为扫了毒其实没扫」的误导；真要做时随 Phase 3 实装。

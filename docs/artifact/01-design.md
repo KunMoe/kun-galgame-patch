@@ -251,6 +251,6 @@ client GET /artifacts/:uuid/download
 - **新增 / 补全**：`internal/platform/artifact/`（storage 加 presign+multipart、middleware、dto、repo、service、handler 落地——现有 handler 的 `Create`/`Download` 是 `// TODO` 桩，本服务把它们写实）。
 - **扩展**：`oauth_client` 表追加 `artifact_enabled` / `artifact_site_key` / `artifact_cdn_base` / `artifact_quota_*` / `artifact_max_file_size` / `artifact_allowed_mime`（见 [02](./02-storage-and-schema.md)）。
 - **新库**：`kun_artifacts`（`artifacts` / `manifests`）——现有空表在主库 `kun_galgame_infra` 里（脚手架遗留），迁移时下沉到独立库。
-- **新 cmd / job**：`cmd/artifact`（HTTP，端口 `:9279`，写实路由）；`internal/jobs/artifact_gc.go`（孤儿 + 软删 GC）。v1 暂不需要常驻 worker（`Complete` 内联校验即置 ready）；`cmd/worker` 的 asynq 桩留作扫描开启后的入队消费者。
+- **新 cmd / job**：`cmd/artifact`（HTTP，端口 `:9279`，写实路由）；`internal/jobs/artifact_gc.go`（孤儿 + 软删 GC）。v1 暂不需要常驻 worker（`Complete` 内联校验即置 ready）。
 
 下一篇：[02 — 存储与 Schema 设计](./02-storage-and-schema.md)

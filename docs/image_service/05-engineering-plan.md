@@ -160,9 +160,7 @@ apps/api/
      - `MainURL(hash string) string`
      - `VariantURL(hash, variant string) string`
      - `Upload(ctx, file, preset) (*Result, error)` — 对调用方封装 OAuth token 管理
-   - TS：`packages/image-client/`
-     - `imageMainUrl(hash)` / `imageVariantUrl(hash, variant)`
-     - `uploadImage(file, preset, opts)` — 前端直传场景使用
+   - TS：曾计划提供前端包（URL 拼接 + 直传上传），始终没有调用方，已删除；前端按与 Go 相同的规则自行拼接 URL，直传见第 3 项
 
 2. **多 preset 配置扩展**
    - `image_presets.yaml` 支持从 ConfigMap / 启动时加载

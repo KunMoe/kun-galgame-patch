@@ -344,14 +344,9 @@ thumb := imageclient.VariantURL(hash, "100")
 // → https://cdn.example.com/img/ab/cd/abcd...ef_100.webp
 ```
 
-### TypeScript SDK
+### TypeScript
 
-```ts
-import { imageMainUrl, imageVariantUrl } from '@kun/image-client'
-
-const main = imageMainUrl(hash)
-const thumb = imageVariantUrl(hash, '100')
-```
+TypeScript 侧不提供 SDK 包，前端按与 Go SDK 相同的规则自行拼接 URL。
 
 SDK 内部只做字符串拼接（因为 URL 是 content-addressed 且无签名），极简。
 
