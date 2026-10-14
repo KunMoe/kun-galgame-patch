@@ -24,6 +24,7 @@
 | 08 | [migration-forum-moyu.md](./08-migration-forum-moyu.md) | **接管 forum/moyu 文件服务**：现状对照、后端代理式 S2S、数据模型映射、配额双轴、回填/切换/退役、平价清单、推送顺序 | 已执行（moyu 2026-06-22 / forum 2026-06-24 切换）|
 | 09 | [download-domain-and-worker.md](./09-download-domain-and-worker.md) | **专用下载域 `imoe.uk`**：爆炸半径隔离、Worker 签名 token 网关、公开 vs presigned、可替换性、运维卫生 | 已上线（`dl.imoe.uk`）|
 | 10 | [openapi-and-clients.md](./10-openapi-and-clients.md) | **OpenAPI 与生成式客户端**：Huma code-first（叠 Fiber v3）、house 信封、生成 Dart/Go client、防漂移、范围纪律 | 已完成 |
+| 11 | [composite-downloads.md](./11-composite-downloads.md) | **组合下载**：下载时按字节区间拼接本站 artifact + 内联 glue（letmoe 本体 + 补丁）、内容寻址 id、钉住与下架、`dl.imoe.uk/c/*` Worker | 2026-10-14 |
 
 ## 一句话总结
 

@@ -81,6 +81,8 @@ B2 凭证已写入 `apps/api/.env`（bucket `kungal-artifact-v1` @ `us-east-005`
 
 **仍剩余（非阻塞）**：⑥ 自托管 UGC 文件的审核/合规决策（[09 §18.2](./09-download-domain-and-worker.md)，产品侧）。
 
+**组合下载（2026-10-14，[11](./11-composite-downloads.md)）**：API 随 artifact 服务部署即可用（启动时 AutoMigrate 建 `composites` / `composite_sources`）；边缘 Worker `workers/dl-composite` 需在 Cloudflare 侧手工部署（Workers Paid + 只读 B2 key 两个 secret + `wrangler deploy`，见 11 §3），部署前组合 URL 会落到现有下载 Worker 上回 404。
+
 环境变量全表见 [05 §环境变量](./05-engineering-plan.md#环境变量)。
 
 ## 生产安全：不影响 oauth / image / wiki 等现有服务

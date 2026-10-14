@@ -3,6 +3,10 @@ components:
     AdminArtifactDelete:
       additionalProperties: false
       properties:
+        composites_deleted:
+          description: Composites that served this artifact's bytes, deleted with it
+          format: int64
+          type: integer
         soft_deleted:
           type: boolean
         uuid:
@@ -10,6 +14,7 @@ components:
       required:
         - uuid
         - soft_deleted
+        - composites_deleted
       type: object
     AdminArtifactList:
       additionalProperties: false

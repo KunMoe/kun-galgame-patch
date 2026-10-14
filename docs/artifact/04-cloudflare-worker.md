@@ -6,6 +6,8 @@
 
 > 本节描述 Worker **怎么代理**私有桶(token 刷新/路径重写/缓存/剥头)。**用哪个域、为什么隔离、签名 token 网关、attachment 强制、可替换性**等下载侧策略见 [09 — 下载域名与边缘网关(imoe.uk)](./09-download-domain-and-worker.md)。两篇配合读:09 是策略,04 是机制。
 
+> 组合下载（`dl.imoe.uk/c/*`）是另一个 Worker，代码在本仓 `workers/dl-composite`，见 [11](./11-composite-downloads.md)。
+
 > 本节描述**公开/热门**制品的可选第二条下载路径：经 Cloudflare Worker 代理私有 B2 桶 + CDN 缓存，拿到 **B2→Cloudflare 出流量免费**（Bandwidth Alliance）。私有/受控下载默认走预签名 GET（[03 §3](./03-api-design.md#3-获取下载地址)），不需要本节。
 >
 > 设计照搬作者生产实现：[soft.moe/topic/technology-deploy-r2-cf-worker](https://www.soft.moe/topic/technology-deploy-r2-cf-worker)。**Worker 是 Cloudflare 侧部署的 JS，不在本 Go 仓内**；本仓只负责「该不该返回 Worker URL」。
