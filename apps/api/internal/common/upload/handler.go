@@ -49,7 +49,7 @@ func uploadError(c fiber.Ctx, err error) error {
 	switch {
 	case stderrors.As(err, &appErr):
 		return response.Error(c, appErr)
-	case stderrors.Is(err, errNotUploadOwner):
+	case stderrors.Is(err, ErrNotUploadOwner):
 		return response.Error(c, errors.New(40300, err.Error(), fiber.StatusForbidden))
 	case stderrors.Is(err, errArtifactInUse):
 		return response.Error(c, errors.ErrConflict(err.Error()))

@@ -143,4 +143,20 @@ type ResourceFile struct {
 	Blake3       string `json:"blake3"`
 	Password     string `json:"password"`
 	UpdatedAt    string `json:"updated_at"`
+
+	Repack *ResourceRepack `json:"repack"`
+}
+
+// ResourceRepack is letmoe's passwordless STORE-zip copy of the file, attached
+// by its forge. Null when there is none, including after moyu deleted one.
+type ResourceRepack struct {
+	Object             string `json:"object"`
+	ArtifactUUID       string `json:"artifact_uuid"`
+	DownloadURL        string `json:"download_url"`
+	Blake3             string `json:"blake3"`
+	Bytes              int64  `json:"bytes"`
+	FileCount          int    `json:"file_count"`
+	SourceArtifactUUID string `json:"source_artifact_uuid"`
+	SourceBlake3       string `json:"source_blake3"`
+	CreatedAt          string `json:"created_at"`
 }

@@ -49,6 +49,7 @@ import (
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	"kun-galgame-patch-api/internal/rating"
+	"kun-galgame-patch-api/internal/repack"
 	settingService "kun-galgame-patch-api/internal/setting/service"
 	"kun-galgame-patch-api/internal/trust/enforce"
 	"kun-galgame-patch-api/internal/trust/gate"
@@ -97,6 +98,7 @@ type App struct {
 	CommonHandler    *common.CommonHandler
 	FaceHandler      *faceHandler.Handler
 	UploadHandler    *uploadPkg.Handler
+	RepackHandler    *repack.Handler
 	ChatHandler      *chatHandler.ChatHandler
 	IMRelay          *im.Relay
 	DocHandler       *docHandler.DocHandler
@@ -330,6 +332,7 @@ func New(cfg *config.Config) *App {
 	commonHdl := common.NewHandler(db, galgame, favorites, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, artCli, cfg.Site.BaseURL))
 	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
+	repackSvc := repack.New(db, artCli, uploadSvc)
 
 	markdown.SetContentImageResolver(imgCli.VariantURL)
 	markdown.RegisterContentImageHost(imgCfg.CDNBase)
@@ -365,7 +368,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror)
+	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror, repackSvc)
 	pushStop := startActivityPush(cfg, db, communityCli, galgame)
 	stopBackground := func() {
 		pushStop()
@@ -392,6 +395,7 @@ func New(cfg *config.Config) *App {
 		CommonHandler:    commonHdl,
 		FaceHandler:      faceHdl,
 		UploadHandler:    uploadHdl,
+		RepackHandler:    repack.NewHandler(repackSvc),
 		ChatHandler:      chatHdl,
 		IMRelay:          im.NewRelay(cfg.Chat.BaseURL),
 		DocHandler:       docHdl,

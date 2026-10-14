@@ -57,8 +57,8 @@ func TestResumeIsOwnerOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	if _, err := svc.Resume(ctx, 8, ResumeRequest{ArtifactUUID: init.ArtifactUUID}); !errors.Is(err, errNotUploadOwner) {
-		t.Fatalf("resume by another user: got %v, want errNotUploadOwner", err)
+	if _, err := svc.Resume(ctx, 8, ResumeRequest{ArtifactUUID: init.ArtifactUUID}); !errors.Is(err, ErrNotUploadOwner) {
+		t.Fatalf("resume by another user: got %v, want ErrNotUploadOwner", err)
 	}
 	if _, err := svc.Resume(ctx, 7, ResumeRequest{ArtifactUUID: init.ArtifactUUID}); err != nil {
 		t.Fatalf("resume by uploader: %v", err)
@@ -70,8 +70,8 @@ func TestAbortRefusesAnotherUsersUpload(t *testing.T) {
 	ctx := context.Background()
 	rdb.Set(ctx, uploadOwnerKey(testUUID), 7, uploadOwnerTTL)
 
-	if err := svc.Abort(ctx, 8, AbortRequest{ArtifactUUID: testUUID}); !errors.Is(err, errNotUploadOwner) {
-		t.Fatalf("abort by another user: got %v, want errNotUploadOwner", err)
+	if err := svc.Abort(ctx, 8, AbortRequest{ArtifactUUID: testUUID}); !errors.Is(err, ErrNotUploadOwner) {
+		t.Fatalf("abort by another user: got %v, want ErrNotUploadOwner", err)
 	}
 }
 
@@ -79,11 +79,11 @@ func TestUploadWithNoOwnerRecordIsRefused(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 
-	if err := svc.Abort(ctx, 7, AbortRequest{ArtifactUUID: testUUID}); !errors.Is(err, errNotUploadOwner) {
-		t.Fatalf("abort: got %v, want errNotUploadOwner", err)
+	if err := svc.Abort(ctx, 7, AbortRequest{ArtifactUUID: testUUID}); !errors.Is(err, ErrNotUploadOwner) {
+		t.Fatalf("abort: got %v, want ErrNotUploadOwner", err)
 	}
 	_, err := svc.Complete(ctx, 7, constants.AdminUploadTier, CompleteRequest{ArtifactUUID: testUUID, DeclaredSize: 10})
-	if !errors.Is(err, errNotUploadOwner) {
-		t.Fatalf("complete: got %v, want errNotUploadOwner", err)
+	if !errors.Is(err, ErrNotUploadOwner) {
+		t.Fatalf("complete: got %v, want ErrNotUploadOwner", err)
 	}
 }

@@ -66,22 +66,22 @@ func (s *Service) unmarkComplete(uuid string) {
 const uploadOwnerTTL = 7 * 24 * time.Hour
 
 var (
-	errNotUploadOwner = errors.New("上传会话不存在或已过期，请重新上传")
+	ErrNotUploadOwner = errors.New("上传会话不存在或已过期，请重新上传")
 	errArtifactInUse  = errors.New("该文件已用于资源，不能放弃上传")
 )
 
 func uploadOwnerKey(uuid string) string { return "upload:owner:" + uuid }
 
-func (s *Service) requireOwner(ctx context.Context, uuid string, userID int) error {
+func (s *Service) RequireOwner(ctx context.Context, uuid string, userID int) error {
 	owner, err := s.rdb.Get(ctx, uploadOwnerKey(uuid)).Int()
 	if errors.Is(err, redis.Nil) {
-		return errNotUploadOwner
+		return ErrNotUploadOwner
 	}
 	if err != nil {
 		return fmt.Errorf("read upload owner: %w", err)
 	}
 	if owner != userID {
-		return errNotUploadOwner
+		return ErrNotUploadOwner
 	}
 	return nil
 }
@@ -184,7 +184,7 @@ func (s *Service) Init(ctx context.Context, userID int, tier constants.UploadTie
 }
 
 func (s *Service) Complete(ctx context.Context, userID int, tier constants.UploadTier, req CompleteRequest) (*CompleteResponse, error) {
-	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+	if err := s.RequireOwner(ctx, req.ArtifactUUID, userID); err != nil {
 		return nil, err
 	}
 	var cr artifactclient.CompleteUploadRequest
@@ -245,7 +245,7 @@ func (s *Service) deductQuotaOnce(ctx context.Context, userID int, uuid string, 
 }
 
 func (s *Service) Resume(ctx context.Context, userID int, req ResumeRequest) (*ResumeResponse, error) {
-	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+	if err := s.RequireOwner(ctx, req.ArtifactUUID, userID); err != nil {
 		return nil, err
 	}
 	out, err := s.art.Resume(ctx, req.ArtifactUUID)
@@ -283,7 +283,7 @@ func (s *Service) Resume(ctx context.Context, userID int, req ResumeRequest) (*R
 }
 
 func (s *Service) Abort(ctx context.Context, userID int, req AbortRequest) error {
-	if err := s.requireOwner(ctx, req.ArtifactUUID, userID); err != nil {
+	if err := s.RequireOwner(ctx, req.ArtifactUUID, userID); err != nil {
 		return err
 	}
 	var inUse int64
