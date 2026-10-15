@@ -155,7 +155,7 @@ func complete(product, source string, hasArchives bool) CompleteRequest {
 
 func claimOurs(t *testing.T, svc *Service) []Job {
 	t.Helper()
-	jobs, err := svc.Claim(context.Background(), MaxClaim)
+	jobs, err := svc.Claim(context.Background(), MaxClaim, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,14 +288,15 @@ func TestPromotingTheRepack(t *testing.T) {
 	svc := New(db, art.client(t), owners{allow: false})
 	ctx := context.Background()
 
-	if err := db.Exec(`INSERT INTO patch_resource_repack
-			(resource_id, artifact_uuid, source_artifact_uuid, blake3, bytes, file_count, source_blake3)
-		VALUES (?, ?, ?, ?, ?, 4, ?)`,
-		testResource, repackUUID, srcUUID, strings.Repeat("ab", 32), productBytes, strings.Repeat("cd", 32)).Error; err != nil {
-		t.Fatal(err)
+	attachRepack(t, db)
+	jobs := claimOurs(t, svc)
+	if len(jobs) != 1 || jobs[0].Repack == nil || jobs[0].Repack.ArtifactUUID != repackUUID {
+		t.Fatalf("claimed %+v, want the resource with its repack", jobs)
 	}
-	if jobs := claimOurs(t, svc); len(jobs) != 0 {
-		t.Fatalf("a repacked resource was offered before artifacts can be renamed: %+v", jobs)
+	var counted bool
+	db.Raw(`SELECT claimed_at IS NOT NULL FROM patch_resource_normalize WHERE source_artifact_uuid = ?`, srcUUID).Scan(&counted)
+	if counted {
+		t.Fatal("a promotion claim counts toward the daily cap")
 	}
 
 	if _, err := svc.Complete(ctx, testResource, testUser, complete(repackUUID, srcUUID, false)); err != nil {
@@ -444,6 +445,30 @@ func TestMissingSourceIsFailed(t *testing.T) {
 	}
 }
 
+func attachRepack(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	if err := db.Exec(`INSERT INTO patch_resource_repack
+			(resource_id, artifact_uuid, source_artifact_uuid, blake3, bytes, file_count, source_blake3)
+		VALUES (?, ?, ?, ?, ?, 4, ?)`,
+		testResource, repackUUID, srcUUID, strings.Repeat("ab", 32), productBytes, strings.Repeat("cd", 32)).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTargetedClaim(t *testing.T) {
+	db := normalizeDB(t)
+	svc := New(db, artifacts(t), owners{allow: true})
+	ctx := context.Background()
+
+	if jobs, err := svc.Claim(ctx, MaxClaim, []int{testResource + 1}); err != nil || len(jobs) != 0 {
+		t.Fatalf("claim narrowed to another resource = %+v, %v", jobs, err)
+	}
+	jobs, err := svc.Claim(ctx, MaxClaim, []int{testResource})
+	if err != nil || len(jobs) != 1 || jobs[0].ResourceID != testResource {
+		t.Fatalf("claim narrowed to ours = %+v, %v", jobs, err)
+	}
+}
+
 func TestDailyCap(t *testing.T) {
 	db := normalizeDB(t)
 	svc := New(db, artifacts(t), owners{allow: true})
@@ -454,12 +479,19 @@ func TestDailyCap(t *testing.T) {
 	if jobs := claimOurs(t, svc); len(jobs) != 0 {
 		t.Fatalf("claimed past the daily cap: %+v", jobs)
 	}
-	if err := db.Exec(`UPDATE patch_resource_normalize SET claimed_at = now() - interval '2 days'
-		WHERE source_artifact_uuid LIKE 'cap-%'`).Error; err != nil {
+	attachRepack(t, db)
+	if jobs := claimOurs(t, svc); len(jobs) != 1 || jobs[0].Repack == nil {
+		t.Fatalf("a promotion was held back by the cap: %+v", jobs)
+	}
+	if err := db.Exec(`DELETE FROM patch_resource_repack WHERE resource_id = ?`, testResource).Error; err != nil {
 		t.Fatal(err)
 	}
-	if jobs := claimOurs(t, svc); len(jobs) != 1 {
-		t.Fatalf("claimed %d once yesterday's claims stopped counting, want 1", len(jobs))
+	if err := db.Exec(`UPDATE patch_resource_normalize SET claimed_at = now() - interval '2 days', lease_until = now()
+		WHERE resource_id = ?`, testResource).Error; err != nil {
+		t.Fatal(err)
+	}
+	if jobs := claimOurs(t, svc); len(jobs) != 1 || jobs[0].Repack != nil {
+		t.Fatalf("claimed %+v once yesterday's claims stopped counting, want the upload", jobs)
 	}
 }
 
