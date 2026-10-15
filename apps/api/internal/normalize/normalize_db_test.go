@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -564,5 +565,60 @@ func TestDeletedResourceDiscardsTheProduct(t *testing.T) {
 	}
 	if got := purgeQueue(t, db); !slices.Equal(got, []string{productUUID}) {
 		t.Fatalf("purge queue = %v, want the orphaned product", got)
+	}
+}
+
+// forge runs several claimers at once. On 2026-10-15 4,902 claims went to
+// 2,385 resources: a claimer that read the queue before another committed
+// re-leased the same files.
+func TestConcurrentClaimsNeverShareAFile(t *testing.T) {
+	db := normalizeDB(t)
+	svc := New(db, artifacts(t), owners{allow: true})
+	const extra = 8
+	for i := 1; i <= extra; i++ {
+		if err := db.Exec(`INSERT INTO patch_resource (id, storage, artifact_uuid, user_id, galgame_id, updated)
+			VALUES (?, 's3', ?, ?, ?, now())`,
+			testResource+i, fmt.Sprintf("00000000-0000-4000-8000-0000000001%02d", i), testUser, testPatch).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for round := 0; round < 3; round++ {
+		if err := db.Exec(`DELETE FROM patch_resource_normalize WHERE resource_id BETWEEN ? AND ?`,
+			testResource, testResource+extra).Error; err != nil {
+			t.Fatal(err)
+		}
+		var (
+			mu   sync.Mutex
+			got  []int
+			wg   sync.WaitGroup
+			errs []error
+		)
+		for range 3 * (extra + 1) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs, err := svc.Claim(context.Background(), 1, nil)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					errs = append(errs, err)
+				}
+				for _, j := range jobs {
+					got = append(got, j.ResourceID)
+				}
+			}()
+		}
+		wg.Wait()
+		if len(errs) > 0 {
+			t.Fatal(errs[0])
+		}
+		slices.Sort(got)
+		if len(slices.Compact(slices.Clone(got))) != len(got) {
+			t.Fatalf("round %d: one file went to several claimers: %v", round, got)
+		}
+		if len(got) != extra+1 {
+			t.Fatalf("round %d: claimed %v, want each of the %d files once", round, got, extra+1)
+		}
 	}
 }

@@ -90,6 +90,14 @@ type claimedRow struct {
 func (s *Service) Claim(ctx context.Context, limit int, ids []int) ([]Job, error) {
 	var rows []claimedRow
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Claims take turns. A row lock on the resource did not stop forge's
+		// parallel claimers on 2026-10-15: the claim writes no resource row, so
+		// a claimer that read the queue before another committed found the
+		// lock free and leased the same file again (4,902 claims for 2,385
+		// resources). Each statement after this lock reads every earlier claim.
+		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext('moyu:normalize:claim'))`).Error; err != nil {
+			return err
+		}
 		if err := tx.Exec(`UPDATE patch_resource_normalize
 			SET state = 'failed', code = 'abandoned', message = ?, lease_until = NULL, updated_at = now()
 			WHERE state = 'claimed' AND lease_until < now() AND attempts >= ?`,
@@ -159,7 +167,6 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 				`+filter+`
 			ORDER BY r.update_time DESC, r.id DESC
 			LIMIT ?
-			FOR UPDATE OF r SKIP LOCKED
 		), leased AS (
 			INSERT INTO patch_resource_normalize
 				(source_artifact_uuid, resource_id, state, attempts, lease_until, claimed_at)
@@ -172,6 +179,7 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 				lease_until = EXCLUDED.lease_until,
 				claimed_at = EXCLUDED.claimed_at,
 				updated_at = now()
+			WHERE patch_resource_normalize.state = 'claimed' AND patch_resource_normalize.lease_until < now()
 			RETURNING resource_id, source_artifact_uuid, lease_until
 		)
 		SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, l.lease_until,
