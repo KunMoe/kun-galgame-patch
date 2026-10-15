@@ -30,6 +30,10 @@ const (
 	dailyClaimCap = 2400
 )
 
+// infra's rename changed only its own row on 2026-10-15: resources 6379 and
+// 418 still download as "(letmoe repack).zip". Promotions wait for the fix.
+var holdPromotions = true
+
 var (
 	ErrResourceNotFound = errors.New("resource not found, or not a file hosted on moyu")
 	ErrSourceChanged    = errors.New("the resource's file is no longer source_artifact_uuid; moyu deletes the upload")
@@ -96,11 +100,13 @@ func (s *Service) Claim(ctx context.Context, limit int, ids []int) ([]Job, error
 			fmt.Sprintf("the lease ran out %d times", maxAttempts), maxAttempts).Error; err != nil {
 			return err
 		}
-		promotions, err := lease(tx, true, limit, ids)
-		if err != nil {
-			return err
+		if !holdPromotions {
+			promotions, err := lease(tx, true, limit, ids)
+			if err != nil {
+				return err
+			}
+			rows = promotions
 		}
-		rows = promotions
 		var today int
 		if err := tx.Raw(`SELECT count(*) FROM patch_resource_normalize
 			WHERE claimed_at >= date_trunc('day', now(), 'UTC')`).Scan(&today).Error; err != nil {

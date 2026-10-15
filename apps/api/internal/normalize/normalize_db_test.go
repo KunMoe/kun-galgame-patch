@@ -287,6 +287,7 @@ func TestPromotingTheRepack(t *testing.T) {
 	art := &fakeArtifacts{}
 	svc := New(db, art.client(t), owners{allow: false})
 	ctx := context.Background()
+	releasePromotions(t)
 
 	attachRepack(t, db)
 	jobs := claimOurs(t, svc)
@@ -445,6 +446,27 @@ func TestMissingSourceIsFailed(t *testing.T) {
 	}
 }
 
+func releasePromotions(t *testing.T) {
+	t.Helper()
+	held := holdPromotions
+	holdPromotions = false
+	t.Cleanup(func() { holdPromotions = held })
+}
+
+func TestPromotionsOnHold(t *testing.T) {
+	db := normalizeDB(t)
+	svc := New(db, artifacts(t), owners{allow: true})
+	attachRepack(t, db)
+
+	holdPromotions = true
+	if jobs := claimOurs(t, svc); len(jobs) != 0 {
+		t.Fatalf("a promotion was offered while promotions are on hold: %+v", jobs)
+	}
+	if _, err := svc.Complete(context.Background(), testResource, testUser, complete(repackUUID, srcUUID, false)); err != nil {
+		t.Fatalf("complete on a promotion claimed before the hold: %v", err)
+	}
+}
+
 func attachRepack(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	if err := db.Exec(`INSERT INTO patch_resource_repack
@@ -479,6 +501,7 @@ func TestDailyCap(t *testing.T) {
 	if jobs := claimOurs(t, svc); len(jobs) != 0 {
 		t.Fatalf("claimed past the daily cap: %+v", jobs)
 	}
+	releasePromotions(t)
 	attachRepack(t, db)
 	if jobs := claimOurs(t, svc); len(jobs) != 1 || jobs[0].Repack == nil {
 		t.Fatalf("a promotion was held back by the cap: %+v", jobs)

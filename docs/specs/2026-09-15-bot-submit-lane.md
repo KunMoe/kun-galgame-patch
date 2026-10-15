@@ -71,6 +71,7 @@ API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小�
 
 - 租约 6 小时，每次 claim 记一次尝试。第 5 次租约过期后，job 自动变成 `failed` / `abandoned`。临时错误（网络、OOM）不要调 fail，等租约自然过期即可。
 - 带 repack 的资源先发（提升，`repack` 非 null）：不用上传，直接释放原文件的空间。其余按最近编辑排序，所以新上传会插到回填前面。
+  **2026-10-15 起暂停**：infra 的改名只改了它库里的名字，B2 对象的 Content-Disposition 没变，6379 和 418 下载时仍叫「(letmoe repack).zip」。修好之前 claim 不下发提升（`holdPromotions`）；已经领取的提升照常可以 complete。
 - 不带 repack 的资源，每个 UTC 日最多 claim 2,400 次。每次这样的 claim 对应 forge 的一次上传 Init，而 moyu 在制品服务的配额是每天 3,000 次 Init，读者的上传也算在内。提升不上传，不计入这个上限。
 - 制品服务里已经没有的源文件不会下发，直接记为 `failed` / `source_missing`。
 - `filename` 是作者上传时的文件名。forge 上传产物时用它的主名加 `.zip`。
