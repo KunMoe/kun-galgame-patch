@@ -279,6 +279,16 @@
 
 软删本站制品（GC 到期物理回收，见 [02 生命周期](./02-storage-and-schema.md#生命周期策略)），并删除**别站**引用它的组合下载（本站组合不受影响，见 [11 §2.3](./11-composite-downloads.md#23-钉住删除与下架)）。幂等：命中 → `{"uuid","deleted":true}`；未命中（不存在 / 非本站）→ `404 / 50001`。连带删除失败 → `500 / 50013`，重试会补完并回 `deleted:true`。
 
+### `PATCH /artifacts/:uuid`(改名,2026-10-14)
+
+只改下载文件名,**扩展名不变**(大小写不计),只收 Basic 服务端凭证(用户令牌 `403 / 50016`)。请求体 `{"name": "<新文件名>"}`,1–255 字符。对外下载的文件名来自 B2 对象上烘焙的 `Content-Disposition`(单次上传在 complete 时烘焙、分片上传在 init 时写入),所以改名会先用同键原地 `CopyObject` 重写该元数据,再改库里的 `name`;字节与 `file_key` 不变。
+
+- `200` → 改名后的制品(house 信封);与现名相同 → 原样 `200`,不碰存储(可放心重试)。
+- `404 / 50001` → 不存在、已删除或非本站。
+- `422 / 50002`(`message` 说明原因)→ 尚未上传完成、扩展名变了、或文件超过 5 GiB(超出原地复制上限)。
+- `500 / 50013` → 存储失败,库里的名字未改,可重试。
+- 边缘缓存里已有的旧副本在过期前仍带旧文件名;组合下载用自己的 `filename`,不受影响。首个使用方是 moyu 把 forge 重打包提升为资源文件([11](./11-composite-downloads.md))。
+
 ---
 
 ## 7. 健康检查
@@ -300,6 +310,7 @@
 | GET | `/api/v1/artifacts/:uuid` | client（仅 Basic）| Phase 1 |
 | GET | `/api/v1/artifacts/:uuid/download` | client（仅 Basic）| Phase 1 |
 | DELETE | `/api/v1/artifacts/:uuid` | client（仅 Basic）| Phase 1 |
+| PATCH | `/api/v1/artifacts/:uuid` | client（仅 Basic）| 2026-10-14 |
 | GET | `/healthz` | — | Phase 1 |
 
 ## 没有的端点（v1 故意不提供）
