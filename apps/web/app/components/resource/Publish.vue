@@ -472,6 +472,7 @@ const existingFileName = computed(() => {
           </h3>
           <p class="text-default-500 text-sm">
             支持 {{ ALLOWED_EXTENSIONS.join(' ') }} 压缩格式，单文件最大 {{ maxFileLabel }}。
+            发布后几分钟内，文件会被重新打包为无解压码的 zip，内容与说明文件原样保留。
             <span v-if="isDragging" class="text-primary font-medium">
               松开鼠标以上传文件
             </span>
@@ -792,6 +793,11 @@ const existingFileName = computed(() => {
             v-model="form.password"
             label="解压码"
             placeholder="如解压需要密码，请填写"
+            :description="
+              form.storage === 's3'
+                ? '用于重新打包时解压；打包后不再需要的解压码会被清空'
+                : undefined
+            "
           />
         </section>
 

@@ -143,6 +143,7 @@ type ResourceFile struct {
 	Blake3       string `json:"blake3"`
 	Password     string `json:"password"`
 	UpdatedAt    string `json:"updated_at"`
+	Normalized   bool   `json:"normalized"`
 
 	Repack *ResourceRepack `json:"repack"`
 }

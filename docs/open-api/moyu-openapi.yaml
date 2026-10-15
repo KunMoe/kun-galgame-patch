@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.5.0
+  version: 1.6.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -351,6 +351,9 @@ paths:
           resource again (`GET /v2/moyu/resources/{id}`).
         - `hidden`, `deleted`: it is no longer public. `hidden` may come back
           as `restored`.
+        - `normalized`: the file was swapped for the passwordless zip letmoe's
+          forge built from it. The content is the same; the size and password
+          changed, and `/file` now answers `normalized: true`.
 
         Counter changes (downloads, likes) are not events, and nor are edits
         made while a resource is not public.
@@ -676,7 +679,7 @@ components:
           description: Only `s3` resources have a file on moyu.
         kind:
           type: string
-          enum: [created, file_replaced, updated, hidden, restored, deleted]
+          enum: [created, file_replaced, updated, hidden, restored, deleted, normalized]
         changed_at: { type: string, format: date-time }
     ResourceFile:
       type: object
@@ -691,6 +694,7 @@ components:
         - blake3
         - password
         - updated_at
+        - normalized
         - repack
       properties:
         object: { type: string, const: patch_resource_file }
@@ -713,17 +717,25 @@ components:
           type: string
           pattern: '^([0-9a-f]{64})?$'
           description: |
-            BLAKE3 of the file, or empty when moyu has none. No file uploaded
-            after 2026-06-04 has one, and a hash that belonged to a file the
-            resource has since replaced is not reported. Hash the download
-            yourself when you need one.
+            BLAKE3 of the file, or empty when moyu has none. A normalized file
+            always has one; otherwise no file uploaded after 2026-06-04 does,
+            and a hash that belonged to a file the resource has since replaced
+            is not reported. Hash the download yourself when you need one.
         password:
           type: string
           description: The archive password, empty when the archive has none.
         updated_at:
           type: string
           format: date-time
-          description: When the resource was last edited, its file or anything else.
+          description: |
+            When the resource was last edited, its file or anything else.
+            Normalizing the file does not move it.
+        normalized:
+          type: boolean
+          description: |
+            The file itself is the passwordless zip letmoe's forge built from
+            the author's archive, and `repack` is null. Every hosted file
+            becomes one, minutes after it is uploaded or replaced.
         repack:
           description: |
             The passwordless STORE-zip copy letmoe's forge attached, or null.
