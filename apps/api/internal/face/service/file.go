@@ -25,11 +25,20 @@ func (s *Service) GetResourceFile(ctx context.Context, id int) (*dto.ResourceFil
 	if row.ArtifactUUID == "" {
 		return nil, problem.New(problem.CodeNotFound, "resource "+strconv.Itoa(id)+" is a link its publisher hosts elsewhere, not a file on moyu")
 	}
+	normalized, err := s.repo.IsNormalized(row.ArtifactUUID)
+	if err != nil {
+		return nil, unavailable(err)
+	}
 	repack, err := s.repo.GetRepack(row.ID)
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	return s.resourceFile(ctx, row, repack)
+	out, prob := s.resourceFile(ctx, row, repack)
+	if prob != nil {
+		return nil, prob
+	}
+	out.Normalized = normalized
+	return out, nil
 }
 
 func (s *Service) resourceFile(

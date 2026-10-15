@@ -1,0 +1,422 @@
+// Package normalize swaps every hosted resource's file for the passwordless
+// zip letmoe's forge builds from it (owner's ruling, 2026-10-15). The jobs and
+// the two trigger changes the swap depends on are migration 050's.
+package normalize
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/pkg/artifactclient"
+
+	"gorm.io/gorm"
+)
+
+const (
+	leaseTTL    = 6 * time.Hour
+	maxAttempts = 5
+	MaxClaim    = 20
+	// The original is the author's only copy, and a filename-decoding mistake
+	// in a forge zip can surface weeks later: 1,243 of 4,178 forge packages
+	// shipped 2026-09-29 were unreadable on some locales.
+	keepOriginal = 30 * 24 * time.Hour
+	// moyu's artifact quota is 3,000 Inits a UTC day, readers' uploads
+	// included, and every claim becomes one Init.
+	dailyClaimCap = 2400
+)
+
+var (
+	ErrResourceNotFound = errors.New("resource not found, or not a file hosted on moyu")
+	ErrSourceChanged    = errors.New("the resource's file is no longer source_artifact_uuid; moyu deletes the upload")
+	ErrAlreadyDone      = errors.New("source_artifact_uuid is already normalized")
+	ErrNoJob            = errors.New("no open job for source_artifact_uuid on this resource")
+	ErrArtifactUnusable = errors.New("artifact cannot become the resource's file")
+)
+
+type uploadOwners interface {
+	RequireOwner(ctx context.Context, uuid string, userID int) error
+}
+
+type Service struct {
+	db     *gorm.DB
+	art    *artifactclient.Client
+	owners uploadOwners
+}
+
+func New(db *gorm.DB, art *artifactclient.Client, owners uploadOwners) *Service {
+	return &Service{db: db, art: art, owners: owners}
+}
+
+func unusable(reason string) error { return fmt.Errorf("%w: %s", ErrArtifactUnusable, reason) }
+
+type Repack struct {
+	ArtifactUUID string `json:"artifact_uuid"`
+	Blake3       string `json:"blake3"`
+	Bytes        int64  `json:"bytes"`
+	FileCount    int    `json:"file_count"`
+}
+
+type Job struct {
+	ResourceID     int       `json:"resource_id"`
+	GalgameID      int       `json:"galgame_id"`
+	ArtifactUUID   string    `json:"artifact_uuid"`
+	DownloadURL    string    `json:"download_url"`
+	Filename       string    `json:"filename"`
+	Password       string    `json:"password"`
+	Bytes          int64     `json:"bytes"`
+	Repack         *Repack   `json:"repack"`
+	LeaseExpiresAt time.Time `json:"lease_expires_at"`
+}
+
+type claimedRow struct {
+	ResourceID      int
+	GalgameID       int
+	ArtifactUUID    string
+	Password        string
+	LeaseUntil      time.Time
+	RepackUUID      *string
+	RepackBlake3    *string
+	RepackBytes     *int64
+	RepackFileCount *int
+}
+
+// Claim leases up to limit pending files. A resource carrying a repack is
+// withheld until the artifact service can rename one: promoted as is, it
+// would download as "<letmoe slug> (letmoe repack).zip".
+func (s *Service) Claim(ctx context.Context, limit int) ([]Job, error) {
+	var rows []claimedRow
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE patch_resource_normalize
+			SET state = 'failed', code = 'abandoned', message = ?, lease_until = NULL, updated_at = now()
+			WHERE state = 'claimed' AND lease_until < now() AND attempts >= ?`,
+			fmt.Sprintf("the lease ran out %d times", maxAttempts), maxAttempts).Error; err != nil {
+			return err
+		}
+		var today int
+		if err := tx.Raw(`SELECT count(*) FROM patch_resource_normalize
+			WHERE claimed_at >= date_trunc('day', now(), 'UTC')`).Scan(&today).Error; err != nil {
+			return err
+		}
+		limit = min(limit, dailyClaimCap-today)
+		if limit <= 0 {
+			return nil
+		}
+		return tx.Raw(`WITH due AS (
+				SELECT r.id, r.galgame_id, r.artifact_uuid, r.password
+				FROM patch_resource r
+				LEFT JOIN patch_resource_normalize j ON j.source_artifact_uuid = r.artifact_uuid
+				WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
+					AND (j.source_artifact_uuid IS NULL OR (j.state = 'claimed' AND j.lease_until < now()))
+					AND NOT EXISTS (SELECT 1 FROM patch_resource_normalize p WHERE p.artifact_uuid = r.artifact_uuid)
+					AND NOT EXISTS (SELECT 1 FROM patch_resource_repack rp WHERE rp.resource_id = r.id)
+				ORDER BY r.update_time DESC, r.id DESC
+				LIMIT ?
+				FOR UPDATE OF r SKIP LOCKED
+			), leased AS (
+				INSERT INTO patch_resource_normalize
+					(source_artifact_uuid, resource_id, state, attempts, lease_until, claimed_at)
+				SELECT artifact_uuid, id, 'claimed', 1, now() + make_interval(secs => ?), now() FROM due
+				ON CONFLICT (source_artifact_uuid) DO UPDATE SET
+					state = 'claimed',
+					attempts = patch_resource_normalize.attempts + 1,
+					lease_until = EXCLUDED.lease_until,
+					claimed_at = EXCLUDED.claimed_at,
+					updated_at = now()
+				RETURNING resource_id, source_artifact_uuid, lease_until
+			)
+			SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, l.lease_until,
+				rp.artifact_uuid AS repack_uuid, rp.blake3 AS repack_blake3,
+				rp.bytes AS repack_bytes, rp.file_count AS repack_file_count
+			FROM leased l
+			JOIN due d ON d.id = l.resource_id
+			LEFT JOIN patch_resource_repack rp ON rp.resource_id = l.resource_id`,
+			limit, leaseTTL.Seconds()).Scan(&rows).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	jobs := make([]Job, 0, len(rows))
+	for i, row := range rows {
+		job, err := s.describe(ctx, row)
+		if errors.Is(err, artifactclient.ErrNotFound) {
+			if err := s.markFailed(ctx, row.ResourceID, row.ArtifactUUID, "source_missing",
+				"the artifact service does not hold this file"); err != nil {
+				slog.Warn("normalize: recording a missing source failed", "resource_id", row.ResourceID, "error", err)
+			}
+			continue
+		}
+		if err != nil {
+			s.release(rows[i:])
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func (s *Service) describe(ctx context.Context, row claimedRow) (Job, error) {
+	meta, err := s.art.Get(ctx, row.ArtifactUUID)
+	if err != nil {
+		return Job{}, err
+	}
+	dl, err := s.art.Download(ctx, row.ArtifactUUID)
+	if err != nil {
+		return Job{}, err
+	}
+	job := Job{
+		ResourceID:     row.ResourceID,
+		GalgameID:      row.GalgameID,
+		ArtifactUUID:   row.ArtifactUUID,
+		DownloadURL:    dl.Url,
+		Filename:       meta.Name,
+		Password:       row.Password,
+		Bytes:          meta.FileSize,
+		LeaseExpiresAt: row.LeaseUntil,
+	}
+	if row.RepackUUID != nil {
+		job.Repack = &Repack{
+			ArtifactUUID: *row.RepackUUID,
+			Blake3:       *row.RepackBlake3,
+			Bytes:        *row.RepackBytes,
+			FileCount:    *row.RepackFileCount,
+		}
+	}
+	return job, nil
+}
+
+// release hands back leases the forge never received, so an artifact service
+// outage does not hold them for leaseTTL or count against the day.
+func (s *Service) release(rows []claimedRow) {
+	uuids := make([]string, len(rows))
+	for i, r := range rows {
+		uuids[i] = r.ArtifactUUID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.db.WithContext(ctx).Exec(`UPDATE patch_resource_normalize
+		SET lease_until = now(), attempts = attempts - 1, claimed_at = NULL, updated_at = now()
+		WHERE source_artifact_uuid IN ? AND state = 'claimed'`, uuids).Error; err != nil {
+		slog.Warn("normalize: releasing unsent leases failed", "count", len(uuids), "error", err)
+	}
+}
+
+type CompleteRequest struct {
+	ArtifactUUID       string `json:"artifact_uuid" validate:"required,uuid"`
+	SourceArtifactUUID string `json:"source_artifact_uuid" validate:"required,uuid"`
+	Filename           string `json:"filename" validate:"required,max=255"`
+	Bytes              int64  `json:"bytes" validate:"required,min=1"`
+	Blake3             string `json:"blake3" validate:"required,len=64,hexadecimal,lowercase"`
+	FileCount          int    `json:"file_count" validate:"required,min=1"`
+	HasArchives        bool   `json:"has_archives"`
+}
+
+// displaySize matches what the publish form writes after an upload.
+func displaySize(bytes int64) string {
+	return fmt.Sprintf("%.3f MB", float64(bytes)/(1024*1024))
+}
+
+func (s *Service) Complete(ctx context.Context, resourceID, botUserID int, req CompleteRequest) (*model.PatchResourceNormalize, error) {
+	if req.ArtifactUUID == req.SourceArtifactUUID {
+		return nil, unusable("it is the source file itself")
+	}
+	if !strings.HasSuffix(strings.ToLower(req.Filename), ".zip") || strings.ContainsAny(req.Filename, `/\`) {
+		return nil, unusable(fmt.Sprintf("filename %q is not a bare name ending in .zip", req.Filename))
+	}
+	db := s.db.WithContext(ctx)
+
+	var prior []model.PatchResourceNormalize
+	if err := db.Where("source_artifact_uuid = ? AND state = 'done'", req.SourceArtifactUUID).
+		Limit(1).Find(&prior).Error; err != nil {
+		return nil, err
+	}
+	if len(prior) > 0 {
+		if prior[0].ResourceID != resourceID || prior[0].ArtifactUUID != req.ArtifactUUID {
+			return nil, ErrAlreadyDone
+		}
+		meta, err := s.art.Get(ctx, req.ArtifactUUID)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.rename(ctx, meta, req.Filename); err != nil {
+			return nil, err
+		}
+		return &prior[0], nil
+	}
+
+	var promoting bool
+	if err := db.Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource_repack WHERE resource_id = ? AND artifact_uuid = ?)`,
+		resourceID, req.ArtifactUUID).Scan(&promoting).Error; err != nil {
+		return nil, err
+	}
+	if !promoting {
+		if err := s.owners.RequireOwner(ctx, req.ArtifactUUID, botUserID); err != nil {
+			return nil, err
+		}
+	}
+	meta, err := s.art.Get(ctx, req.ArtifactUUID)
+	if errors.Is(err, artifactclient.ErrNotFound) {
+		return nil, unusable("no such artifact")
+	}
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case meta.Status != artifactclient.StatusReady:
+		return nil, unusable("upload not completed")
+	case !meta.Public:
+		return nil, unusable("not public, so readers could not download it")
+	case meta.FileSize != req.Bytes:
+		return nil, unusable(fmt.Sprintf("bytes is %d, the stored file is %d", req.Bytes, meta.FileSize))
+	case !strings.HasSuffix(strings.ToLower(meta.Name), ".zip"):
+		return nil, unusable(fmt.Sprintf("its name %q does not end in .zip", meta.Name))
+	}
+
+	var out model.PatchResourceNormalize
+	err = db.Transaction(func(tx *gorm.DB) error {
+		var res struct {
+			Storage      string
+			ArtifactUUID string
+			Password     string
+			Size         string
+		}
+		found := tx.Raw(`SELECT storage, artifact_uuid, password, size FROM patch_resource WHERE id = ? FOR UPDATE`,
+			resourceID).Scan(&res)
+		if found.Error != nil {
+			return found.Error
+		}
+		if found.RowsAffected == 0 || res.Storage != "s3" {
+			return ErrResourceNotFound
+		}
+		if res.ArtifactUUID != req.SourceArtifactUUID {
+			return ErrSourceChanged
+		}
+
+		var taken bool
+		if err := tx.Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource WHERE artifact_uuid = ?)
+			OR EXISTS (SELECT 1 FROM patch_resource_repack WHERE artifact_uuid = ? AND resource_id <> ?)
+			OR EXISTS (SELECT 1 FROM patch_resource_repack_purge WHERE artifact_uuid = ?)
+			OR EXISTS (SELECT 1 FROM patch_resource_normalize WHERE artifact_uuid = ?)`,
+			req.ArtifactUUID, req.ArtifactUUID, resourceID, req.ArtifactUUID, req.ArtifactUUID).Scan(&taken).Error; err != nil {
+			return err
+		}
+		if taken {
+			return unusable("it is a resource's file, another resource's repack, or being deleted")
+		}
+
+		// The job is written first: 050's change-feed trigger reads it to log
+		// the swap below as `normalized`.
+		if err := tx.Raw(`INSERT INTO patch_resource_normalize
+				(source_artifact_uuid, resource_id, state, artifact_uuid, blake3, bytes, file_count,
+				 has_archives, source_password, source_size)
+			VALUES (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (source_artifact_uuid) DO UPDATE SET
+				state = 'done',
+				lease_until = NULL,
+				artifact_uuid = EXCLUDED.artifact_uuid,
+				blake3 = EXCLUDED.blake3,
+				bytes = EXCLUDED.bytes,
+				file_count = EXCLUDED.file_count,
+				has_archives = EXCLUDED.has_archives,
+				source_password = EXCLUDED.source_password,
+				source_size = EXCLUDED.source_size,
+				code = '',
+				message = '',
+				updated_at = now()
+			RETURNING *`,
+			req.SourceArtifactUUID, resourceID, req.ArtifactUUID, req.Blake3, req.Bytes, req.FileCount,
+			req.HasArchives, res.Password, res.Size,
+		).Scan(&out).Error; err != nil {
+			return err
+		}
+
+		// Raw SQL, so GORM's autoUpdateTime leaves `updated` alone: the owner
+		// ruled that nothing but the file changes.
+		if err := tx.Exec(`UPDATE patch_resource
+			SET artifact_uuid = ?, size = ?, blake3 = ?, password = CASE WHEN ? THEN password ELSE '' END
+			WHERE id = ?`,
+			req.ArtifactUUID, displaySize(req.Bytes), req.Blake3, req.HasArchives, resourceID).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`INSERT INTO patch_resource_repack_purge (artifact_uuid, resource_id, next_attempt_at)
+			VALUES (?, ?, now() + make_interval(secs => ?))
+			ON CONFLICT (artifact_uuid) DO NOTHING`, req.SourceArtifactUUID, resourceID, keepOriginal.Seconds()).Error
+	})
+	if errors.Is(err, ErrSourceChanged) || errors.Is(err, ErrResourceNotFound) {
+		s.discard(ctx, resourceID, req.ArtifactUUID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.rename(ctx, meta, req.Filename); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// rename runs after the swap, so it can only touch a file the swap verified as
+// this resource's product. A failure leaves the swap in place; the forge
+// replays complete, which lands here again.
+func (s *Service) rename(ctx context.Context, meta *artifactclient.ArtifactResponse, name string) error {
+	if meta.Name == name {
+		return nil
+	}
+	if _, err := s.art.Rename(ctx, meta.Uuid, name); err != nil {
+		return fmt.Errorf("rename %s to %q after the swap: %w", meta.Uuid, name, err)
+	}
+	return nil
+}
+
+// discard queues a product whose resource was deleted or whose source was
+// replaced while the forge built it. Nothing else holds it, and the forge has
+// no lane to delete its own uploads.
+func (s *Service) discard(ctx context.Context, resourceID int, uuid string) {
+	if err := s.db.WithContext(context.WithoutCancel(ctx)).Exec(`INSERT INTO patch_resource_repack_purge (artifact_uuid, resource_id)
+		SELECT ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM patch_resource WHERE artifact_uuid = ?)
+			AND NOT EXISTS (SELECT 1 FROM patch_resource_repack WHERE artifact_uuid = ?)
+		ON CONFLICT (artifact_uuid) DO NOTHING`, uuid, resourceID, uuid, uuid).Error; err != nil {
+		slog.Warn("normalize: queueing a stale product for deletion failed",
+			"resource_id", resourceID, "artifact_uuid", uuid, "error", err)
+	}
+}
+
+type FailRequest struct {
+	SourceArtifactUUID string `json:"source_artifact_uuid" validate:"required,uuid"`
+	Code               string `json:"code" validate:"required,max=64"`
+	Message            string `json:"message" validate:"max=2000"`
+}
+
+// Fail is terminal for the file: it is offered again only once the author
+// replaces it or an operator deletes the job.
+func (s *Service) Fail(ctx context.Context, resourceID int, req FailRequest) error {
+	return s.markFailed(ctx, resourceID, req.SourceArtifactUUID, req.Code, req.Message)
+}
+
+func (s *Service) markFailed(ctx context.Context, resourceID int, source, code, message string) error {
+	res := s.db.WithContext(ctx).Exec(`UPDATE patch_resource_normalize
+		SET state = 'failed', code = ?, message = ?, lease_until = NULL, updated_at = now()
+		WHERE source_artifact_uuid = ? AND resource_id = ? AND state <> 'done'`,
+		code, message, source, resourceID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
+	var done bool
+	if err := s.db.WithContext(ctx).Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource_normalize
+		WHERE source_artifact_uuid = ? AND resource_id = ? AND state = 'done')`, source, resourceID).
+		Scan(&done).Error; err != nil {
+		return err
+	}
+	if done {
+		return ErrAlreadyDone
+	}
+	return ErrNoJob
+}

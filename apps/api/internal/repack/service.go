@@ -86,6 +86,14 @@ func (s *Service) Attach(ctx context.Context, resourceID, botUserID int, req Att
 		if res.ArtifactUUID != req.SourceArtifactUUID {
 			return ErrSourceChanged
 		}
+		var normalized bool
+		if err := tx.Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource_normalize WHERE artifact_uuid = ?)`,
+			res.ArtifactUUID).Scan(&normalized).Error; err != nil {
+			return err
+		}
+		if normalized {
+			return unusable("the resource's file is already a forge zip; use it as the layer")
+		}
 
 		var holder struct{ ResourceID int }
 		if err := tx.Raw(`SELECT resource_id FROM patch_resource_repack WHERE artifact_uuid = ?`, req.ArtifactUUID).

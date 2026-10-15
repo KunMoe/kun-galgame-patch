@@ -186,6 +186,13 @@ func (r *Repository) GetRepack(resourceID int) (*patchModel.PatchResourceRepack,
 	return &rows[0], nil
 }
 
+func (r *Repository) IsNormalized(artifactUUID string) (bool, error) {
+	var done bool
+	err := r.db.Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource_normalize WHERE artifact_uuid = ?)`, artifactUUID).
+		Scan(&done).Error
+	return done, err
+}
+
 type ChangeRow struct {
 	Seq        int64
 	Txid       int64

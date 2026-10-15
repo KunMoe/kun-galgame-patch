@@ -45,6 +45,7 @@ import (
 	messageRepo "kun-galgame-patch-api/internal/message/repository"
 	messageService "kun-galgame-patch-api/internal/message/service"
 	"kun-galgame-patch-api/internal/middleware"
+	"kun-galgame-patch-api/internal/normalize"
 	patchHandler "kun-galgame-patch-api/internal/patch/handler"
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
@@ -99,6 +100,7 @@ type App struct {
 	FaceHandler      *faceHandler.Handler
 	UploadHandler    *uploadPkg.Handler
 	RepackHandler    *repack.Handler
+	NormalizeHandler *normalize.Handler
 	ChatHandler      *chatHandler.ChatHandler
 	IMRelay          *im.Relay
 	DocHandler       *docHandler.DocHandler
@@ -396,6 +398,7 @@ func New(cfg *config.Config) *App {
 		FaceHandler:      faceHdl,
 		UploadHandler:    uploadHdl,
 		RepackHandler:    repack.NewHandler(repackSvc),
+		NormalizeHandler: normalize.NewHandler(normalize.New(db, artCli, uploadSvc)),
 		ChatHandler:      chatHdl,
 		IMRelay:          im.NewRelay(cfg.Chat.BaseURL),
 		DocHandler:       docHdl,

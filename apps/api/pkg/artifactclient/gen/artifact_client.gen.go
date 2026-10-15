@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // ArtifactResponse defines model for ArtifactResponse.
@@ -44,6 +45,86 @@ type CompletedPart struct {
 	PartNumber int32  `json:"part_number"`
 }
 
+// CompositeDeleteData defines model for CompositeDeleteData.
+type CompositeDeleteData struct {
+	Deleted bool   `json:"deleted"`
+	Id      string `json:"id"`
+}
+
+// CompositeListData defines model for CompositeListData.
+type CompositeListData struct {
+	Items *[]CompositeResponse `json:"items"`
+	Total int64                `json:"total"`
+}
+
+// CompositeResponse defines model for CompositeResponse.
+type CompositeResponse struct {
+	// Artifacts UUIDs of the artifacts this composite pins, in source order
+	Artifacts *[]string `json:"artifacts"`
+
+	// Blake3 Absent when the plan was created without one
+	Blake3      *string `json:"blake3,omitempty"`
+	ContentType string  `json:"content_type"`
+	CreatedAt   string  `json:"created_at"`
+	Filename    string  `json:"filename"`
+
+	// Id Content-addressed: the same plan from the same site always yields the same id
+	Id           string `json:"id"`
+	InlineBytes  int64  `json:"inline_bytes"`
+	SegmentCount int64  `json:"segment_count"`
+	SiteKey      string `json:"site_key"`
+	Size         int64  `json:"size"`
+
+	// Url Public download URL; absent while the site has no artifact_cdn_base
+	Url *string `json:"url,omitempty"`
+}
+
+// CompositeSegment defines model for CompositeSegment.
+type CompositeSegment struct {
+	// Length Bytes taken from that offset
+	Length int64 `json:"length"`
+
+	// Offset Byte offset inside that source
+	Offset int64 `json:"offset"`
+
+	// Source Index into sources
+	Source int64 `json:"source"`
+}
+
+// CompositeSourceInput defines model for CompositeSourceInput.
+type CompositeSourceInput struct {
+	// ArtifactUuid A ready, public, undeleted artifact of the caller's own site. Exactly one of artifact_uuid and data.
+	ArtifactUuid *openapi_types.UUID `json:"artifact_uuid,omitempty"`
+
+	// Data Inline bytes (standard base64), stored with the composite instead of as an artifact — the zip glue. All inline sources together are capped at 8 MiB. Exactly one of artifact_uuid and data.
+	Data *string `json:"data,omitempty"`
+
+	// Size Optional check: the source's exact byte length. A mismatch refuses the composite.
+	Size *int64 `json:"size,omitempty"`
+}
+
+// CreateCompositeRequest defines model for CreateCompositeRequest.
+type CreateCompositeRequest struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Blake3 Optional BLAKE3 of the assembled file, lowercase hex, served as the ETag; not recomputed by the service. Without it the ETag is the composite id, which already hashes the plan.
+	Blake3 *string `json:"blake3,omitempty"`
+
+	// ContentType Media type of the assembled file, e.g. application/zip
+	ContentType string `json:"content_type"`
+
+	// Filename Download filename, sent as an attachment Content-Disposition
+	Filename string `json:"filename"`
+
+	// Segments The assembled file, in order
+	Segments *[]CompositeSegment `json:"segments"`
+
+	// Size Exact byte length of the assembled file; must equal the sum of the segment lengths
+	Size    int64                   `json:"size"`
+	Sources *[]CompositeSourceInput `json:"sources"`
+}
+
 // DeleteData defines model for DeleteData.
 type DeleteData struct {
 	Deleted bool   `json:"deleted"`
@@ -63,6 +144,33 @@ type EnvelopeArtifactResponse struct {
 	Code    int64             `json:"code"`
 	Data    *ArtifactResponse `json:"data,omitempty"`
 	Message string            `json:"message"`
+}
+
+// EnvelopeCompositeDeleteData defines model for EnvelopeCompositeDeleteData.
+type EnvelopeCompositeDeleteData struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema  *string              `json:"$schema,omitempty"`
+	Code    int64                `json:"code"`
+	Data    *CompositeDeleteData `json:"data,omitempty"`
+	Message string               `json:"message"`
+}
+
+// EnvelopeCompositeListData defines model for EnvelopeCompositeListData.
+type EnvelopeCompositeListData struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema  *string            `json:"$schema,omitempty"`
+	Code    int64              `json:"code"`
+	Data    *CompositeListData `json:"data,omitempty"`
+	Message string             `json:"message"`
+}
+
+// EnvelopeCompositeResponse defines model for EnvelopeCompositeResponse.
+type EnvelopeCompositeResponse struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema  *string            `json:"$schema,omitempty"`
+	Code    int64              `json:"code"`
+	Data    *CompositeResponse `json:"data,omitempty"`
+	Message string             `json:"message"`
 }
 
 // EnvelopeDeleteData defines model for EnvelopeDeleteData.
@@ -163,6 +271,15 @@ type PartURL struct {
 	Url        string `json:"url"`
 }
 
+// RenameArtifactRequest defines model for RenameArtifactRequest.
+type RenameArtifactRequest struct {
+	// Schema A URL to the JSON Schema for this object.
+	Schema *string `json:"$schema,omitempty"`
+
+	// Name New download filename. The extension must stay the same; the Content-Disposition of the stored object is rewritten to match.
+	Name string `json:"name"`
+}
+
 // ResumeUploadResponse defines model for ResumeUploadResponse.
 type ResumeUploadResponse struct {
 	ExpiresAt     string          `json:"expires_at"`
@@ -190,8 +307,23 @@ type ListArtifactsParams struct {
 	PageSize *int64 `form:"page_size,omitempty" json:"page_size,omitempty"`
 }
 
+// ListCompositesParams defines parameters for ListComposites.
+type ListCompositesParams struct {
+	// Page 1-based page number
+	Page *int64 `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize Items per page (max 100)
+	PageSize *int64 `form:"page_size,omitempty" json:"page_size,omitempty"`
+}
+
 // InitUploadJSONRequestBody defines body for InitUpload for application/json ContentType.
 type InitUploadJSONRequestBody = InitUploadRequest
+
+// CreateCompositeJSONRequestBody defines body for CreateComposite for application/json ContentType.
+type CreateCompositeJSONRequestBody = CreateCompositeRequest
+
+// RenameArtifactJSONRequestBody defines body for RenameArtifact for application/json ContentType.
+type RenameArtifactJSONRequestBody = RenameArtifactRequest
 
 // CompleteUploadJSONRequestBody defines body for CompleteUpload for application/json ContentType.
 type CompleteUploadJSONRequestBody = CompleteUploadRequest
@@ -277,11 +409,30 @@ type ClientInterface interface {
 
 	InitUpload(ctx context.Context, body InitUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListComposites request
+	ListComposites(ctx context.Context, params *ListCompositesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCompositeWithBody request with any body
+	CreateCompositeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateComposite(ctx context.Context, body CreateCompositeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteComposite request
+	DeleteComposite(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetComposite request
+	GetComposite(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteArtifact request
 	DeleteArtifact(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetArtifact request
 	GetArtifact(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenameArtifactWithBody request with any body
+	RenameArtifactWithBody(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RenameArtifact(ctx context.Context, uuid string, body RenameArtifactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CompleteUploadWithBody request with any body
 	CompleteUploadWithBody(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -331,6 +482,66 @@ func (c *Client) InitUpload(ctx context.Context, body InitUploadJSONRequestBody,
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListComposites(ctx context.Context, params *ListCompositesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCompositesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateCompositeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCompositeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateComposite(ctx context.Context, body CreateCompositeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCompositeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteComposite(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteCompositeRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetComposite(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCompositeRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteArtifact(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteArtifactRequest(c.Server, uuid)
 	if err != nil {
@@ -345,6 +556,30 @@ func (c *Client) DeleteArtifact(ctx context.Context, uuid string, reqEditors ...
 
 func (c *Client) GetArtifact(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetArtifactRequest(c.Server, uuid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RenameArtifactWithBody(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameArtifactRequestWithBody(c.Server, uuid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RenameArtifact(ctx context.Context, uuid string, body RenameArtifactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameArtifactRequest(c.Server, uuid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -509,6 +744,180 @@ func NewInitUploadRequestWithBody(server string, contentType string, body io.Rea
 	return req, nil
 }
 
+// NewListCompositesRequest generates requests for ListComposites
+func NewListCompositesRequest(server string, params *ListCompositesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/artifacts/composites")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page_size", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateCompositeRequest calls the generic CreateComposite builder with application/json body
+func NewCreateCompositeRequest(server string, body CreateCompositeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCompositeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateCompositeRequestWithBody generates requests for CreateComposite with any type of body
+func NewCreateCompositeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/artifacts/composites")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteCompositeRequest generates requests for DeleteComposite
+func NewDeleteCompositeRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/artifacts/composites/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCompositeRequest generates requests for GetComposite
+func NewGetCompositeRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/artifacts/composites/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteArtifactRequest generates requests for DeleteArtifact
 func NewDeleteArtifactRequest(server string, uuid string) (*http.Request, error) {
 	var err error
@@ -573,6 +982,53 @@ func NewGetArtifactRequest(server string, uuid string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewRenameArtifactRequest calls the generic RenameArtifact builder with application/json body
+func NewRenameArtifactRequest(server string, uuid string, body RenameArtifactJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenameArtifactRequestWithBody(server, uuid, "application/json", bodyReader)
+}
+
+// NewRenameArtifactRequestWithBody generates requests for RenameArtifact with any type of body
+func NewRenameArtifactRequestWithBody(server string, uuid string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uuid", uuid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/artifacts/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -743,11 +1199,30 @@ type ClientWithResponsesInterface interface {
 
 	InitUploadWithResponse(ctx context.Context, body InitUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*InitUploadResp, error)
 
+	// ListCompositesWithResponse request
+	ListCompositesWithResponse(ctx context.Context, params *ListCompositesParams, reqEditors ...RequestEditorFn) (*ListCompositesResp, error)
+
+	// CreateCompositeWithBodyWithResponse request with any body
+	CreateCompositeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCompositeResp, error)
+
+	CreateCompositeWithResponse(ctx context.Context, body CreateCompositeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCompositeResp, error)
+
+	// DeleteCompositeWithResponse request
+	DeleteCompositeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteCompositeResp, error)
+
+	// GetCompositeWithResponse request
+	GetCompositeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetCompositeResp, error)
+
 	// DeleteArtifactWithResponse request
 	DeleteArtifactWithResponse(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*DeleteArtifactResp, error)
 
 	// GetArtifactWithResponse request
 	GetArtifactWithResponse(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*GetArtifactResp, error)
+
+	// RenameArtifactWithBodyWithResponse request with any body
+	RenameArtifactWithBodyWithResponse(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameArtifactResp, error)
+
+	RenameArtifactWithResponse(ctx context.Context, uuid string, body RenameArtifactJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameArtifactResp, error)
 
 	// CompleteUploadWithBodyWithResponse request with any body
 	CompleteUploadWithBodyWithResponse(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteUploadResp, error)
@@ -823,6 +1298,130 @@ func (r InitUploadResp) ContentType() string {
 	return ""
 }
 
+type ListCompositesResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EnvelopeCompositeListData
+	JSONDefault  *HouseError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCompositesResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCompositesResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCompositesResp) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateCompositeResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EnvelopeCompositeResponse
+	JSONDefault  *HouseError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCompositeResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCompositeResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateCompositeResp) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteCompositeResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EnvelopeCompositeDeleteData
+	JSONDefault  *HouseError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteCompositeResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteCompositeResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteCompositeResp) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCompositeResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EnvelopeCompositeResponse
+	JSONDefault  *HouseError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCompositeResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCompositeResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCompositeResp) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DeleteArtifactResp struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -879,6 +1478,37 @@ func (r GetArtifactResp) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetArtifactResp) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenameArtifactResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *EnvelopeArtifactResponse
+	JSONDefault  *HouseError
+}
+
+// Status returns HTTPResponse.Status
+func (r RenameArtifactResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenameArtifactResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenameArtifactResp) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1004,6 +1634,50 @@ func (c *ClientWithResponses) InitUploadWithResponse(ctx context.Context, body I
 	return ParseInitUploadResp(rsp)
 }
 
+// ListCompositesWithResponse request returning *ListCompositesResp
+func (c *ClientWithResponses) ListCompositesWithResponse(ctx context.Context, params *ListCompositesParams, reqEditors ...RequestEditorFn) (*ListCompositesResp, error) {
+	rsp, err := c.ListComposites(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCompositesResp(rsp)
+}
+
+// CreateCompositeWithBodyWithResponse request with arbitrary body returning *CreateCompositeResp
+func (c *ClientWithResponses) CreateCompositeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCompositeResp, error) {
+	rsp, err := c.CreateCompositeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCompositeResp(rsp)
+}
+
+func (c *ClientWithResponses) CreateCompositeWithResponse(ctx context.Context, body CreateCompositeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCompositeResp, error) {
+	rsp, err := c.CreateComposite(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCompositeResp(rsp)
+}
+
+// DeleteCompositeWithResponse request returning *DeleteCompositeResp
+func (c *ClientWithResponses) DeleteCompositeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteCompositeResp, error) {
+	rsp, err := c.DeleteComposite(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteCompositeResp(rsp)
+}
+
+// GetCompositeWithResponse request returning *GetCompositeResp
+func (c *ClientWithResponses) GetCompositeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetCompositeResp, error) {
+	rsp, err := c.GetComposite(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCompositeResp(rsp)
+}
+
 // DeleteArtifactWithResponse request returning *DeleteArtifactResp
 func (c *ClientWithResponses) DeleteArtifactWithResponse(ctx context.Context, uuid string, reqEditors ...RequestEditorFn) (*DeleteArtifactResp, error) {
 	rsp, err := c.DeleteArtifact(ctx, uuid, reqEditors...)
@@ -1020,6 +1694,23 @@ func (c *ClientWithResponses) GetArtifactWithResponse(ctx context.Context, uuid 
 		return nil, err
 	}
 	return ParseGetArtifactResp(rsp)
+}
+
+// RenameArtifactWithBodyWithResponse request with arbitrary body returning *RenameArtifactResp
+func (c *ClientWithResponses) RenameArtifactWithBodyWithResponse(ctx context.Context, uuid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameArtifactResp, error) {
+	rsp, err := c.RenameArtifactWithBody(ctx, uuid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameArtifactResp(rsp)
+}
+
+func (c *ClientWithResponses) RenameArtifactWithResponse(ctx context.Context, uuid string, body RenameArtifactJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameArtifactResp, error) {
+	rsp, err := c.RenameArtifact(ctx, uuid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameArtifactResp(rsp)
 }
 
 // CompleteUploadWithBodyWithResponse request with arbitrary body returning *CompleteUploadResp
@@ -1123,6 +1814,138 @@ func ParseInitUploadResp(rsp *http.Response) (*InitUploadResp, error) {
 	return response, nil
 }
 
+// ParseListCompositesResp parses an HTTP response from a ListCompositesWithResponse call
+func ParseListCompositesResp(rsp *http.Response) (*ListCompositesResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCompositesResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnvelopeCompositeListData
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest HouseError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCompositeResp parses an HTTP response from a CreateCompositeWithResponse call
+func ParseCreateCompositeResp(rsp *http.Response) (*CreateCompositeResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCompositeResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnvelopeCompositeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest HouseError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteCompositeResp parses an HTTP response from a DeleteCompositeWithResponse call
+func ParseDeleteCompositeResp(rsp *http.Response) (*DeleteCompositeResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteCompositeResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnvelopeCompositeDeleteData
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest HouseError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCompositeResp parses an HTTP response from a GetCompositeWithResponse call
+func ParseGetCompositeResp(rsp *http.Response) (*GetCompositeResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCompositeResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnvelopeCompositeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest HouseError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteArtifactResp parses an HTTP response from a DeleteArtifactWithResponse call
 func ParseDeleteArtifactResp(rsp *http.Response) (*DeleteArtifactResp, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1165,6 +1988,39 @@ func ParseGetArtifactResp(rsp *http.Response) (*GetArtifactResp, error) {
 	}
 
 	response := &GetArtifactResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EnvelopeArtifactResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest HouseError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenameArtifactResp parses an HTTP response from a RenameArtifactWithResponse call
+func ParseRenameArtifactResp(rsp *http.Response) (*RenameArtifactResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenameArtifactResp{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
