@@ -85,10 +85,9 @@ type claimedRow struct {
 	RepackFileCount *int
 }
 
-// Claim leases up to limit pending files. A resource carrying a repack is
-// withheld until the artifact service can rename one: promoted as is, it
-// would download as "<letmoe slug> (letmoe repack).zip".
-func (s *Service) Claim(ctx context.Context, limit int) ([]Job, error) {
+// Claim leases up to limit pending files, promotions of a resource's repack
+// first. ids, when given, narrows the claim to those resources.
+func (s *Service) Claim(ctx context.Context, limit int, ids []int) ([]Job, error) {
 	var rows []claimedRow
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`UPDATE patch_resource_normalize
@@ -97,45 +96,23 @@ func (s *Service) Claim(ctx context.Context, limit int) ([]Job, error) {
 			fmt.Sprintf("the lease ran out %d times", maxAttempts), maxAttempts).Error; err != nil {
 			return err
 		}
+		promotions, err := lease(tx, true, limit, ids)
+		if err != nil {
+			return err
+		}
+		rows = promotions
 		var today int
 		if err := tx.Raw(`SELECT count(*) FROM patch_resource_normalize
 			WHERE claimed_at >= date_trunc('day', now(), 'UTC')`).Scan(&today).Error; err != nil {
 			return err
 		}
-		limit = min(limit, dailyClaimCap-today)
-		if limit <= 0 {
+		fresh := min(limit-len(rows), dailyClaimCap-today)
+		if fresh <= 0 {
 			return nil
 		}
-		return tx.Raw(`WITH due AS (
-				SELECT r.id, r.galgame_id, r.artifact_uuid, r.password
-				FROM patch_resource r
-				LEFT JOIN patch_resource_normalize j ON j.source_artifact_uuid = r.artifact_uuid
-				WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
-					AND (j.source_artifact_uuid IS NULL OR (j.state = 'claimed' AND j.lease_until < now()))
-					AND NOT EXISTS (SELECT 1 FROM patch_resource_normalize p WHERE p.artifact_uuid = r.artifact_uuid)
-					AND NOT EXISTS (SELECT 1 FROM patch_resource_repack rp WHERE rp.resource_id = r.id)
-				ORDER BY r.update_time DESC, r.id DESC
-				LIMIT ?
-				FOR UPDATE OF r SKIP LOCKED
-			), leased AS (
-				INSERT INTO patch_resource_normalize
-					(source_artifact_uuid, resource_id, state, attempts, lease_until, claimed_at)
-				SELECT artifact_uuid, id, 'claimed', 1, now() + make_interval(secs => ?), now() FROM due
-				ON CONFLICT (source_artifact_uuid) DO UPDATE SET
-					state = 'claimed',
-					attempts = patch_resource_normalize.attempts + 1,
-					lease_until = EXCLUDED.lease_until,
-					claimed_at = EXCLUDED.claimed_at,
-					updated_at = now()
-				RETURNING resource_id, source_artifact_uuid, lease_until
-			)
-			SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, l.lease_until,
-				rp.artifact_uuid AS repack_uuid, rp.blake3 AS repack_blake3,
-				rp.bytes AS repack_bytes, rp.file_count AS repack_file_count
-			FROM leased l
-			JOIN due d ON d.id = l.resource_id
-			LEFT JOIN patch_resource_repack rp ON rp.resource_id = l.resource_id`,
-			limit, leaseTTL.Seconds()).Scan(&rows).Error
+		uploads, err := lease(tx, false, fresh, ids)
+		rows = append(rows, uploads...)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -158,6 +135,53 @@ func (s *Service) Claim(ctx context.Context, limit int) ([]Job, error) {
 		jobs = append(jobs, job)
 	}
 	return jobs, nil
+}
+
+// lease claims pending files whose resource does or does not carry a repack.
+// A promotion uploads nothing, so it leaves claimed_at empty and costs none of
+// dailyClaimCap.
+func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, error) {
+	filter, args := "", []any{promotions}
+	if len(ids) > 0 {
+		filter = "AND r.id IN ?"
+		args = append(args, ids)
+	}
+	args = append(args, limit, leaseTTL.Seconds(), promotions)
+	var rows []claimedRow
+	err := tx.Raw(`WITH due AS (
+			SELECT r.id, r.galgame_id, r.artifact_uuid, r.password
+			FROM patch_resource r
+			LEFT JOIN patch_resource_normalize j ON j.source_artifact_uuid = r.artifact_uuid
+			WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
+				AND (j.source_artifact_uuid IS NULL OR (j.state = 'claimed' AND j.lease_until < now()))
+				AND NOT EXISTS (SELECT 1 FROM patch_resource_normalize p WHERE p.artifact_uuid = r.artifact_uuid)
+				AND (EXISTS (SELECT 1 FROM patch_resource_repack rp WHERE rp.resource_id = r.id)) = ?
+				`+filter+`
+			ORDER BY r.update_time DESC, r.id DESC
+			LIMIT ?
+			FOR UPDATE OF r SKIP LOCKED
+		), leased AS (
+			INSERT INTO patch_resource_normalize
+				(source_artifact_uuid, resource_id, state, attempts, lease_until, claimed_at)
+			SELECT artifact_uuid, id, 'claimed', 1, now() + make_interval(secs => ?),
+				CASE WHEN ? THEN NULL ELSE now() END
+			FROM due
+			ON CONFLICT (source_artifact_uuid) DO UPDATE SET
+				state = 'claimed',
+				attempts = patch_resource_normalize.attempts + 1,
+				lease_until = EXCLUDED.lease_until,
+				claimed_at = EXCLUDED.claimed_at,
+				updated_at = now()
+			RETURNING resource_id, source_artifact_uuid, lease_until
+		)
+		SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, l.lease_until,
+			rp.artifact_uuid AS repack_uuid, rp.blake3 AS repack_blake3,
+			rp.bytes AS repack_bytes, rp.file_count AS repack_file_count
+		FROM leased l
+		JOIN due d ON d.id = l.resource_id
+		LEFT JOIN patch_resource_repack rp ON rp.resource_id = l.resource_id`,
+		args...).Scan(&rows).Error
+	return rows, err
 }
 
 func (s *Service) describe(ctx context.Context, row claimedRow) (Job, error) {

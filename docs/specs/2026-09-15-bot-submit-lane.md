@@ -63,17 +63,16 @@ API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小�
 
 队列不落表。一个 `status=0` 的托管资源，只要它当前的文件既没有 job、也不是 forge 产物，就是待处理。所以新上传和换文件会自动进入队列，任何写路径都不用管。job 在 `patch_resource_normalize`（迁移 050），每个源文件一行，以源文件的 `artifact_uuid` 为键。
 
-`POST /bot/normalize-jobs/claim`，body `{"limit": 1..20}`（默认 1），返回：
+`POST /bot/normalize-jobs/claim`，body `{"limit": 1..20, "resource_ids": [...]}`（`limit` 默认 1；`resource_ids` 可选，最多 20 个，只在这些资源里挑，供 canary 用），返回：
 
 ```json
 {"items":[{"resource_id":1,"galgame_id":2,"artifact_uuid":"…","download_url":"…","filename":"汉化补丁 v1.2.rar","password":"…","bytes":123,"repack":null,"lease_expires_at":"…"}]}
 ```
 
 - 租约 6 小时，每次 claim 记一次尝试。第 5 次租约过期后，job 自动变成 `failed` / `abandoned`。临时错误（网络、OOM）不要调 fail，等租约自然过期即可。
-- 最近编辑的资源排在前面，所以新上传会插到回填前面。
-- 每个 UTC 日最多 claim 2,400 次。每次 claim 对应 forge 的一次上传 Init，而 moyu 在制品服务的配额是每天 3,000 次 Init，读者的上传也算在内。
+- 带 repack 的资源先发（提升，`repack` 非 null）：不用上传，直接释放原文件的空间。其余按最近编辑排序，所以新上传会插到回填前面。
+- 不带 repack 的资源，每个 UTC 日最多 claim 2,400 次。每次这样的 claim 对应 forge 的一次上传 Init，而 moyu 在制品服务的配额是每天 3,000 次 Init，读者的上传也算在内。提升不上传，不计入这个上限。
 - 制品服务里已经没有的源文件不会下发，直接记为 `failed` / `source_missing`。
-- 带 repack 的资源暂不下发，等制品服务能改名再放开。
 - `filename` 是作者上传时的文件名。forge 上传产物时用它的主名加 `.zip`。
 
 `POST /bot/normalize-jobs/:id/complete`，body：

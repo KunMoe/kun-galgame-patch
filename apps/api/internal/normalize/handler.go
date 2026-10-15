@@ -22,7 +22,8 @@ func resourceID(c fiber.Ctx) (int, bool) {
 }
 
 type ClaimRequest struct {
-	Limit int `json:"limit" validate:"omitempty,min=1,max=20"`
+	Limit       int   `json:"limit" validate:"omitempty,min=1,max=20"`
+	ResourceIDs []int `json:"resource_ids" validate:"omitempty,max=20,dive,min=1"`
 }
 
 func (h *Handler) Claim(c fiber.Ctx) error {
@@ -33,7 +34,7 @@ func (h *Handler) Claim(c fiber.Ctx) error {
 	if req.Limit == 0 {
 		req.Limit = 1
 	}
-	jobs, err := h.svc.Claim(c.Context(), min(req.Limit, MaxClaim))
+	jobs, err := h.svc.Claim(c.Context(), min(req.Limit, MaxClaim), req.ResourceIDs)
 	if err != nil {
 		return response.Upstream(c, err, "")
 	}
