@@ -57,6 +57,48 @@ forge 从 `/v2/moyu/resources/{id}/file` 取原文件，重打成确定性 STORE
 
 API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小时，404 视为已删。infra 收到 moyu 的 artifact 删除后，会连带删掉钉住它的 letmoe 组合。资源被禁用（1）或隐藏（2）时 repack **不删**：`/file` 此时回 404，由 letmoe 自己下线组合，资源恢复后再用同一计划重建。
 
+### normalize（2026-10-15，托管补丁统一为 zip）
+
+站长裁定：每个托管（`storage=s3`）资源的文件都换成 forge 重打的无解压码 zip，原文件删除。zip 里只有一个顶层目录，作者打包的每个文件都原样保留，说明文件也在内，不做垃圾文件清理。每个文件按压缩收益选择 Deflate 或 STORE。作者、上传与更新时间、更新历史、下载数、备注都不动，只换文件、清解压码。之后的新上传和替换走同一条通道：照常发布，forge 几分钟内把文件换掉。
+
+队列不落表。一个 `status=0` 的托管资源，只要它当前的文件既没有 job、也不是 forge 产物，就是待处理。所以新上传和换文件会自动进入队列，任何写路径都不用管。job 在 `patch_resource_normalize`（迁移 050），每个源文件一行，以源文件的 `artifact_uuid` 为键。
+
+`POST /bot/normalize-jobs/claim`，body `{"limit": 1..20, "resource_ids": [...]}`（`limit` 默认 1；`resource_ids` 可选，最多 20 个，只在这些资源里挑，供 canary 用），返回：
+
+```json
+{"items":[{"resource_id":1,"galgame_id":2,"artifact_uuid":"…","download_url":"…","filename":"汉化补丁 v1.2.rar","password":"…","bytes":123,"repack":null,"lease_expires_at":"…"}]}
+```
+
+- 租约 6 小时，每次 claim 记一次尝试。第 5 次租约过期后，job 自动变成 `failed` / `abandoned`。临时错误（网络、OOM）不要调 fail，等租约自然过期即可。
+- 带 repack 的资源先发（提升，`repack` 非 null）：不用上传，直接释放原文件的空间。其余按最近编辑排序，所以新上传会插到回填前面。
+  改名后，dl.imoe.uk 边缘节点上已缓存的旧副本会继续用旧文件名，最多 4 小时（max-age），源站已经是新名字。
+- 不带 repack 的资源，每个 UTC 日最多 claim 2,400 次。每次这样的 claim 对应 forge 的一次上传 Init，而 moyu 在制品服务的配额是每天 3,000 次 Init，读者的上传也算在内。提升不上传，不计入这个上限。
+- 制品服务里已经没有的源文件不会下发，直接记为 `failed` / `source_missing`。
+- `filename` 是作者上传时的文件名。forge 上传产物时用它的主名加 `.zip`。
+
+`POST /bot/normalize-jobs/:id/complete`，body：
+
+```json
+{"artifact_uuid":"…","source_artifact_uuid":"…","filename":"汉化补丁 v1.2.zip","bytes":123,"blake3":"<64 hex>","file_count":42,"has_archives":false}
+```
+
+- `artifact_uuid` 是产物：bot 7 天内自己发起的上传，或者该资源当前的 repack（提升）。它必须已完成、`public`、大小等于 `bytes`、名字以 `.zip` 结尾，且不是任何资源的文件、别的资源的 repack、待删队列里的 artifact 或别的 job 的产物。否则 422。
+- 资源当前文件已不是 `source_artifact_uuid` 时回 409，并由 moyu 把产物放进待删队列，forge 不用管。
+- 同一对 (artifact_uuid, source_artifact_uuid) 重放：200，原样返回。同一个源文件换一个产物：409。
+- 同一事务里依次：job 记为 `done`，把被覆盖的解压码和大小存进 job 行；`artifact_uuid` 换成产物；`size` 写成 `"%.3f MB"`，与发布表单一致；`blake3` 写产物的哈希；`has_archives=false` 时清空解压码。`update_time`、`updated`、备注、计数、`patch_resource_file_history`、`patch_resource_revision` 都不碰，也不发通知。最后原文件进待删队列，但 30 天后才真正调 DELETE，之后 infra 再软删 7 天。原文件是作者唯一的副本，而 forge 包的文件名解码问题可能几周后才暴露：2026-09-29 发布的 4,178 个 forge 包里，有 1,243 个在部分语言环境下无法正常读取。
+- 交换成功后，moyu 把产物改名为 `filename`（`PATCH /api/v1/artifacts/{uuid}`），改名失败时 complete 返回错误但交换已生效。forge 重放 complete 即可补上改名。改名要在制品服务里原地重写对象，最大 5 GiB，可能需要几分钟。
+- 提升 repack 时，047 的触发器会在文件变更时删掉 repack 行。050 让它不再把「仍是某个资源文件」的 artifact 放进待删队列，否则刚换上的文件会被删掉。如果带 repack 的资源上传了新产物，旧 repack 照常删除，钉住它的 letmoe 组合也一并删除。
+
+`POST /bot/normalize-jobs/:id/fail`，body `{"source_artifact_uuid":"…","code":"wrong_password","message":"…"}`：对这个文件是终态，原文件保留。只有作者换了文件，或运维删掉 job 行，才会重新下发。没有 claim 过的文件回 404，已完成的回 409。
+
+变更流把这次换文件记为 `normalized`，不是 `file_replaced`，否则 letmoe 会重建约 300 个合并下载。`/v2/moyu/resources/{id}/file` 对 forge 产物回 `normalized: true`，此时文件本身就是合并层，`repack` 为 null，对它再 PUT repack 会回 422。
+
+**回滚**：job 行永久保存原文件的 uuid（主键）、解压码和大小。交换后 30 天内原文件还在，回滚不需要 infra。超过 30 天但在 37 天内，先请 infra 恢复原 artifact。然后：
+
+1. `UPDATE patch_resource SET artifact_uuid = <source_artifact_uuid>, password = <source_password>, size = <source_size>, blake3 = '' WHERE id = <resource_id>`。变更流会记一条 `file_replaced`，letmoe 据此重建。
+2. 把产物放进 `patch_resource_repack_purge`。原文件的待删行不用管：清理任务不会删除任何仍是某个资源文件的 artifact，会直接丢弃这类待删行。
+3. 把 job 行改成 `state='failed', code='reverted'`，这个文件就不会再被下发。
+
 ## 已知边界
 
 bot 投稿的页面**不会**在 catalog 认领该 work。`claimOnFirstResource` 走 `POST /v2/me/claims`，需要发布者本人的 OAuth token，bot key 不是。页面在本站 `published=true`（`MarkIndexed`）正常可见，但 catalog 那边这个 work 仍未被 kungal 站点认领。要补齐得由 infra 发一个 bot 用户 token，不是代码层面能关掉的口子。

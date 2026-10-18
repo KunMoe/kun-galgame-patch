@@ -66,6 +66,8 @@ const (
 	// Download runs on the resource page render, which must not wait out a
 	// write-sized timeout when the service hangs.
 	downloadTimeout = 5 * time.Second
+	// A rename rewrites the stored object in place, up to 5 GiB of it.
+	renameTimeout = 5 * time.Minute
 	StatusReady     = 1
 )
 
@@ -177,6 +179,22 @@ func (c *Client) Download(ctx context.Context, uuid string) (*DownloadResponse, 
 		return resp.JSON200.Data, nil
 	}
 	return nil, failure("download", resp.HTTPResponse, resp.JSONDefault)
+}
+
+func (c *Client) Rename(ctx context.Context, uuid, name string) (*ArtifactResponse, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+	ctx, cancel := context.WithTimeout(ctx, renameTimeout)
+	defer cancel()
+	resp, err := c.inner.RenameArtifactWithResponse(ctx, uuid, gen.RenameArtifactRequest{Name: name})
+	if err != nil {
+		return nil, callErr("rename", err)
+	}
+	if resp.JSON200 != nil && resp.JSON200.Code == 0 && resp.JSON200.Data != nil {
+		return resp.JSON200.Data, nil
+	}
+	return nil, failure("rename", resp.HTTPResponse, resp.JSONDefault)
 }
 
 func (c *Client) Delete(ctx context.Context, uuid string) error {

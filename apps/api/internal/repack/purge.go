@@ -26,6 +26,12 @@ type purgeRow struct {
 // composite pinning an artifact when moyu deletes it, so a row left here is a
 // merged download still serving a patch moyu no longer has.
 func (s *Service) Purge(ctx context.Context) (int, error) {
+	// Reverting a normalized resource makes its original the file again while
+	// the original's delete is still queued.
+	if err := s.db.WithContext(ctx).Exec(`DELETE FROM patch_resource_repack_purge q
+		WHERE EXISTS (SELECT 1 FROM patch_resource r WHERE r.artifact_uuid = q.artifact_uuid)`).Error; err != nil {
+		return 0, err
+	}
 	var due []purgeRow
 	if err := s.db.WithContext(ctx).Raw(`SELECT artifact_uuid, resource_id, attempts
 		FROM patch_resource_repack_purge WHERE next_attempt_at <= now()

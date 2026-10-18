@@ -29,7 +29,7 @@ const (
 )
 
 // Runs only against the launcher-provided TEST_DATABASE_DSN, migrated through
-// 047, with `go test -count=1 -p 1`.
+// 050, with `go test -count=1 -p 1`.
 func repackDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_DSN")
@@ -41,8 +41,8 @@ func repackDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	var migrated bool
-	if err := db.Raw(`SELECT to_regclass('patch_resource_repack_purge') IS NOT NULL`).Scan(&migrated).Error; err != nil || !migrated {
-		t.Fatalf("TEST_DATABASE_DSN is not migrated through 047: %v", err)
+	if err := db.Raw(`SELECT to_regclass('patch_resource_normalize') IS NOT NULL`).Scan(&migrated).Error; err != nil || !migrated {
+		t.Fatalf("TEST_DATABASE_DSN is not migrated through 050: %v", err)
 	}
 	clean := func() {
 		db.Exec(`DELETE FROM patch WHERE id = ?`, testPatch)
@@ -232,5 +232,17 @@ func TestWithdraw(t *testing.T) {
 	}
 	if _, err := svc.Attach(ctx, testResource, testUser, request(repackUUID2, srcUUID)); !errors.Is(err, ErrResourceNotFound) {
 		t.Fatalf("attach to a hidden resource: %v, want ErrResourceNotFound", err)
+	}
+}
+
+func TestNoRepackForANormalizedFile(t *testing.T) {
+	db := repackDB(t)
+	svc := New(db, (&artifacts{}).client(t), anyOwner{})
+	if err := db.Exec(`INSERT INTO patch_resource_normalize (source_artifact_uuid, resource_id, state, artifact_uuid)
+		VALUES (?, ?, 'done', ?)`, newSrcUUID, testResource, srcUUID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Attach(context.Background(), testResource, testUser, request(repackUUID, srcUUID)); !errors.Is(err, ErrArtifactUnusable) {
+		t.Fatalf("attach to a normalized file: %v, want ErrArtifactUnusable", err)
 	}
 }

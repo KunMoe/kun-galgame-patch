@@ -61,6 +61,11 @@ func (a *App) RegisterRoutes() {
 			return a.RepackHandler.Attach(c, botUser)
 		})
 		bot.Delete("/resources/:id/repack", a.RepackHandler.Withdraw)
+		bot.Post("/normalize-jobs/claim", a.NormalizeHandler.Claim)
+		bot.Post("/normalize-jobs/:id/complete", func(c fiber.Ctx) error {
+			return a.NormalizeHandler.Complete(c, botUser)
+		})
+		bot.Post("/normalize-jobs/:id/fail", a.NormalizeHandler.Fail)
 	}
 
 	patchRoutes := api.Group("/patch")

@@ -63,7 +63,7 @@ func TestResourceFileShape(t *testing.T) {
 	want := `{"object":"patch_resource_file","resource_id":"7007","artifact_uuid":"` + uuid + `",` +
 		`"download_url":"https://dl.imoe.uk/moyu/` + uuid + `","filename":"传说奶茶A 汉化补丁.rar",` +
 		`"bytes":32135794,"blake3":"` + strings.Repeat("ab", 32) + `","password":"moyu.moe",` +
-		`"updated_at":"2026-10-14T10:30:00Z","repack":null}`
+		`"updated_at":"2026-10-14T10:30:00Z","normalized":false,"repack":null}`
 	if string(encoded) != want {
 		t.Errorf("got  %s\nwant %s", encoded, want)
 	}

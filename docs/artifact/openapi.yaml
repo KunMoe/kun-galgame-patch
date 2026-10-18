@@ -565,6 +565,24 @@ components:
         - part_number
         - url
       type: object
+    RenameArtifactRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/RenameArtifactRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        name:
+          description: New download filename. The extension must stay the same; the Content-Disposition of the stored object is rewritten to match.
+          maxLength: 255
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
     ResumeUploadResponse:
       additionalProperties: false
       properties:
@@ -843,6 +861,38 @@ paths:
                 $ref: "#/components/schemas/HouseError"
           description: Error
       summary: Get artifact metadata
+      tags:
+        - artifacts
+    patch:
+      operationId: renameArtifact
+      parameters:
+        - description: Artifact UUID
+          in: path
+          name: uuid
+          required: true
+          schema:
+            description: Artifact UUID
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameArtifactRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeArtifactResponse"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseError"
+          description: Error
+      summary: "Rename an artifact: its download filename, extension unchanged (S2S only)"
       tags:
         - artifacts
   /api/v1/artifacts/{uuid}/complete:
