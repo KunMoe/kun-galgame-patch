@@ -53,12 +53,10 @@ type EntityName struct {
 }
 
 type Link struct {
-	Source string `json:"source"`
-	URL    string `json:"url"`
-	Kind   string `json:"kind"`
+	Source     string `json:"source"`
+	URL        string `json:"url"`
+	IsIdentity bool   `json:"is_identity"`
 }
-
-const LinkIdentity = "identity"
 
 type Ref struct {
 	Source     string `json:"source"`

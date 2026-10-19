@@ -65,7 +65,7 @@ func introRowsFrom(rows []catalogv2.Intro) []catalogIntroRow {
 func linkRowsFrom(rows []catalogv2.Link) []catalogEntityLink {
 	out := make([]catalogEntityLink, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, catalogEntityLink{Source: r.Source, URL: r.URL, Kind: r.Kind})
+		out = append(out, catalogEntityLink{Source: r.Source, URL: r.URL, IsIdentity: r.IsIdentity})
 	}
 	return out
 }

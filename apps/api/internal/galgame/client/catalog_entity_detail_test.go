@@ -212,21 +212,23 @@ func TestEntityDetailNeverMarshalsNullArrays(t *testing.T) {
 	}
 }
 
-// Spec 2.52.0 relabels the vndb / bangumi rows kind "identity" and lists them
-// first.
+// Spec 2.52.0 marks the vndb / bangumi rows is_identity and lists them first.
 func TestIdentityLinks(t *testing.T) {
 	name := loadGolden[catalogv2.CreditName](t, "catalog_name_detail_prod.json")
 	for i := range name.Links {
 		if name.Links[i].Source == "vndb" || name.Links[i].Source == "bangumi" {
-			name.Links[i].Kind = catalogv2.LinkIdentity
+			name.Links[i].IsIdentity = true
 		}
 	}
 	assertStaffLinks(t, catalogNameToDetail(&name).Links)
 
 	company := loadGolden[catalogv2.Company](t, "catalog_company_detail_prod.json")
-	company.Links = append([]catalogv2.Link{
-		{Source: "vndb", URL: "https://vndb.org/p123", Kind: catalogv2.LinkIdentity},
-	}, company.Links...)
+	var identity []catalogv2.Link
+	wire := `[{"source":"vndb","url":"https://vndb.org/p123","is_identity":true,"page_id":"p123"}]`
+	if err := json.Unmarshal([]byte(wire), &identity); err != nil || !identity[0].IsIdentity {
+		t.Fatalf("decode %s = %+v, %v", wire, identity, err)
+	}
+	company.Links = append(identity, company.Links...)
 	if got := officialLink(linkRowsFrom(company.Links)); got != "https://www.broccoli.co.jp" {
 		t.Errorf("官网 = %q, want the official site", got)
 	}
