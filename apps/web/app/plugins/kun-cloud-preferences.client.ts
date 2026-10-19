@@ -13,51 +13,22 @@
 // document mid-hydration would rewrite markup the server had already sent.
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.hook('app:mounted', () => {
-    const userStore = useUserStore()
-    const settingStore = useSettingStore()
+    nuxtApp.runWithContext(() => {
+      const userStore = useUserStore()
+      const prefs = useKunCloudPreferences()
 
-    let watching = false
+      watch(prefs.collect, prefs.push, { deep: true })
 
-    const startWriteThrough = () => {
-      if (watching) return
-      watching = true
-
+      // Fires for an already-signed-in reader and again the moment a login
+      // lands, which is the only other point at which a session can gain the
+      // scope this needs.
       watch(
-        () => [
-          settingStore.data.galgameListLayout,
-          settingStore.data.titleLanguage,
-          settingStore.data.showJapaneseSubtitle,
-          settingStore.data.showReleaseDate,
-          settingStore.data.showNsfwBadge,
-          settingStore.data.showGalgamesWithoutResource,
-          settingStore.data.gallerySexualLevels,
-          settingStore.data.galleryViolenceLevels,
-          userStore.user.muted_message_types
-        ],
-        () => {
-          nuxtApp.runWithContext(() => {
-            const { push, applying } = useKunCloudPreferences()
-            if (applying.value) return
-            push()
-          })
+        () => userStore.user.id,
+        (id) => {
+          if (id) prefs.pull()
         },
-        { deep: true }
+        { immediate: true }
       )
-    }
-
-    // Fires for an already-signed-in reader and again the moment a login lands,
-    // which is the only other point at which a session can gain the scope this
-    // needs.
-    watch(
-      () => userStore.user.id,
-      (id) => {
-        if (!id) return
-        nuxtApp.runWithContext(async () => {
-          await useKunCloudPreferences().pull()
-          startWriteThrough()
-        })
-      },
-      { immediate: true }
-    )
+    })
   })
 })
