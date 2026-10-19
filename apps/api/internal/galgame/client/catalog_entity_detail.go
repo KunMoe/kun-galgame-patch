@@ -192,6 +192,9 @@ func catalogNameToDetail(n *catalogv2.CreditName) GalgameStaffDetail {
 			slog.Warn("catalog staff link has no url; it is dropped", "credit_name", n.ID, "source", link.Source)
 			continue
 		}
+		if slices.ContainsFunc(out.Links, func(l GalgameEntityLink) bool { return l.URL == link.URL }) {
+			continue
+		}
 		out.Links = append(out.Links, GalgameEntityLink{Name: linkDisplayName(link.Source, link.URL), URL: link.URL})
 	}
 	return out

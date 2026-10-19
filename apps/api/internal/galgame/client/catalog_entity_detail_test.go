@@ -197,3 +197,30 @@ func TestEntityDetailNeverMarshalsNullArrays(t *testing.T) {
 		}
 	}
 }
+
+// Spec 2.52.0 adds each entity's own vndb / bangumi / ... page to links[] as
+// kind "identity", ahead of or among the related rows. The prod golden already
+// carries the bangumi page as an untagged row, which the refs build as well.
+func TestEntityLinksAreNotRenderedTwice(t *testing.T) {
+	name := loadGolden[catalogv2.CreditName](t, "catalog_name_detail_prod.json")
+	name.Links = append([]catalogv2.Link{
+		{Source: "vndb", URL: "https://vndb.org/s26940", Kind: catalogv2.LinkIdentity},
+	}, name.Links...)
+	seen := map[string]int{}
+	for _, l := range catalogNameToDetail(&name).Links {
+		seen[l.URL]++
+	}
+	for _, url := range []string{"https://vndb.org/s26940", "https://bgm.tv/person/10026"} {
+		if seen[url] != 1 {
+			t.Errorf("%s listed %d times, want once", url, seen[url])
+		}
+	}
+
+	company := loadGolden[catalogv2.Company](t, "catalog_company_detail_prod.json")
+	company.Links = append([]catalogv2.Link{
+		{Source: "vndb", URL: "https://vndb.org/p123", Kind: catalogv2.LinkIdentity},
+	}, company.Links...)
+	if links := linkRowsFrom(company.Links); len(links) == 0 || links[0].URL != "https://www.broccoli.co.jp" {
+		t.Errorf("links = %+v, want the official site first, as 官网 reads", links)
+	}
+}
