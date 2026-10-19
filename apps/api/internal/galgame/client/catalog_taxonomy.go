@@ -113,6 +113,7 @@ type catalogIntroRow struct {
 type catalogEntityLink struct {
 	Source string `json:"source"`
 	URL    string `json:"url"`
+	Kind   string `json:"kind"`
 }
 
 // Catalog wave 209 turned aliases[] from []string into these rows. Decoding
@@ -239,10 +240,6 @@ func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Val
 		return nil, err
 	}
 	cid, _ := rec.IntID()
-	link := ""
-	if links := linkRowsFrom(rec.Links); len(links) > 0 {
-		link = links[0].URL
-	}
 	return json.Marshal(map[string]any{
 		"official": catalogOfficialBrief{
 			ID:           cid,
@@ -250,7 +247,7 @@ func (c *Client) catalogLabelDetail(ctx context.Context, idStr string, q url.Val
 			Aliases:      aliasValues(aliasRowsFrom(rec.Aliases)),
 			Category:     rec.CompanyKind,
 			Lang:         productLangFromCatalog(strOrEmpty(rec.Lang)),
-			Link:         link,
+			Link:         officialLink(linkRowsFrom(rec.Links)),
 			Description:  preferredIntro(introRowsFrom(rec.Intros)),
 			LogoHash:     imageHash(rec.Logo),
 			GalgameCount: int(roster.total),
@@ -294,4 +291,15 @@ func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64
 		out = append(out, b)
 	}
 	return out, data.Count(), nil
+}
+
+// Spec 2.52.0 lists the company's own vndb / bangumi pages first, as kind
+// identity; read by position, they became its 官网.
+func officialLink(links []catalogEntityLink) string {
+	for _, l := range links {
+		if l.Kind != catalogv2.LinkIdentity {
+			return l.URL
+		}
+	}
+	return ""
 }

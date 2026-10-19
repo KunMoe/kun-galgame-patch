@@ -62,16 +62,10 @@ func introRowsFrom(rows []catalogv2.Intro) []catalogIntroRow {
 	return out
 }
 
-// Identity rows are dropped: the staff page already builds those pages from
-// refs and would list each twice, and the company page reads the first row as
-// its 官网.
 func linkRowsFrom(rows []catalogv2.Link) []catalogEntityLink {
 	out := make([]catalogEntityLink, 0, len(rows))
 	for _, r := range rows {
-		if r.Kind == catalogv2.LinkIdentity {
-			continue
-		}
-		out = append(out, catalogEntityLink{Source: r.Source, URL: r.URL})
+		out = append(out, catalogEntityLink{Source: r.Source, URL: r.URL, Kind: r.Kind})
 	}
 	return out
 }

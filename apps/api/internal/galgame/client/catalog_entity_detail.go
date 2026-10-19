@@ -185,18 +185,19 @@ func catalogNameToDetail(n *catalogv2.CreditName) GalgameStaffDetail {
 		BirthD:    intOrZero(n.BirthDay),
 		Siblings:  namedPeople(personRefsFrom(n.Siblings), "sibling_of", id),
 		Intros:    catalogIntros(introRowsFrom(n.Intros)),
-		Links:     catalogRefLinks(refRowsFrom(n.Refs), catalogStaffPage),
 	}
+	var own []GalgameEntityLink
+	covered := map[string]bool{}
 	for _, link := range linkRowsFrom(n.Links) {
 		if link.URL == "" {
 			slog.Warn("catalog staff link has no url; it is dropped", "credit_name", n.ID, "source", link.Source)
 			continue
 		}
-		if slices.ContainsFunc(out.Links, func(l GalgameEntityLink) bool { return l.URL == link.URL }) {
-			continue
-		}
-		out.Links = append(out.Links, GalgameEntityLink{Name: linkDisplayName(link.Source, link.URL), URL: link.URL})
+		covered[link.Source] = true
+		own = append(own, GalgameEntityLink{Name: linkDisplayName(link.Source, link.URL), URL: link.URL})
 	}
+	refs := slices.DeleteFunc(refRowsFrom(n.Refs), func(r catalogRef) bool { return covered[r.Source] })
+	out.Links = append(catalogRefLinks(refs, catalogStaffPage), own...)
 	return out
 }
 
@@ -249,10 +250,11 @@ var catalogCharacterPage = map[string]func(string) string{
 	"bangumi": func(id string) string { return "https://bgm.tv/character/" + id },
 }
 
-// vndb keys a person by a bare number here and prefixes it with s on the page,
-// unlike the character refs, which already carry their c.
+// No vndb: a credit name's vndb ref is VNDB's alias id, not a staff id, and
+// s<aid> is somebody else — aid 26940 is 榎木実佳 under s987, s26940 is
+// 甲斐祐子. The forum linked 60,925 of 60,930 names that way (kungal #321).
+// catalog's own links carry the right page.
 var catalogStaffPage = map[string]func(string) string{
-	"vndb":    func(id string) string { return "https://vndb.org/s" + id },
 	"bangumi": func(id string) string { return "https://bgm.tv/person/" + id },
 	"erogamescape": func(id string) string {
 		return "https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/creater.php?creater=" + id
