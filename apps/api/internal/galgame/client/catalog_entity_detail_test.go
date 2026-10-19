@@ -98,23 +98,37 @@ func TestProdNameDetailDecodes(t *testing.T) {
 		t.Error("no siblings — a voice actor's other 名义 are the point of the person link")
 	}
 
-	t.Run("links merge the refs with catalog's own rows", func(t *testing.T) {
-		var hasVndb, hasSite bool
+	t.Run("links", func(t *testing.T) {
+		assertStaffLinks(t, n.Links)
+		var hasSite bool
 		for _, l := range n.Links {
-			if l.URL == "https://vndb.org/s26940" {
-				hasVndb = true
-			}
-			if l.Name == "官方网站" {
-				hasSite = true
-			}
-		}
-		if !hasVndb {
-			t.Errorf("links = %+v, want a person's bare vndb id prefixed with s", n.Links)
+			hasSite = hasSite || l.Name == "官方网站"
 		}
 		if !hasSite {
 			t.Errorf("links = %+v, want catalog's own link rows kept beside the refs", n.Links)
 		}
 	})
+}
+
+// vndb from catalog's row and never from the alias ref; bangumi once although
+// both carry it; erogamescape, which only the refs carry, built from them.
+func assertStaffLinks(t *testing.T, links []GalgameEntityLink) {
+	t.Helper()
+	seen := map[string]int{}
+	for _, l := range links {
+		seen[l.URL]++
+	}
+	want := map[string]int{
+		"https://vndb.org/s987":       1,
+		"https://vndb.org/s26940":     0,
+		"https://bgm.tv/person/10026": 1,
+		"https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/creater.php?creater=35605": 1,
+	}
+	for url, n := range want {
+		if seen[url] != n {
+			t.Errorf("%s listed %d times, want %d; links = %+v", url, seen[url], n, links)
+		}
+	}
 }
 
 // Name 900 is credited on work 3 as other-staff, scenario AND 剧本 — the same
@@ -198,29 +212,22 @@ func TestEntityDetailNeverMarshalsNullArrays(t *testing.T) {
 	}
 }
 
-// Spec 2.52.0 adds each entity's own vndb / bangumi / ... page to links[] as
-// kind "identity", ahead of or among the related rows. The prod golden already
-// carries the bangumi page as an untagged row, which the refs build as well.
-func TestEntityLinksAreNotRenderedTwice(t *testing.T) {
+// Spec 2.52.0 relabels the vndb / bangumi rows kind "identity" and lists them
+// first.
+func TestIdentityLinks(t *testing.T) {
 	name := loadGolden[catalogv2.CreditName](t, "catalog_name_detail_prod.json")
-	name.Links = append([]catalogv2.Link{
-		{Source: "vndb", URL: "https://vndb.org/s26940", Kind: catalogv2.LinkIdentity},
-	}, name.Links...)
-	seen := map[string]int{}
-	for _, l := range catalogNameToDetail(&name).Links {
-		seen[l.URL]++
-	}
-	for _, url := range []string{"https://vndb.org/s26940", "https://bgm.tv/person/10026"} {
-		if seen[url] != 1 {
-			t.Errorf("%s listed %d times, want once", url, seen[url])
+	for i := range name.Links {
+		if name.Links[i].Source == "vndb" || name.Links[i].Source == "bangumi" {
+			name.Links[i].Kind = catalogv2.LinkIdentity
 		}
 	}
+	assertStaffLinks(t, catalogNameToDetail(&name).Links)
 
 	company := loadGolden[catalogv2.Company](t, "catalog_company_detail_prod.json")
 	company.Links = append([]catalogv2.Link{
 		{Source: "vndb", URL: "https://vndb.org/p123", Kind: catalogv2.LinkIdentity},
 	}, company.Links...)
-	if links := linkRowsFrom(company.Links); len(links) == 0 || links[0].URL != "https://www.broccoli.co.jp" {
-		t.Errorf("links = %+v, want the official site first, as 官网 reads", links)
+	if got := officialLink(linkRowsFrom(company.Links)); got != "https://www.broccoli.co.jp" {
+		t.Errorf("官网 = %q, want the official site", got)
 	}
 }
