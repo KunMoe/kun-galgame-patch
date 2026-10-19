@@ -111,9 +111,9 @@ type catalogIntroRow struct {
 }
 
 type catalogEntityLink struct {
-	Source string `json:"source"`
-	URL    string `json:"url"`
-	Kind   string `json:"kind"`
+	Source     string `json:"source"`
+	URL        string `json:"url"`
+	IsIdentity bool   `json:"is_identity"`
 }
 
 // Catalog wave 209 turned aliases[] from []string into these rows. Decoding
@@ -293,11 +293,11 @@ func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64
 	return out, data.Count(), nil
 }
 
-// Spec 2.52.0 lists the company's own vndb / bangumi pages first, as kind
-// identity; read by position, they became its 官网.
+// Spec 2.52.0 lists the company's own vndb / bangumi pages first, as
+// is_identity; read by position, they became its 官网.
 func officialLink(links []catalogEntityLink) string {
 	for _, l := range links {
-		if l.Kind != catalogv2.LinkIdentity {
+		if !l.IsIdentity {
 			return l.URL
 		}
 	}
