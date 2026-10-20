@@ -105,7 +105,7 @@ func TestCursorAndEditorLanesAreNeverCached(t *testing.T) {
 		if _, err := c.ClaimEvents(ctx, 0, 50, "moyu"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := c.MergedProposalTotal(ctx, 11, "moyu"); err != nil {
+		if _, err := c.MergedProposalTotal(ctx, 11); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -140,7 +140,7 @@ func TestAClientWithoutRedisStillReads(t *testing.T) {
 // that check and panicked inside the fiber handler instead.
 func TestANilClientStillReturnsNotConfigured(t *testing.T) {
 	var c *catalogv2.Client
-	if _, err := c.GetSchema(context.Background(), "work"); !errors.Is(err, catalogv2.ErrNotConfigured) {
+	if _, err := c.GetWork(context.Background(), 1, true); !errors.Is(err, catalogv2.ErrNotConfigured) {
 		t.Fatalf("err = %v, want ErrNotConfigured", err)
 	}
 }

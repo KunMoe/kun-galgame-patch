@@ -80,7 +80,8 @@ const handleShare = () => {
   useKunCopy(link)
 }
 
-const editPath = computed(() => `/galgame/${props.patch.id}/edit`)
+const editorLink = useNextmoeEditorLink()
+const route = useRoute()
 
 const canDelete = computed(() => {
   if (!isOnSite.value) return false
@@ -134,8 +135,13 @@ const menuItems = computed<ActionMenuItem[]>(() => {
 })
 
 const onMenuSelect = (item: { key: string }) => {
-  if (item.key === 'edit') navigateTo(editPath.value)
-  else if (item.key === 'share') handleShare()
+  if (item.key === 'edit') {
+    window.open(
+      editorLink(props.patch.id, route.fullPath),
+      '_blank',
+      'noopener'
+    )
+  } else if (item.key === 'share') handleShare()
   else if (item.key === 'delete') askDelete()
 }
 </script>

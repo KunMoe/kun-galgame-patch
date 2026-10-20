@@ -37,7 +37,6 @@ var readCachePaths = []string{
 	"/v2/catalog/characters",
 	"/v2/catalog/series",
 	"/v2/catalog/tags",
-	"/v2/catalog/schemas",
 	tagExclusionPath,
 }
 

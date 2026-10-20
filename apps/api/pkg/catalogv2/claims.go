@@ -24,8 +24,6 @@ const ClaimTargetWithdrawn = "withdrawn"
 // held (galgame_wiki → kungal).
 const SiteKungal = "kungal"
 
-const EntityTypeWork = "catalog.work"
-
 type ClaimEventRef struct {
 	Object    string  `json:"object"`
 	ID        string  `json:"id"`

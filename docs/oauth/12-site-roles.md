@@ -36,6 +36,9 @@
 
 - **按签发 client 的站点定界**:发给 letmoe client 的 token,`site_roles` 只含该用户**在 letmoe**
   的授予,**绝不**含别站的。无跨站泄漏,token 不膨胀。
+  唯一例外是 OAuth 后台开了 `union_site_roles` 的第一方 client(目前只有编辑者平台
+  `nextmoe-editor`):它的 access token 带用户在**所有站点**的授予并集(去重、按名排序),
+  因为编辑者平台审核的是全平台的 catalog 条目。下游站点自己的 client 不受影响。
 - **空则省略**:用户在该站无授予时,整个 `site_roles` 字段不出现(`omitempty`)。非站点绑定的
   client(如 OAuth 站自身、first-party 登录 token)也不带。
 - **只含未过期授予**:带 `expires_at` 且已过期的授予不出现。

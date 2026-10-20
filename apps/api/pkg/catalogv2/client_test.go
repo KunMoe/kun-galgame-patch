@@ -170,7 +170,7 @@ func TestMergedProposalTotalUsesPublicV2(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	n, err := catalogv2.New(srv.URL, "nmk_test_x").MergedProposalTotal(context.Background(), 2, "kungal")
+	n, err := catalogv2.New(srv.URL, "nmk_test_x").MergedProposalTotal(context.Background(), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +181,8 @@ func TestMergedProposalTotalUsesPublicV2(t *testing.T) {
 		!strings.Contains(gotQuery, "include_total=true") {
 		t.Fatalf("query %s", gotQuery)
 	}
-	if !strings.Contains(gotQuery, "site=kungal") {
-		t.Fatalf("without site= the tally counts every tenant: %s", gotQuery)
+	if strings.Contains(gotQuery, "site=") {
+		t.Fatalf("the tally must count proposals filed from every site, the central editor included: %s", gotQuery)
 	}
 	if n != 12 {
 		t.Fatalf("total %d", n)

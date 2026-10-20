@@ -154,7 +154,7 @@
 }
 ```
 
-`refresh_token` 写在 httpOnly cookie 里（`Path=/api/v1/auth`，7 天），调用方不需要也不应处理。注册成功后 Redis 中的验证码立即被删除，**不可重放**。
+`refresh_token` 写在 httpOnly cookie 里（`Path=/api/v1/auth`，有效到会话的绝对上限，默认登录起 365 天；服务端会话闲置 30 天过期），调用方不需要也不应处理。注册成功后 Redis 中的验证码立即被删除，**不可重放**。
 
 **错误响应**：
 

@@ -32,8 +32,7 @@ func (l lane) call(c *catalogv2.Client) error {
 		_, _, err := c.GetMyClaim(ctx, "tok", 7)
 		return err
 	default:
-		_, err := c.CreateProposal(ctx, "tok", "key-1", catalogv2.EntityTypeWork, 7,
-			map[string]any{"catalog.work.olang": "ja"}, "")
+		_, err := c.CreateClaim(ctx, "tok", "key-1", 7, 7)
 		return err
 	}
 }
@@ -191,23 +190,5 @@ func TestAcceptNamesProblemJSON(t *testing.T) {
 	}
 	if !strings.Contains(accept, "application/problem+json") {
 		t.Fatalf("Accept = %q", accept)
-	}
-}
-
-// infra's cond.go treats only a bare * as the wildcard.
-func TestWithdrawProposalFallsBackToTheBareWildcard(t *testing.T) {
-	var match string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPatch {
-			match = r.Header.Get("If-Match")
-		}
-		_, _ = io.WriteString(w, `{"id":"32","state":"withdrawn"}`)
-	}))
-	t.Cleanup(srv.Close)
-	if _, err := catalogv2.New(srv.URL, "k").WithdrawProposal(context.Background(), "tok", 32); err != nil {
-		t.Fatal(err)
-	}
-	if match != "*" {
-		t.Fatalf("If-Match = %q, want *", match)
 	}
 }

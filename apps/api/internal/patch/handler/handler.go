@@ -568,3 +568,10 @@ func parseDeleteReason(c fiber.Ctx) string {
 	}
 	return r
 }
+
+func (h *PatchHandler) catalogV2() *catalogv2.Client {
+	if h.galgame == nil {
+		return nil
+	}
+	return h.galgame.V2()
+}
