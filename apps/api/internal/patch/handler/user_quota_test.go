@@ -254,37 +254,3 @@ func TestOpeningAFolderAsksThePublicLaneFirst(t *testing.T) {
 		t.Fatal("a private folder answered a signed-out reader")
 	}
 }
-
-func TestReopeningTheEditPageAsksOnlyForProposalsThatChanged(t *testing.T) {
-	list := func(updated string) string {
-		return `{"object":"list","items":[` +
-			`{"id":"31","state":"merged","entity_id":"9000","updated_at":"2026-09-01T00:00:00Z"},` +
-			`{"id":"32","state":"open","entity_id":"9000","updated_at":"` + updated + `"}]}`
-	}
-	routes := map[string]string{
-		"GET /v2/me/proposals":    list("2026-09-02T00:00:00Z"),
-		"GET /v2/me/proposals/31": `{"id":"31","patch":{"catalog.work.olang":"ja"}}`,
-		"GET /v2/me/proposals/32": `{"id":"32","patch":{"catalog.work.display_name":"新"}}`,
-	}
-	f, h, ta, session := newQuotaApp(t, routes)
-	ta.App.Get("/patch/:id/catalog-edit/proposals", middleware.Auth(ta.RDB, config.OAuthConfig{}), h.CatalogEditProposals)
-
-	for range 3 {
-		data := ok(t, ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit/proposals", "", session))
-		items, _ := data["items"].([]any)
-		if len(items) != 2 || items[1].(map[string]any)["patch"] == nil {
-			t.Fatalf("items = %v", items)
-		}
-	}
-	if f.calls("GET /v2/me/proposals/31")+f.calls("GET /v2/me/proposals/32") != 2 {
-		t.Fatalf("three visits read proposal details %v times, want once each", f.spent)
-	}
-
-	f.mu.Lock()
-	routes["GET /v2/me/proposals"] = list("2026-09-03T00:00:00Z")
-	f.mu.Unlock()
-	ok(t, ta.Request(t, http.MethodGet, "/patch/9000/catalog-edit/proposals", "", session))
-	if f.calls("GET /v2/me/proposals/31") != 1 || f.calls("GET /v2/me/proposals/32") != 2 {
-		t.Fatalf("an amended proposal was not read again, or an unchanged one was: %v", f.spent)
-	}
-}

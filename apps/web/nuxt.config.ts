@@ -20,7 +20,6 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
 
   modules: [
-    '@nextmoe/edit-ui-nuxt',
     '@nuxt/image',
     '@nuxt/eslint',
     '@nuxtjs/color-mode',
@@ -213,6 +212,9 @@ export default defineNuxtConfig({
       // change is "改一处配置" (image_service 契约 04).
       imageBed:
         process.env.NUXT_PUBLIC_IMAGE_BED || 'https://image.kungal.iloveren.link',
+      // Catalog editing lives only on the NextMoe editor (editor.nextmoe.com).
+      editorUrl:
+        process.env.NUXT_PUBLIC_EDITOR_URL || 'https://editor.nextmoe.com',
       chatEnabled: false
     }
   }

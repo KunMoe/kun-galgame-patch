@@ -13,9 +13,6 @@
 
 @source '../../node_modules/@kungal/ui-vue';
 @source '../../node_modules/@kungal/ui-core';
-/* dist, not the package root like its neighbours: @nextmoe/edit-ui-vue publishes
-   only dist, so that subdirectory already is the whole scan surface. */
-@source '../../node_modules/@nextmoe/edit-ui-vue/dist';
 
 :root {
   --kun-radius-scale: 1;

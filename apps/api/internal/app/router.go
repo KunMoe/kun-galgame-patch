@@ -128,11 +128,6 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/:id/record", auth, a.RatingHandler.PutRecord)
 	patchRoutes.Delete("/rating/:ratingId", auth, a.RatingHandler.Delete)
 
-	patchRoutes.Get("/:id/catalog-edit", auth, a.PatchHandler.CatalogEditBootstrap)
-	patchRoutes.Post("/:id/catalog-edit", auth, a.PatchHandler.CatalogEditSubmit)
-	patchRoutes.Get("/:id/catalog-edit/proposals", auth, a.PatchHandler.CatalogEditProposals)
-	api.Post("/catalog-proposal/:id/withdraw", auth, a.PatchHandler.CatalogProposalWithdraw)
-
 	api.Get("/galgame/calendar", optionalAuth, a.CommonHandler.GetGalgameCalendar)
 	api.Get(
 		"/galgame/character/:id",

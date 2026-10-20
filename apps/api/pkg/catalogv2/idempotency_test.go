@@ -53,19 +53,14 @@ func TestEveryCreateSendsTheCallersKey(t *testing.T) {
 		if _, err := c.CreateClaim(ctx, "tok", key, 7, 7); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := c.CreateProposal(ctx, "tok", key, catalogv2.EntityTypeWork, 7,
-			map[string]any{"catalog.work.olang": "ja"}, ""); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := c.CreateFolder(ctx, "tok", key, catalogv2.FolderWrite{Name: &name}); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	want := map[string][]string{
-		"POST /v2/me/claims":    {"moyu-attempt", "moyu-attempt", "", ""},
-		"POST /v2/me/proposals": {"moyu-attempt", ""},
-		"POST /v2/me/folders":   {"moyu-attempt", ""},
+		"POST /v2/me/claims":  {"moyu-attempt", "moyu-attempt", "", ""},
+		"POST /v2/me/folders": {"moyu-attempt", ""},
 	}
 	for route, keys := range want {
 		got := k.keys[route]

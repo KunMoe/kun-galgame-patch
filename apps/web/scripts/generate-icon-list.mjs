@@ -58,23 +58,6 @@ const SKIP_DIRS = new Set(['node_modules', '.nuxt', '.output', 'dist', '.git'])
 // first regeneration after it moved to @kungal/editor-nuxt silently dropped
 // bold / italic / list / … back to the @nuxt/icon fetch fallback.
 const MANUAL_ICONS = [
-  // @nextmoe/edit-ui-vue (SchemaForm and friends). circle-alert / eye / eye-off
-  // / history / pencil / plus / trash-2 / x are only incidentally also used by
-  // app code, so they would vanish the day that usage is refactored away.
-  'lucide:circle-alert',
-  'lucide:eye',
-  'lucide:git-pull-request-closed',
-  'lucide:grip-vertical',
-  'lucide:history',
-  'lucide:pencil',
-  'lucide:loader',
-  'lucide:lock',
-  'lucide:pin',
-  'lucide:plus',
-  'lucide:trash-2',
-  'lucide:undo-2',
-  'lucide:upload',
-  'lucide:x',
   // @kungal/editor-{core,vue,nuxt}
   'lucide:arrow-left-right',
   'lucide:bold',

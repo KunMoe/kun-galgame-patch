@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"unicode/utf8"
 
-	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
 	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -37,7 +36,7 @@ func (s *UserService) mergedProposalTotal(ctx context.Context, userID int) (int6
 	if v2 == nil || !v2.Configured() {
 		return 0, nil
 	}
-	return v2.MergedProposalTotal(ctx, userID, catalogv2.SiteKungal)
+	return v2.MergedProposalTotal(ctx, userID)
 }
 
 func (s *UserService) moemoepointBalance(ctx context.Context, userID int) int {
