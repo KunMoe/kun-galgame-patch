@@ -382,7 +382,7 @@ const { data } = await r.json()
 { "code": 0, "message": "密码修改成功", "data": null }
 ```
 
-> **不会自动登出其他设备**——其他 access_token 直到自然过期（15 分钟）才失效，refresh_token 直到自然过期才失效（一方 `/auth` 会话 7 天；OAuth client 会话按 client 配置，默认 90 天）。要立即下线所有设备需要走"撤销 refresh_token"流程（未来加），或 admin 手动 `DELETE /admin/users/:uuid/sessions`。
+> **不会自动登出其他设备**——其他 access_token 直到自然过期（15 分钟）才失效，refresh_token 直到自然过期才失效（一方 `/auth` 会话闲置 30 天过期、从登录起最长 365 天，同一浏览器里任一 OAuth client 刷新令牌都算活动；OAuth client 会话按 client 配置，默认 90 天）。要立即下线所有设备需要走"撤销 refresh_token"流程（未来加），或 admin 手动 `DELETE /admin/users/:uuid/sessions`。
 
 **错误响应**：
 
