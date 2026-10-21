@@ -8,6 +8,7 @@ import {
 useKunDisableSeo('合并记录 - 管理面板')
 
 const api = useApi()
+const userStore = useUserStore()
 const page = ref(1)
 const limit = 30
 const issuesOnly = ref(false)
@@ -34,10 +35,27 @@ watch(issuesOnly, () => {
 
 const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
 
+const retrying = ref(0)
+const retry = async (r: AdminMergeRecord) => {
+  retrying.value = r.id
+  const res = await api.post(`/admin/catalog-merges/${r.id}/undo`)
+  retrying.value = 0
+  useKunMessage(
+    res.code === 0 ? '已重新撤销' : res.message,
+    res.code === 0 ? 'success' : 'error'
+  )
+  await refresh()
+}
+
 const hasIssues = (r: AdminMergeRecord) =>
-  !!r.undo_report?.conflicts || !!r.undo_report?.notes?.length
+  !!r.undo_report?.conflicts ||
+  !!r.undo_report?.moved_elsewhere ||
+  !!r.undo_report?.notes?.length
+
+const failed = (r: AdminMergeRecord) => !r.undone_at && !!r.undo_report?.error
 
 const stateOf = (r: AdminMergeRecord) => {
+  if (failed(r)) return { text: '撤销失败', color: 'danger' as const }
   if (!r.undone_at) return { text: '生效中', color: 'primary' as const }
   if (hasIssues(r)) return { text: '已撤销，有遗留', color: 'danger' as const }
   return { text: '已撤销', color: 'success' as const }
@@ -85,7 +103,26 @@ const stateOf = (r: AdminMergeRecord) => {
         </div>
 
         <div
-          v-if="r.undo_report"
+          v-if="failed(r)"
+          class="flex flex-wrap items-center gap-2 text-xs leading-relaxed"
+        >
+          <p class="text-danger break-all">
+            本站搬回失败：{{ r.undo_report?.error }}
+          </p>
+          <KunButton
+            v-if="userStore.isAdmin"
+            size="sm"
+            variant="flat"
+            color="danger"
+            :loading="retrying === r.id"
+            @click="retry(r)"
+          >
+            重试撤销
+          </KunButton>
+        </div>
+
+        <div
+          v-else-if="r.undo_report"
           class="text-default-600 space-y-1 text-xs leading-relaxed"
         >
           <p v-if="r.undone_at">
@@ -114,6 +151,15 @@ const stateOf = (r: AdminMergeRecord) => {
             class="text-danger"
           >
             没能搬回的{{ MERGE_TABLE_LABEL[table] ?? table }}：#{{
+              ids.join('、#')
+            }}
+          </p>
+          <p
+            v-for="(ids, table) in r.undo_report.moved_elsewhere"
+            :key="`elsewhere-${table}`"
+            class="text-danger"
+          >
+            已不在存续方、没有搬动的{{ MERGE_TABLE_LABEL[table] ?? table }}：#{{
               ids.join('、#')
             }}
           </p>

@@ -10,6 +10,7 @@ import (
 	"kun-galgame-patch-api/internal/admin/repository"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/internal/middleware"
+	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	patchService "kun-galgame-patch-api/internal/patch/service"
 	settingService "kun-galgame-patch-api/internal/setting/service"
@@ -227,6 +228,17 @@ func (s *AdminService) GetStatsSum() *dto.AdminStatsSumResponse {
 		GalgameCount:       g,
 		PatchResourceCount: r,
 	}
+}
+
+func (s *AdminService) RetryMergeUndo(ctx context.Context, recordID int64) (*patchMerge.UndoReport, error) {
+	vndbOf := func(id int) string {
+		if s.galgame == nil {
+			return ""
+		}
+		v, _ := s.galgame.V2().VndbIDOf(ctx, int64(id))
+		return v
+	}
+	return s.repo.RetryMergeUndo(recordID, vndbOf)
 }
 
 func (s *AdminService) ListMergeRecords(page, limit int, issuesOnly bool) ([]repository.MergeRecord, int64, error) {

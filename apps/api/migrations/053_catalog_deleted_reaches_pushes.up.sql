@@ -17,6 +17,10 @@
 
 BEGIN;
 
+-- DROP TRIGGER takes an exclusive lock on patch; behind a long reader it would
+-- queue every write to the table. Fail fast instead and let the deploy retry.
+SET LOCAL lock_timeout = '5s';
+
 DROP TRIGGER IF EXISTS trg_activity_push_patch ON patch;
 CREATE TRIGGER trg_activity_push_patch
     AFTER UPDATE ON patch

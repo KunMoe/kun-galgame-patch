@@ -2,6 +2,8 @@
 -- the community feeds and letmoe catch up at the next reconcile or never.
 BEGIN;
 
+SET LOCAL lock_timeout = '5s';
+
 DROP TRIGGER IF EXISTS trg_patch_catalog_deleted_change ON patch;
 DROP FUNCTION IF EXISTS patch_catalog_deleted_record_change();
 

@@ -366,6 +366,10 @@ func (r *AdminRepository) PurgeUser(userID int, purgeOwnedPatches bool, heirUID 
 			handedOver = res.RowsAffected
 		}
 
+		if err := purgeMergeSnapshots(tx, userID, purgeOwnedPatches, heirUID); err != nil {
+			return err
+		}
+
 		if err := tx.Delete(&authModel.User{}, userID).Error; err != nil {
 			return err
 		}

@@ -3,11 +3,15 @@ package merge
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
+
+	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 )
 
 // restorePages gives the retired work its page back. It answers false when it
 // could not, and the child rows then stay where they are.
-func (u *undo) restorePages(vndbOf func(int) string) (bool, error) {
+func (u *undo) restorePages() (bool, error) {
 	oldID := int64(u.oldID)
 	if ok, err := u.exists("patch", oldID); err != nil || ok {
 		return ok, err
@@ -17,7 +21,7 @@ func (u *undo) restorePages(vndbOf func(int) string) (bool, error) {
 		return false, err
 	}
 	if u.action == ActionRenumber && newExists {
-		return true, u.takeBackRenumberedPage(vndbOf)
+		return true, u.takeBackRenumberedPage()
 	}
 	before := u.find("patch", changeBefore, oldID)
 	if before == nil {
@@ -32,13 +36,13 @@ func (u *undo) restorePages(vndbOf func(int) string) (bool, error) {
 	case u.action == ActionFold:
 		u.note("存续页 %d 已不在（又被合并或删除），它当时加上的计数留在现在的页面上", u.newID)
 	}
-	return true, u.reinsertPage(before)
+	return u.reinsertPage(before)
 }
 
 // The page at newID is the retired page under the survivor's number. It goes
 // back to its own number with everything on it, and whatever was published on
 // it after the merge goes to a page of the survivor's own.
-func (u *undo) takeBackRenumberedPage(vndbOf func(int) string) error {
+func (u *undo) takeBackRenumberedPage() error {
 	post := map[string][]int64{}
 	for _, table := range childTables {
 		recorded := make([]int64, 0)
@@ -64,7 +68,7 @@ func (u *undo) takeBackRenumberedPage(vndbOf func(int) string) error {
 	if len(post) == 0 {
 		return nil
 	}
-	if err := u.createSurvivorPage(post, vndbOf); err != nil {
+	if err := u.createSurvivorPage(post); err != nil {
 		return err
 	}
 	for table, ids := range post {
@@ -79,7 +83,7 @@ func (u *undo) takeBackRenumberedPage(vndbOf func(int) string) error {
 		ON CONFLICT DO NOTHING`, u.newID, u.newID).Error
 }
 
-func (u *undo) createSurvivorPage(post map[string][]int64, vndbOf func(int) string) error {
+func (u *undo) createSurvivorPage(post map[string][]int64) error {
 	var userID int
 	if ids := post["patch_resource"]; len(ids) > 0 {
 		u.tx.Raw(`SELECT user_id FROM patch_resource WHERE id IN ? ORDER BY created, id LIMIT 1`, ids).Scan(&userID)
@@ -90,10 +94,7 @@ func (u *undo) createSurvivorPage(post map[string][]int64, vndbOf func(int) stri
 	if userID == 0 {
 		u.tx.Raw(`SELECT user_id FROM patch WHERE id = ?`, u.oldID).Scan(&userID)
 	}
-	vndb := ""
-	if vndbOf != nil {
-		vndb = vndbOf(u.newID)
-	}
+	vndb := u.survivorVndb
 	if taken, err := u.taken("vndb_id", vndb); err != nil {
 		return err
 	} else if vndb == "" || taken {
@@ -138,16 +139,16 @@ func (u *undo) restoreSurvivor(retired json.RawMessage) error {
 }
 
 // reinsertPage puts the retired page row back as it was. Its VNDB and Bangumi
-// ids are unique: if another page holds one now, the page comes back without
-// it and the note says so.
-func (u *undo) reinsertPage(before json.RawMessage) error {
+// ids are unique, and its publisher may have been purged since: a taken id is
+// left off, a gone publisher hands the page to the publisher of its resources.
+func (u *undo) reinsertPage(before json.RawMessage) (bool, error) {
 	var row map[string]any
 	if err := json.Unmarshal(before, &row); err != nil {
-		return fmt.Errorf("read snapshot of page %d: %w", u.oldID, err)
+		return false, fmt.Errorf("read snapshot of page %d: %w", u.oldID, err)
 	}
 	if v, _ := row["vndb_id"].(string); v != "" {
 		if taken, err := u.taken("vndb_id", v); err != nil {
-			return err
+			return false, err
 		} else if taken {
 			row["vndb_id"] = fmt.Sprintf("wiki-%d", u.oldID)
 			u.note("页面 %d 的 vndb_id %s 已被其他页面占用，恢复时改为占位值", u.oldID, v)
@@ -155,19 +156,53 @@ func (u *undo) reinsertPage(before json.RawMessage) error {
 	}
 	if v, ok := row["bangumi_id"].(float64); ok {
 		if taken, err := u.taken("bangumi_id", int(v)); err != nil {
-			return err
+			return false, err
 		} else if taken {
 			row["bangumi_id"] = nil
 			u.note("页面 %d 的 bangumi_id %d 已被其他页面占用，恢复时留空", u.oldID, int(v))
 		}
 	}
-	body, _ := json.Marshal(row)
-	if err := u.tx.Exec(
-		`INSERT INTO patch SELECT * FROM jsonb_populate_record(NULL::patch, ?::jsonb)`, string(body),
-	).Error; err != nil {
-		return fmt.Errorf("restore page %d: %w", u.oldID, err)
+	if uid, _ := row["user_id"].(float64); !u.userExists(int(uid)) {
+		heir := u.heir()
+		if heir == 0 {
+			u.note("页面 %d 的发布者已不在，也找不到可接手的用户，无法恢复该页", u.oldID)
+			return false, nil
+		}
+		row["user_id"] = heir
+		u.note("页面 %d 的发布者已被清除，恢复后交给用户 %d", u.oldID, heir)
 	}
-	return nil
+	body, _ := json.Marshal(row)
+	inserted, err := u.insertSnapshot("patch", body)
+	if err != nil {
+		return false, fmt.Errorf("restore page %d: %w", u.oldID, err)
+	}
+	return inserted, nil
+}
+
+// heir is the publisher of the retired page's earliest resource that still
+// exists, else the survivor's publisher: the order the user purge hands a page
+// over in.
+func (u *undo) heir() int {
+	for _, r := range u.of("patch_resource", changeMoved) {
+		var v struct {
+			UserID int `json:"user_id"`
+		}
+		if json.Unmarshal(r.Value, &v) == nil && u.userExists(v.UserID) {
+			return v.UserID
+		}
+	}
+	var owner int
+	u.tx.Raw(`SELECT user_id FROM patch WHERE id = ?`, u.newID).Scan(&owner)
+	return owner
+}
+
+func (u *undo) userExists(id int) bool {
+	if id <= 0 {
+		return false
+	}
+	var ok bool
+	u.tx.Raw(`SELECT EXISTS (SELECT 1 FROM "user" WHERE id = ?)`, id).Scan(&ok)
+	return ok
 }
 
 func (u *undo) taken(column string, value any) (bool, error) {
@@ -179,8 +214,40 @@ func (u *undo) taken(column string, value any) (bool, error) {
 	return ok, err
 }
 
-// restoreChildren moves every recorded child row back by primary key, wherever
-// it sits now, and re-inserts the ones the fold dropped as duplicates.
+// insertSnapshot inserts a row from its snapshot. Only the columns both the
+// snapshot and the table have are written, so a column added since takes its
+// default instead of the NULL jsonb_populate_record would give it.
+func (u *undo) insertSnapshot(table string, value []byte) (bool, error) {
+	cols, ok := u.columns[table]
+	if !ok {
+		if err := u.tx.Raw(`
+			SELECT column_name FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = ?`, table,
+		).Scan(&cols).Error; err != nil {
+			return false, err
+		}
+		u.columns[table] = cols
+	}
+	var row map[string]json.RawMessage
+	if err := json.Unmarshal(value, &row); err != nil {
+		return false, err
+	}
+	names := make([]string, 0, len(row))
+	for _, c := range cols {
+		if _, ok := row[c]; ok {
+			names = append(names, `"`+c+`"`)
+		}
+	}
+	slices.Sort(names)
+	list := strings.Join(names, ", ")
+	res := u.tx.Exec(fmt.Sprintf(
+		`INSERT INTO %[1]s (%[2]s) SELECT %[2]s FROM jsonb_populate_record(NULL::%[1]s, ?::jsonb) ON CONFLICT DO NOTHING`,
+		table, list), string(value))
+	return res.RowsAffected > 0, res.Error
+}
+
+// restoreChildren moves every recorded child row back by primary key and
+// re-inserts the ones the fold dropped as duplicates.
 func (u *undo) restoreChildren() error {
 	for _, table := range childTables {
 		for _, r := range u.of(table, changeMoved) {
@@ -193,27 +260,22 @@ func (u *undo) restoreChildren() error {
 }
 
 func (u *undo) restoreChild(table string, r recordRow) error {
-	exists, err := u.exists(table, r.RowID)
-	if err != nil {
+	var at []int
+	if err := u.tx.Raw(fmt.Sprintf(`SELECT galgame_id FROM %s WHERE id = ?`, table), r.RowID).Scan(&at).Error; err != nil {
 		return err
 	}
-	if !exists {
-		if u.find(table, changeDropped, r.RowID) == nil {
-			u.report.list(&u.report.DeletedSince, table, r.RowID)
-			return nil
-		}
-		res := u.tx.Exec(fmt.Sprintf(
-			`INSERT INTO %[1]s SELECT * FROM jsonb_populate_record(NULL::%[1]s, ?::jsonb) ON CONFLICT DO NOTHING`, table),
-			string(r.Value))
-		if res.Error != nil {
-			return fmt.Errorf("re-insert %s %d: %w", table, r.RowID, res.Error)
-		}
-		if res.RowsAffected == 0 {
-			u.report.list(&u.report.Conflicts, table, r.RowID)
-			return nil
-		}
-		u.report.count(&u.report.Reinserted, table, 1)
+	if len(at) == 0 {
+		return u.reinsertDropped(table, r)
+	}
+	switch cur := at[0]; {
+	case cur == u.oldID:
+		u.report.count(&u.report.MovedBack, table, 1)
 		return nil
+	case !u.allowed[cur]:
+		u.report.list(&u.report.MovedElsewhere, table, r.RowID)
+		return nil
+	default:
+		u.touched[cur] = true
 	}
 
 	q := fmt.Sprintf(`UPDATE %s t SET galgame_id = ? WHERE t.id = ?`, table)
@@ -235,10 +297,43 @@ func (u *undo) restoreChild(table string, r recordRow) error {
 	return nil
 }
 
-// settlePages recounts both pages. A page holding resources again is
-// published and no longer a stub, whatever the survivor restore set back.
+// A row the fold dropped as a duplicate comes back from its snapshot. One that
+// is simply gone was deleted after the merge, or its owner purged, and stays so.
+func (u *undo) reinsertDropped(table string, r recordRow) error {
+	if u.find(table, changeDropped, r.RowID) == nil {
+		u.report.list(&u.report.DeletedSince, table, r.RowID)
+		return nil
+	}
+	var owner struct {
+		UserID *int `json:"user_id"`
+	}
+	if json.Unmarshal(r.Value, &owner) == nil && owner.UserID != nil && !u.userExists(*owner.UserID) {
+		u.report.list(&u.report.DeletedSince, table, r.RowID)
+		return nil
+	}
+	inserted, err := u.insertSnapshot(table, r.Value)
+	if err != nil {
+		return fmt.Errorf("re-insert %s %d: %w", table, r.RowID, err)
+	}
+	if !inserted {
+		u.report.list(&u.report.Conflicts, table, r.RowID)
+		return nil
+	}
+	u.report.count(&u.report.Reinserted, table, 1)
+	return nil
+}
+
+// settlePages recounts every page the undo touched. The restored page keeps
+// the published flag of its snapshot; the survivor, or the page created for
+// it, is published only through MarkIndexed, which a hidden claim still
+// refuses: getting resources back is not an unban.
 func (u *undo) settlePages() error {
-	for _, id := range []int{u.oldID, u.newID} {
+	pages := map[int]bool{u.oldID: true, u.newID: true}
+	for id := range u.touched {
+		pages[id] = true
+	}
+	repo := patchRepo.New(u.tx)
+	for id := range pages {
 		ok, err := u.exists("patch", int64(id))
 		if err != nil {
 			return err
@@ -249,11 +344,15 @@ func (u *undo) settlePages() error {
 		if err := Recount(u.tx, id); err != nil {
 			return fmt.Errorf("recount %d: %w", id, err)
 		}
-		if err := u.tx.Exec(`
-			UPDATE patch SET published = true, is_stub = false
-			WHERE id = ? AND resource_count > 0 AND (NOT published OR is_stub)`, id,
-		).Error; err != nil {
-			return err
+		if id != u.newID {
+			continue
+		}
+		var resources int
+		u.tx.Raw(`SELECT resource_count FROM patch WHERE id = ?`, id).Scan(&resources)
+		if resources > 0 {
+			if err := repo.MarkIndexed(id); err != nil {
+				return fmt.Errorf("publish %d: %w", id, err)
+			}
 		}
 	}
 	return nil

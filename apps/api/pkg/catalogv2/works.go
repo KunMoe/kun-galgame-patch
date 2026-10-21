@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -166,6 +167,22 @@ func (c *Client) WorkDeletion(ctx context.Context, id int64) (*Deletion, error) 
 	}
 	return nil, err
 }
+
+// VndbIDOf is a work's VNDB id, "" when it has none.
+func (c *Client) VndbIDOf(ctx context.Context, id int64) (string, error) {
+	page, err := c.ListWorks(ctx, WorksQuery{IDs: []int64{id}, NSFW: true, Include: []string{"refs"}})
+	if err != nil || len(page.Items) == 0 || page.Items[0].Refs == nil {
+		return "", err
+	}
+	for _, r := range *page.Items[0].Refs {
+		if r.Source == "vndb" && vndbWorkID.MatchString(r.ExternalID) {
+			return r.ExternalID, nil
+		}
+	}
+	return "", nil
+}
+
+var vndbWorkID = regexp.MustCompile(`^v[0-9]+$`)
 
 func (c *Client) WorkByRef(ctx context.Context, source, externalID string, nsfw bool) (*Work, error) {
 	page, err := c.ListWorks(ctx, WorksQuery{

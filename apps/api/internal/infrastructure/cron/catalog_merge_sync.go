@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strconv"
 
 	patchMerge "kun-galgame-patch-api/internal/patch/merge"
@@ -226,31 +225,57 @@ func revokeRedirect(
 		return nil
 	}
 
+	rec, err := patchMerge.OpenRecord(db, oldID)
+	if err != nil {
+		return err
+	}
+	// Outside the transaction: a catalog call must not hold the undo's locks.
+	vndb := ""
+	if rec != nil && rec.Action == patchMerge.ActionRenumber && vndbOf != nil {
+		vndb = vndbOf(rec.NewID)
+	}
+
 	var undone *patchMerge.UndoReport
-	var found bool
+	var undoErr error
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(
 			`DELETE FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, oldID,
 		).Error; err != nil {
 			return err
 		}
-		var err error
-		undone, found, err = patchMerge.Undo(tx, oldID, vndbOf)
-		return err
+		if rec == nil {
+			return nil
+		}
+		// One undo that cannot finish must not hold back every merge and undo
+		// queued behind it: the drain would stop on this row on every tick.
+		if err := tx.SavePoint("merge_undo").Error; err != nil {
+			return err
+		}
+		undone, undoErr = patchMerge.Undo(tx, rec, vndb)
+		if undoErr == nil {
+			return nil
+		}
+		if err := tx.RollbackTo("merge_undo").Error; err != nil {
+			return err
+		}
+		return patchMerge.MarkFailed(tx, rec.ID, undoErr)
 	}); err != nil {
 		return fmt.Errorf("revoke merge %d: %w", oldID, err)
 	}
 
 	switch {
-	case !found:
+	case rec == nil:
 		if pages[survivor] && !pages[oldID] {
 			slog.Warn("catalog 撤销了合并：该合并早于合并记录(052)，本站当时搬动的数据无法自动搬回，请人工核对",
 				"old_id", oldID, "survivor", survivor)
 		}
+	case undoErr != nil:
+		slog.Error("catalog 撤销了合并，但本站搬回失败：已记入后台合并记录，可在后台重试",
+			"old_id", oldID, "survivor", survivor, "record_id", rec.ID, "error", undoErr)
 	case undone.Incomplete():
 		slog.Warn("catalog 撤销了合并：部分数据没能搬回，见后台合并记录",
 			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID,
-			"conflicts", undone.Conflicts, "notes", undone.Notes)
+			"conflicts", undone.Conflicts, "moved_elsewhere", undone.MovedElsewhere, "notes", undone.Notes)
 	default:
 		slog.Info("catalog 撤销了合并：本站数据已搬回",
 			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID)
@@ -377,19 +402,7 @@ func writeMergeCursor(db *gorm.DB, cursor string) error {
 // has to create for the survivor. "" falls back to the placeholder.
 func vndbLookup(ctx context.Context, catalog *catalogv2.Client) func(int) string {
 	return func(id int) string {
-		page, err := catalog.ListWorks(ctx, catalogv2.WorksQuery{
-			IDs: []int64{int64(id)}, NSFW: true, Include: []string{"refs"},
-		})
-		if err != nil || len(page.Items) == 0 || page.Items[0].Refs == nil {
-			return ""
-		}
-		for _, r := range *page.Items[0].Refs {
-			if r.Source == "vndb" && vndbWorkID.MatchString(r.ExternalID) {
-				return r.ExternalID
-			}
-		}
-		return ""
+		v, _ := catalog.VndbIDOf(ctx, int64(id))
+		return v
 	}
 }
-
-var vndbWorkID = regexp.MustCompile(`^v[0-9]+$`)

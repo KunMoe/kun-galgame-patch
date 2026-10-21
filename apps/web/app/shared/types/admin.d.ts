@@ -69,7 +69,10 @@ interface AdminMergeUndoReport {
   kept_on_survivor?: Record<string, number>
   deleted_since?: Record<string, number[]>
   conflicts?: Record<string, number[]>
+  moved_elsewhere?: Record<string, number[]>
   notes?: string[]
+  error?: string
+  failed_at?: string
 }
 
 interface AdminMergeRecord {

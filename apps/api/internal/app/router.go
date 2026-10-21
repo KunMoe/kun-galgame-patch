@@ -258,6 +258,7 @@ func (a *App) RegisterRoutes() {
 
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
 	adminRoutes.Get("/catalog-merges", a.AdminHandler.GetMergeRecords)
+	adminRoutes.Post("/catalog-merges/:id/undo", adminAuth, a.AdminHandler.RetryMergeUndo)
 
 	adminRoutes.Get("/doc", a.DocHandler.AdminListPosts)
 	adminRoutes.Get("/doc/:id", a.DocHandler.AdminGetPost)

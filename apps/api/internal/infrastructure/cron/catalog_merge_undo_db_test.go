@@ -275,3 +275,138 @@ func TestUndoFindsRowsAfterTheSurvivorMovedOn(t *testing.T) {
 		t.Errorf("report = %+v, want a note that the survivor's counters stay", rep)
 	}
 }
+
+// Review A: B→C then C→D, catalog undoes B→C first and C→D second. The second
+// undo's record also lists B's resource (it sat on C when C was merged), but
+// B already took it back: it must stay on B, and D must be recounted.
+func TestChainedUndosLeaveEachRowWithItsOwnWork(t *testing.T) {
+	db := undoDB(t)
+	b, c, d := undoOld, undoNew, undoLast
+	seedPage(t, db, b, "v990011", 0, 0)
+	seedPage(t, db, c, "v990012", 0, 0)
+	seedPage(t, db, d, "v990013", 0, 0)
+	rb := seedResource(t, db, b, undoUserA, "B 的补丁")
+	rc := seedResource(t, db, c, undoUserA, "C 的补丁")
+	rd := seedResource(t, db, d, undoUserB, "D 的补丁")
+
+	merge(t, db, b, c)
+	merge(t, db, c, d)
+	revoke(t, db, b, nil)
+	rep := revoke(t, db, c, nil)
+
+	for res, want := range map[int]int{rb: b, rc: c, rd: d} {
+		if got := pageOf(t, db, "patch_resource", res); got != want {
+			t.Errorf("resource %d on %d, want %d", res, got, want)
+		}
+	}
+	var counts []int
+	db.Raw(`SELECT resource_count FROM patch WHERE id IN (?, ?, ?) ORDER BY id`, b, c, d).Scan(&counts)
+	if !slices.Equal(counts, []int{1, 1, 1}) {
+		t.Errorf("resource_count of B, C, D = %v, want each page counting its own", counts)
+	}
+	if !slices.Contains(rep.MovedElsewhere["patch_resource"], int64(rb)) {
+		t.Errorf("report = %+v, want B's resource listed as no longer on the survivor", rep)
+	}
+}
+
+// Review C: catalog hid B (the claim event unpublished it), then merged it.
+// Undoing the merge gives B its resources back, which is not an unban.
+func TestUndoDoesNotUnbanAHiddenPage(t *testing.T) {
+	db := undoDB(t)
+	seedPage(t, db, undoNew, "v990014", 0, 0)
+	seedPage(t, db, undoOld, "v990015", 0, 0)
+	seedResource(t, db, undoOld, undoUserA, "被隐藏页的补丁")
+	mustExec(t, db, `UPDATE patch SET published = false WHERE id = ?`, undoOld)
+	mustExec(t, db, `INSERT INTO claim_event_processed (event_id, work_id, to_state, actor_uid) VALUES (?, ?, 'hidden', 0)`,
+		int64(undoOld), undoOld)
+	t.Cleanup(func() { db.Exec(`DELETE FROM claim_event_processed WHERE work_id = ?`, undoOld) })
+
+	merge(t, db, undoOld, undoNew)
+	revoke(t, db, undoOld, nil)
+
+	var published bool
+	db.Raw(`SELECT published FROM patch WHERE id = ?`, undoOld).Scan(&published)
+	if published {
+		t.Error("the undo published a page catalog had hidden")
+	}
+}
+
+// Review B: the page's publisher and a dropped contributor were purged after
+// the merge. Re-inserting them used to violate the user foreign key, roll the
+// drain back and block every later merge on the same row forever.
+func TestUndoSurvivesAPurgedUser(t *testing.T) {
+	db := undoDB(t)
+	const purged = 1499999956
+	mustExec(t, db, `INSERT INTO "user" (id, updated) VALUES (?, now())`, purged)
+	t.Cleanup(func() { db.Exec(`DELETE FROM "user" WHERE id = ?`, purged) })
+	seedPage(t, db, undoNew, "v990016", 0, 0)
+	mustExec(t, db, `INSERT INTO patch (id, vndb_id, user_id, updated) VALUES (?, 'v990017', ?, now())`, undoOld, purged)
+	res := seedResource(t, db, undoOld, undoUserA, "补丁")
+	for _, page := range []int{undoOld, undoNew} {
+		mustExec(t, db, `INSERT INTO user_patch_contribute_relation (user_id, galgame_id, updated) VALUES (?, ?, now())`, purged, page)
+	}
+
+	merge(t, db, undoOld, undoNew)
+	mustExec(t, db, `DELETE FROM user_patch_contribute_relation WHERE user_id = ?`, purged)
+	mustExec(t, db, `DELETE FROM "user" WHERE id = ?`, purged)
+	seedPage(t, db, undoChain, "v990018", 0, 0)
+	mustExec(t, db, `INSERT INTO patch_redirect (old_id, new_id, scope) VALUES (?, ?, 'merge')`, undoLast, undoChain)
+
+	var r MergeSyncReport
+	items := []catalogv2.Redirect{
+		{OldID: undoOld, CurrentID: undoOld, Revoked: true},
+		{OldID: undoLast, CurrentID: undoLast, Revoked: true},
+	}
+	if err := applyRedirects(db, items, true, &r, nil); err != nil {
+		t.Fatalf("the drain stopped on a purged user: %v", err)
+	}
+	if pageOf(t, db, "patch_resource", res) != undoOld {
+		t.Error("the resource did not go back")
+	}
+	var owner int
+	db.Raw(`SELECT user_id FROM patch WHERE id = ?`, undoOld).Scan(&owner)
+	if owner != undoUserA {
+		t.Errorf("restored page owner = %d, want the publisher of its resources", owner)
+	}
+	var left int64
+	db.Raw(`SELECT count(*) FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, undoLast).Scan(&left)
+	if left != 0 {
+		t.Error("the revoke after the purged one was never reached")
+	}
+}
+
+// Review B: an undo that fails for any other reason is recorded on the merge
+// and the drain carries on; the admin page offers it for a retry.
+func TestAFailedUndoIsRecordedAndTheDrainMovesOn(t *testing.T) {
+	db := undoDB(t)
+	seedPage(t, db, undoNew, "v990019", 0, 0)
+	seedPage(t, db, undoOld, "v990020", 0, 0)
+	merge(t, db, undoOld, undoNew)
+	mustExec(t, db, `UPDATE patch_merge_record_row SET value = jsonb_set(value, '{view}', '"many"')
+		WHERE table_name = 'patch' AND row_id = ? AND change = 'before'`, undoOld)
+	seedPage(t, db, undoChain, "v990021", 0, 0)
+	mustExec(t, db, `INSERT INTO patch_redirect (old_id, new_id, scope) VALUES (?, ?, 'merge')`, undoLast, undoChain)
+
+	var r MergeSyncReport
+	items := []catalogv2.Redirect{
+		{OldID: undoOld, CurrentID: undoOld, Revoked: true},
+		{OldID: undoLast, CurrentID: undoLast, Revoked: true},
+	}
+	if err := applyRedirects(db, items, true, &r, nil); err != nil {
+		t.Fatalf("one failed undo stopped the drain: %v", err)
+	}
+	var rec struct {
+		Open  bool
+		Error string
+	}
+	db.Raw(`SELECT undone_at IS NULL AS open, COALESCE(undo_report->>'error', '') AS error
+		FROM patch_merge_record WHERE old_id = ? ORDER BY id DESC LIMIT 1`, undoOld).Scan(&rec)
+	if !rec.Open || rec.Error == "" {
+		t.Errorf("record = %+v, want it still open with the error kept for a retry", rec)
+	}
+	var left int64
+	db.Raw(`SELECT count(*) FROM patch_redirect WHERE scope = 'merge' AND old_id IN (?, ?)`, undoOld, undoLast).Scan(&left)
+	if left != 0 {
+		t.Errorf("%d revoked redirects left; the failure must not keep /galgame/<old> pointing at the survivor", left)
+	}
+}

@@ -2,8 +2,11 @@ package repository
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
+
+	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -106,5 +109,87 @@ func TestOrphanListLeavesDeletedWorksAlone(t *testing.T) {
 	}
 	if !has[1499999971] || has[1499999972] {
 		t.Errorf("orphan candidates include live placeholder: %v, deleted work: %v", has[1499999971], has[1499999972])
+	}
+}
+
+func mergeTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_DSN")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_DSN is not set")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean := func() {
+		db.Exec(`DELETE FROM patch_merge_record WHERE old_id BETWEEN 1499999973 AND 1499999976`)
+		db.Exec(`DELETE FROM patch WHERE id BETWEEN 1499999973 AND 1499999976`)
+		db.Exec(`DELETE FROM "user" WHERE id IN (1499999973, 1499999974)`)
+	}
+	clean()
+	t.Cleanup(clean)
+	for _, q := range []string{
+		`INSERT INTO "user" (id, updated) VALUES (1499999973, now()), (1499999974, now())`,
+		`INSERT INTO patch (id, vndb_id, user_id, updated) VALUES (1499999973, 'v-mr-1', 1499999973, now()), (1499999974, 'v-mr-2', 1499999974, now())`,
+		`INSERT INTO patch_resource (storage, user_id, galgame_id, updated) VALUES ('user', 1499999973, 1499999973, now())`,
+	} {
+		if err := db.Exec(q).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		id, err := patchMerge.Begin(tx, patchMerge.ActionFold, 1499999973, 1499999974)
+		if err != nil {
+			return err
+		}
+		if err := patchMerge.Fold(tx, 1499999973, 1499999974); err != nil {
+			return err
+		}
+		return patchMerge.Finish(tx, id, 1499999974)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func TestOnlyAFailedUndoCanBeRetried(t *testing.T) {
+	db := mergeTestDB(t)
+	repo := New(db)
+	var recordID int64
+	db.Raw(`SELECT id FROM patch_merge_record WHERE old_id = 1499999973`).Scan(&recordID)
+
+	if _, err := repo.RetryMergeUndo(recordID, nil); err != ErrNoFailedUndo {
+		t.Fatalf("retry of a merge catalog never undid: %v, want it refused", err)
+	}
+	if err := patchMerge.MarkFailed(db, recordID, fmt.Errorf("boom")); err != nil {
+		t.Fatal(err)
+	}
+	report, err := repo.RetryMergeUndo(recordID, nil)
+	if err != nil || report == nil || report.MovedBack["patch_resource"] != 1 {
+		t.Fatalf("retry = (%+v, %v)", report, err)
+	}
+	var open bool
+	db.Raw(`SELECT undone_at IS NULL FROM patch_merge_record WHERE id = ?`, recordID).Scan(&open)
+	if open {
+		t.Error("a retried undo left the record open")
+	}
+}
+
+func TestPurgeTakesTheUsersRowsOutOfMergeRecords(t *testing.T) {
+	db := mergeTestDB(t)
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return purgeMergeSnapshots(tx, 1499999973, false, 1499999974)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var resources, pagesOfPurged, handed int64
+	db.Raw(`SELECT count(*) FROM patch_merge_record_row r JOIN patch_merge_record m ON m.id = r.record_id
+		WHERE m.old_id = 1499999973 AND r.table_name = 'patch_resource'`).Scan(&resources)
+	db.Raw(`SELECT count(*) FROM patch_merge_record_row WHERE table_name = 'patch' AND value->>'user_id' = '1499999973'`).Scan(&pagesOfPurged)
+	db.Raw(`SELECT count(*) FROM patch_merge_record_row r JOIN patch_merge_record m ON m.id = r.record_id
+		WHERE m.old_id = 1499999973 AND r.table_name = 'patch' AND r.row_id = 1499999973 AND r.value->>'user_id' = '1499999974'`).Scan(&handed)
+	if resources != 0 || pagesOfPurged != 0 || handed != 1 {
+		t.Errorf("resource copies %d, pages naming the purged user %d, handed to the heir %d", resources, pagesOfPurged, handed)
 	}
 }
