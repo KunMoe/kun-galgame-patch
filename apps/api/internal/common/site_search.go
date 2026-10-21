@@ -76,7 +76,7 @@ type searchLanes struct {
 	Totals    searchTotals               `json:"totals"`
 }
 
-// A zero entity limit skips the 资料库 lane, and an empty entityFamily runs all
+// A zero entity limit skips the 论坛数据 lane, and an empty entityFamily runs all
 // five families. Catalog's search face takes one object per request, so the
 // command palette names 会社 alone rather than paying five on a debounced
 // keystroke.
@@ -372,8 +372,8 @@ func (h *CommonHandler) attachSearchUserCounts(ctx context.Context, items []sear
 	var rows []row
 	if err := h.db.WithContext(ctx).Table(`"user" u`).
 		Select(`u.id, u.moemoepoint,
-			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
-			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count`).
+			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id AND `+utils.LiveWorkPage("p")+`), 0) AS patch_count,
+			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id AND `+utils.LiveWorkResource("pr")+`), 0) AS resource_count`).
 		Where("u.id IN ?", ids).Find(&rows).Error; err != nil {
 		slog.Warn("用户搜索的贡献统计失败", "error", err)
 		return

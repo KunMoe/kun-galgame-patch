@@ -13,6 +13,7 @@ import (
 
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -161,6 +162,7 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 			FROM patch_resource r
 			LEFT JOIN patch_resource_normalize j ON j.source_artifact_uuid = r.artifact_uuid
 			WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
+				AND `+utils.LiveWorkResource("r")+`
 				AND (j.source_artifact_uuid IS NULL OR (j.state = 'claimed' AND j.lease_until < now()))
 				AND NOT EXISTS (SELECT 1 FROM patch_resource_normalize p WHERE p.artifact_uuid = r.artifact_uuid)
 				AND (EXISTS (SELECT 1 FROM patch_resource_repack rp WHERE rp.resource_id = r.id)) = ?

@@ -84,71 +84,82 @@ const handleEdit = async (m: MineItem) => {
 <template>
   <AuthRequired>
     <div class="container mx-auto my-4">
-    <KunHeader
-      name="我的提交"
-      description="查看您提交到 Galgame 资料库的作品的审核进度"
-    />
+      <KunHeader
+        name="我的提交"
+        description="查看您提交到鲲 Galgame 论坛数据的作品的审核进度"
+      />
 
-    <KunLoading v-if="pending" class-name="mt-6" description="加载中..." />
+      <KunLoading v-if="pending" class-name="mt-6" description="加载中..." />
 
-    <KunNull
-      v-else-if="!data?.items?.length"
-      class-name="mt-6"
-      description="您还没有提交过任何作品。回到「发布 Galgame」即可开始。"
-    />
+      <KunNull
+        v-else-if="!data?.items?.length"
+        class-name="mt-6"
+        description="您还没有提交过任何作品。回到「发布 Galgame」即可开始。"
+      />
 
-    <div v-else class="mt-6 space-y-3">
-      <KunCard v-for="m in data.items" :key="m.work_id" :bordered="true">
-        <div class="space-y-3 p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-lg font-semibold">{{ displayName(m) }}</h3>
-                <KunChip :color="stateLabel(m.claim_state).color" size="sm">
-                  {{ stateLabel(m.claim_state).text }}
-                </KunChip>
+      <div v-else class="mt-6 space-y-3">
+        <KunCard v-for="m in data.items" :key="m.work_id" :bordered="true">
+          <div class="space-y-3 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold">{{ displayName(m) }}</h3>
+                  <KunChip :color="stateLabel(m.claim_state).color" size="sm">
+                    {{ stateLabel(m.claim_state).text }}
+                  </KunChip>
+                </div>
+                <p class="text-default-500 mt-1 text-xs">
+                  提交于
+                  {{
+                    formatDate(m.first_acted_at, {
+                      isPrecise: true,
+                      isShowYear: true
+                    })
+                  }}
+                </p>
               </div>
-              <p class="text-default-500 mt-1 text-xs">
-                提交于
-                {{ formatDate(m.first_acted_at, { isPrecise: true, isShowYear: true }) }}
-              </p>
+            </div>
+
+            <div
+              v-if="m.claim_state === 'declined' && m.last_reason"
+              class="border-danger/30 bg-danger/10 rounded-lg border p-3 text-sm"
+            >
+              <p class="text-danger font-semibold">被拒原因</p>
+              <p class="text-default-700 mt-1">{{ m.last_reason }}</p>
+            </div>
+
+            <div class="flex flex-wrap justify-end gap-2">
+              <KunButton
+                variant="bordered"
+                color="danger"
+                size="sm"
+                :loading="withdrawing === patchID(m)"
+                :disabled="withdrawing !== null"
+                @click="handleWithdraw(m)"
+              >
+                撤回
+              </KunButton>
+              <KunButton
+                v-if="m.claim_state === 'declined'"
+                color="primary"
+                size="sm"
+                @click="handleEdit(m)"
+              >
+                重新编辑并提交
+              </KunButton>
+              <KunButton
+                v-else
+                variant="light"
+                color="primary"
+                size="sm"
+                @click="handleEdit(m)"
+              >
+                编辑
+              </KunButton>
             </div>
           </div>
-
-          <div
-            v-if="m.claim_state === 'declined' && m.last_reason"
-            class="border-danger/30 bg-danger/10 rounded-lg border p-3 text-sm"
-          >
-            <p class="text-danger font-semibold">被拒原因</p>
-            <p class="text-default-700 mt-1">{{ m.last_reason }}</p>
-          </div>
-
-          <div class="flex flex-wrap justify-end gap-2">
-            <KunButton
-              variant="bordered"
-              color="danger"
-              size="sm"
-              :loading="withdrawing === patchID(m)"
-              :disabled="withdrawing !== null"
-              @click="handleWithdraw(m)"
-            >
-              撤回
-            </KunButton>
-            <KunButton
-              v-if="m.claim_state === 'declined'"
-              color="primary"
-              size="sm"
-              @click="handleEdit(m)"
-            >
-              重新编辑并提交
-            </KunButton>
-            <KunButton v-else variant="light" color="primary" size="sm" @click="handleEdit(m)">
-              编辑
-            </KunButton>
-          </div>
-        </div>
-      </KunCard>
+        </KunCard>
+      </div>
     </div>
-  </div>
   </AuthRequired>
 </template>

@@ -28,7 +28,7 @@ func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 	}
 	v2 := h.catalogV2()
 	if v2 == nil || !v2.Configured() {
-		return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
+		return response.Error(c, errors.ErrInternal("鲲 Galgame 论坛数据客户端未配置"))
 	}
 	var form SubmissionForm
 	if err := c.Bind().Body(&form); err != nil {
@@ -49,7 +49,7 @@ func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 		if p, ok := catalogv2.ProblemOf(err); ok && p.Code == catalogv2.CodeDuplicateSuspects {
 			return response.Error(c, errors.ErrConflict(duplicateSuspectsMessage(p.Suspects)))
 		}
-		return catalogErr(c, err, "资料库没有接受这份投稿，请检查后重试")
+		return catalogErr(c, err, "鲲 Galgame 论坛数据没有接受这份投稿，请检查后重试")
 	}
 	return c.JSON(response.Response{
 		Code: 0, Message: "OK",
@@ -65,9 +65,9 @@ func duplicateSuspectsMessage(suspects []catalogv2.Suspect) string {
 		}
 	}
 	if len(names) == 0 {
-		return "资料库里已有同名作品，请先搜索确认是否重复"
+		return "鲲 Galgame 论坛数据里已有同名作品，请先搜索确认是否重复"
 	}
-	return "资料库里已有同名作品：" + strings.Join(names, "、") + "，请先搜索确认是否重复"
+	return "鲲 Galgame 论坛数据里已有同名作品：" + strings.Join(names, "、") + "，请先搜索确认是否重复"
 }
 
 func (h *PatchHandler) ClaimGalgame(c fiber.Ctx) error {
@@ -141,7 +141,7 @@ var claimStates = []string{
 func (h *PatchHandler) ListMyGalgames(c fiber.Ctx) error {
 	v2 := h.catalogV2()
 	if v2 == nil || !v2.Configured() {
-		return response.Error(c, errors.ErrInternal("资料库客户端未配置"))
+		return response.Error(c, errors.ErrInternal("鲲 Galgame 论坛数据客户端未配置"))
 	}
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
 	if limit < 1 || limit > 50 {

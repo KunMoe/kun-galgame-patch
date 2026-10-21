@@ -5,13 +5,11 @@ export interface NextmoeEditorLinkInput {
   loginHint?: string
 }
 
-export const nextmoeEditorWorkUrl = ({
-  base,
-  workId,
-  returnUrl,
-  loginHint
-}: NextmoeEditorLinkInput) => {
-  const url = new URL(`/works/${workId}/edit`, base)
+const editorUrl = (
+  path: string,
+  { base, returnUrl, loginHint }: Omit<NextmoeEditorLinkInput, 'workId'>
+) => {
+  const url = new URL(path, base)
   url.searchParams.set('from', 'moyu')
   url.searchParams.set('return', returnUrl)
   if (loginHint) {
@@ -19,3 +17,9 @@ export const nextmoeEditorWorkUrl = ({
   }
   return url.toString()
 }
+
+export const nextmoeEditorWorkUrl = (input: NextmoeEditorLinkInput) =>
+  editorUrl(`/works/${input.workId}/edit`, input)
+
+export const nextmoeEditorHistoryUrl = (input: NextmoeEditorLinkInput) =>
+  editorUrl(`/history/work/${input.workId}`, input)

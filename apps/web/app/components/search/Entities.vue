@@ -160,8 +160,14 @@ const totalPage = computed(() =>
         </KunLoading>
       </div>
 
-      <KunNull v-if="failed" description="资料库搜索没能完成, 请稍后重试" />
-      <KunNull v-else-if="isEmpty" description="资料库里没有找到匹配的条目" />
+      <KunNull
+        v-if="failed"
+        description="鲲 Galgame 论坛数据搜索没能完成, 请稍后重试"
+      />
+      <KunNull
+        v-else-if="isEmpty"
+        description="鲲 Galgame 论坛数据里没有找到匹配的条目"
+      />
 
       <div v-if="totalPage > 1" class="flex justify-center">
         <KunPagination

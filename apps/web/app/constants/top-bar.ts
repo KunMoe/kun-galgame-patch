@@ -10,7 +10,7 @@ export interface KunNavItem {
 // moyu backend's galgame client), not a standalone wiki site.
 export const kunNavItem: KunNavItem[] = [
   { name: '下载', href: '/galgame' },
-  { name: '资料库', href: '/gallib' },
+  { name: '论坛数据', href: '/gallib' },
   { name: '发布', href: '/edit/create' },
   { name: '排行', href: '/ranking/user' },
   { name: '关于', href: '/doc' }
@@ -73,7 +73,7 @@ export interface KunTopBarCategoryItem {
 
 export const kunTopBarCategories: KunTopBarCategoryItem[] = [
   { href: '/galgame', label: 'Galgame 补丁资源库', icon: 'lucide:gamepad-2' },
-  { href: '/gallib', label: 'Galgame 信息资料库', icon: 'lucide:library-big' },
+  { href: '/gallib', label: '鲲 Galgame 论坛数据', icon: 'lucide:library-big' },
   { href: '/resource', label: '最新补丁列表', icon: 'lucide:puzzle' },
   { href: '/ranking', label: 'Galgame 排行', icon: 'lucide:chart-column-big' }
 ]

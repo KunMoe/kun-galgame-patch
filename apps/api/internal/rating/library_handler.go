@@ -88,7 +88,7 @@ func libraryFail(c fiber.Ctx, err error) error {
 	case stderrors.Is(err, catalogv2.ErrNoAccessToken):
 		return response.Error(c, errors.ErrUnauthorized())
 	case catalogv2.ReauthRequired(err):
-		return response.Error(c, errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
+		return response.Error(c, errors.ErrCatalogReauthRequired("鲲 Galgame 论坛数据拒绝了当前登录凭证，请退出登录后重新登录一次"))
 	}
 	return response.Upstream(c, err, "")
 }

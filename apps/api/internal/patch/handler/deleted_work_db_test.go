@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	stderrors "errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
+	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/internal/patch/service"
 	"kun-galgame-patch-api/pkg/catalogv2/catalogv2test"
@@ -30,6 +33,11 @@ const (
 // Runs only against the launcher-provided TEST_DATABASE_DSN, migrated through
 // 051, with `go test -count=1 -p 1`.
 func deletedWorkApp(t *testing.T) *fiber.App {
+	app, _, _ := deletedWorkFixture(t)
+	return app
+}
+
+func deletedWorkFixture(t *testing.T) (*fiber.App, *service.PatchService, *gorm.DB) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_DSN")
 	if dsn == "" {
@@ -72,9 +80,11 @@ func deletedWorkApp(t *testing.T) *fiber.App {
 
 	gal := galgameClient.NewWithKey(srv.URL, appKey)
 	svc := service.New(repository.New(db), nil, db, nil, gal, nil, nil, nil, nil)
+	h := New(svc, gal, nil, nil, nil)
 	app := fiber.New()
-	app.Get("/patch/:id", New(svc, gal, nil, nil, nil).GetPatch)
-	return app
+	app.Get("/patch/:id", h.GetPatch)
+	app.Get("/patch/resource/:resourceId/revisions", h.GetResourceRevisions)
+	return app, svc, db
 }
 
 type gamePageAnswer struct {
@@ -125,4 +135,27 @@ func TestADeletedWorkSaysSoInsteadOfNotFound(t *testing.T) {
 			t.Fatalf("answer = %+v", got)
 		}
 	})
+}
+
+func TestADeletedWorkTakesNoNewResourceAndShowsNoHistory(t *testing.T) {
+	app, svc, db := deletedWorkFixture(t)
+
+	err := svc.CreateResource(context.Background(), &model.PatchResource{
+		GalgameID: stampedPage, Storage: "user", Content: "https://example.com/x",
+	}, deletedUser)
+	if !stderrors.Is(err, service.ErrWorkDeleted) {
+		t.Fatalf("CreateResource on a deleted work: %v", err)
+	}
+
+	var res int
+	db.Raw(`INSERT INTO patch_resource (storage, user_id, galgame_id, updated) VALUES ('user', ?, ?, now()) RETURNING id`,
+		deletedUser, stampedPage).Scan(&res)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet,
+		"/patch/resource/"+strconv.Itoa(res)+"/revisions?page=1&limit=10", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("revisions of a deleted work's resource: HTTP %d, want 404", resp.StatusCode)
+	}
 }

@@ -60,3 +60,28 @@ interface AdminOrphanPatchesResponse {
   pending_count: number
   bad_vndb_count: number
 }
+
+// GET /api/v1/admin/catalog-merges — what the catalog merge cron did (052) and
+// what an undo of it could not put back.
+interface AdminMergeUndoReport {
+  moved_back?: Record<string, number>
+  reinserted?: Record<string, number>
+  kept_on_survivor?: Record<string, number>
+  deleted_since?: Record<string, number[]>
+  conflicts?: Record<string, number[]>
+  moved_elsewhere?: Record<string, number[]>
+  notes?: string[]
+  error?: string
+  failed_at?: string
+}
+
+interface AdminMergeRecord {
+  id: number
+  old_id: number
+  new_id: number
+  action: 'renumber' | 'fold' | 'ledger'
+  applied_at: string
+  undone_at: string | null
+  undo_report: AdminMergeUndoReport | null
+  rows: number
+}

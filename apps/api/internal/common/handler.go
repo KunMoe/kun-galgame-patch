@@ -121,7 +121,8 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	patchQuery = utils.ScopeListablePatches(patchQuery, cl)
 	patchQuery = utils.ScopeExcludedIDs(patchQuery, "patch.id", excluded)
 	patchQuery.Find(&patches)
-	resourceQuery := h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6)
+	resourceQuery := h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Where(utils.LiveWorkResource("patch_resource")).
+		Order("created DESC, id DESC").Limit(6)
 	utils.ScopeExcludedIDs(resourceQuery, "patch_resource.galgame_id", excluded).Find(&resources)
 
 	resources = enricher.FilterByGalgameContentLimit(c.Context(), h.galgame, resources, func(r patchModel.PatchResource) int { return r.GalgameID }, cl)
@@ -229,7 +230,7 @@ func (h *CommonHandler) GetGlobalResources(c fiber.Ctx) error {
 	var resources []patchModel.PatchResource
 	var total int64
 
-	base := h.db.Model(&patchModel.PatchResource{}).Where("status = 0")
+	base := h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Where(utils.LiveWorkResource("patch_resource"))
 	if m := strings.TrimSpace(req.Model); m != "" {
 		base = base.Where("model_name ILIKE ?", "%"+m+"%")
 	}
@@ -416,8 +417,8 @@ func (h *CommonHandler) GetUserRanking(c fiber.Ctx) error {
 
 	q := h.db.Table(`"user" u`).
 		Select(`u.id, u.moemoepoint,
-			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id), 0) AS patch_count,
-			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id), 0) AS resource_count`)
+			COALESCE((SELECT COUNT(*) FROM patch p WHERE p.user_id = u.id AND ` + utils.LiveWorkPage("p") + `), 0) AS patch_count,
+			COALESCE((SELECT COUNT(*) FROM patch_resource pr WHERE pr.user_id = u.id AND ` + utils.LiveWorkResource("pr") + `), 0) AS resource_count`)
 	if board != nil {
 		q = q.Where("u.id IN ?", board)
 	} else {
@@ -515,6 +516,7 @@ func (h *CommonHandler) GetMoyuHasPatch(c fiber.Ctx) error {
 	h.db.Model(&patchModel.Patch{}).
 		Joins("JOIN patch_resource ON patch_resource.galgame_id = patch.id").
 		Where("patch.vndb_id IS NOT NULL").
+		Where(utils.LiveWorkPage("patch")).
 		Distinct("patch.vndb_id").
 		Pluck("patch.vndb_id", &vndbIDs)
 
@@ -609,7 +611,7 @@ func (h *CommonHandler) GetGalgameCalendar(c fiber.Ctx) error {
 		return response.Upstream(c, err, "")
 	}
 	if merged == nil {
-		return response.Error(c, errors.ErrInternal("调用 Galgame 资料库失败"))
+		return response.Error(c, errors.ErrInternal("调用鲲 Galgame 论坛数据失败"))
 	}
 
 	return response.OK(c, fiber.Map{

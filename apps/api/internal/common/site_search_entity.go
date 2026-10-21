@@ -22,12 +22,12 @@ func (h *CommonHandler) searchEntityLane(
 	ctx context.Context, raw, family string, page, limit int, cl string,
 ) ([]searchEntityGroup, *errors.AppError) {
 	if h.galgame == nil {
-		return nil, errors.ErrInternal("Galgame 资料库未启用")
+		return nil, errors.ErrInternal("鲲 Galgame 论坛数据未启用")
 	}
 	families := galgameClient.EntityFamilies()
 	if family != "" {
 		if !galgameClient.IsEntityFamily(family) {
-			return nil, errors.ErrBadRequest("未知的资料库类型")
+			return nil, errors.ErrBadRequest("未知的论坛数据类型")
 		}
 		families = []string{family}
 	}
@@ -46,14 +46,14 @@ func (h *CommonHandler) searchEntityLane(
 			// failing this one request.
 			defer func() {
 				if r := recover(); r != nil {
-					slog.Error("资料库搜索 family panic", "family", f, "panic", r)
+					slog.Error("论坛数据搜索 family panic", "family", f, "panic", r)
 				}
 			}()
 			defer wg.Done()
 
 			items, total, err := h.galgame.SearchEntities(ctx, f, raw, page, limit, cl)
 			if err != nil {
-				slog.Warn("资料库搜索 family 失败", "family", f, "error", err)
+				slog.Warn("论坛数据搜索 family 失败", "family", f, "error", err)
 				mu.Lock()
 				failed++
 				mu.Unlock()
@@ -65,7 +65,7 @@ func (h *CommonHandler) searchEntityLane(
 	wg.Wait()
 
 	if failed == len(families) {
-		return nil, errors.ErrInternal("Galgame 资料库搜索失败")
+		return nil, errors.ErrInternal("鲲 Galgame 论坛数据搜索失败")
 	}
 	return groups, nil
 }

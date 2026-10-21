@@ -35,7 +35,14 @@ const { data, pending, refresh } = await useAsyncData<OrphanListResponse>(
       ? res.data
       : { items: [], total: 0, pending_count: 0, bad_vndb_count: 0 }
   },
-  { default: () => ({ items: [], total: 0, pending_count: 0, bad_vndb_count: 0 }) }
+  {
+    default: () => ({
+      items: [],
+      total: 0,
+      pending_count: 0,
+      bad_vndb_count: 0
+    })
+  }
 )
 
 watch(page, () => refresh())
@@ -57,11 +64,14 @@ const handleRebind = async (galgameId: number) => {
   try {
     const res = await api.put(`/patch/${galgameId}`, { vndb_id: newID })
     if (res.code === 0) {
-      useKunMessage('已重新绑定，资料库校验通过', 'success')
+      useKunMessage('已重新绑定，鲲 Galgame 论坛数据校验通过', 'success')
       Reflect.deleteProperty(editVndbID, galgameId)
       await refresh()
     } else {
-      useKunMessage(res.message || '重绑失败（资料库里可能还没这个游戏）', 'error')
+      useKunMessage(
+        res.message || '重绑失败（鲲 Galgame 论坛数据里可能还没这个游戏）',
+        'error'
+      )
     }
   } finally {
     submitting[galgameId] = false
@@ -98,8 +108,12 @@ const vndbLink = (v: string) =>
     <div>
       <h1 class="text-2xl font-bold">孤儿补丁</h1>
       <p class="text-default-500 mt-1 text-sm">
-        这些补丁没有有效的 vndb_id，资料库也不再公开它们的游戏：要么游戏已不存在，要么被资料库版主隐藏（封禁、判为重复）。被隐藏的游戏数据都还在，只能由资料库解除隐藏，这里的重绑解决不了。请逐条处理：填了错的
-        vndb_id 就改成正确的重绑；没有资源的空页可以直接删除，游戏恢复后有人发布资源时会自动重建。
+        这些补丁没有有效的 vndb_id，鲲 Galgame
+        论坛数据也不再公开它们的游戏：要么游戏已不存在，要么被鲲 Galgame
+        论坛数据的版主隐藏（封禁、判为重复）。被隐藏的游戏数据都还在，只能由鲲
+        Galgame 论坛数据解除隐藏，这里的重绑解决不了。请逐条处理：填了错的
+        vndb_id
+        就改成正确的重绑；没有资源的空页可以直接删除，游戏恢复后有人发布资源时会自动重建。
       </p>
     </div>
 
@@ -110,7 +124,7 @@ const vndbLink = (v: string) =>
       </KunCard>
       <KunCard :bordered="true">
         <p class="text-default-500 text-xs">未填 vndb_id</p>
-        <p class="mt-1 text-2xl font-bold text-warning">
+        <p class="text-warning mt-1 text-2xl font-bold">
           {{ data?.pending_count ?? 0 }}
         </p>
         <p class="text-default-400 mt-1 text-xs">
@@ -119,7 +133,7 @@ const vndbLink = (v: string) =>
       </KunCard>
       <KunCard :bordered="true">
         <p class="text-default-500 text-xs">vndb_id 格式无效</p>
-        <p class="mt-1 text-2xl font-bold text-danger">
+        <p class="text-danger mt-1 text-2xl font-bold">
           {{ data?.bad_vndb_count ?? 0 }}
         </p>
         <p class="text-default-400 mt-1 text-xs">
@@ -135,7 +149,7 @@ const vndbLink = (v: string) =>
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
           <div class="flex-1 space-y-2">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="font-mono text-default-500 text-sm">
+              <span class="text-default-500 font-mono text-sm">
                 #{{ p.id }}
               </span>
               <KunChip
@@ -145,9 +159,7 @@ const vndbLink = (v: string) =>
               >
                 {{ isPlaceholder(p.vndb_id) ? '未填' : '格式无效' }}
               </KunChip>
-              <code
-                class="bg-default-100 rounded px-2 py-0.5 text-xs"
-              >
+              <code class="bg-default-100 rounded px-2 py-0.5 text-xs">
                 {{ p.vndb_id }}
               </code>
               <a
@@ -161,7 +173,9 @@ const vndbLink = (v: string) =>
               </a>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 text-xs text-default-500">
+            <div
+              class="text-default-500 flex flex-wrap items-center gap-3 text-xs"
+            >
               <span v-if="p.user">
                 发布者:
                 <NuxtLink

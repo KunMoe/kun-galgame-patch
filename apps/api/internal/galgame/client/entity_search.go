@@ -8,7 +8,7 @@ import (
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
 
-// The five 资料库 families moyu can open a page for. There is no engine family
+// The five 论坛数据 families moyu can open a page for. There is no engine family
 // here even though catalog indexes one: moyu ships no /galgame/engine/:id, and
 // a search result that cannot be clicked is worse than one that is missing.
 const (
@@ -44,7 +44,7 @@ func IsEntityFamily(family string) bool {
 	return ok
 }
 
-// EntitySearchItem is one 资料库 card. Name travels on all four slots for the
+// EntitySearchItem is one 论坛数据 card. Name travels on all four slots for the
 // same reason a work title does — the reader's 标题语言 picks in the browser.
 type EntitySearchItem struct {
 	ID              int         `json:"id"`
@@ -183,7 +183,7 @@ func (c *Client) attachEntityFacts(
 	}
 	hideSexual := family == EntityFamilyTag && gateFor(contentLimit).contentLimit == "sfw"
 	if err != nil {
-		slog.Warn("资料库搜索的配图与作品数获取失败", "family", family, "error", err, "sfw_tags_dropped", hideSexual)
+		slog.Warn("论坛数据搜索的配图与作品数获取失败", "family", family, "error", err, "sfw_tags_dropped", hideSexual)
 		if hideSexual {
 			return items[:0]
 		}

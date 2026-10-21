@@ -5,6 +5,7 @@ import (
 
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
+	"kun-galgame-patch-api/pkg/utils"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -355,6 +356,15 @@ func setToSlice(s map[string]bool) []string {
 		result = append(result, k)
 	}
 	return result
+}
+
+// ResourceIsPublic is false for a resource moderation hid and for one whose
+// work catalog deleted; both answer 404 everywhere.
+func (r *PatchRepository) ResourceIsPublic(resourceID int) (bool, error) {
+	var ok bool
+	err := r.db.Raw(`SELECT EXISTS (SELECT 1 FROM patch_resource WHERE id = ? AND status <> 2 AND `+
+		utils.LiveWorkResource("patch_resource")+`)`, resourceID).Scan(&ok).Error
+	return ok, err
 }
 
 func (r *PatchRepository) GetResourceRevisions(resourceID, offset, limit int) ([]model.PatchResourceRevision, int64, error) {

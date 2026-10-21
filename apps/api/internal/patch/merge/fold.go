@@ -14,13 +14,15 @@ import (
 // A child table with nothing unique per game: both pages' rows can coexist
 // under the survivor, so every row simply moves.
 //
-// patch_comment is NOT here any more. The loser's comment wall is a thread in
-// the community primitive, anchored on the loser's page id, and no SQL in this
-// database can move it. Fold logs the stranded wall instead; infra's
-// cmd/retire-merged-comments sweeps it, and knows this site by name — a moyu
-// site_game anchor IS a catalog work id (铁律 3), so the "a product id that
-// merely collides" exclusion the forum needs is off for moyu.
-var movableChildren = []string{"patch_resource"}
+// The loser's comment wall is a thread in the community primitive, anchored on
+// the loser's page id, and no SQL in this database can move it. Fold logs the
+// stranded wall instead; infra's cmd/retire-merged-comments sweeps it, and
+// knows this site by name — a moyu site_game anchor IS a catalog work id
+// (铁律 3), so the "a product id that merely collides" exclusion the forum
+// needs is off for moyu. patch_comment is the frozen pre-cutover copy nothing
+// reads; it moves anyway, because left on the loser it went with the page's
+// ON DELETE CASCADE and the rollback material was gone.
+var movableChildren = []string{"patch_resource", "patch_comment"}
 
 // A child table with a unique key over (galgame_id, peer). When the survivor
 // already has a row for that peer the two cannot both live, so the loser's row

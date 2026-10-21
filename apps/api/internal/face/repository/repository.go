@@ -121,7 +121,7 @@ func (r *Repository) CountPatches(f PatchFilter) (int64, error) {
 
 func (r *Repository) GetPatch(id int) (*patchModel.Patch, error) {
 	var row patchModel.Patch
-	err := r.db.Where("id = ? AND status = 0", id).First(&row).Error
+	err := r.db.Where("id = ? AND status = 0", id).Where(utils.LiveWorkPage("patch")).First(&row).Error
 	if err != nil {
 		return nil, err
 	}
@@ -130,9 +130,10 @@ func (r *Repository) GetPatch(id int) (*patchModel.Patch, error) {
 
 // resourceQuery only ever sees live rows. status 1 is a resource its publisher
 // disabled and status 2 one moderation hid; both are 404 on every public
-// surface of the site, and this face is one.
+// surface of the site, and this face is one. So is a resource of a work catalog
+// deleted.
 func (r *Repository) resourceQuery(patchIDs []int) *gorm.DB {
-	q := r.db.Model(&patchModel.PatchResource{}).Where("status = 0")
+	q := r.db.Model(&patchModel.PatchResource{}).Where("status = 0").Where(utils.LiveWorkResource("patch_resource"))
 	if len(patchIDs) > 0 {
 		q = q.Where("galgame_id IN ?", patchIDs)
 	}

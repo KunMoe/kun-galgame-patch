@@ -2,7 +2,7 @@
 
 type SearchType = 'all' | 'galgame' | 'entity' | 'resource' | 'user' | 'comment'
 
-// 全部 pages nothing, 资料库 pages one family at a time through its own endpoint,
+// 全部 pages nothing, 论坛数据 pages one family at a time through its own endpoint,
 // and 评论 is keyset — it answers a cursor and no total, so it cannot ride the
 // {items, total} envelope the paged lanes share on GET /search.
 type SearchPagedType = Exclude<SearchType, 'all' | 'entity' | 'comment'>

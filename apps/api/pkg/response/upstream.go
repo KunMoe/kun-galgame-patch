@@ -11,7 +11,7 @@ import (
 )
 
 var serviceLabel = map[string]string{
-	"catalog":   "资料库服务",
+	"catalog":   "鲲 Galgame 论坛数据服务",
 	"community": "评论服务",
 	"oauth":     "登录服务",
 	"image":     "图片服务",

@@ -269,7 +269,7 @@ func (s *PatchService) UpdatePatch(ctx context.Context, id, userID int, isPrivil
 		return fmt.Errorf("调用 galgame 校验 vndb_id 失败: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("Galgame 资料库中不存在 vndb_id=%s 的游戏", vndbID)
+		return fmt.Errorf("鲲 Galgame 论坛数据中不存在 vndb_id=%s 的游戏", vndbID)
 	}
 	if galgameID != existing.ID {
 		return fmt.Errorf("不允许把 patch (id=%d) 重绑到不同的 galgame (id=%d) — 请运行 cmd/remap-patch-ids 完整迁移", existing.ID, galgameID)
@@ -452,12 +452,20 @@ func (s *PatchService) EnsureArtifactReady(ctx context.Context, uuid string) err
 	return nil
 }
 
+// ErrWorkDeleted refuses a new resource on a work catalog deleted (051): it
+// would go public the day the work is restored, and notify its followers now.
+var ErrWorkDeleted = errors.New("这部作品已被删除，暂时不能发布补丁资源")
+
 func (s *PatchService) CreateResource(ctx context.Context, resource *model.PatchResource, userID int) error {
 	resource.UserID = userID
 	resource.Note = markdown.NormalizeContentImageURLs(resource.Note)
 
-	if _, err := s.ensureLocalPatch(ctx, resource.GalgameID, userID); err != nil {
+	page, err := s.ensureLocalPatch(ctx, resource.GalgameID, userID)
+	if err != nil {
 		return fmt.Errorf("patch not found")
+	}
+	if page.CatalogDeletedAt != nil {
+		return ErrWorkDeleted
 	}
 
 	if resource.Storage == "s3" {
@@ -1010,6 +1018,10 @@ func diffResourceFields(before, after *model.PatchResource) model.ResourceChange
 		})
 	}
 	return ch
+}
+
+func (s *PatchService) ResourceIsPublic(resourceID int) (bool, error) {
+	return s.repo.ResourceIsPublic(resourceID)
 }
 
 func (s *PatchService) GetResourceRevisions(resourceID, page, limit int) ([]model.PatchResourceRevision, int64, error) {

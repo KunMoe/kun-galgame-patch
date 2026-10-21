@@ -206,14 +206,14 @@ func fail(c fiber.Ctx, err error) error {
 	case stderrors.Is(err, catalogv2.ErrNoAccessToken):
 		return response.Error(c, errors.ErrUnauthorized())
 	case catalogv2.ReauthRequired(err):
-		return response.Error(c, errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次"))
+		return response.Error(c, errors.ErrCatalogReauthRequired("鲲 Galgame 论坛数据拒绝了当前登录凭证，请退出登录后重新登录一次"))
 	}
 	if e, ok := upstream.As(err); ok && e.Code == "PERMISSION_REQUIRED" {
 		return response.Error(c, errors.New(40300,
-			"无权限：删除他人的评分需要 NextMoe 资料库的评分管理权限", fiber.StatusForbidden))
+			"无权限：删除他人的评分需要鲲 Galgame 论坛数据的评分管理权限", fiber.StatusForbidden))
 	}
 	if upstream.KindOf(err) == upstream.NotFound {
-		return response.Error(c, errors.ErrNotFound("资料库里没有这个游戏"))
+		return response.Error(c, errors.ErrNotFound("鲲 Galgame 论坛数据里没有这个游戏"))
 	}
 	return response.Upstream(c, err, "")
 }
