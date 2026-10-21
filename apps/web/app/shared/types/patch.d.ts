@@ -170,18 +170,6 @@ interface GalgameScreenshotRow extends GalgameCoverRow {
   caption: string
 }
 
-// Presets moyu may send in the `preset` form field of POST
-// /api/v1/upload/image-service. image_service applies per-preset size + quota
-// and rejects a preset not allowlisted for moyu's OAuth client. moyu sends
-// exactly one: 'topic' (free-form gallery / editor-inline / doc images).
-// Avatars go through OAuth's /auth/me/avatar and never reach this endpoint.
-//
-// 'galgame_screenshot' left this union in wave 161 (N5) along with the backend
-// lane that carried it: it had zero senders here, and the wiki write face it
-// proxied to is being taken down. Keep this union in sync with the presets infra
-// enables for www.moyu.moe.
-type GalgameImageUploadPreset = 'topic'
-
 // Patch header (GET /patch/:id). It carries nothing about the reader; the
 // heart is GET /patch/:id/favorite, asked after mount.
 interface PatchHeader extends GalgameCard {

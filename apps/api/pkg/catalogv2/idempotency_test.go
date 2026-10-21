@@ -26,8 +26,6 @@ func (k *keyed) server(t *testing.T) *httptest.Server {
 		switch r.URL.Path {
 		case "/v2/me/folders":
 			_, _ = io.WriteString(w, `{"id":"5","name":"n"}`)
-		case "/v2/me/proposals":
-			_, _ = io.WriteString(w, `{"id":"32","state":"open"}`)
 		default:
 			_, _ = io.WriteString(w, `{"object":"claim","id":"7","state":"draft"}`)
 		}

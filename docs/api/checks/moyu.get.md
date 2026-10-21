@@ -61,15 +61,12 @@
 
 ## 3. Galgame 投稿 / 编辑代理 `/galgame`（→ Wiki）
 
+> **编辑者中心(2026-10)**:游戏资料的编辑、修订、PR、回滚、草稿全部归 editor.nextmoe.com,本站只留深链入口;编辑类代理路由均已不存在,已从本表删去。
+
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
 | `GET /api/v1/galgame/mine` | 登录 | `patchH.ListMyGalgames` | 对齐 | 我的投稿（分页 `{items,total}`）|
 | `GET /api/v1/galgame/search/publish` | 登录 | `patchH.SearchGalgameForPublish` | 对齐 | 发布流程内搜索 |
-| `GET /api/v1/galgame/:gid/revisions` | 可选登录 | `patchH.WikiEditProxy` | 保持 | 代理透传；NSFW gate 对 `:gid` fail-closed（实测）|
-| `GET /api/v1/galgame/:gid/revisions/:rev` | 可选登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
-| `GET /api/v1/galgame/:gid/revisions/:rev/diff` | 可选登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
-| `GET /api/v1/galgame/:gid/prs` | 可选登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
-| `GET /api/v1/galgame/:gid/prs/:prid` | 可选登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
 
 > A1 波删除：`GET /galgame/:gid/links`、`GET /galgame/:gid/aliases`（编辑预填读，
 > 无任何 FE 调用方）。同路径的 POST / DELETE 写面保留。

@@ -37,10 +37,7 @@
 
 ## 2. Galgame 编辑代理 `/galgame`（→ Wiki）
 
-| 路径 | 鉴权 | Handler | 状态 | 备注 |
-|---|---|---|---|---|
-| `PUT /api/v1/galgame/:gid/prs/:prid/merge` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
-| `PUT /api/v1/galgame/:gid/prs/:prid/decline` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理 |
+> **编辑者中心(2026-10)**:游戏资料的编辑、修订、PR、回滚、草稿全部归 editor.nextmoe.com,本站只留深链入口;编辑类代理路由均已不存在,已从本表删去。
 
 > **W159 波(N4)**:`PUT /galgame/:gid`(编辑面已外链 kungal,无 UI)与
 > `PUT /galgame/messages/read-state`(无 FE 调用方,表恒 0 行)已删除。

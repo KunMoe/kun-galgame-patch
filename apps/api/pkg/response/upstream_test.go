@@ -47,7 +47,7 @@ func TestUpstreamAnswers(t *testing.T) {
 			&upstream.Error{Service: "catalog", Kind: upstream.Internal, Status: 403, Code: "SCOPE_REQUIRED", Detail: detail},
 			"没有权限", 500, 50000, ""},
 		{"an unclassified local error is a 500", stderrors.New("boom"), "", 500, 50000, ""},
-		{"catalog keeps the code its editor reads",
+		{"catalog keeps its own unavailable code",
 			fmt.Errorf("get work: %w", &upstream.Error{Service: "catalog", Kind: upstream.Unavailable, Status: 502}),
 			"", 503, 50320, ""},
 		{"an unnamed service is a generic 503", &upstream.Error{Service: "store", Kind: upstream.Unavailable}, "", 503, 50300, ""},

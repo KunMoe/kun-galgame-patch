@@ -29,6 +29,4 @@
 
 ## 2. Galgame 投稿代理 `/galgame`（→ Wiki）
 
-| 路径 | 鉴权 | Handler | 状态 | 备注 |
-|---|---|---|---|---|
-| `PATCH /api/v1/galgame/:gid` | 登录 | `patchH.PatchGalgameDraft` | 对齐 | 改草稿投稿（代理 Wiki；草稿态走 PATCH，已发布走 PUT）；路由顺序 literal 先于 `:gid`，无 shadowing |
+> **编辑者中心(2026-10)**:游戏资料的编辑、修订、PR、回滚、草稿全部归 editor.nextmoe.com,本站只留深链入口;编辑类代理路由均已不存在,已从本表删去。
