@@ -20,7 +20,6 @@ var serviceLabel = map[string]string{
 	"store":     "商店服务",
 }
 
-// The frontend's catalog editor reads 50320; the rest are new.
 var unavailableCode = map[string]int{
 	"catalog":   50320,
 	"community": 50321,

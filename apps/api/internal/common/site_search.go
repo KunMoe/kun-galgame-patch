@@ -254,7 +254,7 @@ func (h *CommonHandler) searchResourceLane(
 	}
 
 	// LEFT JOIN, not INNER: a resource whose patch row went missing is still a
-	// row every other list shows, and ScopePatchContentLimit already reads a
+	// row every other list shows, and ScopeListablePatches already reads a
 	// NULL content_limit as "not mirrored yet, let it through".
 	base := h.db.WithContext(ctx).Model(&patchModel.PatchResource{}).
 		Joins("LEFT JOIN patch ON patch.id = patch_resource.galgame_id").
@@ -275,7 +275,7 @@ func (h *CommonHandler) searchResourceLane(
 			OR patch_resource.model_name ILIKE ? OR patch_resource.localization_group_name ILIKE ?)`,
 			like, like, like, like)
 	}
-	base = utils.ScopePatchContentLimit(base, cl)
+	base = utils.ScopeListablePatches(base, cl)
 	base = utils.ScopeExcludedIDs(base, "patch_resource.galgame_id", excluded)
 
 	var total int64

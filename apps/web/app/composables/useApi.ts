@@ -251,9 +251,9 @@ export const useApi = () => {
         code,
         message: fetchError.data?.message ?? 'Request failed',
         // The envelope's own Data, not null: a rejection may carry a body worth
-        // reading — the catalog edit face answers a 422 with the field-level
-        // errors the form pins under each field. Every other error path still
-        // sends null, so this only ever widens what a caller may find.
+        // reading — a deleted work's page answers 410 with why and when. Every
+        // other error path still sends null, so this only ever widens what a
+        // caller may find.
         data: (fetchError.data?.data ?? null) as T
       }
     }
@@ -265,9 +265,8 @@ export const useApi = () => {
       request<T>(endpoint, { method: 'POST', body }),
     put: <T>(endpoint: string, body?: Record<string, unknown>) =>
       request<T>(endpoint, { method: 'PUT', body }),
-    // Some Wiki proxy endpoints (DELETE /galgame/:gid/links|/aliases) take a
-    // JSON `{ id }` body — see docs/galgame_wiki/03-relations.md. body is
-    // optional so existing body-less callers are unaffected.
+    // The admin deletes send a JSON `{ reason }` body; body is optional so
+    // body-less callers are unaffected.
     delete: <T>(endpoint: string, body?: Record<string, unknown>) =>
       request<T>(endpoint, { method: 'DELETE', body }),
     patch: <T>(endpoint: string, body?: Record<string, unknown>) =>

@@ -89,6 +89,56 @@ func TestMergedProblem(t *testing.T) {
 	}
 }
 
+func TestWorkDeletion(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.RequestURI())
+		switch r.URL.Path {
+		case "/v2/catalog/works/1":
+			_, _ = io.WriteString(w, `{"object":"work","id":"1","display_name":"live"}`)
+		case "/v2/catalog/works/2":
+			catalogv2test.Problem(w, r, "ENTITY_DELETED", "work 2 was deleted.", map[string]any{
+				"object": "work", "deleted_reason": "spam_or_test", "deleted_at": "2026-10-23T08:00:00Z",
+			})
+		default:
+			catalogv2test.Problem(w, r, "NOT_FOUND", "No work with this id.", nil)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := catalogv2.New(srv.URL, "nmk_test_x")
+	ctx := context.Background()
+
+	if d, err := c.WorkDeletion(ctx, 1); err != nil || d != nil {
+		t.Fatalf("live work: (%+v, %v), want neither", d, err)
+	}
+	if asked[0] != "/v2/catalog/works/1?nsfw=true" {
+		t.Errorf("asked %s, want the gate open so an nsfw work is not read as a miss", asked[0])
+	}
+	d, err := c.WorkDeletion(ctx, 2)
+	if err != nil || d == nil || d.Reason != "spam_or_test" || d.DeletedAt != "2026-10-23T08:00:00Z" {
+		t.Fatalf("deleted work: (%+v, %v)", d, err)
+	}
+	if _, err := c.WorkDeletion(ctx, 3); !catalogv2.IsNotFound(err) {
+		t.Fatalf("missing work: %v, want a plain miss", err)
+	}
+}
+
+func TestDeletedWorkDetailIsAMiss(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		catalogv2test.Problem(w, r, "ENTITY_DELETED", "work 9 was deleted.", map[string]any{
+			"object": "work", "deleted_reason": "not_a_work", "deleted_at": "2026-10-23T08:00:00Z",
+		})
+	}))
+	t.Cleanup(srv.Close)
+	_, err := catalogv2.New(srv.URL, "nmk_test_x").GetWork(context.Background(), 9, true)
+	if !catalogv2.IsNotFound(err) {
+		t.Fatalf("GetWork on a deleted work: %v, want a miss rather than a 5xx", err)
+	}
+	if d, ok := catalogv2.DeletedIn(err); !ok || d.Reason != "not_a_work" {
+		t.Fatalf("DeletedIn = (%+v, %v)", d, ok)
+	}
+}
+
 func TestPageCursor(t *testing.T) {
 	if catalogv2.PageCursor(1) != "" {
 		t.Fatal("page 1")

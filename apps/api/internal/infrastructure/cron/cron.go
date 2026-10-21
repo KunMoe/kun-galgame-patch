@@ -106,7 +106,7 @@ func Start(
 			if report.Applied() > 0 || !caughtUp {
 				slog.Info("catalog 合并同步完成",
 					"folded", report.Folded, "renumbered", report.Renumbered,
-					"ledger", report.Ledger, "caught_up", caughtUp)
+					"ledger", report.Ledger, "revoked", report.Revoked, "caught_up", caughtUp)
 			}
 		}); err != nil {
 			slog.Error("注册 catalog 合并同步任务失败", "error", err)

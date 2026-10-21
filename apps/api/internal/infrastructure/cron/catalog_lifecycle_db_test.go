@@ -1,0 +1,191 @@
+package cron
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+
+	"kun-galgame-patch-api/pkg/catalogv2"
+	"kun-galgame-patch-api/pkg/upstream"
+	"kun-galgame-patch-api/pkg/utils"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+const (
+	lifecycleUser   = 1499999911
+	deletedPage     = 1499999911
+	livePage        = 1499999912
+	mergedPage      = 1499999913
+	revokedOld      = 1499999914
+	revokedSurvivor = 1499999915
+	notAPage        = 1499999916
+	neverRecorded   = 1499999917
+)
+
+// Runs only against the launcher-provided TEST_DATABASE_DSN, migrated through
+// 051, with `go test -count=1 -p 1`.
+func lifecycleDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_DSN")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_DSN is not set")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var migrated bool
+	if err := db.Raw(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		WHERE table_name = 'patch' AND column_name = 'catalog_deleted_at')`).Scan(&migrated).Error; err != nil || !migrated {
+		t.Fatalf("TEST_DATABASE_DSN is not migrated through 051: %v", err)
+	}
+	clean := func() {
+		db.Exec(`DELETE FROM patch_redirect WHERE old_id BETWEEN ? AND ?`, deletedPage, neverRecorded)
+		db.Exec(`DELETE FROM patch WHERE id BETWEEN ? AND ?`, deletedPage, neverRecorded)
+		db.Exec(`DELETE FROM "user" WHERE id = ?`, lifecycleUser)
+	}
+	clean()
+	t.Cleanup(clean)
+	mustExec(t, db, `INSERT INTO "user" (id, updated) VALUES (?, now())`, lifecycleUser)
+	for _, id := range []int{deletedPage, livePage, mergedPage, revokedSurvivor} {
+		mustExec(t, db, `INSERT INTO patch (id, vndb_id, user_id, updated) VALUES (?, ?, ?, now())`,
+			id, fmt.Sprintf("v-lifecycle-%d", id), lifecycleUser)
+	}
+	return db
+}
+
+func mustExec(t *testing.T, db *gorm.DB, q string, args ...any) {
+	t.Helper()
+	if err := db.Exec(q, args...).Error; err != nil {
+		t.Fatalf("%s: %v", q, err)
+	}
+}
+
+type deletionAnswers map[int64]error
+
+func (a deletionAnswers) WorkDeletion(_ context.Context, id int64) (*catalogv2.Deletion, error) {
+	if err, ok := a[id]; ok {
+		return nil, err
+	}
+	if id == deletedPage {
+		return &catalogv2.Deletion{Reason: "not_a_work", DeletedAt: "2026-10-23T08:00:00Z"}, nil
+	}
+	return nil, nil
+}
+
+func deletionStamp(t *testing.T, db *gorm.DB, id int) (*time.Time, *string) {
+	t.Helper()
+	var row struct {
+		CatalogDeletedAt     *time.Time
+		CatalogDeletedReason *string
+	}
+	if err := db.Raw(`SELECT catalog_deleted_at, catalog_deleted_reason FROM patch WHERE id = ?`, id).
+		Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row.CatalogDeletedAt, row.CatalogDeletedReason
+}
+
+func TestDeletedWorkIsHiddenUntilRestored(t *testing.T) {
+	db := lifecycleDB(t)
+	ctx := context.Background()
+	merged := &upstream.Error{Service: "catalog", Kind: upstream.NotFound, Status: 404, Code: catalogv2.CodeEntityMerged,
+		Cause: &catalogv2.Problem{Code: catalogv2.CodeEntityMerged, CurrentID: "7"}}
+
+	gone := []int64{deletedPage, mergedPage, notAPage}
+	n, err := markDeletedPages(ctx, db, deletionAnswers{mergedPage: merged}, gone)
+	if err != nil || n != 1 {
+		t.Fatalf("markDeletedPages = (%d, %v), want only the deleted work stamped", n, err)
+	}
+	at, reason := deletionStamp(t, db, deletedPage)
+	if at == nil || !at.Equal(time.Date(2026, 10, 23, 8, 0, 0, 0, time.UTC)) || reason == nil || *reason != "not_a_work" {
+		t.Fatalf("stamp = (%v, %v), want catalog's deleted_at and reason", at, reason)
+	}
+	if at, _ := deletionStamp(t, db, mergedPage); at != nil {
+		t.Error("a merged work was stamped deleted; the merge cron moves that page instead")
+	}
+
+	t.Run("the replayed tail asks catalog nothing more", func(t *testing.T) {
+		refuse := deletionAnswers{deletedPage: upstream.Transport("catalog", "GET", context.Canceled)}
+		if n, err := markDeletedPages(ctx, db, refuse, gone[:1]); err != nil || n != 0 {
+			t.Fatalf("replay = (%d, %v), want the stamped page skipped without a probe", n, err)
+		}
+	})
+
+	t.Run("lists leave the page out under every gate", func(t *testing.T) {
+		for _, cl := range []string{utils.ContentLimitSFW, utils.ContentLimitNSFW, utils.ContentLimitAll, ""} {
+			var ids []int
+			q := utils.ScopeListablePatches(db.Table("patch").Select("id"), cl).
+				Where("id BETWEEN ? AND ?", deletedPage, livePage)
+			if err := q.Scan(&ids).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(ids) != 1 || ids[0] != livePage {
+				t.Errorf("content_limit %q listed %v, want only %d", cl, ids, livePage)
+			}
+		}
+	})
+
+	t.Run("a probe that fails stops the tick", func(t *testing.T) {
+		down := deletionAnswers{livePage: &upstream.Error{Service: "catalog", Kind: upstream.Unavailable, Status: 503}}
+		if _, err := markDeletedPages(ctx, db, down, []int64{livePage}); err == nil {
+			t.Fatal("an unavailable catalog was read as a live work; the cursor would move past the deletion")
+		}
+	})
+
+	n, err = clearRestoredPages(db, []int64{deletedPage, livePage})
+	if err != nil || n != 1 {
+		t.Fatalf("clearRestoredPages = (%d, %v), want the restored page cleared", n, err)
+	}
+	if at, reason := deletionStamp(t, db, deletedPage); at != nil || reason != nil {
+		t.Fatalf("stamp after restore = (%v, %v), want none", at, reason)
+	}
+}
+
+func TestRevokedMergeDropsTheRedirect(t *testing.T) {
+	db := lifecycleDB(t)
+	mustExec(t, db, `INSERT INTO patch_redirect (old_id, new_id, scope) VALUES (?, ?, 'merge'), (?, ?, 'legacy')`,
+		revokedOld, revokedSurvivor, revokedOld, revokedSurvivor)
+
+	items := []catalogv2.Redirect{
+		{OldID: revokedOld, CurrentID: revokedOld, Revoked: true},
+		{OldID: neverRecorded, CurrentID: neverRecorded, Revoked: true},
+	}
+
+	var dry MergeSyncReport
+	if err := applyRedirects(db, items, false, &dry); err != nil {
+		t.Fatal(err)
+	}
+	if dry.Revoked != 1 || dry.Skipped != 1 {
+		t.Fatalf("dry run = %+v, want one revoke and one row this site never recorded", dry)
+	}
+	if ledger, _ := mergeLedger(db, []int{revokedOld}); ledger[revokedOld] != revokedSurvivor {
+		t.Fatal("a dry run deleted the redirect")
+	}
+
+	var report MergeSyncReport
+	if err := applyRedirects(db, items, true, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Revoked != 1 || report.Applied() != 1 {
+		t.Fatalf("report = %+v", report)
+	}
+	if ledger, _ := mergeLedger(db, []int{revokedOld}); len(ledger) != 0 {
+		t.Fatalf("merge ledger = %v, want /galgame/%d to stop redirecting", ledger, revokedOld)
+	}
+	var legacy int64
+	db.Raw(`SELECT count(*) FROM patch_redirect WHERE scope = 'legacy' AND old_id = ?`, revokedOld).Scan(&legacy)
+	if legacy != 1 {
+		t.Error("the revoke took the legacy row too; /patch/<n> is a different namespace")
+	}
+
+	var replay MergeSyncReport
+	if err := applyRedirects(db, items[:1], true, &replay); err != nil || replay.Applied() != 0 {
+		t.Fatalf("replayed tail = (%+v, %v), want nothing left to do", replay, err)
+	}
+}

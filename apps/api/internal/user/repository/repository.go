@@ -53,7 +53,7 @@ func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty 
 	if !includeEmpty {
 		base = base.Where("resource_count > 0")
 	}
-	base = utils.ScopePatchContentLimit(base, contentLimit)
+	base = utils.ScopeListablePatches(base, contentLimit)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -126,7 +126,7 @@ func (r *UserRepository) favoritesScope(patchIDs []int, includeEmpty bool, conte
 	if !includeEmpty {
 		base = base.Where("resource_count > 0")
 	}
-	return utils.ScopePatchContentLimit(base, contentLimit)
+	return utils.ScopeListablePatches(base, contentLimit)
 }
 
 func (r *UserRepository) GetUserContributions(userID, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
@@ -137,7 +137,7 @@ func (r *UserRepository) GetUserContributions(userID, offset, limit int, include
 	if !includeEmpty {
 		base = base.Where("resource_count > 0")
 	}
-	base = utils.ScopePatchContentLimit(base, contentLimit)
+	base = utils.ScopeListablePatches(base, contentLimit)
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}

@@ -91,10 +91,10 @@ func TestDetailReadsGetTheShortTTL(t *testing.T) {
 	}
 }
 
-// claim-events drives an incremental cursor loop and proposals is what an editor
-// reloads after submitting an edit; a cached page on either is a correctness
+// claim-events drives an incremental cursor loop and proposals counts the merges
+// a creator application is judged on; a cached page on either is a correctness
 // bug, not a stale render.
-func TestCursorAndEditorLanesAreNeverCached(t *testing.T) {
+func TestCursorAndProposalLanesAreNeverCached(t *testing.T) {
 	hits := 0
 	c, mr := cachedClient(t, func(w http.ResponseWriter, r *http.Request) {
 		hits++

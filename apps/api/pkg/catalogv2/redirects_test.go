@@ -64,6 +64,21 @@ func TestRedirectsReadsTheMergeFeed(t *testing.T) {
 		}
 	})
 
+	t.Run("an undone merge arrives revoked, pointing at itself", func(t *testing.T) {
+		var q url.Values
+		c := redirectsServer(t, `{"object":"list","items":[
+			{"object":"redirect","target_object":"work","old_id":"222199","current_id":"222199","merged_at":"2026-10-22T02:00:00Z","revoked":true},
+			{"object":"redirect","target_object":"work","old_id":"6","current_id":"7","merged_at":"2026-10-22T02:00:01Z"}
+		]}`, &q)
+		page, err := c.Redirects(ctx, "", 100)
+		if err != nil {
+			t.Fatalf("Redirects: %v", err)
+		}
+		if len(page.Items) != 2 || !page.Items[0].Revoked || page.Items[0].CurrentID != 222199 || page.Items[1].Revoked {
+			t.Fatalf("items = %+v, want the first revoked and the second standing", page.Items)
+		}
+	})
+
 	t.Run("an unusable id is dropped rather than read as zero", func(t *testing.T) {
 		var q url.Values
 		c := redirectsServer(t, `{"object":"list","items":[

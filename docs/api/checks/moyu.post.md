@@ -38,12 +38,12 @@
 
 ## 3. Galgame 投稿 / 编辑代理 `/galgame`（→ Wiki）
 
+> **编辑者中心(2026-10)**:游戏资料的编辑、修订、PR、回滚、草稿全部归 editor.nextmoe.com,本站只留深链入口;编辑类代理路由均已不存在,已从本表删去。
+
 | 路径 | 鉴权 | Handler | 状态 | 备注 |
 |---|---|---|---|---|
 | `POST /api/v1/galgame/submit` | 登录 | `patchH.SubmitGalgame` | 对齐 | 代理 Wiki，回传 20003/4/6/7/8/9 |
 | `POST /api/v1/galgame/:gid/claim` | 登录 | `patchH.ClaimGalgame` | 对齐 | +3 萌萌点；RegisterClaimedGalgame 已存在则 early-return，无重复奖励（实测）|
-| `POST /api/v1/galgame/:gid/revert` | 登录 | `patchH.WikiEditProxy` | 保持 | 代理（Wiki 强制 admin/mod）|
-| `POST /api/v1/galgame/:gid/prs` | 登录 | `patchH.WikiPRSubmit` | 对齐 | JSON / multipart(`data`+`file` banner) 均支持，10MB 上限 |
 
 > **W159 波(N4)**:`/galgame/:gid/links`、`/galgame/:gid/aliases` 两组写路由已删除 ——
 > `useGalgameEdit` 的四个函数自始至终零调用点,没有任何 UI 驱动它们,

@@ -233,3 +233,21 @@ func TestIdentityLinks(t *testing.T) {
 		t.Errorf("官网 = %q, want the official site", got)
 	}
 }
+
+func TestIntroSourceNameCreditsCatalogsOwnLanesToTheForum(t *testing.T) {
+	for source, want := range map[string]string{
+		"curated":      "",
+		"user":         "",
+		"nextmoe":      "",
+		"derived":      "",
+		" Curated ":    "",
+		"":             "",
+		"bangumi":      "Bangumi",
+		"vndb":         "VNDB",
+		"erogamescape": "批评空间",
+	} {
+		if got := introSourceName(source); got != want {
+			t.Errorf("introSourceName(%q) = %q, want %q", source, got, want)
+		}
+	}
+}

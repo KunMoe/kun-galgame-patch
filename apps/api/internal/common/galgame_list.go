@@ -133,7 +133,7 @@ func (h *CommonHandler) GetGalgameList(c fiber.Ctx) error {
 	if !req.Indexed && !utils.IncludeEmptyGalgames(c) {
 		base = base.Where("resource_count > 0")
 	}
-	base = utils.ScopePatchContentLimit(base, cl)
+	base = utils.ScopeListablePatches(base, cl)
 	base = utils.ScopeExcludedIDs(base, "patch.id", excluded)
 
 	var total int64

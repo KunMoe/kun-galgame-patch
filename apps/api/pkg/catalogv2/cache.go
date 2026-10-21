@@ -21,8 +21,8 @@ const (
 // exclusions, because the lanes that must never be cached are exactly the ones
 // a later reader would forget to exclude: /v2/catalog/changes and
 // /v2/catalog/claim-events drive incremental cursor loops where a stale page
-// silently skips a window, and /v2/catalog/proposals is what an editor reloads
-// to see the edit they just submitted.
+// silently skips a window, and /v2/catalog/proposals counts the merges that
+// decide whether a creator application is accepted.
 //
 // Safe only because the S2S GET path sends no request header that varies by
 // caller — the URL alone determines the response, and every face spells the

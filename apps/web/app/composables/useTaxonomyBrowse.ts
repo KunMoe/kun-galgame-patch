@@ -1,15 +1,9 @@
-// useTaxonomyBrowse — typed client for the two PUBLIC taxonomy browse pages,
-// which is all that is left of what this composable once covered. It was named
-// useGalgameEdit until wave 161: galgame metadata editing (revision history,
-// edit-request PRs, direct edit) moved to kungal in the "编辑面归 kungal" wave,
-// and the taxonomy STAFF console plus the UI-less links/aliases relation writes
-// were retired in wave 159 (N4) — the catalog owns the vocabulary now and
-// kungal hosts the one staff surface. Nothing here edits anything any more, so
-// the old name only misdirected whoever came looking for the edit face.
+// useTaxonomyBrowse — typed client for the two PUBLIC taxonomy browse pages.
+// Game information is edited on the NextMoe editor, never here.
 //
 // Both calls go through OUR backend proxy (/api/v1/...), which composes the
 // page from the catalog and relays {code,message,data} (see
-// internal/patch/handler/galgame_edit.go).
+// internal/patch/handler/taxonomy_proxy.go).
 
 // BrowseTag / BrowseOfficial are the PUBLIC taxonomy pages' entities. Their ids
 // are CATALOG ids since wave A2-2 (P2 / R1).

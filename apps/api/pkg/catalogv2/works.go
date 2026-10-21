@@ -2,6 +2,7 @@ package catalogv2
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
@@ -153,6 +154,17 @@ func (c *Client) GetWork(ctx context.Context, id int64, nsfw bool) (*Work, error
 		return nil, err
 	}
 	return &out, nil
+}
+
+// WorkDeletion is nil with no error for a work still served. nsfw=true is not
+// the reader's gate: closed, an nsfw work answers 404 and reads as a miss.
+func (c *Client) WorkDeletion(ctx context.Context, id int64) (*Deletion, error) {
+	var out json.RawMessage
+	err := c.get(ctx, "/v2/catalog/works/"+FormatID(id)+"?nsfw=true", &out)
+	if d, ok := DeletedIn(err); ok {
+		return &d, nil
+	}
+	return nil, err
 }
 
 func (c *Client) WorkByRef(ctx context.Context, source, externalID string, nsfw bool) (*Work, error) {

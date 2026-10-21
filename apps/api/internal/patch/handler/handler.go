@@ -175,6 +175,9 @@ func (h *PatchHandler) GetPatch(c fiber.Ctx) error {
 		}
 		return h.patchGone(c, id)
 	}
+	if reason, at, deleted := stampedDeletion(patch); deleted {
+		return workDeleted(c, reason, at)
+	}
 
 	enriched := enricher.EnrichPatch(c.Context(), h.galgame, h.users, patch, cl)
 	if enriched == nil {
