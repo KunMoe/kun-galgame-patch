@@ -47,10 +47,16 @@ export const ADMIN_MENU: KunAdminMenuItem[] = [
   { name: 'Galgame 列表', href: '/admin/galgame', icon: 'lucide:gamepad-2' },
   { name: '补丁资源管理', href: '/admin/resource', icon: 'lucide:puzzle' },
   { name: '孤儿补丁', href: '/admin/orphans', icon: 'lucide:unlink' },
+  { name: '合并记录', href: '/admin/merges', icon: 'lucide:history' },
   { name: '评论管理', href: '/admin/comment', icon: 'lucide:message-square' },
   { name: '内容审核', href: '/admin/moderation', icon: 'lucide:shield-alert' },
   { name: '文档管理', href: '/admin/doc', icon: 'lucide:notebook-pen' },
-  { name: '用户清除', href: '/admin/user-purge', icon: 'lucide:user-x', adminOnly: true },
+  {
+    name: '用户清除',
+    href: '/admin/user-purge',
+    icon: 'lucide:user-x',
+    adminOnly: true
+  },
   { name: '管理日志', href: '/admin/log', icon: 'lucide:file-clock' },
   // 网站设置 GET is moderator-readable (only its PUT toggles are admin-gated
   // server-side), so it stays visible to moderators — not adminOnly.

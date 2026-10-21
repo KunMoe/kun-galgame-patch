@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strconv"
 
 	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -105,7 +107,7 @@ func RunCatalogMergeSync(
 		if ferr != nil {
 			return report, false, fmt.Errorf("fetch redirects feed: %w", ferr)
 		}
-		if aerr := applyRedirects(db, feed.Items, apply, &report); aerr != nil {
+		if aerr := applyRedirects(db, feed.Items, apply, &report, vndbLookup(ctx, catalog)); aerr != nil {
 			return report, false, aerr
 		}
 		// A short page carries no next cursor, so the watermark stays at the
@@ -131,6 +133,7 @@ func applyRedirects(
 	items []catalogv2.Redirect,
 	apply bool,
 	report *MergeSyncReport,
+	vndbOf func(int) string,
 ) error {
 	if len(items) == 0 {
 		return nil
@@ -158,7 +161,7 @@ func applyRedirects(
 				continue
 			}
 			report.Scanned++
-			if err := revokeRedirect(db, oldID, ledger, pages, apply, report); err != nil {
+			if err := revokeRedirect(db, oldID, ledger, pages, apply, report, vndbOf); err != nil {
 				return err
 			}
 			continue
@@ -200,9 +203,9 @@ func applyRedirects(
 }
 
 // revokeRedirect follows an undone merge: catalog brought oldID back under its
-// own id, so /galgame/<old> must stop sending readers to the survivor. A page
-// this site renumbered or folded when the merge arrived stays where it went:
-// the resources on it cannot be told apart from ones published there since.
+// own id, so /galgame/<old> stops sending readers to the survivor, and what the
+// merge moved goes back by the record it left (052). A merge applied before the
+// records existed can only lose its redirect.
 func revokeRedirect(
 	db *gorm.DB,
 	oldID int,
@@ -210,6 +213,7 @@ func revokeRedirect(
 	pages map[int]bool,
 	apply bool,
 	report *MergeSyncReport,
+	vndbOf func(int) string,
 ) error {
 	survivor, recorded := ledger[oldID]
 	if !recorded {
@@ -217,22 +221,59 @@ func revokeRedirect(
 		return nil
 	}
 	report.Revoked++
-	if apply {
-		if err := db.Exec(
+	delete(ledger, oldID)
+	if !apply {
+		return nil
+	}
+
+	var undone *patchMerge.UndoReport
+	var found bool
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
 			`DELETE FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, oldID,
 		).Error; err != nil {
-			return fmt.Errorf("revoke merge %d: %w", oldID, err)
+			return err
 		}
+		var err error
+		undone, found, err = patchMerge.Undo(tx, oldID, vndbOf)
+		return err
+	}); err != nil {
+		return fmt.Errorf("revoke merge %d: %w", oldID, err)
 	}
-	delete(ledger, oldID)
-	if pages[survivor] && !pages[oldID] {
-		slog.Warn("catalog 撤销了合并：若本站当时把该页并入了存续页，其资源不会自动搬回，请人工核对",
-			"old_id", oldID, "survivor", survivor, "applied", apply)
+
+	switch {
+	case !found:
+		if pages[survivor] && !pages[oldID] {
+			slog.Warn("catalog 撤销了合并：该合并早于合并记录(052)，本站当时搬动的数据无法自动搬回，请人工核对",
+				"old_id", oldID, "survivor", survivor)
+		}
+	case undone.Incomplete():
+		slog.Warn("catalog 撤销了合并：部分数据没能搬回，见后台合并记录",
+			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID,
+			"conflicts", undone.Conflicts, "notes", undone.Notes)
+	default:
+		slog.Info("catalog 撤销了合并：本站数据已搬回",
+			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID)
 	}
+	now, err := existingPages(db, []int{oldID, survivor})
+	if err != nil {
+		return err
+	}
+	pages[oldID], pages[survivor] = now[oldID], now[survivor]
 	return nil
 }
 
+var recordAction = map[redirectAction]patchMerge.Action{
+	redirectRenumber: patchMerge.ActionRenumber,
+	redirectFold:     patchMerge.ActionFold,
+	redirectLedger:   patchMerge.ActionLedger,
+}
+
 func applyRedirect(tx *gorm.DB, action redirectAction, oldID, newID int) error {
+	recordID, err := patchMerge.Begin(tx, recordAction[action], oldID, newID)
+	if err != nil {
+		return err
+	}
 	switch action {
 	case redirectRenumber:
 		// The children follow on their own -- migration 037 made every foreign
@@ -249,6 +290,19 @@ func applyRedirect(tx *gorm.DB, action redirectAction, oldID, newID int) error {
 		}
 		if err := patchMerge.Recount(tx, newID); err != nil {
 			return fmt.Errorf("recount: %w", err)
+		}
+	}
+
+	if err := patchMerge.Finish(tx, recordID, newID); err != nil {
+		return err
+	}
+	if action != redirectLedger {
+		// The page trigger ignores a change of id, so neither number would be
+		// presented again until the daily reconcile.
+		for _, id := range []int{oldID, newID} {
+			if err := tx.Exec(`SELECT anchor_presentation_enqueue(1::smallint, ?)`, strconv.Itoa(id)).Error; err != nil {
+				return fmt.Errorf("enqueue presentation %d: %w", id, err)
+			}
 		}
 	}
 
@@ -318,3 +372,24 @@ func writeMergeCursor(db *gorm.DB, cursor string) error {
 		SET last_cursor = EXCLUDED.last_cursor, updated_at = EXCLUDED.updated_at
 	`, mergeSyncCronName, cursor).Error
 }
+
+// vndbLookup names a work's VNDB id from catalog, for a page an undone merge
+// has to create for the survivor. "" falls back to the placeholder.
+func vndbLookup(ctx context.Context, catalog *catalogv2.Client) func(int) string {
+	return func(id int) string {
+		page, err := catalog.ListWorks(ctx, catalogv2.WorksQuery{
+			IDs: []int64{int64(id)}, NSFW: true, Include: []string{"refs"},
+		})
+		if err != nil || len(page.Items) == 0 || page.Items[0].Refs == nil {
+			return ""
+		}
+		for _, r := range *page.Items[0].Refs {
+			if r.Source == "vndb" && vndbWorkID.MatchString(r.ExternalID) {
+				return r.ExternalID
+			}
+		}
+		return ""
+	}
+}
+
+var vndbWorkID = regexp.MustCompile(`^v[0-9]+$`)

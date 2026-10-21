@@ -229,6 +229,10 @@ func (s *AdminService) GetStatsSum() *dto.AdminStatsSumResponse {
 	}
 }
 
+func (s *AdminService) ListMergeRecords(page, limit int, issuesOnly bool) ([]repository.MergeRecord, int64, error) {
+	return s.repo.ListMergeRecords((page-1)*limit, limit, issuesOnly)
+}
+
 func (s *AdminService) GetLogs(page, limit int) ([]adminModel.AdminLog, int64, error) {
 	return s.repo.GetLogs((page-1)*limit, limit)
 }

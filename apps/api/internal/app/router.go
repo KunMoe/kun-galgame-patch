@@ -257,6 +257,7 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Get("/galgame", a.AdminHandler.GetGalgame)
 
 	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
+	adminRoutes.Get("/catalog-merges", a.AdminHandler.GetMergeRecords)
 
 	adminRoutes.Get("/doc", a.DocHandler.AdminListPosts)
 	adminRoutes.Get("/doc/:id", a.DocHandler.AdminGetPost)
