@@ -85,10 +85,17 @@ type Record struct {
 	Action Action
 }
 
-// OpenRecord is the latest merge of oldID not undone yet, or nil: the merge
-// predates the records (052) or was undone already.
-func OpenRecord(db *gorm.DB, oldID int) (*Record, error) {
-	return findRecord(db, `old_id = ?`, oldID, "")
+// OpenRecords are the merges of oldID not undone yet, newest first. None: the
+// merge predates the records (052) or was undone already.
+func OpenRecords(db *gorm.DB, oldID int) ([]Record, error) {
+	var recs []Record
+	if err := db.Raw(`
+		SELECT id, old_id, new_id, action FROM patch_merge_record
+		WHERE old_id = ? AND undone_at IS NULL ORDER BY id DESC`, oldID,
+	).Scan(&recs).Error; err != nil {
+		return nil, fmt.Errorf("find merge records: %w", err)
+	}
+	return recs, nil
 }
 
 // FailedRecord is an open record whose last undo failed, by id: the only kind

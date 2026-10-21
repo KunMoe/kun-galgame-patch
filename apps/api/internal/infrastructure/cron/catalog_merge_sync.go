@@ -226,64 +226,78 @@ func revokeRedirect(
 		return nil
 	}
 
-	rec, err := patchMerge.OpenRecord(db, oldID)
+	// Every open record of the id, newest first: a redirect catalog re-pointed
+	// while the merge stood (A's merge into B re-points X→A at B) left a record
+	// of its own that moved nothing, and the record that moved X's rows is an
+	// older one.
+	recs, err := patchMerge.OpenRecords(db, oldID)
 	if err != nil {
 		return err
 	}
 	// Outside the transaction: a catalog call must not hold the undo's locks.
-	vndb := ""
-	if rec != nil && rec.Action == patchMerge.ActionRenumber && vndbOf != nil {
-		vndb = vndbOf(rec.NewID)
+	vndb := map[int64]string{}
+	for _, rec := range recs {
+		if rec.Action == patchMerge.ActionRenumber && vndbOf != nil {
+			vndb[rec.ID] = vndbOf(rec.NewID)
+		}
 	}
 
-	var undone *patchMerge.UndoReport
-	var undoErr error
+	type outcome struct {
+		rec    patchMerge.Record
+		report *patchMerge.UndoReport
+		err    error
+	}
+	var outcomes []outcome
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(
 			`DELETE FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, oldID,
 		).Error; err != nil {
 			return err
 		}
-		if rec == nil {
-			return nil
+		for i, rec := range recs {
+			// One undo that cannot finish must not hold back every merge and
+			// undo queued behind it: the drain would stop on this row on every
+			// tick.
+			sp := fmt.Sprintf("merge_undo_%d", i)
+			if err := tx.SavePoint(sp).Error; err != nil {
+				return err
+			}
+			report, uerr := patchMerge.Undo(tx, &rec, vndb[rec.ID])
+			if uerr != nil {
+				if err := tx.RollbackTo(sp).Error; err != nil {
+					return err
+				}
+				if errors.Is(uerr, patchMerge.ErrAlreadyUndone) {
+					continue
+				}
+				if err := patchMerge.MarkFailed(tx, rec.ID, uerr); err != nil {
+					return err
+				}
+			}
+			outcomes = append(outcomes, outcome{rec, report, uerr})
 		}
-		// One undo that cannot finish must not hold back every merge and undo
-		// queued behind it: the drain would stop on this row on every tick.
-		if err := tx.SavePoint("merge_undo").Error; err != nil {
-			return err
-		}
-		undone, undoErr = patchMerge.Undo(tx, rec, vndb)
-		if undoErr == nil {
-			return nil
-		}
-		if errors.Is(undoErr, patchMerge.ErrAlreadyUndone) {
-			return tx.RollbackTo("merge_undo").Error
-		}
-		if err := tx.RollbackTo("merge_undo").Error; err != nil {
-			return err
-		}
-		return patchMerge.MarkFailed(tx, rec.ID, undoErr)
+		return nil
 	}); err != nil {
 		return fmt.Errorf("revoke merge %d: %w", oldID, err)
 	}
 
-	switch {
-	case errors.Is(undoErr, patchMerge.ErrAlreadyUndone):
-	case rec == nil:
-		if pages[survivor] && !pages[oldID] {
-			slog.Warn("catalog 撤销了合并：该合并早于合并记录(052)，本站当时搬动的数据无法自动搬回，请人工核对",
-				"old_id", oldID, "survivor", survivor)
+	if len(recs) == 0 && pages[survivor] && !pages[oldID] {
+		slog.Warn("catalog 撤销了合并：该合并早于合并记录(052)，本站当时搬动的数据无法自动搬回，请人工核对",
+			"old_id", oldID, "survivor", survivor)
+	}
+	for _, o := range outcomes {
+		switch {
+		case o.err != nil:
+			slog.Error("catalog 撤销了合并，但本站搬回失败：已记入后台合并记录，可在后台重试",
+				"old_id", oldID, "survivor", o.rec.NewID, "record_id", o.rec.ID, "error", o.err)
+		case o.report.Incomplete():
+			slog.Warn("catalog 撤销了合并：部分数据没能搬回，见后台合并记录",
+				"old_id", oldID, "survivor", o.rec.NewID, "record_id", o.rec.ID,
+				"conflicts", o.report.Conflicts, "moved_elsewhere", o.report.MovedElsewhere, "notes", o.report.Notes)
+		default:
+			slog.Info("catalog 撤销了合并：本站数据已搬回",
+				"old_id", oldID, "survivor", o.rec.NewID, "record_id", o.rec.ID)
 		}
-	case undoErr != nil:
-		slog.Error("catalog 撤销了合并，但本站搬回失败：已记入后台合并记录，可在后台重试",
-			"old_id", oldID, "survivor", survivor, "record_id", rec.ID, "error", undoErr)
-	case undone.Incomplete():
-		slog.Warn("catalog 撤销了合并：部分数据没能搬回，见后台合并记录",
-			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID,
-			"conflicts", undone.Conflicts, "moved_elsewhere", undone.MovedElsewhere, "notes", undone.Notes)
-	default:
-		slog.Info("catalog 撤销了合并：本站数据已搬回",
-			"old_id", oldID, "survivor", survivor, "record_id", undone.RecordID)
 	}
 	now, err := existingPages(db, []int{oldID, survivor})
 	if err != nil {
