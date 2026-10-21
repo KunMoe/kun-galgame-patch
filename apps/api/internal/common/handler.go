@@ -90,7 +90,7 @@ const homeGalgameCount = 12
 
 // EnrichPatches drops the rows the catalog answers as outside the reader's
 // content limit, and it runs after the SQL LIMIT — so asking for 12 rendered 6
-// under the default SFW gate. ScopePatchContentLimit now filters the axis in
+// under the default SFW gate. ScopeListablePatches now filters the axis in
 // SQL, but a row catalog has not been mirrored for yet still passes it and can
 // still be dropped, so the strip keeps reading wider and cutting. The extra
 // rows cost nothing: enrichment batches up to 100 ids in one catalog call
@@ -118,7 +118,7 @@ func (h *CommonHandler) GetHome(c fiber.Ctx) error {
 	if !utils.IncludeEmptyGalgames(c) {
 		patchQuery = patchQuery.Where("resource_count > 0")
 	}
-	patchQuery = utils.ScopePatchContentLimit(patchQuery, cl)
+	patchQuery = utils.ScopeListablePatches(patchQuery, cl)
 	patchQuery = utils.ScopeExcludedIDs(patchQuery, "patch.id", excluded)
 	patchQuery.Find(&patches)
 	resourceQuery := h.db.Model(&patchModel.PatchResource{}).Where("status = 0").Order("created DESC, id DESC").Limit(6)
@@ -498,7 +498,7 @@ func (h *CommonHandler) GetPatchRanking(c fiber.Ctx) error {
 	if !utils.IncludeEmptyGalgames(c) {
 		q = q.Where("resource_count > 0")
 	}
-	q = utils.ScopePatchContentLimit(q, cl)
+	q = utils.ScopeListablePatches(q, cl)
 	q = utils.ScopeExcludedIDs(q, "patch.id", excluded)
 	err := q.
 		Order(fmt.Sprintf("%s DESC, id DESC", column)).

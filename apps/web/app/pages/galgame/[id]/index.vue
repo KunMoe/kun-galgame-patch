@@ -19,13 +19,22 @@ const galgameId = computed(() => Number(route.params.id))
 
 const coversOpen = ref(false)
 
-type PatchHeaderOrMove = PatchHeader & { moved_to?: number }
+type PatchHeaderOrMove = PatchHeader & {
+  moved_to?: number
+  deleted?: WorkDeletion
+}
 
 const { data: header } = await useAsyncData<PatchHeaderOrMove | null>(
   () => `patch-${galgameId.value}`,
   async () => {
-    const res = await api.get<PatchHeaderOrMove>(`/patch/${galgameId.value}`)
-    return res.code === 0 ? res.data : null
+    const res = await api.get<PatchHeaderOrMove | WorkDeletion>(
+      `/patch/${galgameId.value}`
+    )
+    if (res.code === 0) return res.data as PatchHeaderOrMove
+    if (res.code === WORK_DELETED_CODE) {
+      return { deleted: res.data as WorkDeletion } as PatchHeaderOrMove
+    }
+    return null
   }
 )
 
@@ -51,7 +60,15 @@ watch(header, (v) => {
   if (to > 0) hopTo(to)
 })
 
-const patch = computed(() => (header.value?.moved_to ? null : header.value))
+const deletion = computed(() => header.value?.deleted ?? null)
+if (deletion.value) {
+  const event = useRequestEvent()
+  if (event) setResponseStatus(event, 410)
+}
+
+const patch = computed(() =>
+  header.value?.moved_to || header.value?.deleted ? null : header.value
+)
 
 const chipUserId = computed(
   () => patch.value?.creator?.id ?? patch.value?.user?.id ?? 0
@@ -404,6 +421,8 @@ const commentLoading = ref(false)
       </KunTabPanel>
     </KunTabPanels>
   </div>
+
+  <GalgameDeleted v-else-if="deletion" :deletion="deletion" />
 
   <div
     v-else-if="shouldShowNsfwConfirm"

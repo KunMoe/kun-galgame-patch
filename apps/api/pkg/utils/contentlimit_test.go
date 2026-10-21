@@ -29,12 +29,12 @@ func dryRunDB(t *testing.T) *gorm.DB {
 func sqlOf(t *testing.T, db *gorm.DB, contentLimit string) string {
 	t.Helper()
 	var rows []patchRow
-	stmt := ScopePatchContentLimit(db.Model(&patchRow{}), contentLimit).
+	stmt := ScopeListablePatches(db.Model(&patchRow{}), contentLimit).
 		Session(&gorm.Session{DryRun: true}).Find(&rows).Statement
 	return db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)
 }
 
-func TestScopePatchContentLimit(t *testing.T) {
+func TestScopeListablePatches(t *testing.T) {
 	db := dryRunDB(t)
 
 	t.Run("an unmirrored row passes every gate", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestScopePatchContentLimit(t *testing.T) {
 
 	t.Run("the same builder carries the predicate into COUNT", func(t *testing.T) {
 		var n int64
-		stmt := ScopePatchContentLimit(db.Model(&patchRow{}), ContentLimitSFW).
+		stmt := ScopeListablePatches(db.Model(&patchRow{}), ContentLimitSFW).
 			Session(&gorm.Session{DryRun: true}).Count(&n).Statement
 		got := db.Dialector.Explain(stmt.SQL.String(), stmt.Vars...)
 		if !strings.Contains(got, "count(*)") || !strings.Contains(got, "content_limit") {

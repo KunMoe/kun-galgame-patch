@@ -15,6 +15,8 @@ type Redirect struct {
 	OldID     int64
 	CurrentID int64
 	MergedAt  string
+	// The merge was undone: OldID is live again and CurrentID equals it.
+	Revoked bool
 }
 
 type RedirectPage struct {
@@ -28,6 +30,7 @@ type redirectWire struct {
 	OldID        string `json:"old_id"`
 	CurrentID    string `json:"current_id"`
 	MergedAt     string `json:"merged_at"`
+	Revoked      bool   `json:"revoked"`
 }
 
 // Redirects drains catalog's merge feed: every id catalog merged away, oldest
@@ -40,10 +43,11 @@ type redirectWire struct {
 // person id read as a work id folds one page into an unrelated other.
 //
 // current_id arrives already flattened -- catalog rewrites older rows when the
-// target of a merge is itself merged, so no chain reaches a consumer. It
-// rewrites them in place without touching merged_at, which means the rewrite
-// does not resurface here: a consumer that stores the mapping has to flatten
-// its own copy at the same moment or keep a hop that has since gone stale.
+// target of a merge is itself merged, so no chain reaches a consumer. merged_at
+// is when the row last changed (created, re-pointed or revoked), so every
+// change surfaces again at the tail and the mapping is upserted by old_id.
+// Before spec 2.62.0 a re-point kept its merged_at and never surfaced, which
+// is why the merge cron still flattens its own copy too.
 func (c *Client) Redirects(ctx context.Context, cursor string, limit int) (RedirectPage, error) {
 	if limit <= 0 || limit > RedirectsMaxLimit {
 		limit = RedirectsMaxLimit
@@ -72,7 +76,7 @@ func (c *Client) Redirects(ctx context.Context, cursor string, limit int) (Redir
 			continue
 		}
 		out.Items = append(out.Items, Redirect{
-			OldID: oldID, CurrentID: currentID, MergedAt: w.MergedAt,
+			OldID: oldID, CurrentID: currentID, MergedAt: w.MergedAt, Revoked: w.Revoked,
 		})
 	}
 	if len(foreign) > 0 {

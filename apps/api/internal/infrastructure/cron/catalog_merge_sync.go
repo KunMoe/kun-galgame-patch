@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -68,11 +69,12 @@ type MergeSyncReport struct {
 	Folded     int
 	Renumbered int
 	Ledger     int
+	Revoked    int
 	Unchanged  int
 	Skipped    int
 }
 
-func (r MergeSyncReport) Applied() int { return r.Folded + r.Renumbered + r.Ledger }
+func (r MergeSyncReport) Applied() int { return r.Folded + r.Renumbered + r.Ledger + r.Revoked }
 
 // RunCatalogMergeSync follows catalog's work merges. patch.id IS the catalog
 // work id, so a work merged away leaves its page on a number that stopped
@@ -151,6 +153,16 @@ func applyRedirects(
 
 	for i := range items {
 		oldID, newID := int(items[i].OldID), int(items[i].CurrentID)
+		if items[i].Revoked {
+			if oldID <= 0 {
+				continue
+			}
+			report.Scanned++
+			if err := revokeRedirect(db, oldID, ledger, pages, apply, report); err != nil {
+				return err
+			}
+			continue
+		}
 		if oldID <= 0 || newID <= 0 || oldID == newID {
 			continue
 		}
@@ -183,6 +195,39 @@ func applyRedirects(
 			pages[newID] = true
 			delete(pages, oldID)
 		}
+	}
+	return nil
+}
+
+// revokeRedirect follows an undone merge: catalog brought oldID back under its
+// own id, so /galgame/<old> must stop sending readers to the survivor. A page
+// this site renumbered or folded when the merge arrived stays where it went:
+// the resources on it cannot be told apart from ones published there since.
+func revokeRedirect(
+	db *gorm.DB,
+	oldID int,
+	ledger map[int]int,
+	pages map[int]bool,
+	apply bool,
+	report *MergeSyncReport,
+) error {
+	survivor, recorded := ledger[oldID]
+	if !recorded {
+		report.Skipped++
+		return nil
+	}
+	report.Revoked++
+	if apply {
+		if err := db.Exec(
+			`DELETE FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, oldID,
+		).Error; err != nil {
+			return fmt.Errorf("revoke merge %d: %w", oldID, err)
+		}
+	}
+	delete(ledger, oldID)
+	if pages[survivor] && !pages[oldID] {
+		slog.Warn("catalog 撤销了合并：若本站当时把该页并入了存续页，其资源不会自动搬回，请人工核对",
+			"old_id", oldID, "survivor", survivor, "applied", apply)
 	}
 	return nil
 }

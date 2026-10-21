@@ -97,6 +97,11 @@ type Patch struct {
 	// loading this column blank a mirrored verdict back to NULL.
 	ContentLimit *string `gorm:"column:content_limit;->" json:"-"`
 
+	// Stamped by the same cron while catalog has the work deleted (051), and
+	// read-only for the same reason.
+	CatalogDeletedAt     *time.Time `gorm:"column:catalog_deleted_at;->" json:"-"`
+	CatalogDeletedReason *string    `gorm:"column:catalog_deleted_reason;->" json:"-"`
+
 	IsStub bool `gorm:"default:false" json:"-"`
 
 	Published bool `gorm:"default:false" json:"-"`

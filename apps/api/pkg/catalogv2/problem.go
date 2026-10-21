@@ -14,29 +14,18 @@ const service = "catalog"
 // Problem is catalog's problem+json body, as nextmoe-infra's
 // apps/api/internal/platform/apiv2/problem.Problem writes it.
 type Problem struct {
-	Type      string         `json:"type"`
-	Title     string         `json:"title"`
-	Status    int            `json:"status"`
-	Detail    string         `json:"detail"`
-	Instance  string         `json:"instance"`
-	Code      string         `json:"code"`
-	RequestID string         `json:"request_id"`
-	Errors    []ProblemField `json:"errors"`
-	Object    string         `json:"object"`
-	CurrentID string         `json:"current_id"`
-	Suspects  []Suspect      `json:"suspects"`
-}
-
-// Exactly one of Pointer / Parameter / Header is set. The pointer prefix is not
-// consistent — a validation failure emits "/<key>", an unknown or locked field
-// emits "/patch/<key>" — which is why the browser side parses it rather than
-// this one.
-type ProblemField struct {
-	Pointer   string `json:"pointer,omitempty"`
-	Parameter string `json:"parameter,omitempty"`
-	Header    string `json:"header,omitempty"`
-	Reason    string `json:"reason"`
-	Detail    string `json:"detail"`
+	Type          string    `json:"type"`
+	Title         string    `json:"title"`
+	Status        int       `json:"status"`
+	Detail        string    `json:"detail"`
+	Instance      string    `json:"instance"`
+	Code          string    `json:"code"`
+	RequestID     string    `json:"request_id"`
+	Object        string    `json:"object"`
+	CurrentID     string    `json:"current_id"`
+	DeletedReason string    `json:"deleted_reason"`
+	DeletedAt     string    `json:"deleted_at"`
+	Suspects      []Suspect `json:"suspects"`
 }
 
 type Suspect struct {
@@ -56,6 +45,7 @@ const (
 	CodeInvalidCredential  = "INVALID_CREDENTIAL"
 	CodeValidationFailed   = "VALIDATION_FAILED"
 	CodeEntityMerged       = "ENTITY_MERGED"
+	CodeEntityDeleted      = "ENTITY_DELETED"
 	CodeDuplicateSuspects  = "DUPLICATE_SUSPECTS"
 	CodePlayRecordsPrivate = "PLAY_RECORDS_PRIVATE"
 )
@@ -96,6 +86,7 @@ var problemKinds = map[string]upstream.Kind{
 	"INTERNAL_ERROR":                  upstream.Unavailable,
 	"SERVICE_UNAVAILABLE":             upstream.Unavailable,
 	CodeEntityMerged:                  upstream.NotFound,
+	CodeEntityDeleted:                 upstream.NotFound,
 	CodePlayRecordsPrivate:            upstream.Rejected,
 	"USER_IDENTITY_REQUIRED":          upstream.Internal,
 	"SITE_NOT_BOUND":                  upstream.Internal,
@@ -193,6 +184,21 @@ func MergedInto(err error) (int64, bool) {
 		return 0, false
 	}
 	return ParseID(p.CurrentID)
+}
+
+// Deletion is a work taken down through a reviewed deletion request. A reviewer
+// can restore it under the same id, so it is hidden rather than gone for good.
+type Deletion struct {
+	Reason    string
+	DeletedAt string
+}
+
+func DeletedIn(err error) (Deletion, bool) {
+	p, ok := ProblemOf(err)
+	if !ok || p.Code != CodeEntityDeleted {
+		return Deletion{}, false
+	}
+	return Deletion{Reason: p.DeletedReason, DeletedAt: p.DeletedAt}, true
 }
 
 // IsNotFound leaves a merge out: a merged id has somewhere to go.

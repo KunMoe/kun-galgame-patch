@@ -51,6 +51,7 @@ var registry = map[string]def{
 	"INTERNAL_ERROR":                  {"platform", 500, "Internal error"},
 	"SERVICE_UNAVAILABLE":             {"platform", 503, "Service unavailable"},
 	"ENTITY_MERGED":                   {"catalog", 404, "Entity merged"},
+	"ENTITY_DELETED":                  {"catalog", 410, "Entity deleted"},
 	"PLAY_RECORDS_PRIVATE":            {"catalog", 403, "Play records private"},
 	"USER_IDENTITY_REQUIRED":          {"me", 403, "User identity required"},
 	"SITE_NOT_BOUND":                  {"me", 403, "Site not bound"},
@@ -86,7 +87,7 @@ func Status(code string) int {
 // title come from the registry, request_id is in the body and in X-Request-ID,
 // errors is present even when empty, and the media type is problem+json.
 // extra carries the per-code members: errors, object and current_id,
-// suspects.
+// deleted_reason and deleted_at, suspects.
 func Problem(w http.ResponseWriter, r *http.Request, code, detail string, extra map[string]any) {
 	d := lookup(code)
 	body := map[string]any{

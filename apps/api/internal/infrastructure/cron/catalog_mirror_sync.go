@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
@@ -36,7 +35,8 @@ const (
 // so the galgame lists can filter the axis in SQL instead of losing rows after
 // the LIMIT. Catalog's own gate at hydrate time stays the authority; this column
 // only decides which ids reach it, which is what makes a stale value cost a
-// short row rather than an NSFW leak.
+// short row rather than an NSFW leak. The same drain stamps a page whose work
+// catalog deleted, and lifts the stamp when the work is restored (051).
 func RunCatalogMirrorSync(
 	ctx context.Context,
 	db *gorm.DB,
@@ -52,34 +52,38 @@ func RunCatalogMirrorSync(
 		return 0, false, err
 	}
 
-	gone := 0
 	for page := 0; page < mirrorSyncMaxPages; page++ {
 		feed, ferr := catalog.Changes(ctx, cursor, mirrorSyncPageSize)
 		if ferr != nil {
 			return updated, false, fmt.Errorf("fetch changes feed: %w", ferr)
 		}
-		ids := make([]int64, 0, len(feed.Items))
+		live := make([]int64, 0, len(feed.Items))
+		var gone []int64
 		for i := range feed.Items {
-			// A gone id cannot be hydrated, and moyu stores no catalog id to
-			// look the local row up by, so there is nothing to apply. Such a
-			// row keeps its last verdict, still pages, and is dropped by
-			// enrichment exactly as it is today — the same residual as a work
-			// catalog never had, which the first full drain measured at 1 of
-			// 10,437 rows.
 			if feed.Items[i].Gone {
-				gone++
+				gone = append(gone, feed.Items[i].ID)
 				continue
 			}
-			ids = append(ids, feed.Items[i].ID)
+			live = append(live, feed.Items[i].ID)
 		}
-		n, aerr := applyDisplayVerdicts(ctx, db, galgame, ids)
+		n, aerr := applyDisplayVerdicts(ctx, db, galgame, live)
+		updated += n
+		if aerr != nil {
+			return updated, false, aerr
+		}
+		n, aerr = clearRestoredPages(db, live)
+		updated += n
+		if aerr != nil {
+			return updated, false, aerr
+		}
+		n, aerr = markDeletedPages(ctx, db, catalog, gone)
 		updated += n
 		if aerr != nil {
 			return updated, false, aerr
 		}
 		// A short page has no next cursor, so the watermark stays at the last
 		// full page and the tail is re-read next tick. Re-applying it is free:
-		// the UPDATE matches nothing when the verdict has not moved.
+		// every UPDATE matches nothing when the state has not moved.
 		if feed.NextCursor == "" {
 			caughtUp = true
 			break
@@ -88,9 +92,6 @@ func RunCatalogMirrorSync(
 		if werr := writeMirrorCursor(db, cursor); werr != nil {
 			return updated, false, werr
 		}
-	}
-	if gone > 0 {
-		slog.Info("catalog 展示轴同步跳过已下线作品", "gone", gone)
 	}
 	return updated, caughtUp, nil
 }

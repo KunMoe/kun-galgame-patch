@@ -60,6 +60,10 @@ func ErrGalgameNotFound(msg string) *AppError {
 	return New(44001, msg, fiber.StatusBadRequest)
 }
 
+func ErrWorkDeleted() *AppError {
+	return New(41001, "这部作品已被删除", fiber.StatusGone)
+}
+
 func ErrAccountBanned(msg string) *AppError {
 	if msg == "" {
 		msg = "账号已被封禁，无法登录"

@@ -66,7 +66,7 @@ func (r *Repository) patchQuery(f PatchFilter) *gorm.DB {
 	if len(f.Platform) > 0 {
 		q = jsonArrayAny(q, "platform", f.Platform)
 	}
-	q = utils.ScopePatchContentLimit(q, f.ContentLimit)
+	q = utils.ScopeListablePatches(q, f.ContentLimit)
 	if f.HasResources != nil {
 		if *f.HasResources {
 			q = q.Where("resource_count > 0")
