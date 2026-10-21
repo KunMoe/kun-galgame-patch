@@ -73,7 +73,9 @@ const removeChip = (key: string) => {
   if (dimension === 'company') {
     apply({ company_id: 0 })
   } else if (dimension === 'tag') {
-    apply({ tag_ids: filter.value.tag_ids.filter((id) => id !== Number(value)) })
+    apply({
+      tag_ids: filter.value.tag_ids.filter((id) => id !== Number(value))
+    })
   } else {
     apply({ released_from: '', released_to: '' })
   }
@@ -108,7 +110,7 @@ watch(
     @clear="clearFilters"
   >
     <KunTooltip
-      text="资料库的索引里没有评分, 按评分排序需要 infra 先提供该字段。"
+      text="鲲 Galgame 论坛数据的索引里没有评分, 按评分排序需要 infra 先提供该字段。"
       position="bottom"
     >
       <FilterMenu

@@ -70,7 +70,9 @@ const options = computed<FilterEntityOption[]>(() => {
   const chosen = props.selectedIds
     .map((id) => known.value.get(id))
     .filter((item) => !!item)
-  const rest = found.value.filter((item) => !props.selectedIds.includes(item.id))
+  const rest = found.value.filter(
+    (item) => !props.selectedIds.includes(item.id)
+  )
   return [...chosen, ...rest].map((item) => ({
     value: item.id,
     label: getPreferredLanguageText(item.name),
@@ -114,7 +116,7 @@ const emptyText = computed(() =>
     :no-result-text="emptyText"
     :loading="loading"
     :debounce="300"
-    loading-text="正在检索资料库…"
+    loading-text="正在检索鲲 Galgame 论坛数据…"
     popup-width="auto"
     rounded="full"
     size="sm"

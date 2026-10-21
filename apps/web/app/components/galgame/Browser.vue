@@ -300,16 +300,17 @@ watch(
 
 <template>
   <div class="container mx-auto my-4 space-y-6">
-    <KunHeader :name="isLibrary ? 'Galgame 信息资料库' : 'Galgame 补丁资源库'">
+    <KunHeader :name="isLibrary ? '鲲 Galgame 论坛数据' : 'Galgame 补丁资源库'">
       <template #description>
         <p class="text-default-500">
           <template v-if="isLibrary">
-            资料库收录的全部 Galgame, 无论本站是否有补丁资源。想找下载请前往
+            鲲 Galgame 论坛数据收录的全部 Galgame,
+            无论本站是否有补丁资源。想找下载请前往
             <KunLink to="/galgame">Galgame 补丁资源库</KunLink>。
           </template>
           <template v-else>
             本站已经有补丁资源的 Galgame。想浏览本站暂无资源的作品资料请前往
-            <KunLink to="/gallib">Galgame 信息资料库</KunLink>。
+            <KunLink to="/gallib">鲲 Galgame 论坛数据</KunLink>。
           </template>
           本页面默认仅显示 SFW (内容安全) 的内容, 您可以在
           <KunLink to="/settings/system">系统设置</KunLink> 中切换显示全部 (包括
@@ -408,11 +409,7 @@ watch(
         />
       </template>
 
-      <FilterYears
-        :from="releasedFrom"
-        :to="releasedTo"
-        @update="setYears"
-      />
+      <FilterYears :from="releasedFrom" :to="releasedTo" @update="setYears" />
 
       <FilterMenu
         v-if="!isLibrary"

@@ -58,7 +58,7 @@ func catalogErr(c fiber.Ctx, err error, readerMsg string) error {
 	switch {
 	case stderrors.Is(err, service.ErrNoCatalogWork):
 		return response.Error(c, errors.ErrValidation(
-			"这个游戏还没有收录进资料库，暂时无法收藏或加入收藏夹"))
+			"这个游戏还没有收录进鲲 Galgame 论坛数据，暂时无法收藏或加入收藏夹"))
 	case stderrors.Is(err, service.ErrFolderNotYours):
 		return response.Error(c, errors.ErrNotFound("收藏夹不存在或已被删除，请刷新后重试"))
 	case stderrors.Is(err, gorm.ErrRecordNotFound):
@@ -83,7 +83,7 @@ func pressKey(userID int, op, submitKey string) string {
 
 func catalogReauth(err error) *errors.AppError {
 	if e, _ := upstream.As(err); e != nil && e.Code == catalogv2.CodeInvalidCredential {
-		return errors.ErrCatalogReauthRequired("资料库拒绝了当前登录凭证，请退出登录后重新登录一次")
+		return errors.ErrCatalogReauthRequired("鲲 Galgame 论坛数据拒绝了当前登录凭证，请退出登录后重新登录一次")
 	}
 	return errors.ErrCatalogReauthRequired("")
 }
@@ -552,6 +552,11 @@ func (h *PatchHandler) GetResourceRevisions(c fiber.Ctx) error {
 	var req dto.ResourceFileHistoryRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	if public, pErr := h.service.ResourceIsPublic(resourceID); pErr != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	} else if !public {
+		return response.Error(c, errors.ErrNotFound("resource not found"))
 	}
 	items, total, gErr := h.service.GetResourceRevisions(resourceID, req.Page, req.Limit)
 	if gErr != nil {

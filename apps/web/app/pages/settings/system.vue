@@ -116,8 +116,8 @@ onMounted(() => {
               <p class="text-default-500 text-xs">
                 站内 Galgame
                 列表的排布方式。封面网格一屏能看到更多作品；详细列表在封面右侧列出会社、发售日期、剧本、原画与标签
-                (剧本 / 原画 / 标签 目前只在 Galgame
-                补丁资源库与信息资料库两个页面提供)
+                (剧本 / 原画 / 标签 目前只在 Galgame 补丁资源库与鲲 Galgame
+                论坛数据两个页面提供)
               </p>
               <div
                 class="border-default/20 bg-default-50/40 grid grid-cols-2 gap-1 rounded-xl border p-1"

@@ -157,7 +157,7 @@ const confirmDelete = async () => {
           等站点上也会一起消失，且无法恢复。
         </p>
         <p v-if="!isOwn" class="text-danger text-sm">
-          这是其他用户的评分，删除需要 NextMoe 资料库的评分管理权限。
+          这是其他用户的评分，删除需要鲲 Galgame 论坛数据的评分管理权限。
         </p>
         <div class="flex justify-end gap-2">
           <KunButton

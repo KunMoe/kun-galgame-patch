@@ -76,8 +76,8 @@ const onMode = (id: number, mode: KunTagBlockMode) => {
     </template>
     <div class="space-y-5">
       <p class="text-default-500 text-xs">
-        带有被屏蔽标签的 Galgame 不会出现在首页、Galgame 列表、资料库、搜索、
-        发售月表、排行以及标签 / 会社 / 系列 / 角色 / Staff
+        带有被屏蔽标签的 Galgame 不会出现在首页、Galgame 列表、鲲 Galgame
+        论坛数据、搜索、 发售月表、排行以及标签 / 会社 / 系列 / 角色 / Staff
         页中，它们的补丁资源也不会出现在资源列表里。屏蔽有子标签的标签时，可以连同子标签一起屏蔽，也可以只屏蔽它本身。
         {{
           isSignedIn

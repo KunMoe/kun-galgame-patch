@@ -31,6 +31,18 @@ func IncludeEmptyGalgames(c fiber.Ctx) bool {
 	return fiber.Query(c, "include_empty", false)
 }
 
+// LiveWorkPage and LiveWorkResource keep a work catalog deleted (051) off a
+// public read, for a page or a resource row under the given alias. Its rows stay
+// in the tables and come back with the work.
+func LiveWorkPage(alias string) string {
+	return alias + ".catalog_deleted_at IS NULL"
+}
+
+func LiveWorkResource(alias string) string {
+	return "NOT EXISTS (SELECT 1 FROM patch deleted_work WHERE deleted_work.id = " + alias +
+		".galgame_id AND deleted_work.catalog_deleted_at IS NOT NULL)"
+}
+
 // ScopeListablePatches narrows a patch query to the rows that survive
 // enrichment for this reader, so a page and its COUNT agree. Apply it to the
 // builder that produces both, or the pager keeps counting rows the page no
@@ -42,7 +54,7 @@ func IncludeEmptyGalgames(c fiber.Ctx) bool {
 // ahead of its sync, and why a stale value costs a short row and never a leak.
 // A work catalog deleted (051) hydrates under no gate at all.
 func ScopeListablePatches(q *gorm.DB, contentLimit string) *gorm.DB {
-	q = q.Where("patch.catalog_deleted_at IS NULL")
+	q = q.Where(LiveWorkPage("patch"))
 	switch contentLimit {
 	case ContentLimitSFW, ContentLimitNSFW:
 		return q.Where("patch.content_limit IS NULL OR patch.content_limit = ?", contentLimit)

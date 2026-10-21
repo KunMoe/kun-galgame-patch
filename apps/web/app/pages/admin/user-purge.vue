@@ -83,26 +83,26 @@ const followPair = (following?: number, followers?: number) => {
   return `${following ?? '—'} / ${followers ?? '—'}`
 }
 
-const rows = computed<{ label: string; value: number | string; hint?: string }[]>(
-  () => {
-    const p = preview.value
-    if (!p) return []
-    return [
-      { label: '评论', value: p.comments },
-      { label: '补丁资源', value: p.resources },
-      { label: '点赞 (资源)', value: p.resource_likes },
-      { label: '贡献', value: p.contributes },
-      { label: '关注 / 粉丝', value: followPair(p.following, p.followers) },
-      {
-        label: '聊天室成员 / 消息',
-        value: p.chat_memberships + p.chat_messages
-      },
-      { label: '站内私信', value: p.private_messages },
-      { label: '其它 (阅读状态 / 文件历史)', value: p.misc_traces },
-      { label: '本人创建的补丁', value: p.owned_patches }
-    ]
-  }
-)
+const rows = computed<
+  { label: string; value: number | string; hint?: string }[]
+>(() => {
+  const p = preview.value
+  if (!p) return []
+  return [
+    { label: '评论', value: p.comments },
+    { label: '补丁资源', value: p.resources },
+    { label: '点赞 (资源)', value: p.resource_likes },
+    { label: '贡献', value: p.contributes },
+    { label: '关注 / 粉丝', value: followPair(p.following, p.followers) },
+    {
+      label: '聊天室成员 / 消息',
+      value: p.chat_memberships + p.chat_messages
+    },
+    { label: '站内私信', value: p.private_messages },
+    { label: '其它 (阅读状态 / 文件历史)', value: p.misc_traces },
+    { label: '本人创建的补丁', value: p.owned_patches }
+  ]
+})
 
 const canExecute = computed(
   () => !!preview.value && preview.value.user_exists && !executing.value
@@ -123,7 +123,7 @@ const execute = async () => {
       `将【不可恢复地】删除用户 #${uidNum.value} 的本地账号，及其全部评论 (${p.comments})、` +
       `补丁资源 (${p.resources})、点赞 / 关注、` +
       `聊天与站内私信。${collateral}\n\n` +
-      `（NextMoe·未萌 账号身份、资料库、kungal、image_service 不受影响——如需封禁请另在 NextMoe·未萌 管理台操作。` +
+      `（NextMoe·未萌 账号身份、鲲 Galgame 论坛数据、kungal、image_service 不受影响——如需封禁请另在 NextMoe·未萌 管理台操作。` +
       `收藏夹属于中央账号、与 kungal 共用同一份，本操作不会删除。）\n\n确定继续？`
   })
   if (!ok) return

@@ -158,7 +158,7 @@ func TestRevokedMergeDropsTheRedirect(t *testing.T) {
 	}
 
 	var dry MergeSyncReport
-	if err := applyRedirects(db, items, false, &dry); err != nil {
+	if err := applyRedirects(db, items, false, &dry, nil); err != nil {
 		t.Fatal(err)
 	}
 	if dry.Revoked != 1 || dry.Skipped != 1 {
@@ -169,7 +169,7 @@ func TestRevokedMergeDropsTheRedirect(t *testing.T) {
 	}
 
 	var report MergeSyncReport
-	if err := applyRedirects(db, items, true, &report); err != nil {
+	if err := applyRedirects(db, items, true, &report, nil); err != nil {
 		t.Fatal(err)
 	}
 	if report.Revoked != 1 || report.Applied() != 1 {
@@ -185,7 +185,69 @@ func TestRevokedMergeDropsTheRedirect(t *testing.T) {
 	}
 
 	var replay MergeSyncReport
-	if err := applyRedirects(db, items[:1], true, &replay); err != nil || replay.Applied() != 0 {
+	if err := applyRedirects(db, items[:1], true, &replay, nil); err != nil || replay.Applied() != 0 {
 		t.Fatalf("replayed tail = (%+v, %v), want nothing left to do", replay, err)
+	}
+}
+
+// 053: the stamp reaches letmoe's change feed and both community pushes in the
+// same transaction, not at the next daily reconcile.
+func TestDeletionStampReachesTheFeeds(t *testing.T) {
+	db := lifecycleDB(t)
+	var public, disabled int
+	db.Raw(`INSERT INTO patch_resource (storage, user_id, galgame_id, updated) VALUES ('user', ?, ?, now()) RETURNING id`,
+		lifecycleUser, deletedPage).Scan(&public)
+	db.Raw(`INSERT INTO patch_resource (storage, user_id, galgame_id, status, updated) VALUES ('user', ?, ?, 1, now()) RETURNING id`,
+		lifecycleUser, deletedPage).Scan(&disabled)
+	t.Cleanup(func() {
+		db.Exec(`DELETE FROM patch_resource_change WHERE resource_id IN (?, ?)`, public, disabled)
+		db.Exec(`DELETE FROM activity_push_queue WHERE key = ?`, fmt.Sprintf("patch_resource:%d", public))
+		db.Exec(`DELETE FROM anchor_presentation_queue WHERE anchor_id IN (?, ?)`, fmt.Sprint(deletedPage), fmt.Sprint(public))
+	})
+	kinds := func() []string {
+		var out []string
+		db.Raw(`SELECT kind FROM patch_resource_change WHERE resource_id IN (?, ?) ORDER BY seq`, public, disabled).Scan(&out)
+		return out
+	}
+	db.Exec(`DELETE FROM patch_resource_change WHERE resource_id IN (?, ?)`, public, disabled)
+	db.Exec(`DELETE FROM activity_push_queue WHERE key = ?`, fmt.Sprintf("patch_resource:%d", public))
+	db.Exec(`DELETE FROM anchor_presentation_queue WHERE anchor_id = ?`, fmt.Sprint(deletedPage))
+
+	if _, err := markDeletedPages(context.Background(), db, deletionAnswers{}, []int64{deletedPage}); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(); len(got) != 1 || got[0] != "hidden" {
+		t.Fatalf("feed after the stamp = %v, want one hidden for the public resource only", got)
+	}
+	var queued, presented int64
+	db.Raw(`SELECT count(*) FROM activity_push_queue WHERE key = ?`, fmt.Sprintf("patch_resource:%d", public)).Scan(&queued)
+	db.Raw(`SELECT count(*) FROM anchor_presentation_queue WHERE anchor_kind = 1 AND anchor_id = ?`, fmt.Sprint(deletedPage)).Scan(&presented)
+	if queued != 1 || presented != 1 {
+		t.Errorf("activity queued %d, page presentation queued %d, want both", queued, presented)
+	}
+
+	if _, err := clearRestoredPages(db, []int64{deletedPage}); err != nil {
+		t.Fatal(err)
+	}
+	if got := kinds(); len(got) != 2 || got[1] != "restored" {
+		t.Fatalf("feed after the restore = %v, want restored to follow", got)
+	}
+}
+
+func TestLiveWorkPredicates(t *testing.T) {
+	db := lifecycleDB(t)
+	mustExec(t, db, `UPDATE patch SET catalog_deleted_at = now() WHERE id = ?`, deletedPage)
+	var res []int
+	for _, page := range []int{deletedPage, livePage} {
+		var id int
+		db.Raw(`INSERT INTO patch_resource (storage, user_id, galgame_id, updated) VALUES ('user', ?, ?, now()) RETURNING id`,
+			lifecycleUser, page).Scan(&id)
+		res = append(res, id)
+	}
+	var pages, resources []int
+	db.Raw(`SELECT id FROM patch p WHERE id IN (?, ?) AND `+utils.LiveWorkPage("p"), deletedPage, livePage).Scan(&pages)
+	db.Raw(`SELECT id FROM patch_resource r WHERE id IN ? AND `+utils.LiveWorkResource("r"), res).Scan(&resources)
+	if len(pages) != 1 || pages[0] != livePage || len(resources) != 1 || resources[0] != res[1] {
+		t.Fatalf("pages %v resources %v, want only the live work's", pages, resources)
 	}
 }

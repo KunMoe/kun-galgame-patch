@@ -27,7 +27,7 @@ const setKeywords = (value: string) => {
   if (value === keywords.value) {
     return
   }
-  // A 资料库 family chosen for the previous keyword is not a filter the reader
+  // A 论坛数据 family chosen for the previous keyword is not a filter the reader
   // asked to keep — it would silently narrow the new search to 标签 only.
   const query = searchQueryWithout(route.query, 'family')
   if (value) {
@@ -38,7 +38,7 @@ const setKeywords = (value: string) => {
   router.replace({ query })
 }
 
-// A lane's filters are that lane's own: 资料库's family, 补丁资源's match scope
+// A lane's filters are that lane's own: 论坛数据's family, 补丁资源's match scope
 // and Galgame's 高级筛选 all mean nothing to the tab being opened.
 const setType = (value: SearchType) => {
   if (value === currentType.value) {
@@ -101,14 +101,15 @@ watch(
   <div class="container mx-auto my-4 min-h-[calc(100dvh-16rem)] space-y-6">
     <KunHeader
       name="搜索"
-      description="一次搜索整站: Galgame, 资料库中的角色 / 会社 / Staff / 标签 / 系列, 补丁资源, 以及发布它们的用户。"
+      description="一次搜索整站: Galgame, 鲲 Galgame 论坛数据中的角色 / 会社 / Staff / 标签 / 系列, 补丁资源, 以及发布它们的用户。"
     >
       <template #endContent>
         <div class="text-default-500 text-sm">
-          搜索结果一并包含 NSFW 的 Galgame; 未开启 NSFW 时, 资料库中的成人标签,
-          以及 R18 游戏的补丁资源会被隐藏。Galgame 可按会社 / 标签 / 发售年份进一步筛选,
-          补丁资源可以只按 AI 模型名匹配。不带关键词浏览请前往
-          <KunLink to="/gallib">Galgame 资料库</KunLink>。
+          搜索结果一并包含 NSFW 的 Galgame; 未开启 NSFW 时, 鲲 Galgame
+          论坛数据中的成人标签, 以及 R18 游戏的补丁资源会被隐藏。Galgame
+          可按会社 / 标签 / 发售年份进一步筛选, 补丁资源可以只按 AI
+          模型名匹配。不带关键词浏览请前往
+          <KunLink to="/gallib">鲲 Galgame 论坛数据</KunLink>。
         </div>
       </template>
     </KunHeader>

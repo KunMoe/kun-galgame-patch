@@ -68,7 +68,7 @@ const hasHit = computed(() => {
 const actionDescription = computed(() =>
   !pending.value && result.value && !hasHit.value
     ? '快速搜索没有匹配, 换个关键词试试'
-    : '在搜索页面查看 Galgame, 资料库, 补丁资源与用户的全部结果'
+    : '在搜索页面查看 Galgame, 鲲 Galgame 论坛数据, 补丁资源与用户的全部结果'
 )
 
 const label = (name: string, total: number) =>

@@ -9,6 +9,10 @@ const settingStore = useSettingStore()
 const { stance } = useKunNsfwStance()
 
 const galgameId = computed(() => Number(route.params.id))
+const editorHistoryLink = useNextmoeEditorHistoryLink()
+const historyUrl = computed(() =>
+  editorHistoryLink(galgameId.value, route.fullPath)
+)
 
 const { data: detail } = await useAsyncData<PatchDetail | null>(
   () => `patch-detail-${galgameId.value}`,
@@ -176,14 +180,23 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
         >
           <KunIcon name="lucide:book-open" class="size-4" />
           <span>
-            鲲 Galgame:
+            鲲 Galgame 论坛:
             <a
               :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
               target="_blank"
               rel="noopener noreferrer"
               class="text-primary hover:underline"
             >
-              #{{ detail.galgame.forum_gid }}（完整资料 / 修订历史）
+              #{{ detail.galgame.forum_gid }}（完整资料）
+            </a>
+            ·
+            <a
+              :href="historyUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:underline"
+            >
+              修订历史
             </a>
           </span>
         </div>
@@ -343,14 +356,23 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
 
     <section v-if="detail.galgame?.forum_gid">
       <p class="text-default-500 text-sm">
-        游戏资料、修订历史等更多信息请查看
+        完整的游戏资料请查看
         <a
           :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"
         >
-          鲲 Galgame
+          鲲 Galgame 论坛
+        </a>
+        ，修订历史请查看
+        <a
+          :href="historyUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary hover:underline"
+        >
+          未萌编辑台
         </a>
         。
       </p>

@@ -190,7 +190,8 @@ export const useApi = () => {
     if (!import.meta.client) return
     if (code !== 40399) return
     useKunMessage(
-      message || '登录凭证尚未包含资料库投稿权限，请退出登录后重新登录一次',
+      message ||
+        '登录凭证尚未包含鲲 Galgame 论坛数据的投稿权限，请退出登录后重新登录一次',
       'warn',
       15000
     )

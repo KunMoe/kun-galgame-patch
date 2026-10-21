@@ -39,11 +39,12 @@ func countOrLog(q *gorm.DB, what string, userID int) int64 {
 }
 
 func (r *UserRepository) CountUserPatches(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID), "patches", userID)
+	return countOrLog(r.db.Model(&patchModel.Patch{}).Where("user_id = ?", userID).Where(utils.LiveWorkPage("patch")), "patches", userID)
 }
 
 func (r *UserRepository) CountUserResources(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID), "resources", userID)
+	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID).
+		Where(utils.LiveWorkResource("patch_resource")), "resources", userID)
 }
 
 func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty bool, contentLimit string) ([]patchModel.Patch, int64, error) {
@@ -64,7 +65,8 @@ func (r *UserRepository) GetUserPatches(userID, offset, limit int, includeEmpty 
 func (r *UserRepository) GetUserResources(userID, offset, limit int) ([]patchModel.PatchResource, int64, error) {
 	var resources []patchModel.PatchResource
 	var total int64
-	base := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID)
+	base := r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status <> 2", userID).
+		Where(utils.LiveWorkResource("patch_resource"))
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -153,5 +155,6 @@ func (r *UserRepository) CheckIn(userID int) (int64, error) {
 }
 
 func (r *UserRepository) CountPublishedPatchResources(userID int) int64 {
-	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status = 0", userID), "published_resources", userID)
+	return countOrLog(r.db.Model(&patchModel.PatchResource{}).Where("user_id = ? AND status = 0", userID).
+		Where(utils.LiveWorkResource("patch_resource")), "published_resources", userID)
 }

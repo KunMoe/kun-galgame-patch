@@ -55,7 +55,7 @@ func ErrInternal(msg string) *AppError {
 
 func ErrGalgameNotFound(msg string) *AppError {
 	if msg == "" {
-		msg = "游戏资料库中不存在该游戏，请先提交新作"
+		msg = "鲲 Galgame 论坛数据中没有这个游戏，请先提交新作"
 	}
 	return New(44001, msg, fiber.StatusBadRequest)
 }
@@ -73,7 +73,7 @@ func ErrAccountBanned(msg string) *AppError {
 
 func ErrCatalogReauthRequired(msg string) *AppError {
 	if msg == "" {
-		msg = "登录凭证尚未包含资料库投稿权限，请退出登录后重新登录一次即可继续"
+		msg = "登录凭证尚未包含鲲 Galgame 论坛数据的投稿权限，请退出登录后重新登录一次即可继续"
 	}
 	return New(40399, msg, fiber.StatusForbidden)
 }
@@ -99,7 +99,7 @@ func ErrPreferencesUnavailable(msg string) *AppError {
 
 func ErrCatalogUnavailable(msg string) *AppError {
 	if msg == "" {
-		msg = "资料库服务暂不可用，请稍后再试"
+		msg = "鲲 Galgame 论坛数据服务暂不可用，请稍后再试"
 	}
 	return New(50320, msg, fiber.StatusServiceUnavailable)
 }

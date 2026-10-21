@@ -139,7 +139,9 @@ func (r *AdminRepository) LookupPatchesByIDs(ids []int) ([]patchModel.Patch, err
 	return rows, err
 }
 
-const orphanCond = "vndb_id !~ '^v[0-9]+$'"
+// A page whose work catalog deleted (051) is missing from catalog's answer too,
+// and listing it here invites the hard delete that makes a restore impossible.
+const orphanCond = "vndb_id !~ '^v[0-9]+$' AND catalog_deleted_at IS NULL"
 
 func (r *AdminRepository) GetOrphanCandidateIDs() ([]int, error) {
 	var ids []int
@@ -165,7 +167,7 @@ func (r *AdminRepository) GetOrphanPatches(offset, limit int, excludeIDs []int) 
 }
 
 func (r *AdminRepository) CountOrphanPatches(excludeIDs []int) (pendingCount, badVndbCount int64, err error) {
-	pend := r.db.Model(&patchModel.Patch{}).Where("vndb_id LIKE 'pending-%'")
+	pend := r.db.Model(&patchModel.Patch{}).Where("vndb_id LIKE 'pending-%' AND catalog_deleted_at IS NULL")
 	bad := r.db.Model(&patchModel.Patch{}).Where(orphanCond + " AND vndb_id NOT LIKE 'pending-%'")
 	if len(excludeIDs) > 0 {
 		pend = pend.Where("id NOT IN ?", excludeIDs)

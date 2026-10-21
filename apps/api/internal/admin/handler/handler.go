@@ -246,6 +246,20 @@ func (h *AdminHandler) GetLogs(c fiber.Ctx) error {
 	return response.Paginated(c, logs, total)
 }
 
+// GetMergeRecords lists what the catalog merge cron did and what each undo
+// could not put back (?issues=true).
+func (h *AdminHandler) GetMergeRecords(c fiber.Ctx) error {
+	var req dto.AdminPaginationRequest
+	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	items, total, err := h.service.ListMergeRecords(req.Page, req.Limit, c.Query("issues") == "true")
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.Paginated(c, items, total)
+}
+
 func (h *AdminHandler) GetOrphanPatches(c fiber.Ctx) error {
 	var req dto.AdminPaginationRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
@@ -261,7 +275,7 @@ func (h *AdminHandler) GetOrphanPatches(c fiber.Ctx) error {
 		end := min(start+galgameClient.BatchMaxIDs, len(candidateIDs))
 		briefs, bErr := h.galgame.GalgameBatch(c.Context(), candidateIDs[start:end], "")
 		if bErr != nil {
-			return response.Error(c, errors.ErrInternal("资料库校验失败"))
+			return response.Error(c, errors.ErrInternal("鲲 Galgame 论坛数据校验失败"))
 		}
 		for _, b := range briefs {
 			existing = append(existing, b.ID)

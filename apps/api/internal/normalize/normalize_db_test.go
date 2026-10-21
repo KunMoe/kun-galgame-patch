@@ -622,3 +622,16 @@ func TestConcurrentClaimsNeverShareAFile(t *testing.T) {
 		}
 	}
 }
+
+// A deleted work's files keep their original: swapping one would spend the
+// daily cap and tell letmoe a hidden resource changed.
+func TestADeletedWorkIsNotNormalized(t *testing.T) {
+	db := normalizeDB(t)
+	svc := New(db, artifacts(t), owners{allow: true})
+	if err := db.Exec(`UPDATE patch SET catalog_deleted_at = now() WHERE id = ?`, testPatch).Error; err != nil {
+		t.Fatal(err)
+	}
+	if jobs, err := svc.Claim(context.Background(), MaxClaim, []int{testResource}); err != nil || len(jobs) != 0 {
+		t.Fatalf("claimed %+v (%v) on a deleted work", jobs, err)
+	}
+}

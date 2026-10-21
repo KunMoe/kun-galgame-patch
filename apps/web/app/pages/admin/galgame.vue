@@ -39,7 +39,10 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
   <div class="space-y-6">
     <h1 class="text-2xl font-bold">Galgame 列表</h1>
 
-    <KunInput v-model="searchQuery" placeholder="按 vndb_id 搜索（游戏名由资料库维护）">
+    <KunInput
+      v-model="searchQuery"
+      placeholder="按 vndb_id 搜索（游戏名由鲲 Galgame 论坛数据维护）"
+    >
       <template #prefix>
         <KunIcon name="lucide:search" class="text-default-400 size-4" />
       </template>
@@ -79,10 +82,7 @@ const totalPages = computed(() => Math.ceil((data.value?.total ?? 0) / limit))
       </KunCard>
     </div>
 
-    <KunNull
-      v-if="!pending && !data?.items?.length"
-      description="暂无补丁"
-    />
+    <KunNull v-if="!pending && !data?.items?.length" description="暂无补丁" />
 
     <div v-if="totalPages > 1" class="flex justify-center">
       <KunPagination

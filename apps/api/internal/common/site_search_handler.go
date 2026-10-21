@@ -56,7 +56,7 @@ type siteSearchKeywordsRequest struct {
 	Keywords string `query:"keywords" validate:"required,max=107"`
 }
 
-// An empty family is 全部: every family at once, which is what the 资料库 tab
+// An empty family is 全部: every family at once, which is what the 论坛数据 tab
 // opens on. Page and limit only mean anything once one family is named.
 type siteSearchEntityRequest struct {
 	Keywords string `query:"keywords" validate:"required,max=107"`
@@ -138,7 +138,7 @@ func (h *CommonHandler) SiteSearchOverview(c fiber.Ctx) error {
 }
 
 // SiteSearchEntity is its own endpoint rather than a type of SiteSearch: the
-// 资料库 tab pages one family at a time and 全部 pages none of them, so neither
+// 论坛数据 tab pages one family at a time and 全部 pages none of them, so neither
 // the response shape nor the paginator matches the other three lanes.
 func (h *CommonHandler) SiteSearchEntity(c fiber.Ctx) error {
 	var req siteSearchEntityRequest
@@ -172,7 +172,7 @@ func (h *CommonHandler) SiteSearchEntityResolve(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 	if h.galgame == nil {
-		return response.Error(c, errors.ErrInternal("Galgame 资料库未启用"))
+		return response.Error(c, errors.ErrInternal("鲲 Galgame 论坛数据未启用"))
 	}
 	items, err := h.galgame.ResolveEntities(c.Context(), req.Family, parseSearchIDs(req.IDs))
 	if err != nil {
