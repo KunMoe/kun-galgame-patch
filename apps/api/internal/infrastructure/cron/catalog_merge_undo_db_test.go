@@ -479,3 +479,42 @@ func TestHeirIsTheEarliestPublisher(t *testing.T) {
 		t.Errorf("restored page owner = %d, want %d who published first", owner, undoUserA)
 	}
 }
+
+// Contract §8: when A is merged into B, catalog re-points every redirect into
+// A at B and refreshes it, and points them back at A when that merge is undone.
+// Re-points reach this site as redirects of their own and leave records of
+// their own; undoing X's merge has to undo every open record of X, not only
+// the newest, which by then is a re-point that moved nothing.
+func TestUndoOfAnIdWhoseRedirectWasRepointed(t *testing.T) {
+	db := undoDB(t)
+	x, a, b := undoOld, undoNew, undoLast
+	seedPage(t, db, x, "v990041", 0, 0)
+	seedPage(t, db, a, "v990042", 0, 0)
+	seedPage(t, db, b, "v990043", 0, 0)
+	rx := seedResource(t, db, x, undoUserA, "X 的补丁")
+
+	merge(t, db, x, a)
+	var r MergeSyncReport
+	if err := applyRedirects(db, []catalogv2.Redirect{
+		{OldID: int64(x), CurrentID: int64(b)},
+		{OldID: int64(a), CurrentID: int64(b)},
+	}, true, &r, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyRedirects(db, []catalogv2.Redirect{
+		{OldID: int64(a), CurrentID: int64(a), Revoked: true},
+		{OldID: int64(x), CurrentID: int64(a)},
+	}, true, &r, nil); err != nil {
+		t.Fatal(err)
+	}
+	revoke(t, db, x, nil)
+
+	if got := pageOf(t, db, "patch_resource", rx); got != x {
+		t.Errorf("X's resource on %d, want back on X", got)
+	}
+	var open int64
+	db.Raw(`SELECT count(*) FROM patch_merge_record WHERE old_id = ? AND undone_at IS NULL`, x).Scan(&open)
+	if open != 0 {
+		t.Errorf("%d records of X still open after its merge was undone", open)
+	}
+}
