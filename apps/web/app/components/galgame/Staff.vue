@@ -21,7 +21,7 @@ const playedText = (characters?: KunLanguage[]) =>
   <section v-if="staff.length" class="space-y-4">
     <KunHeader
       name="制作人员"
-      description="该 Galgame 的剧本, 原画, 音乐, 导演等制作人员名单, 资料来自 鲲 Galgame 目录"
+      description="该 Galgame 的剧本, 原画, 音乐, 导演等制作人员名单, 资料来自 鲲 Galgame 论坛"
       scale="h2"
     />
 

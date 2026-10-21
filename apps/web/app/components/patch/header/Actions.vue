@@ -155,16 +155,15 @@ const onMenuSelect = (item: { key: string }) => {
         资源更新于 {{ formatDistanceToNow(props.patch.resource_update_time) }}
       </p>
       <p>
-        游戏元数据由
+        游戏资料来自
         <a
           :href="`${kungalOrigin}/galgame`"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"
         >
-          鲲 Galgame
+          鲲 Galgame 论坛
         </a>
-        统一维护
       </p>
     </div>
 

@@ -126,7 +126,7 @@ if (staff.value) {
           {{ intro.intro }}
         </p>
         <p class="text-default-400 text-xs">
-          资料来自 {{ intro.source || '鲲 Galgame 目录'
+          资料来自 {{ intro.source || '鲲 Galgame 论坛'
           }}<template v-if="intro.machine">, 由机器翻译</template>
         </p>
       </section>
@@ -165,7 +165,7 @@ if (staff.value) {
       <section class="mt-8 space-y-4">
         <KunHeader
           name="参与作品"
-          description="该制作人员参与的 Galgame, 资料来自 鲲 Galgame 目录"
+          description="该制作人员参与的 Galgame, 资料来自 鲲 Galgame 论坛"
           scale="h2"
         />
 

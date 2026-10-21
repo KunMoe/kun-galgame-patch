@@ -227,7 +227,7 @@ func catalogIntros(rows []catalogIntroRow) []GalgameEntityIntro {
 		}
 		seen[lang] = true
 		out = append(out, GalgameEntityIntro{
-			Lang: lang, Intro: r.Intro, Source: linkDisplayName(r.Source, ""), Machine: r.Machine,
+			Lang: lang, Intro: r.Intro, Source: introSourceName(r.Source), Machine: r.Machine,
 		})
 	}
 	return out
@@ -281,6 +281,16 @@ var catalogLinkSourceName = map[string]string{
 	"erogamescape":  "批评空间",
 	"dlsite":        "DLsite",
 	"pixiv":         "pixiv",
+}
+
+// The pages credit an empty source to the forum.
+var firstPartySources = []string{"user", "curated", "nextmoe", "derived"}
+
+func introSourceName(source string) string {
+	if slices.Contains(firstPartySources, strings.ToLower(strings.TrimSpace(source))) {
+		return ""
+	}
+	return linkDisplayName(source, "")
 }
 
 func linkDisplayName(source, rawURL string) string {

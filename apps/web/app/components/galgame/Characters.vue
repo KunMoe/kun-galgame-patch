@@ -64,7 +64,7 @@ const voicesOf = (c: PatchDetailCharacter) =>
     <div class="flex flex-wrap items-end justify-between gap-3">
       <KunHeader
         name="登场角色"
-        description="该 Galgame 的登场角色与配音演员, 资料来自 鲲 Galgame 目录"
+        description="该 Galgame 的登场角色与配音演员, 资料来自 鲲 Galgame 论坛"
         scale="h2"
       />
       <KunButton
