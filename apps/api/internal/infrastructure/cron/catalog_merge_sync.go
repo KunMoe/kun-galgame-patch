@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -255,6 +256,9 @@ func revokeRedirect(
 		if undoErr == nil {
 			return nil
 		}
+		if errors.Is(undoErr, patchMerge.ErrAlreadyUndone) {
+			return tx.RollbackTo("merge_undo").Error
+		}
 		if err := tx.RollbackTo("merge_undo").Error; err != nil {
 			return err
 		}
@@ -264,6 +268,7 @@ func revokeRedirect(
 	}
 
 	switch {
+	case errors.Is(undoErr, patchMerge.ErrAlreadyUndone):
 	case rec == nil:
 		if pages[survivor] && !pages[oldID] {
 			slog.Warn("catalog 撤销了合并：该合并早于合并记录(052)，本站当时搬动的数据无法自动搬回，请人工核对",

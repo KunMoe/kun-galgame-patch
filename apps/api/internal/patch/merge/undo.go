@@ -2,6 +2,7 @@ package merge
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -87,20 +88,28 @@ type Record struct {
 // OpenRecord is the latest merge of oldID not undone yet, or nil: the merge
 // predates the records (052) or was undone already.
 func OpenRecord(db *gorm.DB, oldID int) (*Record, error) {
-	return findRecord(db, `old_id = ?`, oldID)
+	return findRecord(db, `old_id = ?`, oldID, "")
 }
 
 // FailedRecord is an open record whose last undo failed, by id: the only kind
 // the admin page may run again. A merge catalog has not undone is never one.
 func FailedRecord(db *gorm.DB, id int64) (*Record, error) {
-	return findRecord(db, `id = ? AND undo_report->'error' IS NOT NULL`, id)
+	return findRecord(db, `id = ? AND undo_report->'error' IS NOT NULL`, id, "")
 }
 
-func findRecord(db *gorm.DB, where string, arg any) (*Record, error) {
+// LockFailedRecord is FailedRecord under a row lock held to the end of tx. A
+// second retry waits on it and then finds the record undone.
+func LockFailedRecord(tx *gorm.DB, id int64) (*Record, error) {
+	return findRecord(tx, `id = ? AND undo_report->'error' IS NOT NULL`, id, " FOR UPDATE")
+}
+
+var ErrAlreadyUndone = errors.New("merge record already undone")
+
+func findRecord(db *gorm.DB, where string, arg any, lock string) (*Record, error) {
 	var rec Record
 	if err := db.Raw(`
 		SELECT id, old_id, new_id, action FROM patch_merge_record
-		WHERE `+where+` AND undone_at IS NULL ORDER BY id DESC LIMIT 1`, arg,
+		WHERE `+where+` AND undone_at IS NULL ORDER BY id DESC LIMIT 1`+lock, arg,
 	).Scan(&rec).Error; err != nil {
 		return nil, fmt.Errorf("find merge record: %w", err)
 	}
@@ -114,6 +123,15 @@ func findRecord(db *gorm.DB, where string, arg any) (*Record, error) {
 // VNDB id for a page it may need again, resolved before the transaction so no
 // catalog call holds the locks; "" falls back to a placeholder.
 func Undo(tx *gorm.DB, rec *Record, survivorVndb string) (*UndoReport, error) {
+	var open []bool
+	if err := tx.Raw(
+		`SELECT undone_at IS NULL FROM patch_merge_record WHERE id = ? FOR UPDATE`, rec.ID,
+	).Scan(&open).Error; err != nil {
+		return nil, fmt.Errorf("lock merge record: %w", err)
+	}
+	if len(open) == 0 || !open[0] {
+		return nil, ErrAlreadyUndone
+	}
 	u := &undo{tx: tx, oldID: rec.OldID, newID: rec.NewID, action: rec.Action,
 		survivorVndb: survivorVndb, touched: map[int]bool{}, columns: map[string][]string{},
 		report: &UndoReport{RecordID: rec.ID, Action: rec.Action}}
@@ -167,21 +185,31 @@ func MarkFailed(db *gorm.DB, recordID int64, cause error) error {
 		WHERE id = ?`, cause.Error(), recordID).Error
 }
 
+// A merge whose undo failed has lost its redirect but not its effect, so the
+// chain follows the failed record as well as the redirect.
 func (u *undo) loadAllowed() error {
 	u.allowed = map[int]bool{u.newID: true}
-	for at := u.newID; ; {
-		var next int
-		if err := u.tx.Raw(
-			`SELECT new_id FROM patch_redirect WHERE scope = 'merge' AND old_id = ?`, at,
+	queue := []int{u.newID}
+	for len(queue) > 0 {
+		at := queue[0]
+		queue = queue[1:]
+		var next []int
+		if err := u.tx.Raw(`
+			SELECT new_id FROM patch_redirect WHERE scope = 'merge' AND old_id = ?
+			UNION
+			SELECT new_id FROM patch_merge_record
+			WHERE old_id = ? AND undone_at IS NULL AND undo_report->'error' IS NOT NULL`, at, at,
 		).Scan(&next).Error; err != nil {
 			return fmt.Errorf("follow merges of %d: %w", at, err)
 		}
-		if next == 0 || u.allowed[next] {
-			return nil
+		for _, n := range next {
+			if !u.allowed[n] {
+				u.allowed[n] = true
+				queue = append(queue, n)
+			}
 		}
-		u.allowed[next] = true
-		at = next
 	}
+	return nil
 }
 
 func (u *undo) find(table, change string, rowID int64) json.RawMessage {

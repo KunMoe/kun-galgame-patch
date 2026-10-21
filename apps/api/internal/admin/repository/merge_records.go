@@ -77,10 +77,19 @@ func (r *AdminRepository) RetryMergeUndo(recordID int64, vndbOf func(int) string
 	}
 	var report *patchMerge.UndoReport
 	if err := r.db.Transaction(func(tx *gorm.DB) error {
-		var uerr error
-		report, uerr = patchMerge.Undo(tx, rec, vndb)
-		return uerr
+		locked, err := patchMerge.LockFailedRecord(tx, recordID)
+		if err != nil {
+			return err
+		}
+		if locked == nil {
+			return ErrNoFailedUndo
+		}
+		report, err = patchMerge.Undo(tx, locked, vndb)
+		return err
 	}); err != nil {
+		if errors.Is(err, ErrNoFailedUndo) || errors.Is(err, patchMerge.ErrAlreadyUndone) {
+			return nil, ErrNoFailedUndo
+		}
 		if merr := patchMerge.MarkFailed(r.db, rec.ID, err); merr != nil {
 			return nil, merr
 		}

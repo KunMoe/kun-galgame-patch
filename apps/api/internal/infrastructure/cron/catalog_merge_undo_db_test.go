@@ -410,3 +410,72 @@ func TestAFailedUndoIsRecordedAndTheDrainMovesOn(t *testing.T) {
 		t.Errorf("%d revoked redirects left; the failure must not keep /galgame/<old> pointing at the survivor", left)
 	}
 }
+
+// Review 2, item 1: C's undo failed, which still dropped the C→D redirect. B's
+// undo must follow the failed record to D, where B's resource sits, instead
+// of reading it as moved elsewhere.
+func TestUndoFollowsAFailedUndoAlongTheChain(t *testing.T) {
+	db := undoDB(t)
+	b, c, d := undoOld, undoNew, undoLast
+	seedPage(t, db, b, "v990031", 0, 0)
+	seedPage(t, db, c, "v990032", 0, 0)
+	seedPage(t, db, d, "v990033", 0, 0)
+	rb := seedResource(t, db, b, undoUserA, "B 的补丁")
+
+	merge(t, db, b, c)
+	merge(t, db, c, d)
+	mustExec(t, db, `UPDATE patch_merge_record_row SET value = jsonb_set(value, '{view}', '"many"')
+		WHERE table_name = 'patch' AND row_id = ? AND change = 'before'
+		  AND record_id = (SELECT id FROM patch_merge_record WHERE old_id = ? ORDER BY id DESC LIMIT 1)`, c, c)
+	revoke(t, db, c, nil)
+	rep := revoke(t, db, b, nil)
+
+	if got := pageOf(t, db, "patch_resource", rb); got != b {
+		t.Errorf("B's resource on %d, want back on B", got)
+	}
+	if len(rep.MovedElsewhere) != 0 {
+		t.Errorf("report = %+v, want nothing read as moved elsewhere", rep)
+	}
+}
+
+// Review 2, item 3: a page was created on the retired id before the undo ran
+// (catalog revived the work and someone published to it). The page row the
+// merge renumbered stays on the survivor's number, and a person has to know.
+func TestUndoSaysWhenTheRetiredIdAlreadyHasAPage(t *testing.T) {
+	db := undoDB(t)
+	seedPage(t, db, undoOld, "v990034", 0, 0)
+	seedResource(t, db, undoOld, undoUserA, "补丁")
+	merge(t, db, undoOld, undoNew)
+	seedPage(t, db, undoOld, "wiki-1499999953", 0, 0)
+
+	rep := revoke(t, db, undoOld, nil)
+	if len(rep.Notes) == 0 || !rep.Incomplete() {
+		t.Errorf("report = %+v, want a note that the retired id already had a page", rep)
+	}
+}
+
+// Review 2, item 4: the heir is the publisher of the earliest resource, by
+// created, not by row order in the snapshot.
+func TestHeirIsTheEarliestPublisher(t *testing.T) {
+	db := undoDB(t)
+	const purged = 1499999957
+	mustExec(t, db, `INSERT INTO "user" (id, updated) VALUES (?, now())`, purged)
+	t.Cleanup(func() { db.Exec(`DELETE FROM "user" WHERE id = ?`, purged) })
+	seedPage(t, db, undoNew, "v990035", 0, 0)
+	mustExec(t, db, `INSERT INTO patch (id, vndb_id, user_id, updated) VALUES (?, 'v990036', ?, now())`, undoOld, purged)
+	mustExec(t, db, `INSERT INTO patch_resource (storage, user_id, galgame_id, created, updated)
+		VALUES ('user', ?, ?, '2026-05-01', now())`, undoUserB, undoOld)
+	mustExec(t, db, `INSERT INTO patch_resource (storage, user_id, galgame_id, created, updated)
+		VALUES ('user', ?, ?, '2026-01-01', now())`, undoUserA, undoOld)
+
+	merge(t, db, undoOld, undoNew)
+	mustExec(t, db, `UPDATE patch SET user_id = ? WHERE user_id = ?`, undoUserA, purged)
+	mustExec(t, db, `DELETE FROM "user" WHERE id = ?`, purged)
+	revoke(t, db, undoOld, nil)
+
+	var owner int
+	db.Raw(`SELECT user_id FROM patch WHERE id = ?`, undoOld).Scan(&owner)
+	if owner != undoUserA {
+		t.Errorf("restored page owner = %d, want %d who published first", owner, undoUserA)
+	}
+}

@@ -13,12 +13,19 @@ import (
 // could not, and the child rows then stay where they are.
 func (u *undo) restorePages() (bool, error) {
 	oldID := int64(u.oldID)
-	if ok, err := u.exists("patch", oldID); err != nil || ok {
-		return ok, err
-	}
 	newExists, err := u.exists("patch", int64(u.newID))
 	if err != nil {
 		return false, err
+	}
+	if ok, err := u.exists("patch", oldID); err != nil {
+		return false, err
+	} else if ok {
+		if u.action == ActionRenumber && newExists {
+			u.note("撤销前原 id %d 上已新建了页面：资源搬到这个新页面，合并时改号的原页行仍在 %d 上，需人工核对", u.oldID, u.newID)
+		} else {
+			u.note("撤销前原 id %d 上已新建了页面：资源搬到这个新页面，合并前的原页行没有恢复", u.oldID)
+		}
+		return true, nil
 	}
 	if u.action == ActionRenumber && newExists {
 		return true, u.takeBackRenumberedPage()
@@ -183,17 +190,17 @@ func (u *undo) reinsertPage(before json.RawMessage) (bool, error) {
 // exists, else the survivor's publisher: the order the user purge hands a page
 // over in.
 func (u *undo) heir() int {
-	for _, r := range u.of("patch_resource", changeMoved) {
-		var v struct {
-			UserID int `json:"user_id"`
-		}
-		if json.Unmarshal(r.Value, &v) == nil && u.userExists(v.UserID) {
-			return v.UserID
-		}
+	var heir int
+	u.tx.Raw(`
+		SELECT (r.value->>'user_id')::int FROM patch_merge_record_row r
+		WHERE r.record_id = ? AND r.table_name = 'patch_resource' AND r.change = ?
+		  AND EXISTS (SELECT 1 FROM "user" WHERE id = (r.value->>'user_id')::int)
+		ORDER BY (r.value->>'created')::timestamptz, r.row_id LIMIT 1`,
+		u.report.RecordID, changeMoved).Scan(&heir)
+	if heir == 0 {
+		u.tx.Raw(`SELECT user_id FROM patch WHERE id = ?`, u.newID).Scan(&heir)
 	}
-	var owner int
-	u.tx.Raw(`SELECT user_id FROM patch WHERE id = ?`, u.newID).Scan(&owner)
-	return owner
+	return heir
 }
 
 func (u *undo) userExists(id int) bool {

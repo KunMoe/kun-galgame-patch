@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	patchMerge "kun-galgame-patch-api/internal/patch/merge"
 
@@ -131,7 +132,7 @@ func mergeTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(clean)
 	for _, q := range []string{
 		`INSERT INTO "user" (id, updated) VALUES (1499999973, now()), (1499999974, now())`,
-		`INSERT INTO patch (id, vndb_id, user_id, updated) VALUES (1499999973, 'v-mr-1', 1499999973, now()), (1499999974, 'v-mr-2', 1499999974, now())`,
+		`INSERT INTO patch (id, vndb_id, user_id, view, updated) VALUES (1499999973, 'v-mr-1', 1499999973, 10, now()), (1499999974, 'v-mr-2', 1499999974, 100, now())`,
 		`INSERT INTO patch_resource (storage, user_id, galgame_id, updated) VALUES ('user', 1499999973, 1499999973, now())`,
 	} {
 		if err := db.Exec(q).Error; err != nil {
@@ -191,5 +192,44 @@ func TestPurgeTakesTheUsersRowsOutOfMergeRecords(t *testing.T) {
 		WHERE m.old_id = 1499999973 AND r.table_name = 'patch' AND r.row_id = 1499999973 AND r.value->>'user_id' = '1499999974'`).Scan(&handed)
 	if resources != 0 || pagesOfPurged != 0 || handed != 1 {
 		t.Errorf("resource copies %d, pages naming the purged user %d, handed to the heir %d", resources, pagesOfPurged, handed)
+	}
+}
+
+// Review 2, item 2: a double click ran two retries at once, and the second
+// took the retired page's counters off the survivor a second time.
+func TestConcurrentRetriesUndoOnce(t *testing.T) {
+	db := mergeTestDB(t)
+	repo := New(db)
+	var recordID int64
+	db.Raw(`SELECT id FROM patch_merge_record WHERE old_id = 1499999973`).Scan(&recordID)
+	if err := patchMerge.MarkFailed(db, recordID, fmt.Errorf("boom")); err != nil {
+		t.Fatal(err)
+	}
+
+	first := db.Begin()
+	rec, err := patchMerge.FailedRecord(first, recordID)
+	if err != nil || rec == nil {
+		t.Fatalf("record: %+v, %v", rec, err)
+	}
+	if _, err := patchMerge.Undo(first, rec, ""); err != nil {
+		first.Rollback()
+		t.Fatal(err)
+	}
+	second := make(chan error, 1)
+	go func() {
+		_, err := repo.RetryMergeUndo(recordID, nil)
+		second <- err
+	}()
+	time.Sleep(300 * time.Millisecond)
+	if err := first.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != ErrNoFailedUndo {
+		t.Errorf("second retry = %v, want it refused once the first had undone the merge", err)
+	}
+	var view int
+	db.Raw(`SELECT view FROM patch WHERE id = 1499999974`).Scan(&view)
+	if view != 100 {
+		t.Errorf("survivor view = %d, want 100: the retired page's 10 taken off once", view)
 	}
 }
