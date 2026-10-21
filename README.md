@@ -116,7 +116,7 @@ pnpm format       # 前后端格式化（prettier / gofmt）
 本项目使用 **Docker 多阶段构建**部署，所有镜像定义在 `docker/`，编排文件在仓库根目录：
 
 - `docker/go.Dockerfile` — 参数化（`ARG CMD`）构建 Go 二进制，产物为 **distroless static (nonroot)** 镜像（约 45 MB）；健康检查复用二进制自带的 `healthcheck` 子命令（distroless 无 shell）。
-- `docker/nuxt.Dockerfile` — 参数化（`ARG APP`）构建 Nuxt，运行阶段为 `node:22-slim` + 自包含的 `.output`（Nitro server）。
+- `docker/nuxt.Dockerfile` — 参数化（`ARG APP`）构建 Nuxt，运行阶段为 `node:24.22.1-trixie-slim` + 自包含的 `.output`（Nitro server）。
 - `docker-compose.yml` — 开发/本机编排：`api` + `web` + `profiles: jobs` 的一次性 `migrate` 任务，加入 infra 的外部网络以解析 `postgres` / `oauth` / `galgame` / `image` 等服务名。
 - `docker-compose.prod.yml` — 生产编排（GHCR 镜像 + Dokploy + Traefik）。
 

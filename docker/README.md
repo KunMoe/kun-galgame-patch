@@ -10,7 +10,7 @@ This setup mirrors infra's `docker/` conventions one-for-one.
 | File | Builds | Base image | Why |
 |---|---|---|---|
 | `docker/go.Dockerfile` | `server` + every `cmd/migrate` / `sync-moemoepoint` / … tool (pure Go) | `distroless/static` (~15–25 MB) | `CGO_ENABLED=0` static binary. moyu has **no** cgo deps → no `cgo.Dockerfile` (unlike infra's oauth/image). |
-| `docker/nuxt.Dockerfile` | `web` (Nitro `node-server`) | `node:22-slim` (~390 MB) | self-contained `.output`; sharp ships via the `@kun/ui` layer build |
+| `docker/nuxt.Dockerfile` | `web` (Nitro `node-server`) | `node:24.22.1-trixie-slim` (~390 MB) | self-contained `.output`; sharp ships via the `@kun/ui` layer build |
 
 Both are **parametric** (`--build-arg CMD=…` / `APP=…`) and require the **repo
 root** as build context (`apps/web` consumes `packages/ui` as a Nuxt layer from

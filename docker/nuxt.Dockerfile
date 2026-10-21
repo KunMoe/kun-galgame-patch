@@ -16,7 +16,7 @@
 # NOTE: the image CDN (`imageBed`) is still HARDCODED in app/config/moyu-moe.ts
 # (not env-driven) — align it with image_service before relying on hash-
 # addressed avatar/banner display. See docker/README.md §image_service.
-ARG NODE_VERSION=24
+ARG NODE_VERSION=24.22.1
 
 FROM node:${NODE_VERSION}-trixie-slim AS base
 RUN corepack enable
