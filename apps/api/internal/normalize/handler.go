@@ -50,6 +50,11 @@ func (h *Handler) Complete(c fiber.Ctx, botUserID int) error {
 	if err := utils.ParseAndValidate(c, &req); err != nil {
 		return response.Error(c, apperrors.ErrBadRequest(err.Error()))
 	}
+	if req.ArchiveComment != nil {
+		if err := CheckComment(*req.ArchiveComment); err != nil {
+			return response.Error(c, apperrors.ErrBadRequest(err.Error()))
+		}
+	}
 	out, err := h.svc.Complete(c.Context(), id, botUserID, req)
 	switch {
 	case err == nil:
@@ -84,6 +89,49 @@ func (h *Handler) Fail(c fiber.Ctx) error {
 		return response.Error(c, apperrors.ErrConflict(err.Error()))
 	case errors.Is(err, ErrNoJob):
 		return response.Error(c, apperrors.ErrNotFound(err.Error()))
+	default:
+		return response.Error(c, apperrors.ErrInternal(""))
+	}
+}
+
+type CommentListQuery struct {
+	Limit int    `query:"limit" validate:"omitempty,min=1,max=50"`
+	After string `query:"after" validate:"omitempty,uuid"`
+}
+
+func (h *Handler) CommentSources(c fiber.Ctx) error {
+	var q CommentListQuery
+	if err := utils.ParseQueryAndValidate(c, &q); err != nil {
+		return response.Error(c, apperrors.ErrBadRequest(err.Error()))
+	}
+	if q.Limit == 0 {
+		q.Limit = MaxCommentList
+	}
+	items, next, err := h.svc.CommentSources(c.Context(), q.Limit, q.After)
+	if err != nil {
+		return response.Upstream(c, err, "")
+	}
+	return response.OK(c, fiber.Map{"items": items, "next": next})
+}
+
+func (h *Handler) RecordComment(c fiber.Ctx) error {
+	id, ok := resourceID(c)
+	if !ok {
+		return response.Error(c, apperrors.ErrBadRequest("invalid resource id"))
+	}
+	var req CommentRequest
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, apperrors.ErrBadRequest(err.Error()))
+	}
+	if err := CheckComment(req.ArchiveComment); err != nil {
+		return response.Error(c, apperrors.ErrBadRequest(err.Error()))
+	}
+	err := h.svc.RecordComment(c.Context(), id, req)
+	switch {
+	case err == nil:
+		return response.OK(c, fiber.Map{"resource_id": id, "source_artifact_uuid": req.SourceArtifactUUID})
+	case errors.Is(err, ErrNoJob):
+		return response.Error(c, apperrors.ErrNotFound("no normalize job for source_artifact_uuid on this resource"))
 	default:
 		return response.Error(c, apperrors.ErrInternal(""))
 	}

@@ -109,6 +109,8 @@ const aria2CommandOf = (url: string) => `aria2c -x16 -s16 -c '${url}'`
       />
     </div>
 
+    <ResourceArchiveInfo :resource="props.resource" />
+
     <div
       v-if="props.resource.blake3 && props.resource.storage !== 'user'"
       class="border-success/30 space-y-2 border-t pt-3"

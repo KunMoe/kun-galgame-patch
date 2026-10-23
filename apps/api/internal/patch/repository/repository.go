@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"slices"
 
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
@@ -195,6 +196,30 @@ func (r *PatchRepository) ResourceCoverage(galgameID int) (ResourceCoverage, err
 
 func (r *PatchRepository) CreateResource(resource *model.PatchResource) error {
 	return r.db.Create(resource).Error
+}
+
+// MarkAwaitingPassword flags the hosted files the normalize lane could not
+// open with the resource's password.
+func (r *PatchRepository) MarkAwaitingPassword(rs []model.PatchResource) error {
+	uuids := make([]string, 0, len(rs))
+	for _, res := range rs {
+		if res.Storage == "s3" && res.ArtifactUUID != "" {
+			uuids = append(uuids, res.ArtifactUUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	var locked []string
+	if err := r.db.Raw(`SELECT source_artifact_uuid FROM patch_resource_normalize
+		WHERE state = 'failed' AND code = 'wrong_password' AND source_artifact_uuid IN ?`, uuids).
+		Scan(&locked).Error; err != nil {
+		return err
+	}
+	for i := range rs {
+		rs[i].AwaitingPassword = slices.Contains(locked, rs[i].ArtifactUUID)
+	}
+	return nil
 }
 
 func (r *PatchRepository) GetResourceByID(id int) (*model.PatchResource, error) {

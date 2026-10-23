@@ -19,6 +19,11 @@ interface PatchResource {
   download_url?: string
   code?: string
   password?: string
+  // Plain text, not markdown: the comment the author's original archive
+  // carried, which the passwordless zip that replaced it cannot.
+  archive_comment?: string
+  // The file is encrypted and its password field does not open it.
+  awaiting_password?: boolean
   like_count: number
   is_liked?: boolean
   // Per-resource subscription state (filled on GET /resource/:id for the

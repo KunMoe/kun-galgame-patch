@@ -66,7 +66,7 @@ API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小�
 `POST /bot/normalize-jobs/claim`，body `{"limit": 1..20, "resource_ids": [...]}`（`limit` 默认 1；`resource_ids` 可选，最多 20 个，只在这些资源里挑，供 canary 用），返回：
 
 ```json
-{"items":[{"resource_id":1,"galgame_id":2,"artifact_uuid":"…","download_url":"…","filename":"汉化补丁 v1.2.rar","password":"…","bytes":123,"repack":null,"lease_expires_at":"…"}]}
+{"items":[{"resource_id":1,"galgame_id":2,"artifact_uuid":"…","download_url":"…","filename":"汉化补丁 v1.2.rar","password":"…","password_candidates":["…"],"note":"…","bytes":123,"repack":null,"lease_expires_at":"…"}]}
 ```
 
 - 租约 6 小时，每次 claim 记一次尝试。第 5 次租约过期后，job 自动变成 `failed` / `abandoned`。临时错误（网络、OOM）不要调 fail，等租约自然过期即可。
@@ -75,21 +75,32 @@ API 每分钟清一次队列，失败按 1 分钟起翻倍退避、封顶 1 小�
 - 不带 repack 的资源，每个 UTC 日最多 claim 2,400 次。每次这样的 claim 对应 forge 的一次上传 Init，而 moyu 在制品服务的配额是每天 3,000 次 Init，读者的上传也算在内。提升不上传，不计入这个上限。
 - 制品服务里已经没有的源文件不会下发，直接记为 `failed` / `source_missing`。
 - `filename` 是作者上传时的文件名。forge 上传产物时用它的主名加 `.zip`。
+- `password_candidates`（2026-10-23）：`password` 打不开时可以依次尝试的密码，总是数组，可能为空。已去重、不含 `password` 本身，新的在前。目前只有一个来源：这个资源以前各个文件 job 行里的 `source_password`。资源 2011 就是这种情况：作者换上的新文件用的是旧文件的密码，而那个密码在交换时已被清空。`note` 是资源备注原文，forge 自己从备注和压缩包注释里提取更多候选。2026-10-23 的 108 个 `wrong_password` 失败，`password` 全部为空，其中 104 个在备注里写了解压码。
 
 `POST /bot/normalize-jobs/:id/complete`，body：
 
 ```json
-{"artifact_uuid":"…","source_artifact_uuid":"…","filename":"汉化补丁 v1.2.zip","bytes":123,"blake3":"<64 hex>","file_count":42,"has_archives":false}
+{"artifact_uuid":"…","source_artifact_uuid":"…","filename":"汉化补丁 v1.2.zip","bytes":123,"blake3":"<64 hex>","file_count":42,"has_archives":false,"password":"…","archive_comment":"…"}
 ```
+
+- `password`（2026-10-23，可选）：实际打开源文件的密码。源文件没加密，或者没打开源文件（提升）时为 `""`。job 行的 `source_password` 记这个值，为空时记资源原来的解压码。
+- `archive_comment`（2026-10-23，可选）：源文件的包级注释，纯文本。必须是合法 UTF-8、不含 NUL、不超过 16384 字节，否则 400。`""` 表示读过但没有注释；**不带这个字段**表示没读过，这时 job 行的 `source_comment` 为 NULL，之后由注释回填补上。055 之前的 forge 不带这个字段，如果把缺省当成 `""`，它处理过的文件就会从回填里漏掉。值同时写进 job 行的 `source_comment` 和资源的 `archive_comment`（迁移 055）。资源页在备注下方以可折叠的「压缩包注释」展示。
 
 - `artifact_uuid` 是产物：bot 7 天内自己发起的上传，或者该资源当前的 repack（提升）。它必须已完成、`public`、大小等于 `bytes`、名字以 `.zip` 结尾，且不是任何资源的文件、别的资源的 repack、待删队列里的 artifact 或别的 job 的产物。否则 422。
 - 资源当前文件已不是 `source_artifact_uuid` 时回 409，并由 moyu 把产物放进待删队列，forge 不用管。
 - 同一对 (artifact_uuid, source_artifact_uuid) 重放：200，原样返回。同一个源文件换一个产物：409。
-- 同一事务里依次：job 记为 `done`，把被覆盖的解压码和大小存进 job 行；`artifact_uuid` 换成产物；`size` 写成 `"%.3f MB"`，与发布表单一致；`blake3` 写产物的哈希；`has_archives=false` 时清空解压码。`update_time`、`updated`、备注、计数、`patch_resource_file_history`、`patch_resource_revision` 都不碰，也不发通知。最后原文件进待删队列，但 30 天后才真正调 DELETE，之后 infra 再软删 7 天。原文件是作者唯一的副本，而 forge 包的文件名解码问题可能几周后才暴露：2026-09-29 发布的 4,178 个 forge 包里，有 1,243 个在部分语言环境下无法正常读取。
+- 同一事务里依次：job 记为 `done`，把被覆盖的解压码和大小存进 job 行；`artifact_uuid` 换成产物；`size` 写成 `"%.3f MB"`，与发布表单一致；`blake3` 写产物的哈希，`archive_comment` 写源文件注释；`has_archives=false` 时清空解压码，为 true 时改写成打开源文件的那个密码（`password` 为空时保留原值）。`update_time`、`updated`、备注、计数、`patch_resource_file_history`、`patch_resource_revision` 都不碰，也不发通知。最后原文件进待删队列，但 30 天后才真正调 DELETE，之后 infra 再软删 7 天。原文件是作者唯一的副本，而 forge 包的文件名解码问题可能几周后才暴露：2026-09-29 发布的 4,178 个 forge 包里，有 1,243 个在部分语言环境下无法正常读取。
 - 交换成功后，moyu 把产物改名为 `filename`（`PATCH /api/v1/artifacts/{uuid}`），改名失败时 complete 返回错误但交换已生效。forge 重放 complete 即可补上改名。改名要在制品服务里原地重写对象，最大 5 GiB，可能需要几分钟。
 - 提升 repack 时，047 的触发器会在文件变更时删掉 repack 行。050 让它不再把「仍是某个资源文件」的 artifact 放进待删队列，否则刚换上的文件会被删掉。如果带 repack 的资源上传了新产物，旧 repack 照常删除，钉住它的 letmoe 组合也一并删除。
 
-`POST /bot/normalize-jobs/:id/fail`，body `{"source_artifact_uuid":"…","code":"wrong_password","message":"…"}`：对这个文件是终态，原文件保留。只有作者换了文件，或运维删掉 job 行，才会重新下发。没有 claim 过的文件回 404，已完成的回 409。
+`POST /bot/normalize-jobs/:id/fail`，body `{"source_artifact_uuid":"…","code":"wrong_password","message":"…"}`：对这个文件是终态，原文件保留。只有作者换了文件、作者在没换文件的情况下改了解压码（只对 `wrong_password` 生效：moyu 在同一事务里删掉这一行），或运维删掉 job 行，才会重新下发。没有 claim 过的文件回 404，已完成的回 409。
+
+`code=wrong_password` 时，如果这个 job 是从 `claimed` 状态失败的，并且资源当前的文件仍是这个源文件，moyu 会给作者发一条站内系统通知，链接到 `/resource/<id>`。重复调 fail 不会再发。只要还处在这种失败状态，资源列表和资源详情就会返回 `awaiting_password: true`，页面上提示「文件已加密，作者尚未提供解压密码」（作者填过密码时提示「作者填写的解压密码无法解开此文件」）。
+
+**注释回填**（2026-10-23，迁移 055）：055 之前交换过的文件没有读过注释。原文件只保留 30 天，所以 2026-10-15 那一批从 2026-11-14 起就会被删掉。
+
+- `GET /bot/normalize-jobs/comments?limit=1..50&after=<source_artifact_uuid>`（`limit` 默认 50）返回 `{"items":[{"resource_id","source_artifact_uuid","filename","download_url","bytes"}],"next":"…"}`。列出满足以下条件的 job：`state` 为 `done` 或 `failed`，`source_comment IS NULL`，源文件仍然存在（它还是某个资源的文件，或者还在待删队列里）。按 `source_artifact_uuid` 升序排列。`next` 是这一页扫描到的最后一个 uuid，作为下一页的 `after`；为 `""` 表示扫完了。制品服务里已经没有的源文件不会出现在 `items` 里，但 `next` 会越过它们，所以 `items` 为空不代表扫完。
+- `POST /bot/normalize-jobs/:id/comment`，body `{"source_artifact_uuid":"…","archive_comment":"…"}`，校验规则同 complete。它写入 job 行的 `source_comment`。如果资源当前的文件仍是这次 job 的产物（`done`）或源文件本身（其他状态），也会同时写入资源的 `archive_comment`。幂等，可以重写。该资源下没有这个源文件的 job 行时回 404。
 
 变更流把这次换文件记为 `normalized`，不是 `file_replaced`，否则 letmoe 会重建约 300 个合并下载。`/v2/moyu/resources/{id}/file` 对 forge 产物回 `normalized: true`，此时文件本身就是合并层，`repack` 为 null，对它再 PUT repack 会回 422。
 

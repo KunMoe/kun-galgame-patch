@@ -17,6 +17,7 @@ import (
 	"kun-galgame-patch-api/internal/infrastructure/markdown"
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
+	patchRepository "kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
@@ -326,6 +327,7 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 		resource.S3Key = ""
 		resource.Code = ""
 		resource.Password = ""
+		resource.ArchiveComment = ""
 	} else if resource.ArtifactUUID != "" && h.art != nil {
 		if dl, derr := h.art.Download(c.Context(), resource.ArtifactUUID); derr == nil {
 			resource.DownloadURL = dl.Url
@@ -336,6 +338,9 @@ func (h *CommonHandler) GetResourceDetail(c fiber.Ctx) error {
 	}
 
 	one := []patchModel.PatchResource{resource}
+	if err := patchRepository.New(h.db).MarkAwaitingPassword(one); err != nil {
+		slog.Warn("resource detail: reading normalize failures failed", "resource_id", resource.ID, "error", err)
+	}
 	h.attachResourceUsers(c.Context(), one)
 	resource = one[0]
 	h.attachResourceUsers(c.Context(), recs)

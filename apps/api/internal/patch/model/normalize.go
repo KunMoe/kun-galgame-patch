@@ -16,6 +16,7 @@ type PatchResourceNormalize struct {
 	HasArchives        bool       `json:"has_archives"`
 	SourcePassword     string     `json:"-"`
 	SourceSize         string     `json:"-"`
+	SourceComment      *string    `json:"source_comment"`
 	Code               string     `json:"code"`
 	Message            string     `json:"message"`
 	CreatedAt          time.Time  `json:"created_at"`

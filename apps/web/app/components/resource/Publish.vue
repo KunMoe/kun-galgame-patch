@@ -9,6 +9,10 @@ import {
   ALLOWED_EXTENSIONS
 } from '~/constants/resource'
 import { pickRoleBadge } from '~/constants/user'
+import {
+  sniffArchiveEncryption,
+  type ArchiveEncryption
+} from '~/shared/utils/archiveEncryption'
 
 interface Props {
   patchId: number
@@ -83,6 +87,20 @@ const syncResumeForPicked = () => {
   resumeUuid.value = match ? match.artifactUuid : null
 }
 onMounted(refreshPending)
+
+const pickedEncryption = ref<ArchiveEncryption>('plain')
+watch(pickedFile, async (f) => {
+  pickedEncryption.value = 'plain'
+  if (!f) return
+  const found = await sniffArchiveEncryption(f).catch(() => 'plain' as const)
+  if (pickedFile.value === f) pickedEncryption.value = found
+})
+const passwordMissing = computed(
+  () =>
+    form.storage === 's3' &&
+    pickedEncryption.value !== 'plain' &&
+    !form.password.trim()
+)
 
 const showingExistingFile = computed(
   () =>
@@ -259,6 +277,8 @@ const validate = (): string | null => {
     if (uploadingNow.value) return '文件正在上传中，请稍候'
     if (!showingExistingFile.value && !form.artifact_uuid && !form.s3_key)
       return '请上传补丁文件'
+    if (passwordMissing.value && pickedEncryption.value === 'encrypted')
+      return '该压缩包已加密，请填写解压码'
   } else {
     if (userLinks.value.filter((l) => l.trim()).length === 0)
       return '请至少添加一条资源链接'
@@ -798,6 +818,17 @@ const existingFileName = computed(() => {
                 ? '用于重新打包时解压；打包后不再需要的解压码会被清空'
                 : undefined
             "
+          />
+          <KunInfo
+            v-if="passwordMissing"
+            color="warning"
+            variant="flat"
+            :title="
+              pickedEncryption === 'encrypted'
+                ? '该压缩包已加密，请填写解压码'
+                : '无法检测 7z 压缩包是否加密，如有解压码请填写'
+            "
+            description="没有解压码，站点无法重新打包这个文件，下载的用户也无法解压。"
           />
         </section>
 
