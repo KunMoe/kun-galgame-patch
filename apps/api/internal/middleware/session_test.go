@@ -311,6 +311,51 @@ func TestContendedRefreshWaitsForTheWinner(t *testing.T) {
 	}
 }
 
+func TestContendedRefreshOutlastsASlowWinner(t *testing.T) {
+	fake := &tokenFake{status: http.StatusOK, body: tokenOK}
+	rig := newSessionRig(t, fake)
+	rig.putSession(t, "s1", expired())
+	rig.rdb.Set(context.Background(), "lock:refresh:s1", 1, time.Minute)
+
+	go func() {
+		time.Sleep(3500 * time.Millisecond)
+		blob, _ := json.Marshal(SessionData{
+			UserInfo: UserInfo{ID: 42}, OAuthAccessToken: "winner", OAuthExpiresAt: time.Now().Unix() + 900,
+		})
+		rig.rdb.Set(context.Background(), SessionPrefix+"s1", blob, SessionTTL)
+		rig.rdb.Del(context.Background(), "lock:refresh:s1")
+	}()
+
+	status, body, _ := rig.get(t, "/auth", "s1")
+	if status != http.StatusOK || body.Data != float64(42) {
+		t.Fatalf("got %d/%v, want 200 as user 42", status, body.Data)
+	}
+}
+
+func TestContendedRefreshStopsWaitingWhenTheWinnerFails(t *testing.T) {
+	fake := &tokenFake{status: http.StatusOK, body: tokenOK}
+	rig := newSessionRig(t, fake)
+	rig.putSession(t, "s1", expired())
+	rig.rdb.Set(context.Background(), "lock:refresh:s1", 1, time.Minute)
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		rig.rdb.Del(context.Background(), "lock:refresh:s1")
+	}()
+
+	start := time.Now()
+	status, _, _ := rig.get(t, "/auth", "s1")
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("got %d, want 503", status)
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("the loser waited %v after the winner gave up", took)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("the loser called /oauth/token %d times", fake.calls)
+	}
+}
+
 func TestTokenEndpointErrorKinds(t *testing.T) {
 	cases := []struct {
 		status int
