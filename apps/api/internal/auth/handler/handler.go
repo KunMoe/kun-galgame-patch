@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"kun-galgame-patch-api/internal/auth/dto"
@@ -84,7 +85,7 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 			"last_login_time": time.Now().Format(time.RFC3339),
 			"ip":              ip,
 		})
-	}(userInfo.ID, c.IP())
+	}(userInfo.ID, strings.Clone(c.IP()))
 
 	session := &middleware.SessionData{
 		UserInfo: middleware.UserInfo{

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"kun-galgame-patch-api/pkg/config"
@@ -63,7 +64,11 @@ func liveSession(c fiber.Ctx, rdb *redis.Client, oauthCfg config.OAuthConfig, se
 			return nil, err
 		}
 	case now >= session.OAuthExpiresAt-refreshAheadOfExp:
-		go refreshInBackground(rdb, oauthCfg, sessionID, *session)
+		// fiber hands out cookie values that alias the request buffer. The refresh
+		// returns after the handler, when that buffer holds the next request on the
+		// connection, so the uncloned id wrote this reader into another reader's
+		// session: the 2026-10-22 account swaps.
+		go refreshInBackground(rdb, oauthCfg, strings.Clone(sessionID), *session)
 	}
 	return session, nil
 }

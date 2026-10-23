@@ -37,6 +37,7 @@ func NewTestApp(t *testing.T) *TestApp {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	app := fiber.New(fiber.Config{
+		Immutable: true,
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			return c.Status(500).JSON(response.Response{
 				Code:    50000,
