@@ -330,3 +330,41 @@ func TestTokenEndpointErrorKinds(t *testing.T) {
 		}
 	}
 }
+
+// The rig runs fiber with Immutable off, so this pins the clone in liveSession
+// and not only the production config.
+func TestBackgroundRefreshWritesItsOwnSession(t *testing.T) {
+	release := make(chan struct{})
+	fake := &tokenFake{status: http.StatusOK, body: tokenOK, hook: func() { <-release }}
+	rig := newSessionRig(t, fake)
+	put := func(id string, userID int, expiresAt int64) {
+		blob, _ := json.Marshal(SessionData{
+			UserInfo:          UserInfo{ID: userID},
+			OAuthAccessToken:  "old-access",
+			OAuthRefreshToken: "old-refresh",
+			OAuthExpiresAt:    expiresAt,
+		})
+		rig.rdb.Set(context.Background(), SessionPrefix+id, blob, SessionTTL)
+	}
+	put("aaaaaaaa", 1, time.Now().Unix()+refreshAheadOfExp/2)
+	put("bbbbbbbb", 2, time.Now().Unix()+3600)
+
+	if _, body, _ := rig.get(t, "/auth", "aaaaaaaa"); body.Data != float64(1) {
+		t.Fatalf("first reader answered as %v", body.Data)
+	}
+	if _, body, _ := rig.get(t, "/auth", "bbbbbbbb"); body.Data != float64(2) {
+		t.Fatalf("second reader answered as %v", body.Data)
+	}
+	close(release)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for rig.mr.Exists("lock:refresh:aaaaaaaa") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a := rig.session(t, "aaaaaaaa"); a == nil || a.ID != 1 || a.OAuthAccessToken != "new-access" {
+		t.Errorf("refreshed session = %+v, want user 1 with the new token", a)
+	}
+	if b := rig.session(t, "bbbbbbbb"); b == nil || b.ID != 2 || b.OAuthAccessToken != "old-access" {
+		t.Errorf("bystander session = %+v, want user 2 untouched", b)
+	}
+}
