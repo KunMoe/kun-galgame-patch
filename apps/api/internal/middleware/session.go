@@ -22,7 +22,7 @@ import (
 
 const (
 	refreshLockTTL    = 30 * time.Second
-	refreshWait       = 3 * time.Second
+	refreshPoll       = 100 * time.Millisecond
 	refreshAheadOfExp = 300
 )
 
@@ -130,11 +130,28 @@ func refreshInBackground(rdb *redis.Client, oauthCfg config.OAuthConfig, session
 	slog.Log(context.Background(), level, "OAuth background refresh failed; the session keeps its token", "error", err)
 }
 
+// The winner holds the lock until its refresh returns, which can take the
+// whole oauthRefreshHTTP timeout. A fixed 3s wait answered 79 readers 503 on
+// 2026-10-22 while OAuth was slow but still answering.
 func waitForRefreshedSession(ctx context.Context, rdb *redis.Client, sessionID string, session *SessionData) error {
 	prevExpiresAt := session.OAuthExpiresAt
-	deadline := time.Now().Add(refreshWait)
+	deadline := time.Now().Add(oauthRefreshHTTP.Timeout + time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
 	for time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(refreshPoll):
+		}
+		// The lock is read before the session: the winner saves the session
+		// before it releases the lock, so a released lock with no new token
+		// means the winner failed.
+		held, err := rdb.Exists(ctx, refreshLockKey(sessionID)).Result()
+		if err != nil {
+			return fmt.Errorf("%w: read refresh lock: %w", errSessionStore, err)
+		}
 		fresh, err := readSession(ctx, rdb, sessionID)
 		if err != nil {
 			return err
@@ -143,13 +160,19 @@ func waitForRefreshedSession(ctx context.Context, rdb *redis.Client, sessionID s
 			*session = *fresh
 			return nil
 		}
+		if held == 0 {
+			return &upstream.Error{Service: "oauth", Op: "refresh", Kind: upstream.Unavailable,
+				Detail: "a concurrent refresh of this session failed"}
+		}
 	}
 	return &upstream.Error{Service: "oauth", Op: "refresh", Kind: upstream.Unavailable,
 		Detail: "a concurrent refresh of this session did not finish in time"}
 }
 
+func refreshLockKey(sessionID string) string { return "lock:refresh:" + sessionID }
+
 func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string, session *SessionData) error {
-	lockKey := "lock:refresh:" + sessionID
+	lockKey := refreshLockKey(sessionID)
 	won, err := rdb.SetNX(ctx, lockKey, 1, refreshLockTTL).Result()
 	if err != nil {
 		return fmt.Errorf("%w: take refresh lock: %w", errSessionStore, err)

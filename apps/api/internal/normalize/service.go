@@ -157,15 +157,19 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 	}
 	args = append(args, limit, leaseTTL.Seconds(), promotions)
 	var rows []claimedRow
+	// NOT IN keeps each job lookup a single hashed scan. As joins, the planner
+	// expected one row out of them and probed the job table with a seq scan per
+	// resource: 27.8s per claim in production on 2026-10-23, inside the claim
+	// lock, which queued every other claimer behind it.
 	err := tx.Raw(`WITH due AS (
 			SELECT r.id, r.galgame_id, r.artifact_uuid, r.password
 			FROM patch_resource r
-			LEFT JOIN patch_resource_normalize j ON j.source_artifact_uuid = r.artifact_uuid
 			WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
 				AND `+utils.LiveWorkResource("r")+`
-				AND (j.source_artifact_uuid IS NULL OR (j.state = 'claimed' AND j.lease_until < now()))
-				AND NOT EXISTS (SELECT 1 FROM patch_resource_normalize p WHERE p.artifact_uuid = r.artifact_uuid)
-				AND (EXISTS (SELECT 1 FROM patch_resource_repack rp WHERE rp.resource_id = r.id)) = ?
+				AND r.artifact_uuid NOT IN (SELECT source_artifact_uuid FROM patch_resource_normalize
+					WHERE state <> 'claimed' OR lease_until IS NULL OR lease_until >= now())
+				AND r.artifact_uuid NOT IN (SELECT artifact_uuid FROM patch_resource_normalize)
+				AND (r.id IN (SELECT resource_id FROM patch_resource_repack)) = ?
 				`+filter+`
 			ORDER BY r.update_time DESC, r.id DESC
 			LIMIT ?
