@@ -47,9 +47,13 @@ export const useApi = () => {
   // header at setup time and forward it on server-side requests so SSR and
   // CSR agree. Must be read here (composable/setup scope), not inside the
   // async closure.
-  const ssrCookie = import.meta.server
-    ? useRequestHeaders(['cookie']).cookie
-    : undefined
+  //
+  // CF-Connecting-IP rides along too: on SSR the API's peer is
+  // this container, so without it every server-rendered page counted against
+  // one per-IP rate-limit bucket.
+  const ssrHeaders = import.meta.server
+    ? useRequestHeaders(['cookie', 'cf-connecting-ip'])
+    : {}
 
   // NSFW preference is encoded as the `content_limit` query parameter on
   // every request, per docs/galgame_wiki/00-handbook §16. We append it
@@ -218,7 +222,7 @@ export const useApi = () => {
         body: isForm ? body : body ? JSON.stringify(body) : undefined,
         headers: {
           ...(isForm ? {} : { 'Content-Type': 'application/json' }),
-          ...(ssrCookie ? { cookie: ssrCookie } : {}),
+          ...ssrHeaders,
           ...headers
         },
         credentials: 'include'
