@@ -38,9 +38,11 @@ func (g *Gate) enabled() bool {
 	return g != nil && g.client != nil && g.client.Configured()
 }
 
-func (g *Gate) Denied(ctx context.Context, subjectKind, text string, authorID int) bool {
+// Denied fails open. skipped reports that trust gave no verdict, which the
+// scan must carry so trust re-checks content it published unchecked.
+func (g *Gate) Denied(ctx context.Context, subjectKind, text string, authorID int) (denied, skipped bool) {
 	if !g.enabled() || text == "" {
-		return false
+		return false, false
 	}
 	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
@@ -48,15 +50,15 @@ func (g *Gate) Denied(ctx context.Context, subjectKind, text string, authorID in
 	res, err := g.client.Check(cctx, trustclient.CheckRequest{Text: text, AuthorID: &author})
 	if err != nil {
 		slog.Warn("trust check failed open", "subject_kind", subjectKind, "error", err)
-		return false
+		return false, true
 	}
 	if res.Decision == DecisionHold {
 		slog.Info("trust check hold", "subject_kind", subjectKind, "author_id", authorID, "matched", res.Matched)
 	}
-	return res.Decision == DecisionDeny
+	return res.Decision == DecisionDeny, false
 }
 
-func (g *Gate) ScanBg(subjectKind string, subjectID int64, text string, authorID int) {
+func (g *Gate) ScanBg(subjectKind string, subjectID int64, text string, authorID int, checkSkipped bool) {
 	if !g.enabled() || text == "" {
 		return
 	}
@@ -66,7 +68,7 @@ func (g *Gate) ScanBg(subjectKind string, subjectID int64, text string, authorID
 		author := int64(authorID)
 		id := strconv.FormatInt(subjectID, 10)
 		_, err := g.client.Scan(ctx, trustclient.ScanRequest{
-			SubjectKind: subjectKind, SubjectID: id, Text: text, AuthorID: &author,
+			SubjectKind: subjectKind, SubjectID: id, Text: text, AuthorID: &author, CheckSkipped: checkSkipped,
 		})
 		if err != nil {
 			slog.Warn("trust scan failed", "subject_kind", subjectKind, "subject_id", id, "error", err)

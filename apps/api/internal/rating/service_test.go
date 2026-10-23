@@ -89,6 +89,7 @@ func (f *fakeStore) ListByWork(workID int64, _, _ int) ([]Row, int64, error) {
 
 type fakeTrust struct {
 	decision string
+	checkErr error
 	checked  []string
 	scans    chan trustclient.ScanRequest
 }
@@ -97,6 +98,9 @@ func (f *fakeTrust) Configured() bool { return true }
 
 func (f *fakeTrust) Check(_ context.Context, req trustclient.CheckRequest) (*trustclient.CheckResult, error) {
 	f.checked = append(f.checked, req.Text)
+	if f.checkErr != nil {
+		return nil, f.checkErr
+	}
 	return &trustclient.CheckResult{Decision: f.decision}, nil
 }
 
@@ -166,6 +170,28 @@ func TestPutRecordChecksAndScansOnlyAChangedSummary(t *testing.T) {
 	}
 	if len(st.mirrored) != 1 || st.mirrored[0] != 501 {
 		t.Errorf("mirrored = %v, want the saved rating written through", st.mirrored)
+	}
+}
+
+func TestPutRecordScanCarriesASkippedCheck(t *testing.T) {
+	in := RecordInput{PlayState: DoneMain, Rating: &catalogv2.RatingInput{Overall: 8, Recommend: "yes", ShortSummary: "好玩"}}
+	for _, tc := range []struct {
+		name     string
+		checkErr error
+		want     bool
+	}{
+		{"check answered", nil, false},
+		{"check failed open", context.DeadlineExceeded, true},
+	} {
+		trust := newTrust(gate.DecisionAllow)
+		trust.checkErr = tc.checkErr
+		cat := &fakeCatalog{record: &catalogv2.WorkRecord{}}
+		if _, err := newTestService(cat, &fakeStore{}, trust).PutRecord(context.Background(), "tok", 2, 58, in); err != nil {
+			t.Fatalf("%s: PutRecord: %v", tc.name, err)
+		}
+		if req := <-trust.scans; req.CheckSkipped != tc.want {
+			t.Errorf("%s: scan check_skipped = %v, want %v", tc.name, req.CheckSkipped, tc.want)
+		}
 	}
 }
 
