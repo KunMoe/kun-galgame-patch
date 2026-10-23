@@ -350,6 +350,9 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 		return resources, err
 	}
 	model.RenderResourceNotes(resources)
+	if err := s.repo.MarkAwaitingPassword(resources); err != nil {
+		slog.Warn("GetResources: reading normalize failures failed", "patch_id", patchID, "error", err)
+	}
 	attachUsersToResources(ctx, s.users, resources)
 	s.markResourceLiked(currentUID, resources)
 	s.markResourceFavorited(currentUID, resources)
@@ -590,6 +593,16 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 			}
 		}
 
+		// A wrong_password failure is terminal for the file, so a password the
+		// author fixes without replacing the file would otherwise never be tried.
+		if !fileChanged && update.Password != existing.Password && existing.ArtifactUUID != "" {
+			if err := tx.Exec(`DELETE FROM patch_resource_normalize
+				WHERE source_artifact_uuid = ? AND state = 'failed' AND code = 'wrong_password'`,
+				existing.ArtifactUUID).Error; err != nil {
+				return fmt.Errorf("requeue the file for normalize: %w", err)
+			}
+		}
+
 		existing.Storage = update.Storage
 		existing.Name = update.Name
 		existing.ModelName = update.ModelName
@@ -604,6 +617,7 @@ func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID in
 			// An artifact upload records no BLAKE3; keeping the column named the
 			// replaced file's bytes, on 119 live rows by 2026-10-14.
 			existing.Blake3 = ""
+			existing.ArchiveComment = ""
 		}
 		existing.Type = update.Type
 		existing.Language = update.Language

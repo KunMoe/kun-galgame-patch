@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/artifactclient"
@@ -28,7 +30,9 @@ const (
 	keepOriginal = 30 * 24 * time.Hour
 	// moyu's artifact quota is 3,000 Inits a UTC day, readers' uploads
 	// included, and every claim becomes one Init.
-	dailyClaimCap = 2400
+	dailyClaimCap   = 2400
+	maxCommentBytes = 16384
+	MaxCommentList  = 50
 )
 
 var (
@@ -37,6 +41,7 @@ var (
 	ErrAlreadyDone      = errors.New("source_artifact_uuid is already normalized")
 	ErrNoJob            = errors.New("no open job for source_artifact_uuid on this resource")
 	ErrArtifactUnusable = errors.New("artifact cannot become the resource's file")
+	ErrBadComment       = errors.New("archive_comment must be valid UTF-8 without NUL, at most 16384 bytes")
 )
 
 type uploadOwners interface {
@@ -63,15 +68,17 @@ type Repack struct {
 }
 
 type Job struct {
-	ResourceID     int       `json:"resource_id"`
-	GalgameID      int       `json:"galgame_id"`
-	ArtifactUUID   string    `json:"artifact_uuid"`
-	DownloadURL    string    `json:"download_url"`
-	Filename       string    `json:"filename"`
-	Password       string    `json:"password"`
-	Bytes          int64     `json:"bytes"`
-	Repack         *Repack   `json:"repack"`
-	LeaseExpiresAt time.Time `json:"lease_expires_at"`
+	ResourceID         int       `json:"resource_id"`
+	GalgameID          int       `json:"galgame_id"`
+	ArtifactUUID       string    `json:"artifact_uuid"`
+	DownloadURL        string    `json:"download_url"`
+	Filename           string    `json:"filename"`
+	Password           string    `json:"password"`
+	PasswordCandidates []string  `json:"password_candidates"`
+	Note               string    `json:"note"`
+	Bytes              int64     `json:"bytes"`
+	Repack             *Repack   `json:"repack"`
+	LeaseExpiresAt     time.Time `json:"lease_expires_at"`
 }
 
 type claimedRow struct {
@@ -79,6 +86,7 @@ type claimedRow struct {
 	GalgameID       int
 	ArtifactUUID    string
 	Password        string
+	Note            string
 	LeaseUntil      time.Time
 	RepackUUID      *string
 	RepackBlake3    *string
@@ -127,9 +135,14 @@ func (s *Service) Claim(ctx context.Context, limit int, ids []int) ([]Job, error
 		return nil, err
 	}
 
+	candidates, err := s.passwordCandidates(ctx, rows)
+	if err != nil {
+		s.release(rows)
+		return nil, err
+	}
 	jobs := make([]Job, 0, len(rows))
 	for i, row := range rows {
-		job, err := s.describe(ctx, row)
+		job, err := s.describe(ctx, row, candidates[row.ResourceID])
 		if errors.Is(err, artifactclient.ErrNotFound) {
 			if err := s.markFailed(ctx, row.ResourceID, row.ArtifactUUID, "source_missing",
 				"the artifact service does not hold this file"); err != nil {
@@ -162,7 +175,7 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 	// resource: 27.8s per claim in production on 2026-10-23, inside the claim
 	// lock, which queued every other claimer behind it.
 	err := tx.Raw(`WITH due AS (
-			SELECT r.id, r.galgame_id, r.artifact_uuid, r.password
+			SELECT r.id, r.galgame_id, r.artifact_uuid, r.password, r.note
 			FROM patch_resource r
 			WHERE r.storage = 's3' AND r.status = 0 AND r.artifact_uuid <> ''
 				AND `+utils.LiveWorkResource("r")+`
@@ -188,7 +201,7 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 			WHERE patch_resource_normalize.state = 'claimed' AND patch_resource_normalize.lease_until < now()
 			RETURNING resource_id, source_artifact_uuid, lease_until
 		)
-		SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, l.lease_until,
+		SELECT l.resource_id, d.galgame_id, l.source_artifact_uuid AS artifact_uuid, d.password, d.note, l.lease_until,
 			rp.artifact_uuid AS repack_uuid, rp.blake3 AS repack_blake3,
 			rp.bytes AS repack_bytes, rp.file_count AS repack_file_count
 		FROM leased l
@@ -198,7 +211,41 @@ func lease(tx *gorm.DB, promotions bool, limit int, ids []int) ([]claimedRow, er
 	return rows, err
 }
 
-func (s *Service) describe(ctx context.Context, row claimedRow) (Job, error) {
+// passwordCandidates offers the passwords of a resource's earlier files: 108
+// files failed wrong_password by 2026-10-23 with an empty password field, and
+// on resource 2011 the author's replacement was encrypted with the previous
+// file's password, which the swap had cleared.
+func (s *Service) passwordCandidates(ctx context.Context, rows []claimedRow) (map[int][]string, error) {
+	ids := make([]int, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ResourceID
+	}
+	var found []struct {
+		ResourceID     int
+		SourcePassword string
+	}
+	if len(ids) > 0 {
+		if err := s.db.WithContext(ctx).Raw(`SELECT resource_id, source_password FROM patch_resource_normalize
+			WHERE resource_id IN ? AND source_password <> ''
+			ORDER BY created_at DESC, source_artifact_uuid`, ids).Scan(&found).Error; err != nil {
+			return nil, err
+		}
+	}
+	own := make(map[int]string, len(rows))
+	for _, r := range rows {
+		own[r.ResourceID] = r.Password
+	}
+	out := make(map[int][]string, len(rows))
+	for _, f := range found {
+		if f.SourcePassword == own[f.ResourceID] || slices.Contains(out[f.ResourceID], f.SourcePassword) {
+			continue
+		}
+		out[f.ResourceID] = append(out[f.ResourceID], f.SourcePassword)
+	}
+	return out, nil
+}
+
+func (s *Service) describe(ctx context.Context, row claimedRow, candidates []string) (Job, error) {
 	meta, err := s.art.Get(ctx, row.ArtifactUUID)
 	if err != nil {
 		return Job{}, err
@@ -208,14 +255,19 @@ func (s *Service) describe(ctx context.Context, row claimedRow) (Job, error) {
 		return Job{}, err
 	}
 	job := Job{
-		ResourceID:     row.ResourceID,
-		GalgameID:      row.GalgameID,
-		ArtifactUUID:   row.ArtifactUUID,
-		DownloadURL:    dl.Url,
-		Filename:       meta.Name,
-		Password:       row.Password,
-		Bytes:          meta.FileSize,
-		LeaseExpiresAt: row.LeaseUntil,
+		ResourceID:         row.ResourceID,
+		GalgameID:          row.GalgameID,
+		ArtifactUUID:       row.ArtifactUUID,
+		DownloadURL:        dl.Url,
+		Filename:           meta.Name,
+		Password:           row.Password,
+		PasswordCandidates: candidates,
+		Note:               row.Note,
+		Bytes:              meta.FileSize,
+		LeaseExpiresAt:     row.LeaseUntil,
+	}
+	if job.PasswordCandidates == nil {
+		job.PasswordCandidates = []string{}
 	}
 	if row.RepackUUID != nil {
 		job.Repack = &Repack{
@@ -252,6 +304,18 @@ type CompleteRequest struct {
 	Blake3             string `json:"blake3" validate:"required,len=64,hexadecimal,lowercase"`
 	FileCount          int    `json:"file_count" validate:"required,min=1"`
 	HasArchives        bool   `json:"has_archives"`
+	Password           string `json:"password" validate:"max=1007"`
+	// Absent means the forge did not read the source; "" means it read no
+	// comment. A forge predating 055 sends neither, and reading that as ""
+	// would hide its files from the comment backfill.
+	ArchiveComment *string `json:"archive_comment"`
+}
+
+func CheckComment(c string) error {
+	if len(c) > maxCommentBytes || !utf8.ValidString(c) || strings.ContainsRune(c, 0) {
+		return ErrBadComment
+	}
+	return nil
 }
 
 // displaySize matches what the publish form writes after an upload.
@@ -347,12 +411,20 @@ func (s *Service) Complete(ctx context.Context, resourceID, botUserID int, req C
 			return unusable("it is a resource's file, another resource's repack, or being deleted")
 		}
 
+		opened := req.Password
+		if opened == "" {
+			opened = res.Password
+		}
+		var comment string
+		if req.ArchiveComment != nil {
+			comment = *req.ArchiveComment
+		}
 		// The job is written first: 050's change-feed trigger reads it to log
 		// the swap below as `normalized`.
 		if err := tx.Raw(`INSERT INTO patch_resource_normalize
 				(source_artifact_uuid, resource_id, state, artifact_uuid, blake3, bytes, file_count,
-				 has_archives, source_password, source_size)
-			VALUES (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)
+				 has_archives, source_password, source_size, source_comment)
+			VALUES (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (source_artifact_uuid) DO UPDATE SET
 				state = 'done',
 				lease_until = NULL,
@@ -363,12 +435,13 @@ func (s *Service) Complete(ctx context.Context, resourceID, botUserID int, req C
 				has_archives = EXCLUDED.has_archives,
 				source_password = EXCLUDED.source_password,
 				source_size = EXCLUDED.source_size,
+				source_comment = EXCLUDED.source_comment,
 				code = '',
 				message = '',
 				updated_at = now()
 			RETURNING *`,
 			req.SourceArtifactUUID, resourceID, req.ArtifactUUID, req.Blake3, req.Bytes, req.FileCount,
-			req.HasArchives, res.Password, res.Size,
+			req.HasArchives, opened, res.Size, req.ArchiveComment,
 		).Scan(&out).Error; err != nil {
 			return err
 		}
@@ -376,9 +449,9 @@ func (s *Service) Complete(ctx context.Context, resourceID, botUserID int, req C
 		// Raw SQL, so GORM's autoUpdateTime leaves `updated` alone: the owner
 		// ruled that nothing but the file changes.
 		if err := tx.Exec(`UPDATE patch_resource
-			SET artifact_uuid = ?, size = ?, blake3 = ?, password = CASE WHEN ? THEN password ELSE '' END
+			SET artifact_uuid = ?, size = ?, blake3 = ?, password = CASE WHEN ? THEN ? ELSE '' END, archive_comment = ?
 			WHERE id = ?`,
-			req.ArtifactUUID, displaySize(req.Bytes), req.Blake3, req.HasArchives, resourceID).Error; err != nil {
+			req.ArtifactUUID, displaySize(req.Bytes), req.Blake3, req.HasArchives, opened, comment, resourceID).Error; err != nil {
 			return err
 		}
 		return tx.Exec(`INSERT INTO patch_resource_repack_purge (artifact_uuid, resource_id, next_attempt_at)
@@ -437,14 +510,21 @@ func (s *Service) Fail(ctx context.Context, resourceID int, req FailRequest) err
 }
 
 func (s *Service) markFailed(ctx context.Context, resourceID int, source, code, message string) error {
-	res := s.db.WithContext(ctx).Exec(`UPDATE patch_resource_normalize
+	var prior []string
+	res := s.db.WithContext(ctx).Raw(`UPDATE patch_resource_normalize n
 		SET state = 'failed', code = ?, message = ?, lease_until = NULL, updated_at = now()
-		WHERE source_artifact_uuid = ? AND resource_id = ? AND state <> 'done'`,
-		code, message, source, resourceID)
+		FROM patch_resource_normalize o
+		WHERE o.source_artifact_uuid = n.source_artifact_uuid
+			AND n.source_artifact_uuid = ? AND n.resource_id = ? AND n.state <> 'done'
+		RETURNING o.state`,
+		code, message, source, resourceID).Scan(&prior)
 	if res.Error != nil {
 		return res.Error
 	}
-	if res.RowsAffected > 0 {
+	if len(prior) > 0 {
+		if code == "wrong_password" && prior[0] == "claimed" {
+			s.notifyWrongPassword(ctx, resourceID, source)
+		}
 		return nil
 	}
 	var done bool
@@ -457,4 +537,22 @@ func (s *Service) markFailed(ctx context.Context, resourceID int, source, code, 
 		return ErrAlreadyDone
 	}
 	return ErrNoJob
+}
+
+// notifyWrongPassword tells the author once per file: a failure is terminal,
+// and only a claimed job turns into one.
+func (s *Service) notifyWrongPassword(ctx context.Context, resourceID int, source string) {
+	err := s.db.WithContext(context.WithoutCancel(ctx)).Exec(`INSERT INTO user_message
+			(type, content, status, link, sender_id, recipient_id, created, updated)
+		SELECT 'system',
+			'您发布的补丁资源' || CASE WHEN r.name = '' THEN '' ELSE '「' || r.name || '」' END ||
+			CASE WHEN r.password = '' THEN '是加密压缩包，但没有填写解压密码'
+				ELSE '填写的解压密码无法解开压缩包' END ||
+			'，下载的用户无法解压。请编辑资源，填写正确的解压密码。',
+			0, '/resource/' || r.id, NULL, r.user_id, now(), now()
+		FROM patch_resource r
+		WHERE r.id = ? AND r.artifact_uuid = ?`, resourceID, source).Error
+	if err != nil {
+		slog.Warn("normalize: notifying the author of a wrong password failed", "resource_id", resourceID, "error", err)
+	}
 }

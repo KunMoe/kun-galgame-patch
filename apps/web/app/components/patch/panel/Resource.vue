@@ -464,6 +464,8 @@ watch(histPage, loadHistory)
 
         <ResourceNote v-if="r.note_html" :html="r.note_html" :max-height="100" />
 
+        <ResourceArchiveInfo :resource="r" />
+
         <div v-if="r.code || r.password" class="flex flex-wrap gap-2">
           <KunCopy
             v-if="r.code"

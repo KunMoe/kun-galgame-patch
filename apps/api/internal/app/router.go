@@ -66,6 +66,8 @@ func (a *App) RegisterRoutes() {
 			return a.NormalizeHandler.Complete(c, botUser)
 		})
 		bot.Post("/normalize-jobs/:id/fail", a.NormalizeHandler.Fail)
+		bot.Get("/normalize-jobs/comments", a.NormalizeHandler.CommentSources)
+		bot.Post("/normalize-jobs/:id/comment", a.NormalizeHandler.RecordComment)
 	}
 
 	patchRoutes := api.Group("/patch")

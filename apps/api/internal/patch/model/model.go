@@ -156,6 +156,7 @@ func StripResourceSecrets(rs []PatchResource) {
 		rs[i].S3Key = ""
 		rs[i].Code = ""
 		rs[i].Password = ""
+		rs[i].ArchiveComment = ""
 	}
 }
 
@@ -169,6 +170,7 @@ type PatchResource struct {
 	Code                  string    `gorm:"type:varchar(1007);default:''" json:"code"`
 	Password              string    `gorm:"type:varchar(1007);default:''" json:"password"`
 	Note                  string    `gorm:"type:varchar(10007);default:''" json:"note"`
+	ArchiveComment        string    `gorm:"default:''" json:"archive_comment"`
 	Blake3                string    `gorm:"default:''" json:"blake3"`
 	S3Key                 string    `gorm:"type:varchar(2048);default:''" json:"s3_key"`
 	ArtifactUUID          string    `gorm:"column:artifact_uuid;type:varchar(36);default:''" json:"-"` // every resource list once served it, and the uuid alone could delete the file via /upload/abort
@@ -196,6 +198,8 @@ type PatchResource struct {
 	IsLiked bool `gorm:"-" json:"is_liked"`
 
 	IsFavorite bool `gorm:"-" json:"is_favorite"`
+
+	AwaitingPassword bool `gorm:"-" json:"awaiting_password"`
 }
 
 func (PatchResource) TableName() string { return "patch_resource" }
