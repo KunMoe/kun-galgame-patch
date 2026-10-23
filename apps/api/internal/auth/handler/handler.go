@@ -56,12 +56,14 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 	abandon := func(step string, err error) {
 		slog.Error("sign-in abandoned after the code exchange; its token is revoked",
 			"step", step, "error", err)
+		// ast-grep-ignore: no-go-in-fiber-handler -- the token is decoded from OAuth's JSON, not the request
 		go h.service.RevokeOAuthToken(tokenResp.RefreshToken)
 	}
 
 	userInfo, err := h.service.GetUserInfo(c.Context(), tokenResp.AccessToken)
 	if stderrors.Is(err, service.ErrUserBanned) {
 		slog.Warn("OAuth login blocked: account banned (10014)")
+		// ast-grep-ignore: no-go-in-fiber-handler -- the token is decoded from OAuth's JSON, not the request
 		go h.service.RevokeOAuthToken(tokenResp.RefreshToken)
 		return response.Error(c, errors.ErrAccountBanned(""))
 	}
@@ -80,6 +82,7 @@ func (h *AuthHandler) OAuthCallback(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal("登录失败，请重新登录"))
 	}
 
+	// ast-grep-ignore: no-go-in-fiber-handler -- c.IP() is cloned below
 	go func(userID int, ip string) {
 		h.db.Table("user").Where("id = ?", userID).Updates(map[string]any{
 			"last_login_time": time.Now().Format(time.RFC3339),
@@ -112,6 +115,7 @@ func (h *AuthHandler) Logout(c fiber.Ctx) error {
 		if data, err := h.rdb.Get(c.Context(), middleware.SessionPrefix+sessionID).Result(); err == nil {
 			var session middleware.SessionData
 			if err := json.Unmarshal([]byte(data), &session); err == nil && session.OAuthRefreshToken != "" {
+				// ast-grep-ignore: no-go-in-fiber-handler -- the token is decoded from the redis blob, not the request
 				go h.service.RevokeOAuthToken(session.OAuthRefreshToken)
 			}
 		}

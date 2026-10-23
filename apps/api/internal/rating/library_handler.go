@@ -70,7 +70,7 @@ func (h *LibraryHandler) GetPrivacy(c fiber.Ctx) error {
 
 func (h *LibraryHandler) SetPrivacy(c fiber.Ctx) error {
 	var req privacyBody
-	if err := c.Bind().Body(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 	}
 	if req.PlayRecords != "public" && req.PlayRecords != "private" {

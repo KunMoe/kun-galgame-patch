@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -334,8 +335,8 @@ func TestTokenEndpointErrorKinds(t *testing.T) {
 // The rig runs fiber with Immutable off, so this pins the clone in liveSession
 // and not only the production config.
 func TestBackgroundRefreshWritesItsOwnSession(t *testing.T) {
-	release := make(chan struct{})
-	fake := &tokenFake{status: http.StatusOK, body: tokenOK, hook: func() { <-release }}
+	entered, release := make(chan struct{}), make(chan struct{})
+	fake := &tokenFake{status: http.StatusOK, body: tokenOK, hook: func() { close(entered); <-release }}
 	rig := newSessionRig(t, fake)
 	put := func(id string, userID int, expiresAt int64) {
 		blob, _ := json.Marshal(SessionData{
@@ -352,6 +353,7 @@ func TestBackgroundRefreshWritesItsOwnSession(t *testing.T) {
 	if _, body, _ := rig.get(t, "/auth", "aaaaaaaa"); body.Data != float64(1) {
 		t.Fatalf("first reader answered as %v", body.Data)
 	}
+	<-entered
 	if _, body, _ := rig.get(t, "/auth", "bbbbbbbb"); body.Data != float64(2) {
 		t.Fatalf("second reader answered as %v", body.Data)
 	}
@@ -366,5 +368,25 @@ func TestBackgroundRefreshWritesItsOwnSession(t *testing.T) {
 	}
 	if b := rig.session(t, "bbbbbbbb"); b == nil || b.ID != 2 || b.OAuthAccessToken != "old-access" {
 		t.Errorf("bystander session = %+v, want user 2 untouched", b)
+	}
+}
+
+func TestRefreshRefusesToWriteAnotherUsersSession(t *testing.T) {
+	rig := newSessionRig(t, &tokenFake{status: http.StatusOK, body: tokenOK})
+	victim, _ := json.Marshal(SessionData{
+		UserInfo:          UserInfo{ID: 7},
+		OAuthAccessToken:  "victim-access",
+		OAuthRefreshToken: "victim-refresh",
+		OAuthExpiresAt:    time.Now().Unix() + 3600,
+	})
+	rig.rdb.Set(context.Background(), SessionPrefix+"s1", victim, SessionTTL)
+
+	s := &SessionData{UserInfo: UserInfo{ID: 42}, OAuthRefreshToken: "old-refresh"}
+	err := refreshOAuthToken(context.Background(), rig.rdb, rig.cfg, "s1", s)
+	if !errors.Is(err, errSessionOwnerMismatch) {
+		t.Fatalf("err = %v, want errSessionOwnerMismatch", err)
+	}
+	if got := rig.session(t, "s1"); got == nil || got.ID != 7 || got.OAuthAccessToken != "victim-access" {
+		t.Fatalf("victim session = %+v, want it untouched", got)
 	}
 }

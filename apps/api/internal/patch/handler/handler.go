@@ -569,7 +569,7 @@ func parseDeleteReason(c fiber.Ctx) string {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = c.Bind().Body(&body)
+	_ = c.Bind().JSON(&body)
 	r := strings.TrimSpace(body.Reason)
 	if rs := []rune(r); len(rs) > 500 {
 		r = string(rs[:500])

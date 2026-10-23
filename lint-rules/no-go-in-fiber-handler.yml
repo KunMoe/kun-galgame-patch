@@ -1,0 +1,22 @@
+id: no-go-in-fiber-handler
+language: go
+severity: error
+message: >-
+  A goroutine started beside a fiber.Ctx outlives the request. Pass it only
+  cloned values, and mark the exception with an ast-grep-ignore saying why.
+note: The 2026-10-22 account swaps came from a session id read in such a goroutine.
+rule:
+  kind: go_statement
+  inside:
+    stopBy: end
+    any:
+      - kind: function_declaration
+      - kind: method_declaration
+      - kind: func_literal
+    has:
+      field: parameters
+      stopBy: end
+      kind: parameter_declaration
+      has:
+        field: type
+        pattern: fiber.Ctx

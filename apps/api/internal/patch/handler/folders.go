@@ -106,7 +106,7 @@ func (h *PatchHandler) CreateFolder(c fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	var req folderWriteRequest
-	if err := c.Bind().Body(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 	}
 	if vErr := validFolderWrite(req, true); vErr != nil {
@@ -139,7 +139,7 @@ func (h *PatchHandler) UpdateFolder(c fiber.Ctx) error {
 		return response.Error(c, idErr)
 	}
 	var req folderWriteRequest
-	if err := c.Bind().Body(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 	}
 	if vErr := validFolderWrite(req, false); vErr != nil {
@@ -227,7 +227,7 @@ func (h *PatchHandler) SetPatchFolders(c fiber.Ctx) error {
 		return response.Error(c, err.(*errors.AppError))
 	}
 	var req setFoldersRequest
-	if bErr := c.Bind().Body(&req); bErr != nil {
+	if bErr := c.Bind().JSON(&req); bErr != nil {
 		return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 	}
 	if len(req.FolderIDs) > catalogv2.FoldersPerUserMax {
