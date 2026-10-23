@@ -3,6 +3,7 @@ package imageclient
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,6 +82,9 @@ func (r *MetaResolver) Resolve(hashes []string) map[string]ImageMeta {
 	r.makeRoom(len(miss))
 	for _, h := range miss {
 		m, ok := fetched[h]
+		// A hash can be a substring of a note fiber bound from a form body, which
+		// aliases the request buffer even under Immutable; as a key it would rot.
+		h = strings.Clone(h)
 		switch {
 		case !ok:
 			r.cache[h] = metaEntry{expires: now.Add(metaRetryAfter)}
