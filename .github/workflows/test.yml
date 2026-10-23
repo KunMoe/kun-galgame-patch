@@ -44,7 +44,7 @@ jobs:
         working-directory: .
     steps:
       - uses: actions/checkout@v6
-      - run: npx --yes @ast-grep/cli@0.44.1 scan
+      - run: npx --yes --package @ast-grep/cli@0.44.1 ast-grep scan
 
   unit:
     name: unit (build · vet · test, no services)
