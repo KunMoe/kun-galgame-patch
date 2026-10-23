@@ -130,7 +130,7 @@ func (h *AdminHandler) DeleteResource(c fiber.Ctx) error {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = c.Bind().Body(&body)
+	_ = c.Bind().JSON(&body)
 	reason := strings.TrimSpace(body.Reason)
 	if rs := []rune(reason); len(rs) > 500 {
 		reason = string(rs[:500])

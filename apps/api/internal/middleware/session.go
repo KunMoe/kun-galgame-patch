@@ -31,6 +31,7 @@ var (
 	errSessionUndecodable   = fmt.Errorf("undecodable: %w", errNoSession)
 	errSessionStore         = stderrors.New("session store")
 	errRefreshLockContended = stderrors.New("refresh lock contended")
+	errSessionOwnerMismatch = stderrors.New("session key belongs to another user")
 )
 
 var oauthRefreshHTTP = &http.Client{Timeout: 10 * time.Second}
@@ -68,6 +69,7 @@ func liveSession(c fiber.Ctx, rdb *redis.Client, oauthCfg config.OAuthConfig, se
 		// returns after the handler, when that buffer holds the next request on the
 		// connection, so the uncloned id wrote this reader into another reader's
 		// session: the 2026-10-22 account swaps.
+		// ast-grep-ignore: no-go-in-fiber-handler -- the id is cloned at the call
 		go refreshInBackground(rdb, oauthCfg, strings.Clone(sessionID), *session)
 	}
 	return session, nil
@@ -118,7 +120,7 @@ func sessionFailure(c fiber.Ctx, err error) error {
 
 func refreshInBackground(rdb *redis.Client, oauthCfg config.OAuthConfig, sessionID string, session SessionData) {
 	err := refreshOAuthToken(context.Background(), rdb, oauthCfg, sessionID, &session)
-	if err == nil || stderrors.Is(err, errRefreshLockContended) || stderrors.Is(err, errNoSession) {
+	if err == nil || stderrors.Is(err, errRefreshLockContended) || stderrors.Is(err, errNoSession) || stderrors.Is(err, errSessionOwnerMismatch) {
 		return
 	}
 	level := slog.LevelError
@@ -174,18 +176,43 @@ func refreshOAuthToken(ctx context.Context, rdb *redis.Client, oauthCfg config.O
 	session.OAuthRefreshToken = tok.RefreshToken
 	session.OAuthExpiresAt = time.Now().Unix() + tok.ExpiresIn
 
-	// XX: a logout that landed while the refresh was in flight must stay a logout.
 	blob, _ := json.Marshal(session)
-	err = rdb.SetArgs(ctx, SessionPrefix+sessionID, blob, redis.SetArgs{Mode: "XX", TTL: SessionTTL}).Err()
-	if err == redis.Nil {
-		return errNoSession
-	}
+	res, err := writeBackSession.Run(ctx, rdb, []string{SessionPrefix + sessionID},
+		blob, session.ID, SessionTTL.Milliseconds()).Int64Slice()
 	if err != nil {
 		slog.Warn("refreshed OAuth token not saved; this request uses it and a later one refreshes again",
 			"userID", session.ID, "error", err)
+		return nil
+	}
+	switch res[0] {
+	case writeBackGone:
+		return errNoSession
+	case writeBackOtherOwner:
+		slog.Error("refresh write-back refused: the session key belongs to another user",
+			"sessionPrefix", sessionID[:min(8, len(sessionID))], "userID", session.ID, "ownerID", res[1])
+		return errSessionOwnerMismatch
 	}
 	return nil
 }
+
+const (
+	writeBackSaved = iota
+	writeBackGone
+	writeBackOtherOwner
+)
+
+// A refresh may only rewrite a session its own user still owns. A blind SET XX
+// let a wrong key (the 2026-10-22 buffer aliasing) swap one reader into
+// another's account; an absent key is a logout that landed mid-refresh.
+var writeBackSession = redis.NewScript(`
+local cur = redis.call('GET', KEYS[1])
+if not cur then return {1, 0} end
+local ok, s = pcall(cjson.decode, cur)
+local owner = ok and type(s) == 'table' and tonumber(s.id) or 0
+if owner ~= tonumber(ARGV[2]) then return {2, owner} end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+return {0, owner}
+`)
 
 type oauthToken struct {
 	Error            string `json:"error"`

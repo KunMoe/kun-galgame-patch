@@ -18,6 +18,8 @@ on:
     paths:
       - "apps/api/**"
       - ".github/workflows/test.yml"
+      - "sgconfig.yml"
+      - "lint-rules/**"
   workflow_call: {}
 
 permissions:
@@ -34,6 +36,16 @@ defaults:
     working-directory: apps/api
 
 jobs:
+  lint:
+    name: lint (ast-grep)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v6
+      - run: npx --yes @ast-grep/cli@0.44.1 scan
+
   unit:
     name: unit (build · vet · test, no services)
     runs-on: ubuntu-latest

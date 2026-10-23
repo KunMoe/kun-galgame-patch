@@ -129,7 +129,7 @@ func (h *Handler) PutRecord(c fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	var req recordRequest
-	if err := c.Bind().Body(&req); err != nil {
+	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 	}
 	in, appErr := recordInputOf(req)

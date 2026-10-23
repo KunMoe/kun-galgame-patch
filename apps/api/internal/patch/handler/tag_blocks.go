@@ -69,7 +69,7 @@ func (h *PatchHandler) PutTagBlock(c fiber.Ctx) error {
 	}
 	var req tagBlockRequest
 	if len(c.Body()) > 0 {
-		if err := c.Bind().Body(&req); err != nil {
+		if err := c.Bind().JSON(&req); err != nil {
 			return response.Error(c, errors.ErrBadRequest("请求参数错误"))
 		}
 	}

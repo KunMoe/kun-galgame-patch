@@ -337,7 +337,7 @@ func deleteReason(c fiber.Ctx) string {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = c.Bind().Body(&body)
+	_ = c.Bind().JSON(&body)
 	return clampReason(body.Reason)
 }
 

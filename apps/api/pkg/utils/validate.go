@@ -11,7 +11,7 @@ import (
 var validate = validator.New()
 
 func ParseAndValidate(c fiber.Ctx, out any) error {
-	if err := c.Bind().Body(out); err != nil {
+	if err := c.Bind().JSON(out); err != nil {
 		return fmt.Errorf("failed to parse request body: %w", err)
 	}
 	return validateStruct(out)

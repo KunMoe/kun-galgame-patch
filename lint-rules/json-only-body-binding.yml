@@ -1,0 +1,6 @@
+id: json-only-body-binding
+language: go
+severity: error
+message: Use c.Bind().JSON. Bind().Body lets the client's Content-Type pick the form binder, whose strings alias the request buffer even under Immutable.
+rule:
+  pattern: $C.Bind().Body($$$)

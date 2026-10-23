@@ -31,7 +31,7 @@ func (h *PatchHandler) SubmitGalgame(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrInternal("鲲 Galgame 论坛数据客户端未配置"))
 	}
 	var form SubmissionForm
-	if err := c.Bind().Body(&form); err != nil {
+	if err := c.Bind().JSON(&form); err != nil {
 		return response.Error(c, errors.ErrBadRequest("无法解析请求体"))
 	}
 	fields, fErr := form.SubmissionFields()

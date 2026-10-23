@@ -1,0 +1,13 @@
+id: fiber-new-production-config
+language: go
+severity: error
+message: Build the app through newFiber in apps/api/internal/app/fiber.go, which carries Immutable.
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: ^fiber\.New$
+ignores:
+  - "**/*_test.go"
+  - apps/api/internal/testutil/**
+  - apps/api/internal/app/fiber.go
