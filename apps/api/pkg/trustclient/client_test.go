@@ -2,6 +2,7 @@ package trustclient
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -94,5 +95,32 @@ func TestSubmitReportDecodesTheResult(t *testing.T) {
 	}
 	if res.ReportID != 41 {
 		t.Fatalf("report id = %d", res.ReportID)
+	}
+}
+
+// trust before infra #460 422s on an unknown field, so a checked scan must not
+// send check_skipped at all.
+func TestScanSendsCheckSkippedOnlyWhenSet(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"data":{"scan_id":1}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, ClientID: "moyu", ClientSecret: "secret"})
+
+	for _, skipped := range []bool{false, true} {
+		if _, err := c.Scan(context.Background(), ScanRequest{SubjectKind: "galgame_rating", SubjectID: "1", Text: "x", CheckSkipped: skipped}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := bodies[0]["check_skipped"]; ok {
+		t.Errorf("checked scan sent check_skipped: %v", bodies[0])
+	}
+	if bodies[1]["check_skipped"] != true {
+		t.Errorf("skipped scan body = %v, want check_skipped true", bodies[1])
 	}
 }

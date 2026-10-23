@@ -164,15 +164,19 @@ func (s *Service) PutRecord(ctx context.Context, token string, userID int, workI
 		put.Playtime = &catalogv2.PlaytimeInput{Minutes: in.Minutes}
 	}
 
-	summaryChanged := false
+	summaryChanged, checkSkipped := false, false
 	if in.Rating != nil && in.Rating.ShortSummary != "" {
 		before, err := s.catalog.WorkRecord(ctx, token, workID)
 		if err != nil {
 			return nil, err
 		}
 		summaryChanged = before.Rating == nil || before.Rating.ShortSummary != in.Rating.ShortSummary
-		if summaryChanged && s.gate.Denied(ctx, gate.SubjectKindGalgameRating, in.Rating.ShortSummary, userID) {
-			return nil, ErrContentRejected
+		if summaryChanged {
+			var denied bool
+			denied, checkSkipped = s.gate.Denied(ctx, gate.SubjectKindGalgameRating, in.Rating.ShortSummary, userID)
+			if denied {
+				return nil, ErrContentRejected
+			}
 		}
 	}
 
@@ -183,7 +187,7 @@ func (s *Service) PutRecord(ctx context.Context, token string, userID int, workI
 	if after.Rating != nil {
 		s.writeThrough(after.Rating)
 		if summaryChanged {
-			s.gate.ScanBg(gate.SubjectKindGalgameRating, after.Rating.ID, after.Rating.ShortSummary, userID)
+			s.gate.ScanBg(gate.SubjectKindGalgameRating, after.Rating.ID, after.Rating.ShortSummary, userID, checkSkipped)
 		}
 	} else if err := s.store.DropUserWork(userID, workID); err != nil {
 		slog.Error("rating record: local copy not dropped; the mirror job will drop it",
