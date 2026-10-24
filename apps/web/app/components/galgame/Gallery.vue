@@ -6,6 +6,7 @@ import {
 
 const props = defineProps<{
   screenshots: GalgameScreenshotRow[]
+  withheld?: Record<number, number>
 }>()
 
 const settingStore = useSettingStore()
@@ -49,7 +50,13 @@ const sorted = computed(() =>
     })
 )
 
-const hiddenCount = computed(() => allShots.value.length - sorted.value.length)
+const withheldTotal = computed(() =>
+  Object.values(props.withheld ?? {}).reduce((sum, n) => sum + n, 0)
+)
+
+const hiddenCount = computed(
+  () => allShots.value.length - sorted.value.length + withheldTotal.value
+)
 
 // Same fold the character grid and the staff list on this page already use, so
 // a long gallery does not push the rest of the introduction off the screen.
@@ -64,7 +71,9 @@ const visible = computed(() =>
     : sorted.value
 )
 
-const hasRated = computed(() => allShots.value.some(isRated))
+const hasRated = computed(
+  () => withheldTotal.value > 0 || allShots.value.some(isRated)
+)
 
 const countLevels = (
   levelOf: (s: GalgameScreenshotRow) => number
@@ -76,7 +85,13 @@ const countLevels = (
   }
   return counts
 }
-const sexualCounts = computed(() => countLevels(sexualLevel))
+const sexualCounts = computed(() => {
+  const counts = countLevels(sexualLevel)
+  for (const [level, n] of Object.entries(props.withheld ?? {})) {
+    counts[Number(level)] = (counts[Number(level)] ?? 0) + n
+  }
+  return counts
+})
 const violenceCounts = computed(() => countLevels(violenceLevel))
 
 const RING_W = 2.5
@@ -106,7 +121,7 @@ const imgSrc = (s: GalgameScreenshotRow) => imageServiceUrl(s.image_hash)
 </script>
 
 <template>
-  <div v-if="allShots.length" class="space-y-4">
+  <div v-if="allShots.length || withheldTotal" class="space-y-4">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <KunHeader name="截图 / 画廊" scale="h2" />
       <GalgameGalleryFilter

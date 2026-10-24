@@ -194,16 +194,17 @@ func (h *PatchHandler) GetPatchDetail(c fiber.Ctx) error {
 	}
 
 	cl := utils.ContentLimitForListBrowse(c)
+	gallerySexual := utils.GallerySexualOptIn(c)
 	patch, err := h.service.GetPatchDetail(c.Context(), id)
 	if err != nil {
 		if stderrors.Is(err, gorm.ErrRecordNotFound) {
-			if detail := enricher.GalgameOnlyDetail(c.Context(), h.galgame, h.users, id, cl); detail != nil {
+			if detail := enricher.GalgameOnlyDetail(c.Context(), h.galgame, h.users, id, cl, gallerySexual); detail != nil {
 				return response.OK(c, detail)
 			}
 		}
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}
-	enriched := enricher.EnrichPatchDetail(c.Context(), h.galgame, h.users, patch, cl)
+	enriched := enricher.EnrichPatchDetail(c.Context(), h.galgame, h.users, patch, cl, gallerySexual)
 	if enriched == nil {
 		return response.Error(c, errors.ErrNotFound("patch not found"))
 	}

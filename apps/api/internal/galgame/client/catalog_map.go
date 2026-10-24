@@ -320,15 +320,19 @@ func introByProductKey(rows []catalogWorkIntro) map[string]string {
 	return out
 }
 
-func catalogCoversToInputs(covers []catalogDetailCover) []CoverInput {
+func catalogCoversToInputs(covers []catalogDetailCover, revealSexual bool) []CoverInput {
 	if len(covers) == 0 {
 		return nil
 	}
 	out := make([]CoverInput, 0, len(covers))
 	for i := range covers {
 		c := &covers[i]
+		hash := artFor(hashFromURL(c.URL), c.Sexual, revealSexual)
+		if hash == "" {
+			continue
+		}
 		out = append(out, CoverInput{
-			ImageHash: hashFromURL(c.URL),
+			ImageHash: hash,
 			SortOrder: i,
 			Sexual:    c.Sexual,
 			Violence:  c.Violence,
@@ -430,7 +434,7 @@ func catalogWorkToFull(w *catalogWork, revealSexual bool) GalgameFull {
 		ReleasePrecision:      w.ReleasePrecision,
 		Created:               w.Created,
 		Updated:               w.Updated,
-		Covers:                catalogCoversToInputs(w.Covers),
+		Covers:                catalogCoversToInputs(w.Covers, revealSexual),
 		Screenshots:           catalogScreenshotsToInputs(w.Screenshots),
 		Characters:            catalogCharacters(w.Characters, revealSexual),
 		Staff:                 catalogStaff(w.Credits, w.Characters),
@@ -455,6 +459,9 @@ func catalogWorkToFull(w *catalogWork, revealSexual bool) GalgameFull {
 	}
 	f.Maker = makerOf(w.Labels)
 	for i := range w.Tags {
+		if w.Tags[i].Sexual && !revealSexual {
+			continue
+		}
 		f.Tag = append(f.Tag, catalogTagToFullTag(f.ID, &w.Tags[i]))
 	}
 	for i := range w.Labels {

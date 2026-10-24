@@ -2,6 +2,7 @@ package client
 
 import (
 	"log/slog"
+	"slices"
 
 	"kun-galgame-patch-api/pkg/catalogv2"
 )
@@ -126,13 +127,40 @@ func revealsSexual(contentLimit string) bool {
 	return contentLimit == "nsfw" || contentLimit == "all"
 }
 
-// artFor answers the hash a reader may be shown. A cover is not gated here —
-// the work's own content_limit already is catalog's verdict on its covers.
+// artFor answers the hash a reader may be shown. The banner and portrait are not
+// gated by it — the work's own content_limit already is catalog's verdict on
+// the art it is shelved under.
 func artFor(hash string, sexual *int, reveal bool) string {
 	if reveal || (sexual != nil && *sexual == gradeSafe) {
 		return hash
 	}
 	return ""
+}
+
+// WithholdScreenshots drops the shots an SFW reader has not opted into, and
+// counts them per sexual level so the gallery can still offer the opt-in. A hash
+// left in the page payload is the image: it resolves to a URL on its own.
+func WithholdScreenshots(shots []ScreenshotInput, contentLimit string, optIn []int) ([]ScreenshotInput, map[int]int) {
+	if revealsSexual(contentLimit) {
+		return shots, nil
+	}
+	kept := make([]ScreenshotInput, 0, len(shots))
+	var withheld map[int]int
+	for _, s := range shots {
+		level := 1
+		if s.Sexual != nil {
+			level = *s.Sexual
+		}
+		if level == gradeSafe || slices.Contains(optIn, level) {
+			kept = append(kept, s)
+			continue
+		}
+		if withheld == nil {
+			withheld = map[int]int{}
+		}
+		withheld[level]++
+	}
+	return kept, withheld
 }
 
 func spoilerInt(s string) int {
