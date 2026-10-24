@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 	"gorm.io/gorm"
 )
@@ -25,6 +28,16 @@ func ContentLimitForListBrowse(c fiber.Ctx) string {
 		return v
 	}
 	return ContentLimitSFW
+}
+
+func GallerySexualOptIn(c fiber.Ctx) []int {
+	var levels []int
+	for _, v := range strings.Split(c.Query("gallery_sexual"), ",") {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			levels = append(levels, n)
+		}
+	}
+	return levels
 }
 
 func IncludeEmptyGalgames(c fiber.Ctx) bool {

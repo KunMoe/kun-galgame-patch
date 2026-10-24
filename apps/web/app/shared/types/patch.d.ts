@@ -114,6 +114,9 @@ interface GalgameCard {
     maker?: GalgameMaker
     covers: GalgameCoverRow[]
     screenshots: GalgameScreenshotRow[]
+    // Shots an SFW reader was not sent, counted per sexual level (unassessed
+    // under 1) so the gallery can still offer the opt-in. Absent when none.
+    screenshots_withheld?: Record<number, number>
     content_limit: string
     age_limit: string
     original_language: string

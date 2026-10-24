@@ -70,6 +70,7 @@ type GalgameBrief struct {
 	Maker                      *GalgameMaker     `json:"maker,omitempty"`
 	Covers                     []CoverInput      `json:"covers"`
 	Screenshots                []ScreenshotInput `json:"screenshots"`
+	ScreenshotsWithheld        map[int]int       `json:"screenshots_withheld,omitempty"`
 
 	// The DLsite product this work is sold as, off catalog's refs. Server-side
 	// only: the browser is handed the finished purchase URL, never the id it was

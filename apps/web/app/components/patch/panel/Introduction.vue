@@ -14,12 +14,28 @@ const historyUrl = computed(() =>
   editorHistoryLink(galgameId.value, route.fullPath)
 )
 
+// Under 'hide' the API withholds every rated screenshot, so the levels this
+// reader opted into have to reach it for the gallery's opt-in to show anything.
+const gallerySexual = computed(() =>
+  stance.value === 'hide'
+    ? (settingStore.data.gallerySexualLevels ?? [])
+        .toSorted((a, b) => a - b)
+        .join(',')
+    : ''
+)
+
 const { data: detail } = await useAsyncData<PatchDetail | null>(
   () => `patch-detail-${galgameId.value}`,
   async () => {
-    const res = await api.get<PatchDetail>(`/patch/${galgameId.value}/detail`)
+    const query = gallerySexual.value
+      ? `?gallery_sexual=${gallerySexual.value}`
+      : ''
+    const res = await api.get<PatchDetail>(
+      `/patch/${galgameId.value}/detail${query}`
+    )
     return res.code === 0 ? res.data : null
-  }
+  },
+  { watch: [gallerySexual] }
 )
 
 const lang = ref<Language>('zh-cn')
@@ -350,8 +366,16 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
 
     <GalgameStaff :staff="staffGroups" />
 
-    <section v-if="detail.galgame?.screenshots?.length">
-      <GalgameGallery :screenshots="detail.galgame.screenshots" />
+    <section
+      v-if="
+        detail.galgame?.screenshots?.length ||
+        detail.galgame?.screenshots_withheld
+      "
+    >
+      <GalgameGallery
+        :screenshots="detail.galgame.screenshots"
+        :withheld="detail.galgame.screenshots_withheld"
+      />
     </section>
 
     <section v-if="detail.galgame?.forum_gid">

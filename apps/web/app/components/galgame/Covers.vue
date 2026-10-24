@@ -8,6 +8,7 @@ const props = defineProps<{ galgameId: number }>()
 const open = defineModel<boolean>({ required: true })
 
 const api = useApi()
+const { stance } = useKunNsfwStance()
 
 const covers = ref<GalgameCoverRow[] | null>(null)
 const loading = ref(false)
@@ -46,7 +47,9 @@ const load = async () => {
   const res = await api.get<PatchDetail>(`/patch/${props.galgameId}/detail`)
   if (res.code === 0 && res.data) {
     covers.value = [...(res.data.galgame?.covers ?? [])]
-      .filter((c) => !!c.image_hash)
+      .filter(
+        (c) => !!c.image_hash && (stance.value !== 'hide' || c.sexual === 0)
+      )
       .sort((a, b) => a.sort_order - b.sort_order)
   } else {
     failed.value = true
@@ -73,7 +76,10 @@ watch(open, (v) => {
 
       <KunLoading v-if="loading" description="加载封面中..." />
       <KunNull v-else-if="failed" description="加载失败, 请稍后再试" />
-      <KunNull v-else-if="covers && !covers.length" description="该游戏暂无封面" />
+      <KunNull
+        v-else-if="covers && !covers.length"
+        description="该游戏暂无封面"
+      />
 
       <KunLightboxGallery v-else-if="covers">
         <div class="space-y-5">
@@ -91,14 +97,22 @@ watch(open, (v) => {
                 as="figure"
                 class="border-default/20 bg-default-100 block overflow-hidden rounded-lg border"
               >
-                <KunImage
-                  :src="imageServiceUrl(c.image_hash)"
-                  :alt="g.label"
-                  loading="lazy"
-                  :aspect-ratio="imageAspectRatio(c.width, c.height)"
-                  :thumbhash="c.thumbhash"
-                  class-name="bg-default-100"
-                />
+                <KunNsfwMask
+                  :nsfw="c.sexual !== 0"
+                  rounded="rounded-none"
+                  :label="
+                    c.sexual === null ? '该封面尚未评级' : '该封面带有分级'
+                  "
+                >
+                  <KunImage
+                    :src="imageServiceUrl(c.image_hash)"
+                    :alt="g.label"
+                    loading="lazy"
+                    :aspect-ratio="imageAspectRatio(c.width, c.height)"
+                    :thumbhash="c.thumbhash"
+                    class-name="bg-default-100"
+                  />
+                </KunNsfwMask>
               </KunLightboxGalleryItem>
             </div>
           </section>

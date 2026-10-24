@@ -295,7 +295,7 @@ func applyCatalogEntities(base *PatchDetailCard, g *galgameClient.GalgameFull) {
 	}
 }
 
-func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users *userclient.Client, p *patchModel.Patch, contentLimit string) *PatchDetailCard {
+func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users *userclient.Client, p *patchModel.Patch, contentLimit string, gallerySexual []int) *PatchDetailCard {
 	if p == nil {
 		return nil
 	}
@@ -343,13 +343,14 @@ func EnrichPatchDetail(ctx context.Context, galgame *galgameClient.Client, users
 		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
 
-	base.Galgame = detailBrief(g)
+	base.Galgame = detailBrief(g, contentLimit, gallerySexual)
 
 	applyCatalogEntities(base, g)
 	return base
 }
 
-func detailBrief(g *galgameClient.GalgameFull) *galgameClient.GalgameBrief {
+func detailBrief(g *galgameClient.GalgameFull, contentLimit string, gallerySexual []int) *galgameClient.GalgameBrief {
+	shots, withheld := galgameClient.WithholdScreenshots(g.Screenshots, contentLimit, gallerySexual)
 	return &galgameClient.GalgameBrief{
 		ID:                         g.ID,
 		VndbID:                     g.VndbID,
@@ -378,7 +379,8 @@ func detailBrief(g *galgameClient.GalgameFull) *galgameClient.GalgameBrief {
 		EffectivePortraitThumbhash: g.EffectivePortraitThumbhash,
 		Maker:                      g.Maker,
 		Covers:                     g.Covers,
-		Screenshots:                g.Screenshots,
+		Screenshots:                shots,
+		ScreenshotsWithheld:        withheld,
 	}
 }
 
@@ -521,7 +523,7 @@ func GalgameOnlyCard(ctx context.Context, galgame *galgameClient.Client, users *
 	return &card
 }
 
-func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users *userclient.Client, gid int, contentLimit string) *PatchDetailCard {
+func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users *userclient.Client, gid int, contentLimit string, gallerySexual []int) *PatchDetailCard {
 	if galgame == nil || gid <= 0 {
 		return nil
 	}
@@ -559,7 +561,7 @@ func GalgameOnlyDetail(ctx context.Context, galgame *galgameClient.Client, users
 		ZhCn: markdown.MustRender(g.IntroZhCn),
 		ZhTw: markdown.MustRender(g.IntroZhTw),
 	}
-	base.Galgame = detailBrief(g)
+	base.Galgame = detailBrief(g, contentLimit, gallerySexual)
 	applyCatalogEntities(base, g)
 	return base
 }
