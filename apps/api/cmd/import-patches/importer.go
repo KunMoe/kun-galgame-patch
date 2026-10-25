@@ -91,7 +91,7 @@ func (imp *Importer) processFile(ctx context.Context, path string) fileResult {
 		return fileResult{name, statusFailed, "ensure patch: " + err.Error()}
 	}
 	slog.Info("uploading", "file", name, "galgame", galgameID, "size", formatSize(fi.Size()))
-	uuid, size, err := uploadFileToArtifact(ctx, imp.art, path, sanitized, fi.Size(), imp.userID)
+	uuid, size, err := imp.art.UploadFile(ctx, path, sanitized, fi.Size(), imp.userID)
 	if err != nil {
 		return fileResult{name, statusFailed, "upload: " + err.Error()}
 	}
