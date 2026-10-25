@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: NextMoe moyu Face
-  version: 1.6.0
+  version: 1.7.0
   x-stability: stable
   summary: Which patch resources 鲲 Galgame 补丁 (www.moyu.moe) holds for a game.
   description: |
@@ -237,11 +237,25 @@ paths:
         Newest change first. Only live resources are ever listed: one its
         publisher disabled or moderation hid is absent here and `404` at its own
         URL, exactly as on the site.
+
+        `type` narrows the page to some kinds; `type=save` is a game's save
+        data. Starting from a catalog work id, resolve the page first with
+        `GET /v2/moyu/patches?refs=catalog:<id>` — the patch id is not the work
+        id.
       parameters:
         - $ref: '#/components/parameters/patchId'
         - $ref: '#/components/parameters/limit'
         - $ref: '#/components/parameters/cursor'
         - $ref: '#/components/parameters/includeTotal'
+        - name: type
+          in: query
+          description: Comma-separated resource kinds; any of them matches.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/PatchType' }
+          example: [save]
         - name: include
           in: query
           style: form

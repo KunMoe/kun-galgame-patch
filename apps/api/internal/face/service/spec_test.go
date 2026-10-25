@@ -86,6 +86,10 @@ func TestSpecVocabulariesMatchParser(t *testing.T) {
 		}
 	}
 
+	if got := ops["listPatchResources"]["type"].Schema.Items.Ref; got != "#/components/schemas/PatchType" {
+		t.Errorf("listPatchResources type items = %q, want the PatchType schema", got)
+	}
+
 	if got := ops["listPatches"]["sort"].Schema.Enum; !slices.Equal(got, repository.SortKeys) {
 		t.Errorf("sort enum = %v, parser accepts %v", got, repository.SortKeys)
 	}

@@ -196,6 +196,10 @@ func splitBatch(raw, name string) ([]string, *problem.Problem) {
 // ParseLimit is one rule in one place: the "not clamped" contract is written
 // into the error text, and a second copy for the sub-collections would be a
 // second answer to the same question.
+func ParseResourceTypes(c fiber.Ctx) ([]string, *problem.Problem) {
+	return parseEnumCSV(c, "type", PatchTypes)
+}
+
 func ParseLimit(c fiber.Ctx, batch bool) (int, *problem.Problem) {
 	raw := c.Query("limit")
 	if raw == "" {

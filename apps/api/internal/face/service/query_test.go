@@ -246,3 +246,29 @@ func TestProblemIsWrittenAsProblemJSON(t *testing.T) {
 func b64(s string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(s))
 }
+
+func TestParseResourceTypesRefusesAnUnknownKind(t *testing.T) {
+	app := fiber.New()
+	var (
+		got  []string
+		prob *problem.Problem
+	)
+	app.Get("/x", func(c fiber.Ctx) error {
+		got, prob = ParseResourceTypes(c)
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+	run := func(query string) {
+		t.Helper()
+		if _, err := app.Test(httptest.NewRequest(http.MethodGet, "/x?"+query, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("type=save,crack")
+	if prob != nil || strings.Join(got, ",") != "save,crack" {
+		t.Errorf("type=save,crack parsed %v, %+v", got, prob)
+	}
+	run("type=saves")
+	if prob == nil || prob.Code != problem.CodeUnknownEnumValue {
+		t.Errorf("an unknown kind is refused, got %+v", prob)
+	}
+}

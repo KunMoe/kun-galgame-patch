@@ -140,18 +140,26 @@ func (r *Repository) resourceQuery(patchIDs []int) *gorm.DB {
 	return q
 }
 
-func (r *Repository) ListResources(patchID, offset, limit int) ([]patchModel.PatchResource, error) {
+func (r *Repository) ListResources(patchID int, types []string, offset, limit int) ([]patchModel.PatchResource, error) {
 	var rows []patchModel.PatchResource
-	err := r.resourceQuery([]int{patchID}).
+	err := r.typedResources(patchID, types).
 		Order("update_time DESC, id DESC").
 		Offset(offset).Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
-func (r *Repository) CountResources(patchID int) (int64, error) {
+func (r *Repository) CountResources(patchID int, types []string) (int64, error) {
 	var n int64
-	err := r.resourceQuery([]int{patchID}).Count(&n).Error
+	err := r.typedResources(patchID, types).Count(&n).Error
 	return n, err
+}
+
+func (r *Repository) typedResources(patchID int, types []string) *gorm.DB {
+	q := r.resourceQuery([]int{patchID})
+	if len(types) > 0 {
+		q = jsonArrayAny(q, "type", types)
+	}
+	return q
 }
 
 // ResourcesForPatches is the include=resources lane: one query for the whole
