@@ -45,19 +45,6 @@ func formatDateYYMMDD(s string) string {
 	}
 }
 
-func mimeForExt(fileName string) string {
-	switch strings.ToLower(filepath.Ext(fileName)) {
-	case ".zip":
-		return "application/zip"
-	case ".7z":
-		return "application/x-7z-compressed"
-	case ".rar":
-		return "application/x-rar-compressed"
-	default:
-		return "application/octet-stream"
-	}
-}
-
 func buildResourceName(group, gameName, sanitized string) string {
 	g := strings.TrimSpace(gameName)
 	if g == "" {
