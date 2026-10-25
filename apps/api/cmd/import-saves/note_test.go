@@ -22,20 +22,20 @@ func TestSaveKindReadsTheSourceLabel(t *testing.T) {
 }
 
 func TestNoteDropsSizeLabelsAndNamesTheSource(t *testing.T) {
-	r := saveRecord{Label: "１５０８ＫＢ", SourceURL: "https://sagaoz.net/savedata/x.html", OriginalSHA256: "abc", ConvertedFrom: "lzh"}
-	note := resourceNote(r, 125528)
+	r := saveRecord{Label: "１５０８ＫＢ", Filename: "x.zip", SourceURL: "https://sagaoz.net/savedata/x.html", OriginalSHA256: "abc", ConvertedFrom: "lzh"}
+	note := resourceNote(r)
 	if strings.Contains(note, "原站说明") {
 		t.Errorf("a size label is not a description:\n%s", note)
 	}
-	for _, want := range []string{"[sagaoz.net](https://sagaoz.net/savedata/x.html)", "LZH", "`abc`", "/user/125528/resource"} {
+	for _, want := range []string{"[sagaoz.net](https://sagaoz.net/savedata/x.html)", "LZH", "`abc`", "`x.zip`"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("note lacks %q:\n%s", want, note)
 		}
 	}
-	if note := resourceNote(saveRecord{Label: "DL", SourceURL: "https://seiya-saiga.com/a"}, 1); strings.Contains(note, "原站说明") {
+	if note := resourceNote(saveRecord{Label: "DL", SourceURL: "https://seiya-saiga.com/a"}); strings.Contains(note, "原站说明") {
 		t.Errorf("DL is a link label, not a description:\n%s", note)
 	}
-	if note := resourceNote(saveRecord{Label: "回想全解放済みセーブデータ"}, 1); !strings.Contains(note, "原站说明：回想全解放済みセーブデータ") {
+	if note := resourceNote(saveRecord{Label: "回想全解放済みセーブデータ"}); !strings.Contains(note, "原站说明：回想全解放済みセーブデータ") {
 		t.Errorf("a real description is kept:\n%s", note)
 	}
 }

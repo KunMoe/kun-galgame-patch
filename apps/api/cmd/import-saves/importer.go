@@ -109,7 +109,7 @@ func (imp *importer) insertSave(tx *gorm.DB, r saveRecord, uuid string, size int
 		ArtifactUUID: uuid,
 		Name:         resourceName(r),
 		Size:         fmt.Sprintf("%.3f MB", float64(size)/(1024*1024)),
-		Note:         resourceNote(r, imp.userID),
+		Note:         resourceNote(r),
 		Type:         model.JSONArray{"save"},
 		Language:     model.JSONArray{"ja"},
 		Platform:     model.JSONArray{"windows"},

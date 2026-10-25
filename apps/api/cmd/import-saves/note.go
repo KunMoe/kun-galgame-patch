@@ -53,14 +53,14 @@ func meaningfulLabel(label string) string {
 }
 
 func resourceName(r saveRecord) string {
-	name := strings.TrimSpace(r.GameTitle) + " - " + saveKind(r.Label)
+	name := strings.TrimSpace(r.GameTitle) + " " + saveKind(r.Label)
 	if rs := []rune(name); len(rs) > 300 {
 		name = string(rs[:300])
 	}
 	return name
 }
 
-func resourceNote(r saveRecord, userID int) string {
+func resourceNote(r saveRecord) string {
 	host := r.Site
 	if u, err := url.Parse(r.SourceURL); err == nil && u.Host != "" {
 		host = u.Host
@@ -71,10 +71,10 @@ func resourceNote(r saveRecord, userID int) string {
 		fmt.Fprintf(&b, "，原站说明：%s", l)
 	}
 	b.WriteString("。\n\n")
+	fmt.Fprintf(&b, "- 文件：`%s`\n", r.Filename)
+	fmt.Fprintf(&b, "- 原始文件 SHA-256：`%s`\n", r.OriginalSHA256)
 	if r.ConvertedFrom == "lzh" {
-		b.WriteString("原文件是 LZH 压缩包，已原样转为 zip，文件名改为 UTF-8 编码。\n\n")
+		b.WriteString("- 原文件是 LZH 压缩包，已原样转为 zip，文件名改为 UTF-8 编码\n")
 	}
-	fmt.Fprintf(&b, "原始文件 SHA-256：`%s`\n\n", r.OriginalSHA256)
-	fmt.Fprintf(&b, "**本存档由 [LetMoe](https://www.moyu.moe/user/%d/resource) 归档**\n", userID)
 	return b.String()
 }
