@@ -28,6 +28,9 @@ const (
 	// clears over a couple of hours instead of in one long call. Steady state
 	// is a single page that comes back short.
 	mirrorSyncMaxPages = 50
+	// A work catalog does not hydrate stays NULL and is asked about again every
+	// tick, so the fill is capped; newest first keeps those from starving new pages.
+	mirrorFillMax = 500
 )
 
 // RunCatalogMirrorSync mirrors catalog's display verdict onto patch.content_limit
@@ -92,7 +95,38 @@ func RunCatalogMirrorSync(
 			return updated, false, werr
 		}
 	}
+	if caughtUp {
+		n, ferr := fillUnmirroredPages(ctx, db, galgame)
+		updated += n
+		if ferr != nil {
+			return updated, false, ferr
+		}
+	}
 	return updated, caughtUp, nil
+}
+
+// A page row created after its work last moved on the feed — a stub, a first
+// publish, an import, an undone merge — starts NULL, and the feed never hands
+// that id over again. On 2026-10-25 three stubs created minutes after a full
+// drain sat NULL with nothing left to fill them.
+func fillUnmirroredPages(ctx context.Context, db *gorm.DB, galgame *galgameClient.Client) (int, error) {
+	var ids []int64
+	if err := db.Raw(`
+		SELECT id FROM patch
+		WHERE content_limit IS NULL AND catalog_deleted_at IS NULL
+		ORDER BY created DESC LIMIT ?`, mirrorFillMax,
+	).Scan(&ids).Error; err != nil {
+		return 0, fmt.Errorf("list unmirrored pages: %w", err)
+	}
+	filled := 0
+	for start := 0; start < len(ids); start += galgameClient.CatalogWorksIDsMax {
+		n, err := applyDisplayVerdicts(ctx, db, galgame, ids[start:min(start+galgameClient.CatalogWorksIDsMax, len(ids))])
+		filled += n
+		if err != nil {
+			return filled, err
+		}
+	}
+	return filled, nil
 }
 
 func applyDisplayVerdicts(
