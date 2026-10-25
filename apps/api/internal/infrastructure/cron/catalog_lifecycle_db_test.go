@@ -3,10 +3,13 @@ package cron
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
+	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/utils"
@@ -249,5 +252,39 @@ func TestLiveWorkPredicates(t *testing.T) {
 	db.Raw(`SELECT id FROM patch_resource r WHERE id IN ? AND `+utils.LiveWorkResource("r"), res).Scan(&resources)
 	if len(pages) != 1 || pages[0] != livePage || len(resources) != 1 || resources[0] != res[1] {
 		t.Fatalf("pages %v resources %v, want only the live work's", pages, resources)
+	}
+}
+
+func TestDisplayVerdictReachesThePage(t *testing.T) {
+	db := lifecycleDB(t)
+	work := func(id int, limit string) string {
+		return fmt.Sprintf(`{"object":"work","id":"%d","medium":"galgame","display_name":"W","localized":{},`+
+			`"olang":"ja","content_rating":"all_ages","content_limit":"%s","claim":null}`, id, limit)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"object":"list","items":[%s,%s]}`, work(livePage, "nsfw"), work(deletedPage, "sfw"))
+	}))
+	t.Cleanup(srv.Close)
+	galgame := galgameClient.NewWithKey(srv.URL, "nmk_test_key")
+	mustExec(t, db, `UPDATE patch SET content_limit = 'sfw' WHERE id = ?`, livePage)
+
+	ids := []int64{livePage, deletedPage}
+	n, err := applyDisplayVerdicts(context.Background(), db, galgame, ids)
+	if err != nil || n != 2 {
+		t.Fatalf("applyDisplayVerdicts = (%d, %v), want both pages written", n, err)
+	}
+	got := map[int]*string{}
+	for _, id := range []int{livePage, deletedPage} {
+		var cl *string
+		db.Raw(`SELECT content_limit FROM patch WHERE id = ?`, id).Scan(&cl)
+		got[id] = cl
+	}
+	if got[livePage] == nil || *got[livePage] != "nsfw" || got[deletedPage] == nil || *got[deletedPage] != "sfw" {
+		t.Fatalf("content_limit = live %v, deleted %v, want nsfw and sfw", got[livePage], got[deletedPage])
+	}
+
+	if n, err := applyDisplayVerdicts(context.Background(), db, galgame, ids); err != nil || n != 0 {
+		t.Fatalf("replayed tail = (%d, %v), want nothing left to write", n, err)
 	}
 }

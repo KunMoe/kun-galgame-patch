@@ -92,9 +92,10 @@ type Patch struct {
 	// Catalog's display verdict for this work, mirrored by the changes cron
 	// (migration 032). NULL means not yet mirrored, and NULL PASSES the gate.
 	//
-	// Read-only (`->`): the cron writes it with UpdateColumn against the table,
-	// and a writable field here would let any Save of a Patch built without
-	// loading this column blank a mirrored verdict back to NULL.
+	// Read-only (`->`): a writable field here would let any Save of a Patch
+	// built without loading this column blank a mirrored verdict back to NULL.
+	// The flag also binds db.Model(&Patch{}).UpdateColumn, which drops the
+	// assignment and runs nothing, so the cron writes it with raw SQL.
 	ContentLimit *string `gorm:"column:content_limit;->" json:"-"`
 
 	// Stamped by the same cron while catalog has the work deleted (051), and

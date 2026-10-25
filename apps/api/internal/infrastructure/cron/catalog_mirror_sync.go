@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
-	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/catalogv2"
 
 	"gorm.io/gorm"
@@ -118,9 +117,15 @@ func applyDisplayVerdicts(
 	}
 	updated := 0
 	for limit, gids := range byLimit {
-		res := db.Model(&patchModel.Patch{}).
-			Where("id IN ? AND content_limit IS DISTINCT FROM ?", gids, limit).
-			UpdateColumn("content_limit", limit)
+		// Raw SQL, not db.Model(&Patch{}).UpdateColumn: Patch.ContentLimit is
+		// read-only (`->`), so GORM dropped the only assignment and skipped the
+		// statement with RowsAffected 0 and no error. Every verdict from
+		// 2026-09-08 to 2026-10-25 was discarded that way while ticks logged
+		// updated=0.
+		res := db.Exec(
+			`UPDATE patch SET content_limit = ? WHERE id IN ? AND content_limit IS DISTINCT FROM ?`,
+			limit, gids, limit,
+		)
 		if res.Error != nil {
 			return updated, fmt.Errorf("write content_limit=%s: %w", limit, res.Error)
 		}
