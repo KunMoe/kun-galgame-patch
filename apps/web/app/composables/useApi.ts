@@ -265,6 +265,7 @@ export const useApi = () => {
   }
 
   return {
+    url: (endpoint: string) => `${baseUrl}${appendContentLimit(endpoint)}`,
     get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),
     post: <T>(endpoint: string, body?: ApiBody) =>
       request<T>(endpoint, { method: 'POST', body }),

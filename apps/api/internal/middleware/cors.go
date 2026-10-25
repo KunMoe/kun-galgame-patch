@@ -23,6 +23,7 @@ func CORS(cfg config.CORSConfig) fiber.Handler {
 		AllowOrigins:     splitOrigins(cfg.AllowOrigins),
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"X-Content-Truncated"},
 		AllowCredentials: true,
 		MaxAge:           86400,
 	})

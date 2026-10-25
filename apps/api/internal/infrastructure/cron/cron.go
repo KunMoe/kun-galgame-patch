@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"kun-galgame-patch-api/internal/archive"
 	galgameClient "kun-galgame-patch-api/internal/galgame/client"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/imageclient"
@@ -28,6 +29,11 @@ type RepackPurge interface {
 	Purge(ctx context.Context) (int, error)
 }
 
+type ArchiveListing interface {
+	Configured() bool
+	Run(ctx context.Context) (archive.Summary, error)
+}
+
 func Start(
 	db *gorm.DB,
 	galgame *galgameClient.Client,
@@ -36,6 +42,7 @@ func Start(
 	notifications NotificationSync,
 	ratings RatingSync,
 	repacks RepackPurge,
+	listings ArchiveListing,
 ) func() {
 	loc, locErr := time.LoadLocation("Asia/Shanghai")
 	if locErr != nil || loc == nil {
@@ -181,6 +188,24 @@ func Start(
 		}))
 		if _, err := c.AddJob("@every 1m", job); err != nil {
 			slog.Error("注册 repack 制品删除任务失败", "error", err)
+		}
+	}
+
+	if listings != nil && listings.Configured() {
+		job := cron.NewChain(cron.SkipIfStillRunning(cron.DiscardLogger)).Then(cron.FuncJob(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			sum, err := listings.Run(ctx)
+			if err != nil {
+				slog.Error("压缩包目录读取失败", "error", err, "summary", sum)
+				return
+			}
+			if sum != (archive.Summary{}) {
+				slog.Info("压缩包目录读取完成", "ready", sum.Ready, "unsupported", sum.Unsupported, "failed", sum.Failed, "deleted", sum.Deleted)
+			}
+		}))
+		if _, err := c.AddJob("@every 1m", job); err != nil {
+			slog.Error("注册压缩包目录读取任务失败", "error", err)
 		}
 	}
 
