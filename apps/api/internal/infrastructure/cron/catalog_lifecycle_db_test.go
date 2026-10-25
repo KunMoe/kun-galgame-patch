@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,5 +288,45 @@ func TestDisplayVerdictReachesThePage(t *testing.T) {
 
 	if n, err := applyDisplayVerdicts(context.Background(), db, galgame, ids); err != nil || n != 0 {
 		t.Fatalf("replayed tail = (%d, %v), want nothing left to write", n, err)
+	}
+}
+
+func TestUnmirroredPageIsFilledOnceCaughtUp(t *testing.T) {
+	db := lifecycleDB(t)
+	mustExec(t, db, `UPDATE patch SET catalog_deleted_at = now() WHERE id = ?`, deletedPage)
+	verdicts := map[string]string{fmt.Sprint(livePage): "nsfw", fmt.Sprint(mergedPage): "sfw", fmt.Sprint(deletedPage): "sfw"}
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v2/catalog/changes" {
+			_, _ = w.Write([]byte(`{"object":"list","items":[],"next_cursor":null}`))
+			return
+		}
+		var items []string
+		for _, id := range strings.Split(r.URL.Query().Get("ids"), ",") {
+			asked = append(asked, id)
+			if cl, ok := verdicts[id]; ok {
+				items = append(items, fmt.Sprintf(`{"object":"work","id":"%s","medium":"galgame","display_name":"W",`+
+					`"localized":{},"olang":"ja","content_rating":"all_ages","content_limit":"%s","claim":null}`, id, cl))
+			}
+		}
+		_, _ = fmt.Fprintf(w, `{"object":"list","items":[%s]}`, strings.Join(items, ","))
+	}))
+	t.Cleanup(srv.Close)
+	galgame := galgameClient.NewWithKey(srv.URL, "nmk_test_key")
+
+	n, caughtUp, err := RunCatalogMirrorSync(context.Background(), db, galgame.V2(), galgame)
+	if err != nil || !caughtUp || n < 2 {
+		t.Fatalf("RunCatalogMirrorSync = (%d, %v, %v), want both hydrated pages filled", n, caughtUp, err)
+	}
+	for id, want := range map[int]string{livePage: "nsfw", mergedPage: "sfw"} {
+		var cl *string
+		db.Raw(`SELECT content_limit FROM patch WHERE id = ?`, id).Scan(&cl)
+		if cl == nil || *cl != want {
+			t.Errorf("page %d content_limit = %v, want %s", id, cl, want)
+		}
+	}
+	if slices.Contains(asked, fmt.Sprint(deletedPage)) {
+		t.Error("a page catalog deleted was hydrated; the deletion stamp already hides it")
 	}
 }
