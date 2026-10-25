@@ -63,6 +63,10 @@ func (h *Handler) ListPatchResources(c fiber.Ctx) error {
 	if prob != nil {
 		return problem.Write(c, prob)
 	}
+	types, prob := service.ParseResourceTypes(c)
+	if prob != nil {
+		return problem.Write(c, prob)
+	}
 	limit, prob := service.ParseLimit(c, false)
 	if prob != nil {
 		return problem.Write(c, prob)
@@ -75,7 +79,7 @@ func (h *Handler) ListPatchResources(c fiber.Ctx) error {
 	if prob != nil {
 		return problem.Write(c, prob)
 	}
-	out, prob := h.svc.ListPatchResources(c.Context(), id, offset, limit, include, includeTotal)
+	out, prob := h.svc.ListPatchResources(c.Context(), id, types, offset, limit, include, includeTotal)
 	if prob != nil {
 		return problem.Write(c, prob)
 	}

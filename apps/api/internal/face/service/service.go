@@ -83,7 +83,7 @@ func (s *Service) GetPatch(ctx context.Context, id int, include Includes) (*dto.
 }
 
 func (s *Service) ListPatchResources(
-	ctx context.Context, patchID, offset, limit int, include Includes, includeTotal bool,
+	ctx context.Context, patchID int, types []string, offset, limit int, include Includes, includeTotal bool,
 ) (dto.List[dto.Resource], *problem.Problem) {
 	if _, err := s.repo.GetPatch(patchID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -92,7 +92,7 @@ func (s *Service) ListPatchResources(
 		return dto.List[dto.Resource]{}, unavailable(err)
 	}
 
-	rows, err := s.repo.ListResources(patchID, offset, limit+1)
+	rows, err := s.repo.ListResources(patchID, types, offset, limit+1)
 	if err != nil {
 		return dto.List[dto.Resource]{}, unavailable(err)
 	}
@@ -108,7 +108,7 @@ func (s *Service) ListPatchResources(
 	}
 	out := dto.NewList(items, next)
 	if includeTotal {
-		n, countErr := s.repo.CountResources(patchID)
+		n, countErr := s.repo.CountResources(patchID, types)
 		if countErr != nil {
 			return dto.List[dto.Resource]{}, unavailable(countErr)
 		}
