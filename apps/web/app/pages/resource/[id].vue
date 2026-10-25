@@ -426,7 +426,16 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
 
           <KunTabPanels v-model="activePanel" :name="PANEL_GROUP">
             <KunTabPanel value="download">
-              <ResourceDownload :resource="resource" @downloaded="onDownload" />
+              <div class="space-y-6">
+                <ResourceDownload
+                  :resource="resource"
+                  @downloaded="onDownload"
+                />
+                <ResourceArchiveFiles
+                  v-if="resource.storage === 's3' && resource.status === 0"
+                  :resource-id="resource.id"
+                />
+              </div>
             </KunTabPanel>
 
             <KunTabPanel v-if="hasHistory" value="history">

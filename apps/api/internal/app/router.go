@@ -286,6 +286,12 @@ func (a *App) RegisterRoutes() {
 		middleware.RateLimit(a.RDB, "resource-detail", 60, time.Minute),
 		a.CommonHandler.GetResourceDetail,
 	)
+	api.Get("/resource/:id/files", optionalAuth, a.ArchiveHandler.Files)
+	api.Get("/resource/:id/files/content",
+		optionalAuth,
+		middleware.RateLimit(a.RDB, "archive-file", 120, time.Minute),
+		a.ArchiveHandler.FileContent,
+	)
 
 	api.Get("/ranking/user", a.CommonHandler.GetUserRanking)
 	api.Get("/ranking/patch", a.CommonHandler.GetPatchRanking)

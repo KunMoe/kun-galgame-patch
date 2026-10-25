@@ -9,6 +9,7 @@ import (
 	adminHandler "kun-galgame-patch-api/internal/admin/handler"
 	adminRepo "kun-galgame-patch-api/internal/admin/repository"
 	adminService "kun-galgame-patch-api/internal/admin/service"
+	"kun-galgame-patch-api/internal/archive"
 	authHandler "kun-galgame-patch-api/internal/auth/handler"
 	authRepo "kun-galgame-patch-api/internal/auth/repository"
 	authService "kun-galgame-patch-api/internal/auth/service"
@@ -100,6 +101,7 @@ type App struct {
 	FaceHandler      *faceHandler.Handler
 	UploadHandler    *uploadPkg.Handler
 	RepackHandler    *repack.Handler
+	ArchiveHandler   *archive.Handler
 	NormalizeHandler *normalize.Handler
 	ChatHandler      *chatHandler.ChatHandler
 	IMRelay          *im.Relay
@@ -366,7 +368,7 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
-	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror, repackSvc)
+	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror, repackSvc, archive.NewSweeper(db, artCli))
 	pushStop := startActivityPush(cfg, db, communityCli, galgame)
 	stopBackground := func() {
 		pushStop()
@@ -394,6 +396,7 @@ func New(cfg *config.Config) *App {
 		FaceHandler:      faceHdl,
 		UploadHandler:    uploadHdl,
 		RepackHandler:    repack.NewHandler(repackSvc),
+		ArchiveHandler:   archive.NewHandler(db, artCli),
 		NormalizeHandler: normalize.NewHandler(normalize.New(db, artCli, uploadSvc)),
 		ChatHandler:      chatHdl,
 		IMRelay:          im.NewRelay(cfg.Chat.BaseURL),
