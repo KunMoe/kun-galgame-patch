@@ -55,7 +55,7 @@
    ⚡ 中断/暂停后续传:
      GET /artifacts/:uuid/resume   → {uploaded_parts:[...], part_urls:[缺失分片], upload_url?}
      跳过 uploaded_parts、只补 part_urls 里的缺失分片（单段则用新 upload_url 重传）
-③ POST /artifacts/:uuid/complete   → {parts:[{part_number,etag}], manifest?} → 校验 → ready
+③ POST /artifacts/:uuid/complete   → {manifest?} → 服务端 ListParts 组装 → 校验 → ready
 ④ GET  /artifacts/:uuid/download   → {url}（presigned GET 或 Worker 域名）
    ⚡ 下载暂停/续传: 对 ④ 拿到的 URL 直接发 HTTP Range(`bytes=N-`)→ B2 回 206;
      presigned URL 在 TTL(默认 24h)内可反复续传，过期再调一次 ④ 换新 URL
@@ -92,6 +92,7 @@
 | `checksum` | string | | sha256 hex（64 位）；存元数据，v1 不强制服务端复算 |
 | `public` | bool | | true = 允许经 CF Worker 公开缓存分发（见下载）|
 | `uploader_sub` | string | | 后端 Basic 路径声明代传用户；JWT 路径忽略（取自 claims）|
+| `part_size` | int64 | | 分片上传的**期望**分片字节数。服务端钳到 `[5 MiB, 5 GiB]`，并在必要时调大以保证 ≤10000 片；不传则用服务端配置（默认 16 MiB）。弱网客户端可传更小的值（如 8 MiB）以减少单片失败的重传量。**以响应里的 `part_size` 为准切片** |
 
 **成功响应（单段，`file_size < 50MB`）**：
 
@@ -126,14 +127,16 @@
 }
 ```
 
-阈值（`50MB`）、分片大小（`16MB`）、URL 有效期（`1h`）均由服务端配置（`KUN_ARTIFACT_*`）。
+阈值（`50MB`）、默认分片大小（`16MB`，可被请求的 `part_size` 覆盖）、URL 有效期（`1h`）均由服务端配置（`KUN_ARTIFACT_*`）。
 
 ### 1.5 客户端直传 B2
 
 - **单段**：对 `upload_url` 发一个 `PUT`，body = 整个文件。无需额外签名头。
-- **分片**：把文件按 `part_size` 切片，对第 `i` 片 `PUT part_urls[i-1].url`（body = 该片字节）。**保存每个 PUT 响应的 `ETag` 响应头**，连同 `part_number` 在 Complete 时回传。各片可并发。最后一片可小于 `part_size`。
+- **分片**：把文件按 `part_size` 切片，对第 `i` 片 `PUT part_urls[i-1].url`（body = 该片字节）。各片可并发。最后一片可小于 `part_size`。无需回传 ETag：Complete 时服务端自己 `ListParts`。
 
 > 分片号从 1 开始、连续；除最后一片外每片大小须等于 `part_size`（S3/B2 multipart 约束）。
+
+- **单片重试**：同一个分片 URL 在有效期内可以反复 `PUT`，后一次覆盖前一次。分片失败（网络错误 / `429` / `5xx`）时应在原地用同一 URL 指数退避重试几次；`403`（URL 过期）则调 resume 换新 URL。只有重试耗尽才需要走一轮 resume。
 
 ---
 
@@ -141,16 +144,12 @@
 
 ### `POST /artifacts/:uuid/complete`
 
-合并分片（如有）→ `HeadObject` 校验实际大小 == 声明大小 → 置 `ready`，可选写 manifest。
+分片上传：服务端 `ListParts` 组装分片列表（每片大小须与 `part_size` 吻合）→ 合并 → `HeadObject` 校验实际大小 == 声明大小 → 置 `ready`，可选写 manifest。
 
 **请求体**：
 
 ```json
 {
-  "parts": [
-    { "part_number": 1, "etag": "\"d41d8c...\"" },
-    { "part_number": 2, "etag": "\"a1b2c3...\"" }
-  ],
   "manifest": {
     "executable": "Rance.exe",
     "arguments": "-fullscreen",
@@ -163,7 +162,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `parts` | array | 分片上传必填 | `{part_number, etag}`；服务端按 `part_number` 升序合并。单段上传可省略 |
+| `parts` | array | | **已弃用，传了也忽略**。分片列表由服务端从存储读取，所以不依赖客户端能否从 CORS 读到 `ETag` |
 | `manifest` | object | | 可选游戏启动清单（仅需要被启动器拉起的制品填）。`executable` 必填（≤500），其余可选 |
 
 **成功响应**（`ArtifactResponse`）：
@@ -188,7 +187,17 @@
 
 `status`：`0` uploading / `1` ready / `2` failed。
 
-**校验失败**：实际大小 ≠ `reported_size` → 删除对象 + 置 `status=2` → 返回 `400 / 50015`。完成本身失败（合并出错等）→ 置 `status=2` → `500 / 50013`。可重新发 `POST /artifacts` 重传。重复对已 `ready` 的 uuid 调用 complete 是幂等的（仅可再补 manifest）。
+**失败语义**：complete 可以安全重试，只有确定无法挽回时才把上传判为失败。
+
+| 情况 | 响应 | 上传状态 | 客户端该做什么 |
+|---|---|---|---|
+| 分片不齐 / 某片大小不对；单段对象尚未落盘 | `409 / 50011` | 仍 `uploading` | 调 resume 补传缺失分片，再 complete |
+| 存储临时出错（B2 `5xx` 等）| `500 / 50013` | 仍 `uploading` | 退避后重试 complete |
+| 实际大小 ≠ `reported_size` | `400 / 50015` | 删对象，`status=2` | 重新 `POST /artifacts` |
+| 分片上传已不存在（被 GC 回收）| `409 / 50011` | `status=2` | 重新 `POST /artifacts` |
+| 已是 `failed` | `409 / 50011` | 不变 | 重新 `POST /artifacts` |
+
+合并成功但响应在途中丢失时，重试的 complete 会识别出对象已合并，直接校验并置 `ready`。重复对已 `ready` 的 uuid 调用 complete 是幂等的（仅可再补 manifest）。闲置的 `uploading` 上传由 GC 按 `OrphanTTL` 回收（含 Abort 分片）。
 
 ---
 
@@ -200,7 +209,7 @@
 **S3 multipart 原生**的"断点续传"——无需 tus 之类的额外协议。鉴权 + 本站归属。
 
 - **单段（< 50MB）**：原 `upload_url` 多半已过期，返回**新的** `upload_url` 重传整体。
-- **分片（multipart）**：向 B2 `ListParts` 查**已落盘的分片**,返回 `uploaded_parts`（客户端跳过、其 ETag 在 complete 时复用）+ 仅缺失分片的**新** `part_urls`。
+- **分片（multipart）**：向 B2 `ListParts` 查**已落盘的分片**,返回 `uploaded_parts`（客户端跳过）+ 缺失分片的**新** `part_urls`。大小与 `part_size` 不吻合的已传分片视为缺失，会重新签发。
 
 调用本端点会 `Touch` 该上传的 `updated_at`，使正在续传的上传**不会**被 GC 孤儿清理（孤儿判定已改为按 `updated_at` 闲置超过 `OrphanTTL`，见 [02](./02-storage-and-schema.md)）。可重复调用。
 

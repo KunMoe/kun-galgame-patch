@@ -55,24 +55,33 @@ const art = await api(`/api/v1/artifacts/${init.uuid}/complete`, { method: 'POST
 
 ```ts
 // ① init → { uuid, multipart:true, upload_id, part_size, part_urls:[{part_number,url}] }
+//    part_size 可选：弱网用户传小一点（≥5 MiB），以响应里的 part_size 为准
 const init = await api('/api/v1/artifacts', {
   method: 'POST',
-  body: { name: file.name, file_size: file.size, mime_type: file.type },
+  body: { name: file.name, file_size: file.size, mime_type: file.type, part_size: 8 << 20 },
 })
 
-// ② 切片并发 PUT，收集每片 ETag
-const parts = await Promise.all(init.part_urls.map(async (p) => {
+// ② 切片并发 PUT（实际限 2–4 路并发）；单片失败用同一 URL 原地退避重试
+const putPart = async (url: string, blob: Blob) => {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { method: 'PUT', body: blob }).catch(() => null)
+    if (res?.ok) return
+    const retryable = !res || res.status === 429 || res.status >= 500
+    if (!retryable || attempt >= 3) throw new Error(`part failed: HTTP ${res?.status ?? 0}`)
+    await sleep(1000 * 2 ** attempt * (0.5 + Math.random()))
+  }
+}
+await Promise.all(init.part_urls.map((p) => {
   const start = (p.part_number - 1) * init.part_size
-  const blob = file.slice(start, start + init.part_size)        // 最后一片自然更小
-  const res = await fetch(p.url, { method: 'PUT', body: blob })
-  return { part_number: p.part_number, etag: res.headers.get('ETag')! }
+  return putPart(p.url, file.slice(start, start + init.part_size))  // 最后一片自然更小
 }))
 
-// ③ complete（带 parts，可选 manifest）
+// ③ complete（可选 manifest；分片列表由服务端 ListParts 组装，无需回传 ETag）
 const art = await api(`/api/v1/artifacts/${init.uuid}/complete`, {
   method: 'POST',
-  body: { parts, manifest: { executable: 'game.exe' } },
+  body: { manifest: { executable: 'game.exe' } },
 })
+// 409 → 有分片缺失：走 §2.3 resume 补传后再 complete；500 → 退避后重试 complete
 ```
 
 > **可选 sha256**：大文件可用 Web Crypto 流式算 `checksum` 传给 init（存元数据备查）。v1 服务端不复算，但传了对将来开启校验有益。
@@ -86,16 +95,11 @@ const art = await api(`/api/v1/artifacts/${init.uuid}/complete`, {
 const r = await api(`/api/v1/artifacts/${uuid}/resume`, { method: 'GET' })
 // r = { multipart:true, part_size, uploaded_parts:[{part_number,etag,size}], part_urls:[缺失], expires_at }
 
-const done = new Map(r.uploaded_parts.map((p) => [p.part_number, p.etag]))   // 已传：直接复用 etag
-const fresh = await Promise.all(r.part_urls.map(async (p) => {               // 缺失：只传这些
+await Promise.all(r.part_urls.map((p) => {                                  // 只传缺失的
   const start = (p.part_number - 1) * r.part_size
-  const res = await fetch(p.url, { method: 'PUT', body: file.slice(start, start + r.part_size) })
-  return [p.part_number, res.headers.get('ETag')!] as const
+  return putPart(p.url, file.slice(start, start + r.part_size))
 }))
-const parts = [...done, ...fresh]
-  .map(([part_number, etag]) => ({ part_number, etag }))
-  .sort((a, b) => a.part_number - b.part_number)
-await api(`/api/v1/artifacts/${uuid}/complete`, { method: 'POST', body: { parts } })
+await api(`/api/v1/artifacts/${uuid}/complete`, { method: 'POST', body: {} })
 // 单段上传：resume 返回 { multipart:false, upload_url } —— 用新 upload_url 重传整体即可。
 ```
 
@@ -103,10 +107,10 @@ await api(`/api/v1/artifacts/${uuid}/complete`, { method: 'POST', body: { parts 
 
 ## 3. B2 桶 CORS（前端直传必读）
 
-浏览器直接 `PUT` 到 B2、且 multipart 需读取 `ETag` 响应头——这要求 **B2 桶的 CORS 规则**：
+浏览器直接 `PUT` 到 B2——这要求 **B2 桶的 CORS 规则**：
 
 - 允许你的前端 origin 的 `PUT`（和单文件的 `GET`）。
-- **`exposeHeaders` 必须含 `ETag`**，否则 JS 读不到分片 ETag，complete 会失败。
+- `exposeHeaders` 含 `ETag`（现已配置）。complete 不再依赖客户端回传 ETag，但保留它便于客户端自查。
 
 （后端 S2S 路径不受 CORS 限制。）这是 B2 桶级配置，由运维设，不在 artifact 服务侧。
 
@@ -150,6 +154,7 @@ await api(`/api/v1/artifacts?page=1&page_size=20`, { method: 'GET' }) // 本站�
 
 - **预签名有效期**：init 返回的上传 URL ~1h 过期。超时**不必**重新 init——调 `GET /artifacts/:uuid/resume` 拿新 URL 续传（§2.3）。下载 URL 默认 24h。
 - **重传 / 续传**：分片失败可只重 PUT 失败的那片（同 `part_url` 有效期内可重试）；窗口过了 / 断线 / 刷新后用 `resume` 续传（跳过已传分片）；整体彻底放弃才重新 init。
+- **complete 可重试**：`500` 时上传仍是 `uploading`，退避后重试即可；`409` 表示分片不齐，先 resume 补传。只有大小校验失败或上传已被回收才需要重新 init（失败语义表见 [03 §2](./03-api-design.md)）。
 - **幂等**：对已 `ready` 的 uuid 再 complete 是安全的（只会补 manifest）。
 - **孤儿**：init 后**在 `ORPHAN_TTL`（默认 24h）内无任何 complete/resume 进展**的上传会被 `artifact-gc` 清掉（判定按 `updated_at`，所以仍在续传的不会被误杀），无需调用方干预。
 - **跨站隔离**：你只能看/操作自己 `site_key` 的制品；别站 uuid 一律 404。

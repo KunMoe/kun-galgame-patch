@@ -50,6 +50,7 @@ components:
         manifest:
           $ref: "#/components/schemas/ManifestInput"
         parts:
+          description: "Deprecated and ignored: the service assembles the part list from storage."
           items:
             $ref: "#/components/schemas/CompletedPart"
           type:
@@ -485,6 +486,10 @@ components:
           type: string
         name:
           type: string
+        part_size:
+          description: Preferred multipart part size in bytes. Clamped to [5 MiB, 5 GiB] and raised so the file fits in 10000 parts; the response part_size is the one to slice by.
+          format: int64
+          type: integer
         public:
           type: boolean
         uploader_sub:
