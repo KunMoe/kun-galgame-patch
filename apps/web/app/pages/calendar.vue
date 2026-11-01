@@ -199,6 +199,26 @@ const goNext = () => {
 const goToday = () => {
   month.value = ''
 }
+
+const focusDate = ref('')
+const goMonth = (m: string) => {
+  month.value = m
+}
+const goDate = (date: string) => {
+  focusDate.value = date
+  goMonth(date.slice(0, 7))
+}
+watch(
+  [dayGroups, focusDate],
+  ([groups, date]) => {
+    if (!date || date.slice(0, 7) !== curMonth.value) return
+    const days = groups.filter((g) => !g.isTbd)
+    const target = days.find((g) => g.key >= date) ?? days.at(-1) ?? groups[0]
+    if (target) scrollToDay(target.key)
+    focusDate.value = ''
+  },
+  { flush: 'post' }
+)
 </script>
 
 <template>
@@ -262,6 +282,15 @@ const goToday = () => {
               <KunIcon name="lucide:chevron-right" class="size-5" />
             </KunButton>
           </div>
+
+          <CalendarJump
+            v-if="curMonth"
+            :month="curMonth"
+            :min-month="meta?.min_month"
+            :max-month="meta?.max_month"
+            @month="goMonth"
+            @date="goDate"
+          />
 
           <div class="border-default/20 bg-content1 rounded-2xl border p-3">
             <CalendarMonthGrid
