@@ -7,14 +7,14 @@ const LANGUAGE_PRIORITY: Record<Language, Language[]> = {
 
 // readTitleLanguagePreference returns the user's "游戏标题优先语言" setting
 // (settingStore.titleLanguage). The store is cookie-backed, so this resolves
-// correctly during SSR too. Falls back to 'ja-jp' (the default) when Pinia isn't
+// correctly during SSR too. Falls back to 'zh-cn' (the default) when Pinia isn't
 // active (non-component context, e.g. a unit test) or the key is unset on an old
 // cookie.
 const readTitleLanguagePreference = (): Language => {
   try {
-    return useSettingStore().data.titleLanguage ?? 'ja-jp'
+    return useSettingStore().data.titleLanguage ?? 'zh-cn'
   } catch {
-    return 'ja-jp'
+    return 'zh-cn'
   }
 }
 

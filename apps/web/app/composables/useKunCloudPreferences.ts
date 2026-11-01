@@ -37,7 +37,7 @@ const WRITE_DEBOUNCE = 1000
 
 const DEFAULT_DOC: KunPreferenceDoc = {
   galgame_list_layout: 'poster',
-  title_language: 'ja-jp',
+  title_language: 'zh-cn',
   show_japanese_subtitle: false,
   show_release_date: false,
   show_nsfw_badge: false,

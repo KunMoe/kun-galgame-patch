@@ -12,7 +12,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const settingStore = useSettingStore()
-const titleLanguage = computed(() => settingStore.data.titleLanguage ?? 'ja-jp')
+const titleLanguage = computed(() => settingStore.data.titleLanguage ?? 'zh-cn')
 const showNsfwBadge = computed(() => settingStore.data.showNsfwBadge ?? false)
 
 const galgameName = computed(() =>

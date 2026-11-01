@@ -43,7 +43,7 @@ mockNuxtImport('useApi', () => () => ({
 
 const DEFAULTS: KunPreferenceDoc = {
   galgame_list_layout: 'poster',
-  title_language: 'ja-jp',
+  title_language: 'zh-cn',
   show_japanese_subtitle: false,
   show_release_date: false,
   show_nsfw_badge: false,
@@ -89,9 +89,9 @@ afterEach(async () => {
 
 describe('useKunCloudPreferences', () => {
   it('reads on load and writes nothing when a revalidate rewrites equal values', async () => {
-    stored({ title_language: 'zh-cn' })
+    stored({ title_language: 'ja-jp' })
     await signIn()
-    expect(useSettingStore().data.titleLanguage).toBe('zh-cn')
+    expect(useSettingStore().data.titleLanguage).toBe('ja-jp')
 
     useUserStore().setUser({ id: 7, name: 'kun', bio: 'new bio' })
     useSettingStore().setData({})

@@ -41,7 +41,7 @@ export interface KunSettingData {
   // Shape every galgame list draws: 'poster' (default) is the grid of covers,
   // 'row' is the wide two-column row that also carries the credits and tags.
   galgameListLayout: 'poster' | 'row'
-  // Preferred language for game titles site-wide: 'ja-jp' (default) or 'zh-cn'.
+  // Preferred language for game titles site-wide: 'zh-cn' (default) or 'ja-jp'.
   titleLanguage: 'zh-cn' | 'ja-jp'
   // Show the Japanese title as a subtitle under the title. Default off.
   showJapaneseSubtitle: boolean
@@ -72,7 +72,7 @@ const initialState: KunSettingData = {
   kunNsfwEnable: 'hide',
   nsfwAckedIds: [],
   galgameListLayout: 'poster',
-  titleLanguage: 'ja-jp',
+  titleLanguage: 'zh-cn',
   showJapaneseSubtitle: false,
   showReleaseDate: false,
   showNsfwBadge: false,

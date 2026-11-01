@@ -21,7 +21,7 @@ const layoutOptions = [
 ]
 
 const titleLanguage = computed({
-  get: () => settingStore.data.titleLanguage ?? 'ja-jp',
+  get: () => settingStore.data.titleLanguage ?? 'zh-cn',
   set: (v: 'zh-cn' | 'ja-jp') => settingStore.setData({ titleLanguage: v })
 })
 const titleLanguageOptions = [
