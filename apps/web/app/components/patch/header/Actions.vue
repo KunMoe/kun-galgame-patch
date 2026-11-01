@@ -12,6 +12,7 @@ const isOnSite = computed(() => props.patch.is_on_forum !== false)
 const kungalOrigin = kunMoyuMoe.domain.kungal
 
 const userStore = useUserStore()
+const { can } = usePermissions()
 const api = useApi()
 const { requireLogin } = useAuthModal()
 
@@ -86,7 +87,7 @@ const route = useRoute()
 const canDelete = computed(() => {
   if (!isOnSite.value) return false
   if (!userStore.user.id) return false
-  return userStore.isAdmin || props.patch.user?.id === userStore.user.id
+  return can('patch.delete_any') || props.patch.user?.id === userStore.user.id
 })
 
 const deleteOpen = ref(false)

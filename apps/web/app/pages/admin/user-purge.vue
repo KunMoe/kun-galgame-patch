@@ -1,11 +1,6 @@
 <script setup lang="ts">
 useKunDisableSeo('用户清除')
 
-const userStore = useUserStore()
-if (!userStore.isAdmin) {
-  await navigateTo('/admin')
-}
-
 const api = useApi()
 
 interface UserPurgePreview {

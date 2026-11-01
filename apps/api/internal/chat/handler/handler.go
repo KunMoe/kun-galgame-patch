@@ -14,6 +14,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/perm"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/userclient"
 	"kun-galgame-patch-api/pkg/utils"
@@ -250,7 +251,7 @@ func previewMessage(m *chatModel.ChatMessage) string {
 
 func (h *ChatHandler) CreateRoom(c fiber.Ctx) error {
 	user := middleware.MustGetUser(c)
-	if !middleware.IsAdmin(c) {
+	if !middleware.Can(c, perm.ChatRoomCreate) {
 		return response.Error(c, errors.ErrForbidden())
 	}
 	var req dto.CreateRoomRequest
@@ -391,8 +392,7 @@ func (h *ChatHandler) DeleteMessage(c fiber.Ctx) error {
 	if err != nil {
 		return response.Error(c, err.(*errors.AppError))
 	}
-	isPrivileged := middleware.IsModerator(c)
-	if err := h.svc.DeleteMessage(user.ID, isPrivileged, id); err != nil {
+	if err := h.svc.DeleteMessage(user.ID, middleware.Can(c, perm.ChatMessageDeleteAny), id); err != nil {
 		return response.Error(c, writeError(err))
 	}
 	return response.OKMessage(c, "消息已删除")

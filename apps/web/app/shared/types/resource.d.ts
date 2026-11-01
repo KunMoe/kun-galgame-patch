@@ -31,6 +31,9 @@ interface PatchResource {
   // file/link updates. Drives the "收藏资源" button.
   is_favorite?: boolean
   status?: number
+  // 1-based position among the page's pinned resources; null = unpinned,
+  // which the API shuffles on every read.
+  display_order?: number | null
   download: number
   user_id?: number
   galgame_id: number

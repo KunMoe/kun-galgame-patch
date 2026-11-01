@@ -13,7 +13,6 @@ import type { CommentTarget } from '~/shared/utils/commentTarget'
 
 const route = useRoute()
 const api = useApi()
-const userStore = useUserStore()
 const { requireLogin } = useAuthModal()
 
 const resourceId = computed(() => Number(route.params.id))
@@ -461,7 +460,6 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
               :has-more="hasMoreComments"
               :loading-more="loadingMoreComments"
               :pending="commentsPending"
-              :can-moderate="userStore.isModerator"
               :mention-user="resource.user"
               @comment-added="onCommentAdded"
               @liked="onLiked"

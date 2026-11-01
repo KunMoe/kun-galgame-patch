@@ -8,7 +8,7 @@ import {
 useKunDisableSeo('合并记录 - 管理面板')
 
 const api = useApi()
-const userStore = useUserStore()
+const { can } = usePermissions()
 const page = ref(1)
 const limit = 30
 const issuesOnly = ref(false)
@@ -110,7 +110,7 @@ const stateOf = (r: AdminMergeRecord) => {
             本站搬回失败：{{ r.undo_report?.error }}
           </p>
           <KunButton
-            v-if="userStore.isAdmin"
+            v-if="can('catalog.merge_undo')"
             size="sm"
             variant="flat"
             color="danger"

@@ -16,12 +16,13 @@ const emit = defineEmits<{
 
 const api = useApi()
 const userStore = useUserStore()
+const { can } = usePermissions()
 const { requireLogin } = useAuthModal()
 const { open: openReport } = useReportModal()
 
 const canManage = computed(
   () =>
-    userStore.isModerator ||
+    can('resource.edit_any') ||
     (!!props.resource.user_id && props.resource.user_id === userStore.user.id)
 )
 

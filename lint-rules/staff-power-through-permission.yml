@@ -1,0 +1,11 @@
+id: staff-power-through-permission
+language: go
+severity: error
+message: Gate a staff power with middleware.Can / RequirePermission and a pkg/perm key, so the permission center can adjust it.
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: ^middleware\.(IsModerator|IsAdmin|RequireRole)$
+ignores:
+  - "**/*_test.go"

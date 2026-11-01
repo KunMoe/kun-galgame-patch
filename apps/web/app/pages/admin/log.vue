@@ -37,6 +37,14 @@ const formatLogContent = (l: AdminLog): string => {
     if (d.resource_id) parts.push(`资源 #${d.resource_id}`)
     if (d.comment_id) parts.push(`评论 #${d.comment_id}`)
     if (d.galgame_id) parts.push(`galgame ${d.galgame_id}`)
+    if (d.patch_id) parts.push(`galgame ${d.patch_id}`)
+    if (Array.isArray(d.resource_ids)) {
+      parts.push(
+        d.resource_ids.length
+          ? `固定顺序：${d.resource_ids.map((id) => `#${id}`).join(' → ')}`
+          : '已清空固定顺序'
+      )
+    }
     if (d.owner_id) parts.push(`作者 #${d.owner_id}`)
     if (d.reason) parts.push(`原因：${d.reason}`)
     return parts.length ? parts.join(' · ') : c

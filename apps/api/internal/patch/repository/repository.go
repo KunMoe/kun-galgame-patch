@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
@@ -15,6 +16,8 @@ import (
 type PatchRepository struct {
 	db *gorm.DB
 }
+
+var ErrForeignResource = errors.New("resource does not belong to this page")
 
 func New(db *gorm.DB) *PatchRepository {
 	return &PatchRepository{db: db}
@@ -154,9 +157,35 @@ func (r *PatchRepository) GetResourcePatchID(resourceID int) (int, error) {
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
 	err := r.db.Where("galgame_id = ? AND status <> 2", patchID).
-		Order("created DESC, id DESC").
+		Order("display_order ASC NULLS LAST, created DESC, id DESC").
 		Find(&resources).Error
 	return resources, err
+}
+
+func (r *PatchRepository) SetResourceOrder(patchID int, resourceIDs []int) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if len(resourceIDs) > 0 {
+			var n int64
+			if err := tx.Model(&model.PatchResource{}).
+				Where("galgame_id = ? AND status <> 2 AND id IN ?", patchID, resourceIDs).
+				Count(&n).Error; err != nil {
+				return err
+			}
+			if int(n) != len(resourceIDs) {
+				return ErrForeignResource
+			}
+		}
+		if err := tx.Exec(`UPDATE patch_resource SET display_order = NULL
+			WHERE galgame_id = ? AND display_order IS NOT NULL`, patchID).Error; err != nil {
+			return err
+		}
+		for i, id := range resourceIDs {
+			if err := tx.Exec(`UPDATE patch_resource SET display_order = ? WHERE id = ?`, i+1, id).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // ResourceCoverage answers "what does this page already have", which is a

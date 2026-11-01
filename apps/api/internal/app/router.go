@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"kun-galgame-patch-api/internal/middleware"
+	"kun-galgame-patch-api/pkg/perm"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -21,8 +22,6 @@ func (a *App) RegisterRoutes() {
 
 	auth := middleware.Auth(a.RDB, a.Config.OAuth)
 	optionalAuth := middleware.OptionalAuth(a.RDB, a.Config.OAuth)
-	moderatorAuth := middleware.RequireRole(middleware.ModeratorRoles...)
-	adminAuth := middleware.RequireRole(middleware.SuperAdminRoles...)
 
 	api.Post("/trust/callback", middleware.BodyLimit(16*1024), a.TrustHandler.Callback)
 
@@ -40,6 +39,7 @@ func (a *App) RegisterRoutes() {
 	authRoutes.Put("/me/nsfw", auth, a.AuthHandler.UpdateNsfwDisplay)
 	authRoutes.Get("/me/preferences", auth, a.AuthHandler.GetPreferences)
 	authRoutes.Put("/me/preferences", auth, a.AuthHandler.UpdatePreferences)
+	authRoutes.Get("/me/permissions", auth, a.PermHandler.Mine)
 
 	if a.Config.BotSubmit.Configured() {
 		botUser := a.Config.BotSubmit.UserID
@@ -101,6 +101,7 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/resource/:resourceId", auth, a.PatchHandler.UpdateResource)
 	patchRoutes.Delete("/resource/:resourceId", auth, a.PatchHandler.DeleteResource)
 	patchRoutes.Put("/resource/:resourceId/disable", auth, a.PatchHandler.ToggleResourceDisable)
+	patchRoutes.Put("/:id/resource/order", auth, middleware.RequirePermission(perm.ResourceReorder), a.PatchHandler.ReorderResources)
 	patchRoutes.Get(
 		"/resource/:resourceId/link",
 		optionalAuth,
@@ -225,48 +226,56 @@ func (a *App) RegisterRoutes() {
 	msgRoutes.Get("/unread", a.MessageHandler.GetUnreadTypes)
 	msgRoutes.Put("/read", a.MessageHandler.MarkAsRead)
 
-	adminRoutes := api.Group("/admin", auth, moderatorAuth)
+	need := middleware.RequirePermission
+	adminRoutes := api.Group("/admin", auth, middleware.RequireAnyPermission(perm.InGroup(perm.GroupAdmin)...))
 
 	// The admin comment queue reads the community primitive like every other
 	// comment surface: a keyword search over the walls, or the newest comments
 	// when there is none. There is no approve face — community has no
 	// pre-moderation, and site_setting never carried an enabled comment_verify.
-	adminRoutes.Get("/comment", a.CommentHandler.SearchComments)
-	adminRoutes.Get("/comment/recent", a.CommentHandler.GetGlobalComments)
-	adminRoutes.Put("/comment/:postId", a.CommentHandler.UpdateComment)
-	adminRoutes.Delete("/comment/:postId", a.CommentHandler.DeleteComment)
+	adminRoutes.Get("/comment", need(perm.AdminAccess), a.CommentHandler.SearchComments)
+	adminRoutes.Get("/comment/recent", need(perm.AdminAccess), a.CommentHandler.GetGlobalComments)
+	adminRoutes.Put("/comment/:postId", need(perm.CommentEditAny), a.CommentHandler.UpdateComment)
+	adminRoutes.Delete("/comment/:postId", need(perm.CommentDeleteAny), a.CommentHandler.DeleteComment)
 
-	adminRoutes.Get("/resource", a.AdminHandler.GetResources)
-	adminRoutes.Put("/resource/:id", a.AdminHandler.UpdateResource)
-	adminRoutes.Delete("/resource/:id", a.AdminHandler.DeleteResource)
-	adminRoutes.Get("/resource/:id/history", a.AdminHandler.GetResourceFileHistory)
+	adminRoutes.Get("/resource", need(perm.AdminAccess), a.AdminHandler.GetResources)
+	adminRoutes.Put("/resource/:id", need(perm.ResourceEditAny), a.AdminHandler.UpdateResource)
+	adminRoutes.Delete("/resource/:id", need(perm.ResourceDeleteAny), a.AdminHandler.DeleteResource)
+	adminRoutes.Get("/resource/:id/history", need(perm.AdminAccess), a.AdminHandler.GetResourceFileHistory)
 
-	adminRoutes.Get("/user/:id/purge-preview", adminAuth, a.AdminHandler.GetUserPurgePreview)
-	adminRoutes.Post("/user/:id/purge", adminAuth, a.AdminHandler.PurgeUser)
+	adminRoutes.Get("/user/:id/purge-preview", need(perm.UserPurge), a.AdminHandler.GetUserPurgePreview)
+	adminRoutes.Post("/user/:id/purge", need(perm.UserPurge), a.AdminHandler.PurgeUser)
 
-	adminRoutes.Get("/setting/creator-only", a.AdminHandler.GetCreatorOnly)
-	adminRoutes.Put("/setting/creator-only", adminAuth, a.AdminHandler.SetCreatorOnly)
+	adminRoutes.Get("/setting/creator-only", need(perm.AdminAccess), a.AdminHandler.GetCreatorOnly)
+	adminRoutes.Put("/setting/creator-only", need(perm.SettingManage), a.AdminHandler.SetCreatorOnly)
 
-	adminRoutes.Get("/trust/review-items", a.TrustHandler.ListReviewItems)
-	adminRoutes.Get("/trust/review-items/:id", a.TrustHandler.GetReviewItem)
-	adminRoutes.Post("/trust/review-items/:id/claim", a.TrustHandler.ClaimReviewItem)
-	adminRoutes.Post("/trust/review-items/:id/decide", a.TrustHandler.DecideReviewItem)
+	adminRoutes.Get("/trust/review-items", need(perm.TrustReview), a.TrustHandler.ListReviewItems)
+	adminRoutes.Get("/trust/review-items/:id", need(perm.TrustReview), a.TrustHandler.GetReviewItem)
+	adminRoutes.Post("/trust/review-items/:id/claim", need(perm.TrustReview), a.TrustHandler.ClaimReviewItem)
+	adminRoutes.Post("/trust/review-items/:id/decide", need(perm.TrustReview), a.TrustHandler.DecideReviewItem)
 
-	adminRoutes.Get("/stats", a.AdminHandler.GetStats)
-	adminRoutes.Get("/stats/sum", a.AdminHandler.GetStatsSum)
-	adminRoutes.Get("/log", a.AdminHandler.GetLogs)
+	adminRoutes.Get("/stats", need(perm.AdminAccess), a.AdminHandler.GetStats)
+	adminRoutes.Get("/stats/sum", need(perm.AdminAccess), a.AdminHandler.GetStatsSum)
+	adminRoutes.Get("/log", need(perm.AdminAccess), a.AdminHandler.GetLogs)
 
-	adminRoutes.Get("/galgame", a.AdminHandler.GetGalgame)
+	adminRoutes.Get("/galgame", need(perm.AdminAccess), a.AdminHandler.GetGalgame)
 
-	adminRoutes.Get("/patch/orphans", a.AdminHandler.GetOrphanPatches)
-	adminRoutes.Get("/catalog-merges", a.AdminHandler.GetMergeRecords)
-	adminRoutes.Post("/catalog-merges/:id/undo", adminAuth, a.AdminHandler.RetryMergeUndo)
+	adminRoutes.Get("/patch/orphans", need(perm.AdminAccess), a.AdminHandler.GetOrphanPatches)
+	adminRoutes.Get("/catalog-merges", need(perm.AdminAccess), a.AdminHandler.GetMergeRecords)
+	adminRoutes.Post("/catalog-merges/:id/undo", need(perm.CatalogMergeUndo), a.AdminHandler.RetryMergeUndo)
 
-	adminRoutes.Get("/doc", a.DocHandler.AdminListPosts)
-	adminRoutes.Get("/doc/:id", a.DocHandler.AdminGetPost)
-	adminRoutes.Post("/doc", a.DocHandler.CreatePost)
-	adminRoutes.Put("/doc/:id", a.DocHandler.UpdatePost)
-	adminRoutes.Delete("/doc/:id", a.DocHandler.DeletePost)
+	adminRoutes.Get("/permission", need(perm.PermissionManage), a.PermHandler.GetMatrix)
+	adminRoutes.Put("/permission/role", need(perm.PermissionManage), a.PermHandler.UpdateRoles)
+	adminRoutes.Get("/permission/users", need(perm.PermissionManage), a.PermHandler.GetOverridden)
+	adminRoutes.Get("/permission/user/:id", need(perm.PermissionManage), a.PermHandler.GetUser)
+	adminRoutes.Put("/permission/user/:id", need(perm.PermissionManage), a.PermHandler.ReplaceUser)
+	adminRoutes.Get("/permission/change", need(perm.PermissionManage), a.PermHandler.GetChanges)
+
+	adminRoutes.Get("/doc", need(perm.DocManage), a.DocHandler.AdminListPosts)
+	adminRoutes.Get("/doc/:id", need(perm.DocManage), a.DocHandler.AdminGetPost)
+	adminRoutes.Post("/doc", need(perm.DocManage), a.DocHandler.CreatePost)
+	adminRoutes.Put("/doc/:id", need(perm.DocManage), a.DocHandler.UpdatePost)
+	adminRoutes.Delete("/doc/:id", need(perm.DocManage), a.DocHandler.DeletePost)
 
 	api.Get("/tag/:name", a.PatchHandler.GalgameTaxonomyDetailProxy)
 	api.Get("/tag/:tagId/descendants", a.PatchHandler.TagDescendants)

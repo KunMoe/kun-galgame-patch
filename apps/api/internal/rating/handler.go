@@ -11,6 +11,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/perm"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/utils"
@@ -70,11 +71,11 @@ func workIDParam(c fiber.Ctx) (int64, *errors.AppError) {
 	return id, nil
 }
 
-// Only admin and ren delete another reader's rating, the forum's
-// rating.delete_any: the delete removes it from every NextMoe site, which
-// IsModerator once offered to every moyu site moderator.
+// rating.delete_any is admin-only by baseline: the delete removes the rating
+// from every NextMoe site, which IsModerator once offered to every moyu site
+// moderator.
 func viewerOf(c fiber.Ctx) Viewer {
-	return Viewer{ID: middleware.GetUserID(c), Admin: middleware.IsAdmin(c)}
+	return Viewer{ID: middleware.GetUserID(c), Admin: middleware.Can(c, perm.RatingDeleteAny)}
 }
 
 // visible answers the work page's own question: a reader whose content limit

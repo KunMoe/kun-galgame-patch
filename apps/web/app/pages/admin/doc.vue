@@ -2,7 +2,6 @@
 useKunDisableSeo('文档管理')
 
 const api = useApi()
-const userStore = useUserStore()
 const config = useRuntimeConfig()
 const apiBase = config.public.apiBase as string
 
@@ -185,14 +184,7 @@ const confirmDelete = async () => {
   }
 }
 
-onMounted(() => {
-  if (!userStore.isModerator) {
-    useKunMessage('无权限访问', 'error')
-    navigateTo('/')
-    return
-  }
-  load()
-})
+onMounted(load)
 </script>
 
 <template>
