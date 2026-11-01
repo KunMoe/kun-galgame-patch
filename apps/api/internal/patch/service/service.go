@@ -349,6 +349,7 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 	if err != nil {
 		return resources, err
 	}
+	shuffleUnpinned(resources)
 	model.RenderResourceNotes(resources)
 	if err := s.repo.MarkAwaitingPassword(resources); err != nil {
 		slog.Warn("GetResources: reading normalize failures failed", "patch_id", patchID, "error", err)
@@ -357,6 +358,29 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 	s.markResourceLiked(currentUID, resources)
 	s.markResourceFavorited(currentUID, resources)
 	return resources, nil
+}
+
+// shuffleUnpinned expects the pinned resources first, as the repository orders them.
+func shuffleUnpinned(rs []model.PatchResource) {
+	pinned := 0
+	for pinned < len(rs) && rs[pinned].DisplayOrder != nil {
+		pinned++
+	}
+	tail := rs[pinned:]
+	rand.Shuffle(len(tail), func(i, j int) { tail[i], tail[j] = tail[j], tail[i] })
+}
+
+func (s *PatchService) ReorderResources(actorID, patchID int, resourceIDs []int) error {
+	if err := s.repo.SetResourceOrder(patchID, resourceIDs); err != nil {
+		return err
+	}
+	if err := s.audit.CreateLog(actorID, "reorderResources", map[string]any{
+		"patch_id":     patchID,
+		"resource_ids": resourceIDs,
+	}); err != nil {
+		slog.Warn("ReorderResources: writing the admin log failed", "patch_id", patchID, "error", err)
+	}
+	return nil
 }
 
 func (s *PatchService) markResourceLiked(currentUID int, rs []model.PatchResource) {
@@ -520,12 +544,12 @@ func (s *PatchService) CreateResource(ctx context.Context, resource *model.Patch
 	return nil
 }
 
-func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID int, update *model.PatchResource, reason string, actorRole int) (*model.PatchResource, error) {
+func (s *PatchService) UpdateResource(ctx context.Context, resourceID, userID int, update *model.PatchResource, reason string, actorRole int, canEditAny bool) (*model.PatchResource, error) {
 	existing, err := s.repo.GetResourceByID(resourceID)
 	if err != nil {
 		return nil, fmt.Errorf("resource not found")
 	}
-	if existing.UserID != userID && actorRole < 2 {
+	if existing.UserID != userID && !canEditAny {
 		return nil, fmt.Errorf("can only edit your own resources")
 	}
 

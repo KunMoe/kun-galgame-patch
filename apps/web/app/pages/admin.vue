@@ -4,15 +4,25 @@ import { ADMIN_MENU } from '~/constants/admin'
 useKunDisableSeo('管理面板')
 
 const route = useRoute()
-const userStore = useUserStore()
-
-if (!userStore.isModerator) {
-  await navigateTo('/')
-}
+const { can } = usePermissions()
 
 const visibleMenu = computed(() =>
-  ADMIN_MENU.filter((item) => !item.adminOnly || userStore.isAdmin)
+  ADMIN_MENU.filter((item) => can(item.permission))
 )
+
+const guard = async (path: string) => {
+  const first = visibleMenu.value[0]
+  if (!first) {
+    await navigateTo('/')
+    return
+  }
+  const item = ADMIN_MENU.find((i) => i.href === path)
+  if (item && !can(item.permission)) {
+    await navigateTo(first.href)
+  }
+}
+await guard(route.path)
+watch(() => route.path, guard)
 </script>
 
 <template>

@@ -2,7 +2,6 @@
 import type { CommentTarget } from '~/shared/utils/commentTarget'
 
 const route = useRoute()
-const userStore = useUserStore()
 
 const galgameId = computed(() => Number(route.params.id))
 const target = computed<CommentTarget>(() => ({
@@ -40,7 +39,6 @@ watch(pending, (value) => emit('update:loading', value), { immediate: true })
     :has-more="hasMore"
     :loading-more="loadingMore"
     :pending="pending"
-    :can-moderate="userStore.isModerator"
     @comment-added="onCommentAdded"
     @liked="onLiked"
     @edited="onEdited"

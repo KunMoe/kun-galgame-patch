@@ -2,8 +2,10 @@
 import type { KnownAccount } from '~/composables/useKnownAccounts'
 import { kunMoyuMoe } from '~/config/moyu-moe'
 import { KUN_CONTENT_LIMIT_RADIO_OPTIONS } from '~/constants/top-bar'
+import { ADMIN_PANEL_PERMISSIONS } from '~/constants/admin'
 
 const userStore = useUserStore()
+const { canAny } = usePermissions()
 const api = useApi()
 const { openLogoutModal } = useLogoutModal()
 const { accounts } = useKnownAccounts()
@@ -216,7 +218,7 @@ const handleCheckIn = async () => {
         />
       </button>
       <NuxtLink
-        v-if="userStore.isModerator"
+        v-if="canAny(ADMIN_PANEL_PERMISSIONS)"
         to="/admin"
         class="hover:bg-default-100 flex items-center gap-2 rounded px-2 py-2 text-sm"
       >

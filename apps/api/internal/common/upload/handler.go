@@ -27,6 +27,7 @@ func NewHandler(svc *Service, img *imageclient.Client) *Handler {
 
 func uploadTier(c fiber.Ctx) constants.UploadTier {
 	switch {
+	// ast-grep-ignore: staff-power-through-permission -- an upload quota tier follows the role, it grants no power
 	case middleware.IsAdmin(c):
 		return constants.AdminUploadTier
 	case middleware.HasRole(c, "moderator"):

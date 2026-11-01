@@ -13,10 +13,12 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/internal/patch/dto"
 	"kun-galgame-patch-api/internal/patch/model"
+	"kun-galgame-patch-api/internal/patch/repository"
 	"kun-galgame-patch-api/internal/patch/service"
 	"kun-galgame-patch-api/internal/usercache"
 	"kun-galgame-patch-api/pkg/catalogv2"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/perm"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/upstream"
 	"kun-galgame-patch-api/pkg/userclient"
@@ -109,7 +111,7 @@ func (h *PatchHandler) gatePatchByContentLimit(c fiber.Ctx, patchID int) bool {
 }
 
 func (h *PatchHandler) ensureCanPublishGalgame(c fiber.Ctx) *errors.AppError {
-	if h.service.IsCreatorOnlyEnabled() && !middleware.IsModerator(c) && !middleware.HasRole(c, "creator") {
+	if h.service.IsCreatorOnlyEnabled() && !middleware.Can(c, perm.GalgamePublishRestricted) {
 		return errors.New(40300, "本站当前仅允许创作者 / 版主 / 管理员发布 Galgame", fiber.StatusForbidden)
 	}
 	return nil
@@ -226,8 +228,7 @@ func (h *PatchHandler) UpdatePatch(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.IsModerator(c)
-	if err := h.service.UpdatePatch(c.Context(), id, user.ID, isPrivileged, req.VndbID); err != nil {
+	if err := h.service.UpdatePatch(c.Context(), id, user.ID, middleware.Can(c, perm.PatchEditAny), req.VndbID); err != nil {
 		if _, ok := upstream.As(err); ok {
 			return response.Upstream(c, err, "")
 		}
@@ -243,8 +244,7 @@ func (h *PatchHandler) DeletePatch(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isAdmin := middleware.IsAdmin(c)
-	if err := h.service.DeletePatch(id, user.ID, isAdmin); err != nil {
+	if err := h.service.DeletePatch(id, user.ID, middleware.Can(c, perm.PatchDeleteAny)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
@@ -350,13 +350,14 @@ func (h *PatchHandler) UpdateResource(c fiber.Ctx) error {
 	}
 
 	actorRole := 1
+	// ast-grep-ignore: staff-power-through-permission -- a role label for the edit history; the power is resource.edit_any
 	if middleware.IsAdmin(c) {
 		actorRole = 3
 	} else if middleware.HasRole(c, "moderator") {
 		actorRole = 2
 	}
 
-	updated, err := h.service.UpdateResource(c.Context(), resourceID, user.ID, update, req.Reason, actorRole)
+	updated, err := h.service.UpdateResource(c.Context(), resourceID, user.ID, update, req.Reason, actorRole, middleware.Can(c, perm.ResourceEditAny))
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
@@ -371,12 +372,33 @@ func (h *PatchHandler) DeleteResource(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.IsModerator(c)
-	if err := h.service.DeleteResource(resourceID, user.ID, isPrivileged, parseDeleteReason(c)); err != nil {
+	if err := h.service.DeleteResource(resourceID, user.ID, middleware.Can(c, perm.ResourceDeleteAny), parseDeleteReason(c)); err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
 	return response.OKMessage(c, "Resource deleted")
+}
+
+func (h *PatchHandler) ReorderResources(c fiber.Ctx) error {
+	patchID, err := getIDParam(c, "id")
+	if err != nil {
+		return response.Error(c, err.(*errors.AppError))
+	}
+	var req struct {
+		ResourceIDs []int `json:"resource_ids" validate:"max=500,unique,dive,min=1"`
+	}
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	err = h.service.ReorderResources(middleware.GetUserID(c), patchID, req.ResourceIDs)
+	if stderrors.Is(err, repository.ErrForeignResource) {
+		return response.Error(c, errors.ErrBadRequest("包含不属于该游戏或已删除的资源"))
+	}
+	if err != nil {
+		slog.Error("ReorderResources failed", "patch_id", patchID, "error", err)
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, fiber.Map{"resource_ids": req.ResourceIDs})
 }
 
 func (h *PatchHandler) ToggleResourceDisable(c fiber.Ctx) error {
@@ -386,8 +408,7 @@ func (h *PatchHandler) ToggleResourceDisable(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	isPrivileged := middleware.IsModerator(c)
-	status, err := h.service.ToggleResourceDisable(resourceID, user.ID, isPrivileged)
+	status, err := h.service.ToggleResourceDisable(resourceID, user.ID, middleware.Can(c, perm.ResourceDisableAny))
 	if err != nil {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}

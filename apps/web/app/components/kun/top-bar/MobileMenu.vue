@@ -7,6 +7,7 @@ import {
   KUN_THEME_OPTIONS
 } from '~/constants/top-bar'
 import { useBodyScrollLock } from '@kungal/ui-vue'
+import { ADMIN_PANEL_PERMISSIONS } from '~/constants/admin'
 
 interface Props {
   isOpen: boolean
@@ -36,7 +37,10 @@ const iconFor = (href: string) => ICON_BY_HREF[href] ?? 'lucide:chevron-right'
 
 const primaryItems = computed(() => kunMobileNavItem.slice(0, 4))
 const utilityItems = computed(() => kunMobileNavItem.slice(4))
-const adminItems = computed(() => (userStore.isAdmin ? kunMobileAdminItem : []))
+const { canAny } = usePermissions()
+const adminItems = computed(() =>
+  canAny(ADMIN_PANEL_PERMISSIONS) ? kunMobileAdminItem : []
+)
 
 const { open: openAuthModal } = useAuthModal()
 const handleLoginClick = () => {

@@ -49,6 +49,8 @@ const { pending, refresh } = await useAsyncData('admin-setting', async () => {
   return values
 })
 
+const { can } = usePermissions()
+
 const toggle = async (def: SettingDefinition) => {
   updating[def.key] = true
   try {
@@ -82,7 +84,7 @@ void refresh
           </div>
           <KunSwitch
             :model-value="values[def.key]"
-            :disabled="updating[def.key]"
+            :disabled="updating[def.key] || !can('setting.manage')"
             @update:model-value="toggle(def)"
           />
         </div>

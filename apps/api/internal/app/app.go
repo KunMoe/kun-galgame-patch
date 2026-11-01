@@ -50,6 +50,7 @@ import (
 	patchHandler "kun-galgame-patch-api/internal/patch/handler"
 	patchRepo "kun-galgame-patch-api/internal/patch/repository"
 	patchService "kun-galgame-patch-api/internal/patch/service"
+	"kun-galgame-patch-api/internal/permission"
 	"kun-galgame-patch-api/internal/rating"
 	"kun-galgame-patch-api/internal/repack"
 	settingService "kun-galgame-patch-api/internal/setting/service"
@@ -109,6 +110,7 @@ type App struct {
 	TrustHandler     *trustHandler.TrustHandler
 	RatingHandler    *rating.Handler
 	LibraryHandler   *rating.LibraryHandler
+	PermHandler      *permission.Handler
 
 	CronStop func()
 }
@@ -368,9 +370,16 @@ func New(cfg *config.Config) *App {
 
 	provisionBotUser(cfg.BotSubmit, patchSvc)
 
+	permissionSvc := permission.New(db, usrCli)
+	if err := permissionSvc.Load(context.Background()); err != nil {
+		slog.Error("权限覆盖加载失败，所有角色暂按代码基线授权", "error", err)
+	}
+	permissionStop := permissionSvc.StartRefresher(time.Minute)
+
 	cronStop := cronJobs.Start(db, galgame, imgCli, commentSvc, communityInboxSvc, ratingMirror, repackSvc, archive.NewSweeper(db, artCli))
 	pushStop := startActivityPush(cfg, db, communityCli, galgame)
 	stopBackground := func() {
+		permissionStop()
 		pushStop()
 		cronStop()
 		storeStop()
@@ -404,6 +413,7 @@ func New(cfg *config.Config) *App {
 		TrustHandler:     trustHdl,
 		RatingHandler:    ratingHdl,
 		LibraryHandler:   libraryHdl,
+		PermHandler:      permission.NewHandler(permissionSvc),
 		CronStop:         stopBackground,
 	}
 }

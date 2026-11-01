@@ -4,6 +4,7 @@ import { kunMoyuMoe } from '~/config/moyu-moe'
 const route = useRoute()
 const api = useApi()
 const userStore = useUserStore()
+const { can } = usePermissions()
 const { requireLogin } = useAuthModal()
 const { open: openReport } = useReportModal()
 
@@ -37,12 +38,11 @@ const handlePublishSuccess = (created: PatchResource) => {
   }
 }
 
-const canEdit = (r: PatchResource) =>
-  userStore.isModerator || r.user_id === userStore.user.id
-const canDelete = (r: PatchResource) =>
-  userStore.isModerator || r.user_id === userStore.user.id
+const isOwn = (r: PatchResource) => r.user_id === userStore.user.id
+const canEdit = (r: PatchResource) => can('resource.edit_any') || isOwn(r)
+const canDelete = (r: PatchResource) => can('resource.delete_any') || isOwn(r)
 const canManage = (r: PatchResource) =>
-  userStore.isModerator || r.user_id === userStore.user.id
+  can('resource.disable_any') || isOwn(r)
 
 const isDisabled = (r: PatchResource) => (r.status ?? 0) !== 0
 
@@ -125,11 +125,12 @@ const confirmDelete = async () => {
   }
 }
 
-type SortField = 'update_time' | 'created' | 'download'
-const sortField = ref<SortField>('update_time')
+type SortField = 'default' | 'update_time' | 'created' | 'download'
+const sortField = ref<SortField>('default')
 const sortDesc = ref(true)
 
 const sortOptions = [
+  { value: 'default', label: '默认' },
   { value: 'update_time', label: '更改时间' },
   { value: 'created', label: '发布时间' },
   { value: 'download', label: '下载数' }
@@ -140,9 +141,19 @@ const timeOf = (r: PatchResource, f: 'update_time' | 'created') => {
   return new Date(v as string).getTime()
 }
 
+const isPinned = (r: PatchResource) => r.display_order != null
+
 const sortedResources = computed(() => {
   const list = [...(resources.value ?? [])]
   const f = sortField.value
+  if (f === 'default') {
+    return [
+      ...list
+        .filter(isPinned)
+        .sort((a, b) => a.display_order! - b.display_order!),
+      ...list.filter((r) => !isPinned(r))
+    ]
+  }
   list.sort((a, b) => {
     const cmp =
       f === 'download'
@@ -152,6 +163,45 @@ const sortedResources = computed(() => {
   })
   return list
 })
+
+const directResources = computed(() =>
+  sortedResources.value.filter((r) => r.storage === 's3')
+)
+const linkResources = computed(() =>
+  sortedResources.value.filter((r) => r.storage !== 's3')
+)
+const showStorageTabs = computed(
+  () => directResources.value.length > 0 && linkResources.value.length > 0
+)
+const storageTab = ref<'s3' | 'user'>('s3')
+const storageTabs = computed(() => [
+  {
+    value: 's3',
+    textValue: `直链下载 (${directResources.value.length})`,
+    icon: 'lucide:cloud'
+  },
+  {
+    value: 'user',
+    textValue: `第三方下载 (${linkResources.value.length})`,
+    icon: 'lucide:link'
+  }
+])
+const visibleResources = computed(() => {
+  if (!showStorageTabs.value) return sortedResources.value
+  return storageTab.value === 's3'
+    ? directResources.value
+    : linkResources.value
+})
+
+const orderOpen = ref(false)
+const handleOrderSaved = (ids: number[]) => {
+  const position = new Map(ids.map((id, i) => [id, i + 1]))
+  for (const r of resources.value ?? []) {
+    r.display_order = position.get(r.id) ?? null
+  }
+  sortField.value = 'default'
+  orderOpen.value = false
+}
 
 const onResourceFavoriteChange = async (r: PatchResource, active: boolean) => {
   if (!requireLogin()) {
@@ -332,7 +382,16 @@ watch(histPage, loadHistory)
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div class="flex justify-end gap-2">
+      <KunButton
+        v-if="can('resource.reorder') && resources && resources.length > 1"
+        variant="flat"
+        color="default"
+        @click="orderOpen = true"
+      >
+        <KunIcon name="lucide:list-ordered" class="size-4" />
+        调整展示顺序
+      </KunButton>
       <KunButton color="primary" @click="handlePublishClick">
         <KunIcon name="lucide:plus" class="size-4" />
         发布资源
@@ -362,6 +421,7 @@ watch(histPage, loadHistory)
         {{ o.label }}
       </KunButton>
       <KunButton
+        v-if="sortField !== 'default'"
         variant="light"
         color="default"
         size="sm"
@@ -378,10 +438,19 @@ watch(histPage, loadHistory)
       </KunButton>
     </div>
 
+    <KunTab
+      v-if="!pending && showStorageTabs"
+      v-model="storageTab"
+      :items="storageTabs"
+      variant="underlined"
+      color="primary"
+      size="md"
+    />
+
     <KunLoading v-if="pending" description="正在获取补丁资源..." />
     <div v-else-if="resources && resources.length" class="space-y-4">
       <div
-        v-for="r in sortedResources"
+        v-for="r in visibleResources"
         :key="r.id"
         class="border-default/20 bg-content1 shadow-kun-sm space-y-4 rounded-2xl border p-5 transition-colors"
       >
@@ -407,6 +476,15 @@ watch(histPage, loadHistory)
                   formatDate(r.created, { isShowYear: true, isPrecise: true })
                 }}
               </span>
+              <KunChip
+                v-if="isPinned(r) && can('resource.reorder')"
+                color="primary"
+                size="xs"
+                variant="flat"
+              >
+                <KunIcon name="lucide:pin" class="size-3" />
+                固定第 {{ r.display_order }} 位
+              </KunChip>
               <KunChip color="warning" size="xs" variant="flat">
                 <KunIcon name="lucide:database" class="size-3" />
                 {{ r.size }}
@@ -557,6 +635,21 @@ watch(histPage, loadHistory)
         :patch-id="galgameId"
         @close="publishOpen = false"
         @success="handlePublishSuccess"
+      />
+    </KunModal>
+
+    <KunModal
+      v-model="orderOpen"
+      inner-class-name="max-w-2xl"
+      :is-dismissable="false"
+      aria-label="调整资源展示顺序"
+    >
+      <ResourceOrderEditor
+        v-if="orderOpen && resources"
+        :patch-id="galgameId"
+        :resources="resources"
+        @close="orderOpen = false"
+        @saved="handleOrderSaved"
       />
     </KunModal>
 

@@ -181,6 +181,7 @@ type PatchResource struct {
 	Platform              JSONArray `gorm:"type:jsonb;default:'[]'" json:"platform"`
 	Download              int       `gorm:"default:0" json:"download"`
 	Status                int       `gorm:"default:0" json:"status"`
+	DisplayOrder          *int      `gorm:"column:display_order;->" json:"display_order"`
 	UpdateTime            time.Time `gorm:"autoCreateTime" json:"update_time"`
 	LikeCount             int       `gorm:"default:0" json:"like_count"`
 	UserID                int       `gorm:"not null" json:"user_id"`

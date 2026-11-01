@@ -11,7 +11,8 @@ export const ADMIN_LOG_TYPE_MAP: Record<string, string> = {
   updateResource: '更改补丁资源',
   deleteComment: '删除评论',
   updateComment: '更改评论',
-  purgeUser: '清除用户'
+  purgeUser: '清除用户',
+  reorderResources: '调整资源展示顺序'
 }
 
 export const ADMIN_STATS_SUM_MAP: Record<string, string> = {
@@ -31,34 +32,88 @@ export const ADMIN_STATS_MAP: Record<string, string> = {
 // (/admin/creator) were removed when identity moved to OAuth and the creator
 // role was retired. User bans / role grants now happen on the OAuth admin
 // console.
-// `adminOnly` entries are visible only to OAuth "admin" (legacy super-admin,
-// role 4); everything else is open to "moderator" + "admin" (role > 2). The
-// flagged entries' backend endpoints are admin-gated (adminAuth), so showing
-// them to a moderator would just yield 403s — hide them instead.
 export interface KunAdminMenuItem {
   name: string
   href: string
   icon: string
-  adminOnly?: boolean
+  permission: string
 }
 
 export const ADMIN_MENU: KunAdminMenuItem[] = [
-  { name: '数据概览', href: '/admin', icon: 'lucide:chart-column-big' },
-  { name: 'Galgame 列表', href: '/admin/galgame', icon: 'lucide:gamepad-2' },
-  { name: '补丁资源管理', href: '/admin/resource', icon: 'lucide:puzzle' },
-  { name: '孤儿补丁', href: '/admin/orphans', icon: 'lucide:unlink' },
-  { name: '合并记录', href: '/admin/merges', icon: 'lucide:history' },
-  { name: '评论管理', href: '/admin/comment', icon: 'lucide:message-square' },
-  { name: '内容审核', href: '/admin/moderation', icon: 'lucide:shield-alert' },
-  { name: '文档管理', href: '/admin/doc', icon: 'lucide:notebook-pen' },
+  {
+    name: '数据概览',
+    href: '/admin',
+    icon: 'lucide:chart-column-big',
+    permission: 'admin.access'
+  },
+  {
+    name: 'Galgame 列表',
+    href: '/admin/galgame',
+    icon: 'lucide:gamepad-2',
+    permission: 'admin.access'
+  },
+  {
+    name: '补丁资源管理',
+    href: '/admin/resource',
+    icon: 'lucide:puzzle',
+    permission: 'admin.access'
+  },
+  {
+    name: '孤儿补丁',
+    href: '/admin/orphans',
+    icon: 'lucide:unlink',
+    permission: 'admin.access'
+  },
+  {
+    name: '合并记录',
+    href: '/admin/merges',
+    icon: 'lucide:history',
+    permission: 'admin.access'
+  },
+  {
+    name: '评论管理',
+    href: '/admin/comment',
+    icon: 'lucide:message-square',
+    permission: 'admin.access'
+  },
+  {
+    name: '内容审核',
+    href: '/admin/moderation',
+    icon: 'lucide:shield-alert',
+    permission: 'trust.review'
+  },
+  {
+    name: '文档管理',
+    href: '/admin/doc',
+    icon: 'lucide:notebook-pen',
+    permission: 'doc.manage'
+  },
   {
     name: '用户清除',
     href: '/admin/user-purge',
     icon: 'lucide:user-x',
-    adminOnly: true
+    permission: 'user.purge'
   },
-  { name: '管理日志', href: '/admin/log', icon: 'lucide:file-clock' },
-  // 网站设置 GET is moderator-readable (only its PUT toggles are admin-gated
-  // server-side), so it stays visible to moderators — not adminOnly.
-  { name: '网站设置', href: '/admin/setting', icon: 'lucide:settings' }
+  {
+    name: '权限管理',
+    href: '/admin/permission',
+    icon: 'lucide:key-round',
+    permission: 'permission.manage'
+  },
+  {
+    name: '管理日志',
+    href: '/admin/log',
+    icon: 'lucide:file-clock',
+    permission: 'admin.access'
+  },
+  {
+    name: '网站设置',
+    href: '/admin/setting',
+    icon: 'lucide:settings',
+    permission: 'admin.access'
+  }
+]
+
+export const ADMIN_PANEL_PERMISSIONS = [
+  ...new Set(ADMIN_MENU.map((item) => item.permission))
 ]

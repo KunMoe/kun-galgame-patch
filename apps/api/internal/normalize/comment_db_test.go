@@ -230,7 +230,7 @@ func TestAPasswordFixRequeuesAWrongPasswordFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		cur.Password = password
-		if _, err := patches.UpdateResource(ctx, testResource, testUser, &cur, "", 0); err != nil {
+		if _, err := patches.UpdateResource(ctx, testResource, testUser, &cur, "", 0, false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -265,7 +265,7 @@ func TestAnEditKeepingTheFileKeepsTheComment(t *testing.T) {
 		t.Fatal(err)
 	}
 	cur.Name = "renamed"
-	if _, err := patches.UpdateResource(context.Background(), testResource, testUser, &cur, "", 0); err != nil {
+	if _, err := patches.UpdateResource(context.Background(), testResource, testUser, &cur, "", 0, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := archiveComment(t, db); got != comment {

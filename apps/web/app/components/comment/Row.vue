@@ -11,11 +11,10 @@ const props = withDefaults(
     comment: PatchPageComment
     target: CommentTarget
     depth?: number
-    canModerate?: boolean
     expanded?: boolean
     replyCount?: number
   }>(),
-  { depth: 0, canModerate: false, expanded: false, replyCount: 0 }
+  { depth: 0, expanded: false, replyCount: 0 }
 )
 
 const emit = defineEmits<{
@@ -33,7 +32,11 @@ const { requireLogin } = useAuthModal()
 const surface = commentSurface(props.target)
 
 const isAuthor = computed(() => userStore.user.id === props.comment.user?.id)
-const canManage = computed(() => isAuthor.value || props.canModerate)
+const { can } = usePermissions()
+const canEdit = computed(() => isAuthor.value || can('comment.edit_any'))
+const canDelete = computed(
+  () => isAuthor.value || can('comment.delete_any')
+)
 const isEdited = computed(() => !!props.comment.edited)
 
 const liked = ref(props.comment.is_liked)
@@ -300,7 +303,7 @@ const reportComment = () => {
 
           <div class="flex w-44 flex-col gap-2 p-2">
             <KunButton
-              v-if="canManage"
+              v-if="canEdit"
               variant="light"
               color="default"
               size="sm"
@@ -324,7 +327,7 @@ const reportComment = () => {
             </KunButton>
 
             <KunButton
-              v-if="canManage"
+              v-if="canDelete"
               variant="light"
               color="danger"
               size="sm"

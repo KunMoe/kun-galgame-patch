@@ -12,14 +12,12 @@ const props = withDefaults(
     hasMore?: boolean
     loadingMore?: boolean
     pending?: boolean
-    canModerate?: boolean
     mentionUser?: KunUser | null
   }>(),
   {
     hasMore: false,
     loadingMore: false,
     pending: false,
-    canModerate: false,
     mentionUser: null
   }
 )
@@ -121,7 +119,6 @@ const composerSeed = computed(() => {
         :comment="g.root"
         :target="target"
         :depth="0"
-        :can-moderate="canModerate"
         :expanded="expandedRoots.has(g.root.id)"
         :reply-count="hiddenReplyCount(g)"
         @liked="(id, l) => emit('liked', id, l)"
@@ -138,7 +135,6 @@ const composerSeed = computed(() => {
               :comment="r"
               :target="target"
               :depth="1"
-              :can-moderate="canModerate"
               @liked="(id, l) => emit('liked', id, l)"
               @reply-added="(rr) => emit('commentAdded', rr)"
               @edited="(u) => emit('edited', u)"

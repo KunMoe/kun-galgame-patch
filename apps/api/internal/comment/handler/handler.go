@@ -9,6 +9,7 @@ import (
 	"kun-galgame-patch-api/internal/middleware"
 	patchModel "kun-galgame-patch-api/internal/patch/model"
 	"kun-galgame-patch-api/pkg/errors"
+	"kun-galgame-patch-api/pkg/perm"
 	"kun-galgame-patch-api/pkg/response"
 	"kun-galgame-patch-api/pkg/utils"
 
@@ -137,7 +138,7 @@ func (h *Handler) UpdateComment(c fiber.Ctx) error {
 	}
 
 	user := middleware.MustGetUser(c)
-	item, err := h.service.Update(c.Context(), postID, user.ID, middleware.IsModerator(c), req.Content, clampReason(req.Reason))
+	item, err := h.service.Update(c.Context(), postID, user.ID, middleware.Can(c, perm.CommentEditAny), req.Content, clampReason(req.Reason))
 	if err != nil {
 		return fail(c, err, onEdit)
 	}
@@ -150,7 +151,7 @@ func (h *Handler) DeleteComment(c fiber.Ctx) error {
 		return response.Error(c, appErr)
 	}
 	user := middleware.MustGetUser(c)
-	if err := h.service.Delete(c.Context(), postID, user.ID, middleware.IsModerator(c), deleteReason(c)); err != nil {
+	if err := h.service.Delete(c.Context(), postID, user.ID, middleware.Can(c, perm.CommentDeleteAny), deleteReason(c)); err != nil {
 		return fail(c, err, onPost)
 	}
 	return response.OKMessage(c, "Comment deleted")
