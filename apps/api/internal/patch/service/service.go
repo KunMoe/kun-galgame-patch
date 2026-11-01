@@ -349,7 +349,6 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 	if err != nil {
 		return resources, err
 	}
-	shuffleUnpinned(resources)
 	model.RenderResourceNotes(resources)
 	if err := s.repo.MarkAwaitingPassword(resources); err != nil {
 		slog.Warn("GetResources: reading normalize failures failed", "patch_id", patchID, "error", err)
@@ -358,16 +357,6 @@ func (s *PatchService) GetResources(ctx context.Context, patchID, currentUID int
 	s.markResourceLiked(currentUID, resources)
 	s.markResourceFavorited(currentUID, resources)
 	return resources, nil
-}
-
-// shuffleUnpinned expects the pinned resources first, as the repository orders them.
-func shuffleUnpinned(rs []model.PatchResource) {
-	pinned := 0
-	for pinned < len(rs) && rs[pinned].DisplayOrder != nil {
-		pinned++
-	}
-	tail := rs[pinned:]
-	rand.Shuffle(len(tail), func(i, j int) { tail[i], tail[j] = tail[j], tail[i] })
 }
 
 func (s *PatchService) ReorderResources(actorID, patchID int, resourceIDs []int) error {

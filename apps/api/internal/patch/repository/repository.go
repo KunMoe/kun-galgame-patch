@@ -157,7 +157,7 @@ func (r *PatchRepository) GetResourcePatchID(resourceID int) (int, error) {
 func (r *PatchRepository) GetResources(patchID int) ([]model.PatchResource, error) {
 	var resources []model.PatchResource
 	err := r.db.Where("galgame_id = ? AND status <> 2", patchID).
-		Order("display_order ASC NULLS LAST, created DESC, id DESC").
+		Order("display_order ASC NULLS LAST, update_time DESC, id DESC").
 		Find(&resources).Error
 	return resources, err
 }

@@ -237,8 +237,8 @@ const storageLabel = (r: PatchResource) =>
 
     <section class="space-y-2">
       <h4 class="flex items-center gap-1.5 text-sm font-semibold">
-        <KunIcon name="lucide:shuffle" class="text-default-500 size-4" />
-        随机展示
+        <KunIcon name="lucide:clock" class="text-default-500 size-4" />
+        按更新时间展示
       </h4>
       <div
         class="border-default/20 min-h-16 space-y-1.5 rounded-xl border border-dashed p-2"

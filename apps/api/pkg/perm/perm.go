@@ -70,7 +70,7 @@ var catalog = []Entry{
 	{ResourceEditAny, GroupResource, "编辑他人资源", "修改任何人发布的补丁资源，包括替换文件与下载链接", false},
 	{ResourceDeleteAny, GroupResource, "删除他人资源", "删除任何人发布的补丁资源及其文件，不可恢复", true},
 	{ResourceDisableAny, GroupResource, "禁用他人资源下载", "禁用或恢复任何资源的下载", false},
-	{ResourceReorder, GroupResource, "调整资源展示顺序", "在游戏详情页固定补丁资源的展示顺序，未固定的资源随机展示", false},
+	{ResourceReorder, GroupResource, "调整资源展示顺序", "在游戏详情页固定补丁资源的展示顺序，未固定的资源按更新时间排列", false},
 
 	{PatchEditAny, GroupPatch, "修改他人游戏页", "修改任何人创建的游戏页的基本信息", false},
 	{PatchDeleteAny, GroupPatch, "删除他人游戏页", "删除任何人创建的游戏页及其全部资源，不可恢复", true},

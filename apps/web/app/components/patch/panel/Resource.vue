@@ -151,7 +151,9 @@ const sortedResources = computed(() => {
       ...list
         .filter(isPinned)
         .sort((a, b) => a.display_order! - b.display_order!),
-      ...list.filter((r) => !isPinned(r))
+      ...list
+        .filter((r) => !isPinned(r))
+        .sort((a, b) => timeOf(b, 'update_time') - timeOf(a, 'update_time'))
     ]
   }
   list.sort((a, b) => {
