@@ -18,13 +18,16 @@ const userStore = useUserStore()
 const isOwn = computed(() => props.rating.user?.id === userStore.user.id)
 const displayName = computed(() => props.rating.user?.name ?? '已注销用户')
 
+// The same rule on every NextMoe site: a partial-spoiler review whose author
+// masked the spoilers is shown with those masks, which the reader opens one by
+// one; any other spoiler review stays behind the whole-review gate.
 const spoilerRevealed = ref(false)
-const masked = computed(
-  () =>
-    !!props.rating.short_summary &&
-    props.rating.spoiler_level !== 'none' &&
-    !spoilerRevealed.value
-)
+const masked = computed(() => {
+  const r = props.rating
+  if (!r.short_summary_html || r.spoiler_level === 'none') return false
+  if (r.spoiler_level === 'portion' && r.short_summary_has_spoiler) return false
+  return !spoilerRevealed.value
+})
 
 const aspects = computed(() =>
   KUN_RATING_ASPECTS.flatMap((a) => {
@@ -112,12 +115,11 @@ const confirmDelete = async () => {
       <KunIcon name="lucide:eye-off" class="size-4" />
       这条短评含有剧透，点击查看
     </KunButton>
-    <p
-      v-else-if="rating.short_summary"
-      class="text-default-700 text-sm break-words whitespace-pre-line"
-    >
-      {{ rating.short_summary }}
-    </p>
+    <KunContent
+      v-else-if="rating.short_summary_html"
+      compact
+      :content="rating.short_summary_html"
+    />
 
     <div v-if="aspects.length" class="flex flex-wrap gap-x-4 gap-y-1">
       <span

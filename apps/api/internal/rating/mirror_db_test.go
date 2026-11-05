@@ -14,7 +14,7 @@ import (
 )
 
 // Runs only against the launcher-provided TEST_DATABASE_DSN, migrated through
-// 046, with `go test -count=1 -p 1`.
+// 059, with `go test -count=1 -p 1`.
 func mirrorDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_DSN")
@@ -27,7 +27,7 @@ func mirrorDB(t *testing.T) *gorm.DB {
 	}
 	var migrated bool
 	if err := db.Raw(`SELECT to_regclass('galgame_rating') IS NOT NULL`).Scan(&migrated).Error; err != nil || !migrated {
-		t.Fatalf("TEST_DATABASE_DSN is not migrated through 046: %v", err)
+		t.Fatalf("TEST_DATABASE_DSN is not migrated through 059: %v", err)
 	}
 	clean := func() {
 		db.Exec(`DELETE FROM galgame_rating WHERE work_id BETWEEN 990000 AND 990099`)
@@ -72,6 +72,29 @@ func TestMirrorRewritesOnlyAChangedRating(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.AuthorState == nil || *got.AuthorState != "on_hold" || got.AuthorCompletion != nil || *got.Art != 8 || got.Story != nil {
+		t.Errorf("row = %+v", got)
+	}
+}
+
+// Catalog's backfill cooks the HTML of every existing review without touching
+// the review or its updated_at; the mirror must still take it.
+func TestMirrorTakesCookedSummaryAlone(t *testing.T) {
+	store := NewStore(mirrorDB(t))
+	r := centralRating(990004, 7, 990004, "好 ||结局||")
+	if _, err := store.Mirror(r); err != nil {
+		t.Fatal(err)
+	}
+
+	r.ShortSummaryHTML = `<p>好 <span class="kun-spoiler kun-spoiler-hidden">结局</span></p>`
+	r.ShortSummaryText, r.ShortSummaryHasSpoiler = "好 ███", true
+	if changed, err := store.Mirror(r); err != nil || !changed {
+		t.Fatalf("backfilled rating: changed %v, err %v", changed, err)
+	}
+	got, err := store.Get(990004)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ShortSummaryHTML != r.ShortSummaryHTML || got.ShortSummaryText != "好 ███" || !got.ShortSummaryHasSpoiler {
 		t.Errorf("row = %+v", got)
 	}
 }

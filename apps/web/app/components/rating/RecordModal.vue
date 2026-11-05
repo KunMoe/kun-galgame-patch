@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { KunEditorFeatures } from '@kungal/editor-core'
+import type { KunToolbarItem } from '@kungal/editor-vue'
 import {
   KUN_PLAYTIME_HOURS_MAX,
   KUN_PLAYTIME_MINUTES_FLOOR,
@@ -51,6 +53,28 @@ const emptyAspects = (): GalgameRatingAspects => ({
   replay_value: null
 })
 const aspects = ref<GalgameRatingAspects>(emptyAspects())
+
+const summaryToolbar: KunToolbarItem[] = [
+  'bold',
+  'italic',
+  'strike',
+  'code',
+  'link',
+  '|',
+  'bulletList',
+  'orderedList',
+  'quote',
+  '|',
+  'spoiler'
+]
+const summaryFeatures: KunEditorFeatures = {
+  mention: false,
+  sticker: false,
+  codeBlock: false,
+  katex: false
+}
+// The server counts runes; String.length counts UTF-16 units.
+const summaryLength = computed(() => [...shortSummary.value].length)
 
 const isWish = computed(() => status.value === 'wish')
 const hadRating = computed(() => !!loaded.value?.rating)
@@ -146,6 +170,9 @@ const invalid = (): string => {
     aspectsOpen.value && Object.values(aspects.value).some((v) => v !== null)
   if (overall.value < 1 && (shortSummary.value.trim() || aspectsFilled)) {
     return '请先给出总体评分'
+  }
+  if (summaryLength.value > KUN_RATING_SUMMARY_MAX) {
+    return `短评最多 ${KUN_RATING_SUMMARY_MAX} 字`
   }
   return ''
 }
@@ -267,16 +294,35 @@ const deleteRating = async () => {
             />
           </div>
 
-          <KunTextarea
-            v-model="shortSummary"
-            label="短评（可选，纯文本，请勿包含 R18 内容）"
-            description="短评会公开显示在所有 NextMoe 站点上"
-            :rows="4"
-            :maxlength="KUN_RATING_SUMMARY_MAX"
-            :disabled="isWish"
-            show-char-count
-            auto-grow
-          />
+          <div class="space-y-1.5">
+            <span class="text-default-600 text-sm">
+              短评（可选，请勿包含 R18 内容）
+            </span>
+            <KunMarkdownEditor
+              v-model="shortSummary"
+              :image="false"
+              :toolbar="summaryToolbar"
+              :features="summaryFeatures"
+              :readonly="isWish"
+            />
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span class="text-default-500">
+                短评会公开显示在所有 NextMoe 站点上
+              </span>
+              <span
+                :class="
+                  cn(
+                    'tabular-nums',
+                    summaryLength > KUN_RATING_SUMMARY_MAX
+                      ? 'text-danger'
+                      : 'text-default-500'
+                  )
+                "
+              >
+                {{ summaryLength }} / {{ KUN_RATING_SUMMARY_MAX }}
+              </span>
+            </div>
+          </div>
 
           <div class="space-y-3">
             <KunButton

@@ -48,18 +48,21 @@ func NewService(store ratingStore, catalog Catalog, users *userclient.Client, g 
 }
 
 type Item struct {
-	ID           int64                   `json:"id"`
-	WorkID       int64                   `json:"work_id"`
-	User         *patchModel.PatchUser   `json:"user"`
-	Overall      int                     `json:"overall"`
-	AspectScores catalogv2.RatingAspects `json:"aspect_scores"`
-	Recommend    string                  `json:"recommend"`
-	SpoilerLevel string                  `json:"spoiler_level"`
-	ShortSummary string                  `json:"short_summary"`
-	PlayState    string                  `json:"play_state"`
-	Created      time.Time               `json:"created"`
-	Updated      time.Time               `json:"updated"`
-	CanDelete    bool                    `json:"can_delete"`
+	ID                     int64                   `json:"id"`
+	WorkID                 int64                   `json:"work_id"`
+	User                   *patchModel.PatchUser   `json:"user"`
+	Overall                int                     `json:"overall"`
+	AspectScores           catalogv2.RatingAspects `json:"aspect_scores"`
+	Recommend              string                  `json:"recommend"`
+	SpoilerLevel           string                  `json:"spoiler_level"`
+	ShortSummary           string                  `json:"short_summary"`
+	ShortSummaryHTML       string                  `json:"short_summary_html"`
+	ShortSummaryText       string                  `json:"short_summary_text"`
+	ShortSummaryHasSpoiler bool                    `json:"short_summary_has_spoiler"`
+	PlayState              string                  `json:"play_state"`
+	Created                time.Time               `json:"created"`
+	Updated                time.Time               `json:"updated"`
+	CanDelete              bool                    `json:"can_delete"`
 }
 
 func itemOf(r Row) Item {
@@ -74,7 +77,9 @@ func itemOf(r Row) Item {
 			Route: r.Route, System: r.System, Voice: r.Voice, ReplayValue: r.ReplayValue,
 		},
 		Recommend: r.Recommend, SpoilerLevel: r.SpoilerLevel, ShortSummary: r.ShortSummary,
-		PlayState: state, Created: r.CreatedAt, Updated: r.UpdatedAt,
+		ShortSummaryHTML: r.ShortSummaryHTML, ShortSummaryText: r.ShortSummaryText,
+		ShortSummaryHasSpoiler: r.ShortSummaryHasSpoiler,
+		PlayState:              state, Created: r.CreatedAt, Updated: r.UpdatedAt,
 	}
 }
 
