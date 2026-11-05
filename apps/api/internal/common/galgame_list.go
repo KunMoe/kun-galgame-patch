@@ -250,7 +250,6 @@ func overlayCatalogHits(hits []galgameClient.GalgameHit, local map[int]patchMode
 func hitToBrief(h *galgameClient.GalgameHit) galgameClient.GalgameBrief {
 	return galgameClient.GalgameBrief{
 		ID:                         h.ID,
-		ForumGID:                   h.ForumGID,
 		VndbID:                     h.VndbID,
 		ClaimState:                 h.ClaimState,
 		NameEnUs:                   h.NameEnUs,

@@ -9,7 +9,9 @@ const props = defineProps<Props>()
 
 const isOnSite = computed(() => props.patch.is_on_forum !== false)
 
-const kungalOrigin = kunMoyuMoe.domain.kungal
+const forumLink = computed(
+  () => `${kunMoyuMoe.domain.kungal}/galgame/${props.patch.id}`
+)
 
 const userStore = useUserStore()
 const { can } = usePermissions()
@@ -158,7 +160,7 @@ const onMenuSelect = (item: { key: string }) => {
       <p>
         游戏资料来自
         <a
-          :href="`${kungalOrigin}/galgame`"
+          :href="forumLink"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"

@@ -32,7 +32,7 @@ func (c *Client) SearchGalgameIDs(ctx context.Context, q, contentLimit string, l
 		if !it.ClaimedBy.renderable() {
 			continue
 		}
-		if gid := it.publicGID(); gid > 0 {
+		if gid := int(it.ID); gid > 0 {
 			ids = append(ids, gid)
 		}
 	}

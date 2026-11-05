@@ -22,13 +22,9 @@ const (
 	claimSyncSchedule = "*/10 * * * *"
 	claimSyncBatch    = 100
 	claimSyncMaxPages = 50
-	// Every event is applied to the page catalog's work_id names, which is this
-	// site's page id since migration 037. product_work_id is the FORUM's page
-	// number -- both downstreams answer to catalog site `kungal` and only
-	// kungal still carries the legacy gid -- so keying on it would file the
-	// event on whatever unrelated game holds that number here. Read without
-	// site= the feed answers every tenant as well, which is why the request
-	// pins it and applyClaimEvent refuses anything from another one.
+	// Read without site= the feed answers every tenant, whose product_work_id
+	// names another site's rows, which is why the request pins it and
+	// applyClaimEvent refuses anything from another one.
 	claimSyncSite = catalogv2.SiteKungal
 )
 

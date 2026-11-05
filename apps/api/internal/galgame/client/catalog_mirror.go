@@ -10,7 +10,7 @@ import (
 // DisplayVerdict is one catalog work's display axis, already keyed by the id
 // moyu's patch table uses — which is the catalog id itself since migration 037.
 // This used to read the claim and then fall back to scanning the work's
-// `curated` anchor, carrying a comment that publicGID's own fallback could not
+// `curated` anchor, carrying a comment that the page-id fallback could not
 // be used here because "the two id spaces overlap and only 9% of moyu's own
 // rows have equal values". There is one id space now.
 type DisplayVerdict struct {

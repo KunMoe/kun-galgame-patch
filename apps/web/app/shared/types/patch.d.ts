@@ -134,11 +134,6 @@ interface GalgameCard {
     // This replaced the wiki `status` int, which was product state the canonical
     // catalog face does not carry.
     claim_state: string
-    // The FORUM's page id for this game, read off the catalog claim. `id` is
-    // this site's page and the catalog work in one number; kungal still keys on
-    // the legacy gid, so a link to the forum has to use this and nothing else.
-    // Absent when no forum page claims the work.
-    forum_gid?: number
   }
 }
 

@@ -11,7 +11,6 @@ interface MineItem {
   work_id: number
   display_name: string
   claim_state: string
-  product_work_id: number | null
   last_reason: string | null
   first_acted_at: string
 }
@@ -33,11 +32,7 @@ const { data, pending, refresh } = await useAsyncData<MineResp>(
   { default: () => ({ items: [], total: 0 }) }
 )
 
-// This site's page id is the catalog work id, so every call of ours takes
-// work_id. product_work_id is the FORUM's number for the same game and is the
-// only thing a link to kungal may use.
 const patchID = (m: MineItem): number => m.work_id
-const forumGID = (m: MineItem): number => m.product_work_id ?? m.work_id
 
 const displayName = (m: MineItem): string => m.display_name || `#${patchID(m)}`
 
@@ -75,7 +70,7 @@ const handleWithdraw = async (m: MineItem) => {
 }
 
 const handleEdit = async (m: MineItem) => {
-  await navigateTo(`${kunMoyuMoe.domain.kungal}/galgame/${forumGID(m)}`, {
+  await navigateTo(`${kunMoyuMoe.domain.kungal}/galgame/${patchID(m)}`, {
     external: true
   })
 }

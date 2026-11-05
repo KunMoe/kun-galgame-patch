@@ -56,7 +56,7 @@ func TestListMyGalgamesReadsTheTenantedV2Face(t *testing.T) {
 	row := data["items"].([]any)[0].(map[string]any)
 	for key, want := range map[string]any{
 		"work_id": float64(7), "display_name": "作品名", "claim_state": "declined",
-		"product_work_id": float64(4242), "last_reason": "资料不足",
+		"last_reason":    "资料不足",
 		"first_acted_at": "2026-08-20T03:04:05Z",
 	} {
 		if row[key] != want {

@@ -241,8 +241,7 @@ func catalogItemToBrief(it *catalogWorkListItem) GalgameBrief {
 	hash, w, h, th := coverOf(it)
 
 	b := GalgameBrief{
-		ID:                       it.publicGID(),
-		ForumGID:                 it.ClaimedBy.forumGID(),
+		ID:                       int(it.ID),
 		VndbID:                   vndbIDOf(it.Refs),
 		BangumiID:                numericRefOf(it.Refs, "bangumi"),
 		ErogamescapeID:           numericRefOf(it.Refs, "erogamescape"),
@@ -275,7 +274,6 @@ func catalogItemToHit(it *catalogWorkListItem) GalgameHit {
 	b := catalogItemToBrief(it)
 	return GalgameHit{
 		ID:                       b.ID,
-		ForumGID:                 b.ForumGID,
 		VndbID:                   b.VndbID,
 		ClaimState:               b.ClaimState,
 		NameEnUs:                 b.NameEnUs,
@@ -410,8 +408,7 @@ func catalogWorkToFull(w *catalogWork, revealSexual bool) GalgameFull {
 	intros := introByProductKey(w.Intros)
 
 	f := GalgameFull{
-		ID:                    w.publicGID(),
-		ForumGID:              w.ClaimedBy.forumGID(),
+		ID:                    int(w.ID),
 		VndbID:                vndbIDOf(w.Refs),
 		BangumiID:             numericRefOf(w.Refs, "bangumi"),
 		ErogamescapeID:        numericRefOf(w.Refs, "erogamescape"),

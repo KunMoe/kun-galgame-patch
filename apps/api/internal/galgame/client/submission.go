@@ -18,7 +18,7 @@ func (c *Client) SearchPublishItems(ctx context.Context, q string, limit int) ([
 	items := make([]GalgameHit, 0, len(page.Items))
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		items = append(items, catalogItemToHit(&it))

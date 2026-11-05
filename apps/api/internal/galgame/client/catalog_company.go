@@ -43,7 +43,7 @@ func (c *Client) companyMembers(ctx context.Context, id int64, q url.Values, gat
 	var imprint int64
 	for i := range works {
 		it := workToListItem(works[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		rows = append(rows, it)

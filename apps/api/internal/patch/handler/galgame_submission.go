@@ -187,18 +187,17 @@ var mySubmissionStates = []string{
 }
 
 type mySubmission struct {
-	WorkID        int64   `json:"work_id"`
-	DisplayName   string  `json:"display_name"`
-	ClaimState    string  `json:"claim_state"`
-	ProductWorkID *int64  `json:"product_work_id"`
-	LastReason    *string `json:"last_reason"`
-	FirstActedAt  string  `json:"first_acted_at"`
+	WorkID       int64   `json:"work_id"`
+	DisplayName  string  `json:"display_name"`
+	ClaimState   string  `json:"claim_state"`
+	LastReason   *string `json:"last_reason"`
+	FirstActedAt string  `json:"first_acted_at"`
 }
 
 func submissionRow(r *catalogv2.ClaimRecord) mySubmission {
 	row := mySubmission{
 		WorkID: r.WorkID(), DisplayName: r.DisplayName, ClaimState: r.State,
-		ProductWorkID: r.ProductID(), LastReason: r.LastReason(),
+		LastReason: r.LastReason(),
 	}
 	if r.FirstActedAt != nil {
 		row.FirstActedAt = *r.FirstActedAt
@@ -260,8 +259,6 @@ func (h *PatchHandler) ownPendingSubmissions(c fiber.Ctx, q string) []wizardPend
 		if needle != "" && !strings.Contains(strings.ToLower(it.DisplayName), needle) {
 			continue
 		}
-		// The work id, never product_work_id: that is the forum's page id, and
-		// linked here it names a different game.
 		hit := wizardPendingHit{
 			ID: int(it.WorkID), DisplayName: it.DisplayName, ClaimState: it.ClaimState,
 		}

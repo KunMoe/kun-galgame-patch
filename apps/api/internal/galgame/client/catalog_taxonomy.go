@@ -283,7 +283,7 @@ func (c *Client) taxonomyMembers(ctx context.Context, filterKey string, id int64
 	out := make([]GalgameBrief, 0, len(data.Items))
 	for i := range data.Items {
 		it := workToListItem(data.Items[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		b := catalogItemToBrief(&it)

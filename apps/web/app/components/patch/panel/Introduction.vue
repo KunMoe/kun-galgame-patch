@@ -137,7 +137,9 @@ const officialLogoSrc = (o: PatchDetailOfficial) =>
 const officialCategory = (o: PatchDetailOfficial) =>
   GALGAME_OFFICIAL_CATEGORY_MAP[o.category] ?? ''
 
-const kungalOrigin = kunMoyuMoe.domain.kungal
+const forumUrl = computed(
+  () => `${kunMoyuMoe.domain.kungal}/galgame/${galgameId.value}`
+)
 </script>
 
 <template>
@@ -190,20 +192,17 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
             </a>
           </span>
         </div>
-        <div
-          v-if="detail.galgame?.forum_gid"
-          class="flex items-center gap-2 text-sm"
-        >
+        <div class="flex items-center gap-2 text-sm">
           <KunIcon name="lucide:book-open" class="size-4" />
           <span>
             鲲 Galgame 论坛:
             <a
-              :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
+              :href="forumUrl"
               target="_blank"
               rel="noopener noreferrer"
               class="text-primary hover:underline"
             >
-              #{{ detail.galgame.forum_gid }}（完整资料）
+              #{{ galgameId }}（完整资料）
             </a>
             ·
             <a
@@ -378,11 +377,11 @@ const kungalOrigin = kunMoyuMoe.domain.kungal
       />
     </section>
 
-    <section v-if="detail.galgame?.forum_gid">
+    <section>
       <p class="text-default-500 text-sm">
         完整的游戏资料请查看
         <a
-          :href="`${kungalOrigin}/galgame/${detail.galgame.forum_gid}`"
+          :href="forumUrl"
           target="_blank"
           rel="noopener noreferrer"
           class="text-primary hover:underline"

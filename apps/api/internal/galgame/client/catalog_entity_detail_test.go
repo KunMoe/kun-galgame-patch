@@ -155,7 +155,7 @@ func TestProdNameCreditsFoldOneRolePerJob(t *testing.T) {
 			seen[key] = true
 		}
 	}
-	if it := workToListItem(page.Items[0].Work); it.publicGID() == 0 {
+	if it := workToListItem(page.Items[0].Work); int(it.ID) == 0 {
 		t.Errorf("credit[0] = %+v, want the kungal claim read as a moyu galgame id", it)
 	}
 	if first := credits[0]; len(first) != 2 || first[0].RoleKey != "scenario" {

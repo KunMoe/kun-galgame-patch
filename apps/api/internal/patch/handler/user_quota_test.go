@@ -176,8 +176,6 @@ func TestAnUploadAdoptsTheWorkUnlessItIsLiveHere(t *testing.T) {
 	}
 }
 
-// product_work_id is the forum's page id. A wizard row linked by it names a
-// different game on this site whenever the two numbers differ.
 func TestTheWizardNamesAPendingClaimByItsWorkID(t *testing.T) {
 	_, h, ta, session := newQuotaApp(t, map[string]string{
 		"GET /v2/catalog/works": `{"object":"list","items":[]}`,

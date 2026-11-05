@@ -41,7 +41,6 @@ type Paginated[T any] struct {
 
 type GalgameBrief struct {
 	ID                         int               `json:"id"`
-	ForumGID                   int               `json:"forum_gid,omitempty"`
 	VndbID                     string            `json:"vndb_id"`
 	BangumiID                  *int              `json:"bangumi_id,omitempty"`
 	ErogamescapeID             *int              `json:"erogamescape_id,omitempty"`
@@ -113,7 +112,6 @@ type GalgameMaker struct {
 
 type GalgameHit struct {
 	ID                         int               `json:"id"`
-	ForumGID                   int               `json:"forum_gid,omitempty"`
 	VndbID                     string            `json:"vndb_id"`
 	ClaimState                 string            `json:"claim_state"`
 	NameEnUs                   string            `json:"name_en_us"`
@@ -282,7 +280,7 @@ func (c *Client) SearchGalgame(ctx context.Context, p SearchGalgameParams) (*Pag
 	out := Paginated[GalgameHit]{Total: page.Count()}
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		hit := catalogItemToHit(&it)
@@ -313,7 +311,6 @@ type GalgameSeries struct {
 
 type GalgameFull struct {
 	ID                    int      `json:"id"`
-	ForumGID              int      `json:"forum_gid,omitempty"`
 	VndbID                string   `json:"vndb_id"`
 	BangumiID             *int     `json:"bangumi_id,omitempty"`
 	ErogamescapeID        *int     `json:"erogamescape_id,omitempty"`
@@ -438,7 +435,7 @@ func (c *Client) galgameBatch(ctx context.Context, ids []int, contentLimit strin
 	out := make([]GalgameBrief, 0, len(page.Items))
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		b := catalogItemToBrief(&it)

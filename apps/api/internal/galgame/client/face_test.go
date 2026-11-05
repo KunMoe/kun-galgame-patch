@@ -126,9 +126,6 @@ func TestCatalogTwoHopReads(t *testing.T) {
 		if briefs[0].VndbID != "v42" {
 			t.Errorf("vndb_id = %q, want v42 (from include=refs)", briefs[0].VndbID)
 		}
-		if briefs[0].ForumGID != 7 {
-			t.Errorf("forum_gid = %d, want the claim's site_work_id 7", briefs[0].ForumGID)
-		}
 	})
 
 	t.Run("detail = works/{id} in one hop", func(t *testing.T) {

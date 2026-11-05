@@ -297,3 +297,12 @@ outstanding and are asks, not work this repo can do:
 
 Neither blocks this change: moyu no longer reads `product_work_id` as its own id
 anywhere, and the claim-event cron now keys on `work_id`.
+
+**Both landed** in the forum G0 window (infra #292, 2026-09-23). Checked against
+production on 2026-11-05:
+- All 65,232 live kungal claims have `product_work_id = id`.
+- Every one of the forum's 22,119 `galgame.id` values is a live catalog work id.
+- Every one of moyu's 22,134 `patch.id` values is a live catalog work id.
+
+`forum_gid` and the `publicGID` / `forumGID` helpers were removed, and forum
+links now use the page id.

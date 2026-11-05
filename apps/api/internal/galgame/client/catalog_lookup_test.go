@@ -60,9 +60,8 @@ func TestClaimStatesDecodeBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimStates: %v", err)
 	}
-	// Keyed by the catalog id, which is the page id. The claim's site_work_id
-	// is the forum's number and keying on it filed the state under a different
-	// game here.
+	// Keyed by the catalog id, which is the page id. Keying on the claim's
+	// site_work_id once filed the state under a different game here.
 	if got[900] != catalogClaimStateLive {
 		t.Fatalf("ClaimStates = %v, want live for 900", got)
 	}

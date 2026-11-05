@@ -136,7 +136,7 @@ func (c *Client) entityWorkCards(ctx context.Context, works []catalogv2.Work, ga
 	}
 	for i := range page.Items {
 		it := workToListItem(page.Items[i])
-		if !it.ClaimedBy.renderable() || it.publicGID() == 0 {
+		if !it.ClaimedBy.renderable() || int(it.ID) == 0 {
 			continue
 		}
 		b := catalogItemToBrief(&it)

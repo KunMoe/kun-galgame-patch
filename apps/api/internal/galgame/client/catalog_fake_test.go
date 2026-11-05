@@ -345,8 +345,7 @@ func workLimitFor(catalogID int64) string {
 	return "sfw"
 }
 
-// moyu's claims live under catalog site kungal (catalogv2.SiteKungal), and
-// site_work_id is the forum's page number for the work.
+// moyu's claims live under catalog site kungal (catalogv2.SiteKungal).
 func claimJSON(gid int, state string) string {
 	if gid == 0 || state == "" {
 		return "null"
