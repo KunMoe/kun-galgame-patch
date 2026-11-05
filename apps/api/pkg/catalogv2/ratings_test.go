@@ -43,7 +43,9 @@ func ratingServer(t *testing.T, status int, reply string, got *capture) *Client 
 
 const ratingJSON = `{"object":"rating","id":"501","work_id":"58","user_id":"2","overall":9,
 	"aspect_scores":{"art":8,"story":null,"music":null,"character":10,"route":null,"system":null,"voice":null,"replay_value":null},
-	"recommend":"strong_yes","spoiler_level":"portion","short_summary":"好","client_id":"df3f","site":"kungal",
+	"recommend":"strong_yes","spoiler_level":"portion","short_summary":"好 ||结局||",
+	"short_summary_html":"<p>好 <span class=\"kun-spoiler kun-spoiler-hidden\">结局</span></p>","short_summary_text":"好 ███",
+	"short_summary_has_spoiler":true,"client_id":"df3f","site":"kungal",
 	"work_state":{"state":"done","completion":"all"},
 	"created_at":"2026-10-12T08:00:00Z","updated_at":"2026-10-12T09:30:00Z"}`
 
@@ -120,6 +122,10 @@ func TestWorkRecordReadsCatalogsShape(t *testing.T) {
 	}
 	if !r.UpdatedAt.Equal(time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)) {
 		t.Errorf("updated_at = %v", r.UpdatedAt)
+	}
+	if r.ShortSummary != "好 ||结局||" || r.ShortSummaryText != "好 ███" || !r.ShortSummaryHasSpoiler ||
+		r.ShortSummaryHTML != `<p>好 <span class="kun-spoiler kun-spoiler-hidden">结局</span></p>` {
+		t.Errorf("summary = %q / %q / %q / %v", r.ShortSummary, r.ShortSummaryHTML, r.ShortSummaryText, r.ShortSummaryHasSpoiler)
 	}
 }
 

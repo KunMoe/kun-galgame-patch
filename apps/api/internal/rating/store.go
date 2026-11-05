@@ -13,27 +13,30 @@ import (
 var ErrNotFound = stderrors.New("rating not found")
 
 type Row struct {
-	ID               int64
-	WorkID           int64
-	UserID           int
-	Overall          int
-	Art              *int
-	Story            *int
-	Music            *int
-	Character        *int
-	Route            *int
-	System           *int
-	Voice            *int
-	ReplayValue      *int
-	Recommend        string
-	SpoilerLevel     string
-	ShortSummary     string
-	AuthorState      *string
-	AuthorCompletion *string
-	ClientID         string
-	Site             string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                     int64
+	WorkID                 int64
+	UserID                 int
+	Overall                int
+	Art                    *int
+	Story                  *int
+	Music                  *int
+	Character              *int
+	Route                  *int
+	System                 *int
+	Voice                  *int
+	ReplayValue            *int
+	Recommend              string
+	SpoilerLevel           string
+	ShortSummary           string
+	ShortSummaryHTML       string
+	ShortSummaryText       string
+	ShortSummaryHasSpoiler bool
+	AuthorState            *string
+	AuthorCompletion       *string
+	ClientID               string
+	Site                   string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 func rowOf(r *catalogv2.UserRating) Row {
@@ -43,7 +46,8 @@ func rowOf(r *catalogv2.UserRating) Row {
 		Art: a.Art, Story: a.Story, Music: a.Music, Character: a.Character,
 		Route: a.Route, System: a.System, Voice: a.Voice, ReplayValue: a.ReplayValue,
 		Recommend: r.Recommend, SpoilerLevel: r.SpoilerLevel, ShortSummary: r.ShortSummary,
-		ClientID: r.ClientID, Site: r.Site,
+		ShortSummaryHTML: r.ShortSummaryHTML, ShortSummaryText: r.ShortSummaryText,
+		ShortSummaryHasSpoiler: r.ShortSummaryHasSpoiler, ClientID: r.ClientID, Site: r.Site,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 	if r.State != "" {
@@ -62,7 +66,8 @@ func NewStore(db *gorm.DB) *Store {
 }
 
 const ratingColumns = `id, work_id, user_id, overall, art, story, music, "character", route, "system",
-	voice, replay_value, recommend, spoiler_level, short_summary, author_state, author_completion,
+	voice, replay_value, recommend, spoiler_level, short_summary, short_summary_html,
+	short_summary_text, short_summary_has_spoiler, author_state, author_completion,
 	client_id, site, created_at, updated_at`
 
 // Mirror writes NextMoe's copy of one rating and reports whether anything
@@ -80,31 +85,38 @@ func (s *Store) Mirror(r *catalogv2.UserRating) (bool, error) {
 		}
 		res := tx.Exec(`
 			INSERT INTO galgame_rating (`+ratingColumns+`)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (id) DO UPDATE SET
 				work_id = EXCLUDED.work_id, user_id = EXCLUDED.user_id, overall = EXCLUDED.overall,
 				art = EXCLUDED.art, story = EXCLUDED.story, music = EXCLUDED.music,
 				"character" = EXCLUDED."character", route = EXCLUDED.route, "system" = EXCLUDED."system",
 				voice = EXCLUDED.voice, replay_value = EXCLUDED.replay_value,
 				recommend = EXCLUDED.recommend, spoiler_level = EXCLUDED.spoiler_level,
-				short_summary = EXCLUDED.short_summary, author_state = EXCLUDED.author_state,
+				short_summary = EXCLUDED.short_summary, short_summary_html = EXCLUDED.short_summary_html,
+				short_summary_text = EXCLUDED.short_summary_text,
+				short_summary_has_spoiler = EXCLUDED.short_summary_has_spoiler,
+				author_state = EXCLUDED.author_state,
 				author_completion = EXCLUDED.author_completion, client_id = EXCLUDED.client_id,
 				site = EXCLUDED.site, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
 			WHERE (galgame_rating.work_id, galgame_rating.user_id, galgame_rating.overall,
 				galgame_rating.art, galgame_rating.story, galgame_rating.music, galgame_rating."character",
 				galgame_rating.route, galgame_rating."system", galgame_rating.voice, galgame_rating.replay_value,
 				galgame_rating.recommend, galgame_rating.spoiler_level, galgame_rating.short_summary,
-				galgame_rating.author_state, galgame_rating.author_completion, galgame_rating.client_id,
-				galgame_rating.site, galgame_rating.created_at, galgame_rating.updated_at)
+				galgame_rating.short_summary_html, galgame_rating.short_summary_text,
+				galgame_rating.short_summary_has_spoiler, galgame_rating.author_state,
+				galgame_rating.author_completion, galgame_rating.client_id, galgame_rating.site, galgame_rating.created_at, galgame_rating.updated_at)
 			IS DISTINCT FROM (EXCLUDED.work_id, EXCLUDED.user_id, EXCLUDED.overall,
 				EXCLUDED.art, EXCLUDED.story, EXCLUDED.music, EXCLUDED."character",
 				EXCLUDED.route, EXCLUDED."system", EXCLUDED.voice, EXCLUDED.replay_value,
 				EXCLUDED.recommend, EXCLUDED.spoiler_level, EXCLUDED.short_summary,
-				EXCLUDED.author_state, EXCLUDED.author_completion, EXCLUDED.client_id,
-				EXCLUDED.site, EXCLUDED.created_at, EXCLUDED.updated_at)`,
+				EXCLUDED.short_summary_html, EXCLUDED.short_summary_text,
+				EXCLUDED.short_summary_has_spoiler, EXCLUDED.author_state,
+				EXCLUDED.author_completion, EXCLUDED.client_id, EXCLUDED.site, EXCLUDED.created_at, EXCLUDED.updated_at)`,
 			row.ID, row.WorkID, row.UserID, row.Overall,
 			row.Art, row.Story, row.Music, row.Character, row.Route, row.System, row.Voice, row.ReplayValue,
-			row.Recommend, row.SpoilerLevel, row.ShortSummary, row.AuthorState, row.AuthorCompletion,
+			row.Recommend, row.SpoilerLevel, row.ShortSummary,
+			row.ShortSummaryHTML, row.ShortSummaryText, row.ShortSummaryHasSpoiler,
+			row.AuthorState, row.AuthorCompletion,
 			row.ClientID, row.Site, row.CreatedAt, row.UpdatedAt)
 		changed = res.RowsAffected > 0
 		return res.Error

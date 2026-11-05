@@ -35,13 +35,18 @@ type UserRating struct {
 	Aspects      RatingAspects
 	Recommend    string
 	SpoilerLevel string
-	ShortSummary string
-	ClientID     string
-	Site         string
-	State        string
-	Completion   *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// ShortSummary is the author's Markdown source; the other three are cooked
+	// from it by catalog at write time and are what a page shows.
+	ShortSummary           string
+	ShortSummaryHTML       string
+	ShortSummaryText       string
+	ShortSummaryHasSpoiler bool
+	ClientID               string
+	Site                   string
+	State                  string
+	Completion             *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 type workStateWire struct {
@@ -50,19 +55,22 @@ type workStateWire struct {
 }
 
 type userRatingWire struct {
-	ID           string         `json:"id"`
-	WorkID       string         `json:"work_id"`
-	UserID       string         `json:"user_id"`
-	Overall      int            `json:"overall"`
-	AspectScores RatingAspects  `json:"aspect_scores"`
-	Recommend    string         `json:"recommend"`
-	SpoilerLevel string         `json:"spoiler_level"`
-	ShortSummary string         `json:"short_summary"`
-	ClientID     string         `json:"client_id"`
-	Site         string         `json:"site"`
-	WorkState    *workStateWire `json:"work_state"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	ID                     string         `json:"id"`
+	WorkID                 string         `json:"work_id"`
+	UserID                 string         `json:"user_id"`
+	Overall                int            `json:"overall"`
+	AspectScores           RatingAspects  `json:"aspect_scores"`
+	Recommend              string         `json:"recommend"`
+	SpoilerLevel           string         `json:"spoiler_level"`
+	ShortSummary           string         `json:"short_summary"`
+	ShortSummaryHTML       string         `json:"short_summary_html"`
+	ShortSummaryText       string         `json:"short_summary_text"`
+	ShortSummaryHasSpoiler bool           `json:"short_summary_has_spoiler"`
+	ClientID               string         `json:"client_id"`
+	Site                   string         `json:"site"`
+	WorkState              *workStateWire `json:"work_state"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
 }
 
 func (w *userRatingWire) rating() *UserRating {
@@ -76,7 +84,9 @@ func (w *userRatingWire) rating() *UserRating {
 		ID: id, WorkID: workID, UserID: int(userID),
 		Overall: w.Overall, Aspects: w.AspectScores, Recommend: w.Recommend,
 		SpoilerLevel: w.SpoilerLevel, ShortSummary: w.ShortSummary,
-		ClientID: w.ClientID, Site: w.Site,
+		ShortSummaryHTML: w.ShortSummaryHTML, ShortSummaryText: w.ShortSummaryText,
+		ShortSummaryHasSpoiler: w.ShortSummaryHasSpoiler,
+		ClientID:               w.ClientID, Site: w.Site,
 		CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt,
 	}
 	if s := w.WorkState; s != nil {

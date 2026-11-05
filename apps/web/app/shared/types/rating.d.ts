@@ -21,7 +21,12 @@ interface GalgameRating {
   aspect_scores: GalgameRatingAspects
   recommend: string
   spoiler_level: string
+  // Markdown source, for the edit form only; pages show catalog's rendering.
   short_summary: string
+  short_summary_html: string
+  // Spoilers masked as ███; what an excerpt quotes.
+  short_summary_text: string
+  short_summary_has_spoiler: boolean
   // The author's play state now, not when they rated; '' when none.
   play_state: string
   created: string
