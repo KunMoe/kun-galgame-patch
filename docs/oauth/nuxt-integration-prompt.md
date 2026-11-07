@@ -68,7 +68,7 @@ runtimeConfig: {
 在登录页面添加一个「使用 NextMoe·未萌 账号登录」按钮，点击后：
 
 1. 调用 `generateCodeVerifier()` 和 `generateCodeChallenge()` 和 `generateState()`
-2. 将 `code_verifier` 和 `state` 存入 `sessionStorage`
+2. 将 `code_verifier` 和 `state` 存入 10 分钟、`SameSite=Lax`、https 下 `Secure` 的 cookie。**不要用 `sessionStorage`**：Via 和应用内 WebView 在跳去 OAuth Server 再回来时会丢掉它，回调读到空值，用户永远登录失败
 3. 构建授权 URL 并跳转：
 
 ```
@@ -87,8 +87,8 @@ runtimeConfig: {
 创建 `pages/auth/callback.vue`：
 
 1. 从 URL query 读取 `code` 和 `state`
-2. 从 `sessionStorage` 读取之前保存的 `state` 和 `code_verifier`
-3. 验证 `state` 一致性
+2. 从 cookie 读取之前保存的 `state` 和 `code_verifier`，读到后立即清除这两个 cookie
+3. 验证 `state` 一致性；保存的 `state` 缺失也视为失败
 4. 调用自己的服务端 API `/api/auth/oauth-callback`，传入 `code` 和 `code_verifier`
 5. 成功后跳转首页，失败时跳转登录页显示错误
 

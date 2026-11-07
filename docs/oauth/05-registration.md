@@ -233,8 +233,9 @@ const handleOAuthRegister = async () => {
   const codeChallenge = await generateCodeChallenge(codeVerifier)
   const state = generateState()
 
-  sessionStorage.setItem('oauth_code_verifier', codeVerifier)
-  sessionStorage.setItem('oauth_state', state)
+  // 存 10 分钟的 cookie，不要存 sessionStorage（见接入指南步骤 2 的警告）
+  stash('oauth_code_verifier', codeVerifier)
+  stash('oauth_state', state)
 
   const authorizeParams = new URLSearchParams({
     client_id: config.public.oauthClientId,
