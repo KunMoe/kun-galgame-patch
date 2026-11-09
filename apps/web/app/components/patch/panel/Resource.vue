@@ -400,7 +400,7 @@ watch(histPage, loadHistory)
       </KunButton>
     </div>
 
-    <KunAdAIEroBanner />
+    <KunAifyAIEroBanner />
 
     <div
       v-if="!pending && resources && resources.length"

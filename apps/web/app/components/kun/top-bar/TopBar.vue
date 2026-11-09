@@ -106,7 +106,7 @@ watch(
         </NuxtLink>
       </div>
 
-      <KunAdAIEroNav />
+      <KunAifyAIEroNav />
 
       <KunTopBarUser />
     </div>

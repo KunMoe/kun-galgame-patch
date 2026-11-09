@@ -63,11 +63,5 @@ export const kunMoyuMoe: KunSiteConfig = {
       height: 1080,
       alt: '鲲 Galgame 补丁 - 开源 Galgame 补丁资源下载站'
     }
-  ],
-  ad: [
-    {
-      name: 'AIEro',
-      url: 'https://umami.kungal.org/q/tuMHj3J6B'
-    }
   ]
 }

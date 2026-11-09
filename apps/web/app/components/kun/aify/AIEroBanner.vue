@@ -1,21 +1,20 @@
 <script setup lang="ts">
-import { kunMoyuMoe } from '~/config/moyu-moe'
-
 interface Props {
   className?: string
 }
 const props = withDefaults(defineProps<Props>(), { className: '' })
 
 const userStore = useUserStore()
+const aifyUrl = useRuntimeConfig().public.umamiAifyUrl
 </script>
 
 <template>
   <div
-    v-if="!userStore.isAdFree"
+    v-if="!userStore.isAifyFree && aifyUrl"
     :class="cn('overflow-hidden rounded-2xl shadow-xl', props.className)"
   >
     <a
-      :href="kunMoyuMoe.ad[0]?.url"
+      :href="aifyUrl"
       target="_blank"
       rel="noopener noreferrer"
       class="block h-full w-full"

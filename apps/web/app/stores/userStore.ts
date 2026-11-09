@@ -149,10 +149,10 @@ export const useUserStore = defineStore('user', {
     // It is NOT a moderation role, so it is deliberately separate from
     // isModerator (no admin-panel / mod-action access).
     isCreator: (state) => effectiveRoles(state.user).includes('creator'),
-    // Ad-free = holds any role other than "user" (creator / moderator / admin).
-    // Anonymous (no roles) and plain users still see ads; every elevated role is
-    // exempt. Drives the AIEro* ad gates.
-    isAdFree: (state) => effectiveRoles(state.user).some((r) => r !== 'user')
+    // AIFY-free = holds any role other than "user" (creator / moderator / admin).
+    // Anonymous (no roles) and plain users still see AIFY; every elevated role is
+    // exempt. Drives the AIEro AIFY gates.
+    isAifyFree: (state) => effectiveRoles(state.user).some((r) => r !== 'user')
   },
   // Cookie-backed persistence is intentional: the cookie is sent on the
   // initial HTML request so the SSR pass already has the logged-in user

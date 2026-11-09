@@ -296,7 +296,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
         </div>
       </div>
 
-      <KunAdAIEroBanner class-name="mb-6 hidden sm:block" />
+      <KunAifyAIEroBanner class-name="mb-6 hidden sm:block" />
 
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div class="space-y-6 lg:col-span-2">
@@ -412,7 +412,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             </div>
           </KunCard>
 
-          <KunAdAIEroBanner class-name="block sm:hidden" />
+          <KunAifyAIEroBanner class-name="block sm:hidden" />
 
           <KunTab
             v-model="activePanel"

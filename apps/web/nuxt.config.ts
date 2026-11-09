@@ -26,8 +26,7 @@ export default defineNuxtConfig({
     '@nuxtjs/sitemap',
     '@pinia/nuxt',
     'pinia-plugin-persistedstate/nuxt',
-    'nuxt-schema-org',
-    'nuxt-umami'
+    'nuxt-schema-org'
   ],
 
   // Default provider stays IPX (galgame banners / user avatars need on-the-
@@ -159,23 +158,6 @@ export default defineNuxtConfig({
     // layer (>=0.13.0) and merged in automatically — moyu no longer configures it.
   },
 
-  umami: {
-    // Public website-id (it ships in the client tracker tag — not a secret). The
-    // `|| '<id>'` literal is the actual config: moyu-web is built GENERIC in CI
-    // (no build-args) and .env is gitignored, so at BUILD time the env var is
-    // undefined → nuxt-umami would bake an undefined id and every /api/send would
-    // 400. nuxt-umami reads `id` at build (a module option), not at runtime, so
-    // the default must be a literal here. (Same fix kungal-forum landed.)
-    id:
-      process.env.KUN_VISUAL_NOVEL_PATCH_UMAMI_ID ||
-      'da1440d0-60f7-4d5d-9a91-b4ccfb5d4b37',
-    host: 'https://umami.kungal.org/',
-    autoTrack: true,
-    // One baked id runs in every deployment (incl. local dev) — keep dev traffic
-    // out of prod stats.
-    ignoreLocalhost: true
-  },
-
   runtimeConfig: {
     // SSR runs inside the docker container, where the Go API is reachable by
     // its compose service name (api:5214) — NOT by the browser's host-port URL
@@ -215,7 +197,13 @@ export default defineNuxtConfig({
       // Catalog editing lives only on the NextMoe editor (editor.nextmoe.com).
       editorUrl:
         process.env.NUXT_PUBLIC_EDITOR_URL || 'https://editor.nextmoe.com',
-      chatEnabled: false
+      chatEnabled: false,
+      // Umami origin, website id, and the AIEro short link. Empty is off:
+      // nuxt-umami baked host/id into the build, so a generic image could only
+      // keep tracking by hardcoding them. The script tag reads these at runtime.
+      umamiHost: '',
+      umamiId: '',
+      umamiAifyUrl: ''
     }
   }
 })

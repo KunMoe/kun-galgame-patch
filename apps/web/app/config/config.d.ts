@@ -32,11 +32,6 @@ export interface KunSiteImage {
   alt: string
 }
 
-export interface KunSiteAD {
-  name: string
-  url: string
-}
-
 export interface KunSiteConfig {
   title: string
   titleShort: string
@@ -49,6 +44,5 @@ export interface KunSiteConfig {
   publisher: KunSiteCreator
   domain: KunSiteDomain
   og: KunSiteOpenGraph
-  ad: KunSiteAD[]
   images: KunSiteImage[]
 }

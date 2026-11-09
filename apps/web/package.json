@@ -68,7 +68,6 @@
     "eslint": "^10.0.3",
     "happy-dom": "20.9.0",
     "husky": "^9.1.7",
-    "nuxt-umami": "^3.2.1",
     "pinia-plugin-persistedstate": "4.7.1",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
