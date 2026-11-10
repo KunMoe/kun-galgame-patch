@@ -209,7 +209,7 @@ const currentAvatarUrl = computed(() => {
             </p>
             <KunFileInput
               v-model="avatarFile"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               :max-size="4 * 1024 * 1024"
               description="JPEG / PNG / WebP，≤ 4 MiB"
               trigger-text="选择新头像"
