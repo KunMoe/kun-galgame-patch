@@ -45,7 +45,11 @@ export interface UserState {
   nsfw_display: KunNsfwStance | ''
 }
 
-const initialUserState: UserState = {
+// A factory, not a shared object spread per store: `{ ...initial }` is shallow,
+// so every SSR request's store held the SAME module-level arrays, persistedstate's
+// deep watcher in each request subscribed to them for good, and every request's
+// app stayed reachable. moyu-web hit the heap limit every ~7 minutes (2026-11).
+const createInitialUserState = (): UserState => ({
   id: 0,
   sub: '',
   name: '',
@@ -62,7 +66,7 @@ const initialUserState: UserState = {
   muted_message_types: [],
   adult_confirmed: false,
   nsfw_display: ''
-}
+})
 
 // effectiveRoles is the set every capability getter runs against — the union of
 // global roles and moyu site-scoped roles (docs/oauth/12-site-roles.md §5). A
@@ -76,7 +80,7 @@ const effectiveRoles = (u: UserState): string[] => [
 
 export const useUserStore = defineStore('user', {
   state: (): { user: UserState } => ({
-    user: { ...initialUserState }
+    user: createInitialUserState()
   }),
   actions: {
     setUser(user: Partial<UserState>) {
@@ -115,7 +119,7 @@ export const useUserStore = defineStore('user', {
     },
     logout() {
       this.user = {
-        ...initialUserState,
+        ...createInitialUserState(),
         muted_message_types: this.user.muted_message_types
       }
     }
