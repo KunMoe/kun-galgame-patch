@@ -68,7 +68,11 @@ export interface KunSettingData {
   galleryViolenceLevels: number[]
 }
 
-const initialState: KunSettingData = {
+// A factory, not a shared object spread per store: `{ ...initial }` is shallow,
+// so every SSR request's store held the SAME module-level arrays, persistedstate's
+// deep watcher in each request subscribed to them for good, and every request's
+// app stayed reachable. moyu-web hit the heap limit every ~7 minutes (2026-11).
+const createInitialState = (): KunSettingData => ({
   kunNsfwEnable: 'hide',
   nsfwAckedIds: [],
   galgameListLayout: 'poster',
@@ -79,11 +83,11 @@ const initialState: KunSettingData = {
   showGalgamesWithoutResource: false,
   gallerySexualLevels: [],
   galleryViolenceLevels: []
-}
+})
 
 export const useSettingStore = defineStore('setting', {
   state: (): { data: KunSettingData } => ({
-    data: { ...initialState }
+    data: createInitialState()
   }),
   actions: {
     setData(data: Partial<KunSettingData>) {
@@ -118,7 +122,7 @@ export const useSettingStore = defineStore('setting', {
         : [...cur, level]
     },
     resetData() {
-      this.data = { ...initialState }
+      this.data = createInitialState()
     }
   },
   // Cookie-backed (NOT localStorage) so SSR can read the preference from the
