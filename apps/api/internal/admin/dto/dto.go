@@ -19,6 +19,14 @@ type AdminSettingBoolRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+// AdminDlsiteSetting is the DLsite purchase entry: LinkTemplate carries
+// {workno} and is used until infra mints the work's short link; CouponURL is
+// the standing coupon page shown while no campaign runs. Empty turns either off.
+type AdminDlsiteSetting struct {
+	LinkTemplate string `json:"link_template" validate:"max=512"`
+	CouponURL    string `json:"coupon_url" validate:"max=512"`
+}
+
 type AdminStatsRequest struct {
 	Days int `query:"days" validate:"required,min=1"`
 }

@@ -158,52 +158,66 @@ export default defineNuxtConfig({
     // layer (>=0.13.0) and merged in automatically — moyu no longer configures it.
   },
 
+  // Every key is overridden at runtime by its canonical env name — nuxt dev
+  // reads them from apps/web/.env, the container from its environment:
+  // NUXT_API_BASE_SSR, NUXT_STICKER_BASE_URL, NUXT_PUBLIC_API_BASE,
+  // NUXT_PUBLIC_OAUTH_SERVER_URL, NUXT_PUBLIC_OAUTH_WEB_URL,
+  // NUXT_PUBLIC_OAUTH_CLIENT_ID, NUXT_PUBLIC_OAUTH_REDIRECT_URI,
+  // NUXT_PUBLIC_IMAGE_BED, NUXT_PUBLIC_EDITOR_URL, NUXT_PUBLIC_CHAT_ENABLED,
+  // NUXT_PUBLIC_UMAMI_HOST / _ID / _AIFY_URL. The defaults below are the dev
+  // stack's; `$production` (applied by `nuxt build`) swaps in www.moyu.moe's,
+  // which is why the production compose file sets no web variable at all.
   runtimeConfig: {
-    // SSR runs inside the docker container, where the Go API is reachable by
-    // its compose service name (api:5214) — NOT by the browser's host-port URL
-    // (localhost:15010 is the container's own loopback). The browser can't
-    // resolve `api`, so it keeps using public.apiBase. Set
-    // NUXT_API_BASE_SSR=http://moyu-api:5214/api/v1 in docker; leave empty for local
-    // air dev (the dual-base reader falls back to public.apiBase).
-    apiBaseSsr: process.env.NUXT_API_BASE_SSR || '',
+    // SSR in the container reaches the Go API by its compose service name
+    // (moyu-api:5214), not the browser's URL. Empty in local dev: the dual-base
+    // reader falls back to public.apiBase.
+    apiBaseSsr: '',
 
     // Where /api/sticker-packs proxies from. Server-side only: the browser
     // never reaches across to the sticker site.
-    stickerBaseUrl:
-      process.env.NUXT_STICKER_BASE_URL || 'https://sticker.kungal.com',
+    stickerBaseUrl: 'https://sticker.kungal.com',
     public: {
-      // 本项目 Go Fiber API（不是 NextMoe·未萌 账号）。Go 端口从 apps/api/.env 的 KUN_SERVER_PORT 读，dev 默认 5214。
-      apiBase:
-        process.env.KUN_VISUAL_NOVEL_NUXT_PUBLIC_API_BASE ||
-        'http://127.0.0.1:5214/api/v1',
+      // 本项目 Go Fiber API（不是 NextMoe·未萌 账号）。
+      apiBase: 'http://127.0.0.1:5214/api/v1',
       // NextMoe·未萌 账号（OP，account.nextmoe.com）— 拆成两个 URL：
       // - oauthServerUrl：API base，给 fetch / 拿 token / 调 /users/batch 用（dev :9277）
       // - oauthWebUrl：用户面前端，给 window.location.href 跳转 /oauth/authorize / /register / /forgot / /profile 用（dev :9420）
       // prod 同域 `account.nextmoe.com`，但开发环境是两个端口，所以不能再从 API URL 推 origin。
-      oauthServerUrl:
-        process.env.NUXT_PUBLIC_KUN_OAUTH_SERVER_URL ||
-        'http://127.0.0.1:9277/api/v1',
-      oauthWebUrl:
-        process.env.NUXT_PUBLIC_KUN_OAUTH_WEB_URL || 'http://127.0.0.1:9420',
-      oauthClientId: process.env.NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID || '',
-      oauthRedirectUri: process.env.NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI || '',
+      oauthServerUrl: 'http://127.0.0.1:9277/api/v1',
+      oauthWebUrl: 'http://127.0.0.1:9420',
+      oauthClientId: 'df3ff6008d740bfacbe46aa8cf483cf2',
+      oauthRedirectUri: 'http://127.0.0.1:6969/auth/callback',
       // image_service CDN base (== backend KUN_IMAGE_CDN_BASE / config
       // moyu-moe.ts domain.imageBed — all three MUST agree). Used by the
       // /image/:hash 302 route to resolve domain-agnostic content tokens to
-      // `{base}/<aa>/<bb>/<hash>.webp`. Overridable at runtime so a domain
-      // change is "改一处配置" (image_service 契约 04).
-      imageBed:
-        process.env.NUXT_PUBLIC_IMAGE_BED || 'https://image.kungal.iloveren.link',
+      // `{base}/<aa>/<bb>/<hash>.webp`.
+      imageBed: 'https://image.kungal.iloveren.link',
       // Catalog editing lives only on the NextMoe editor (editor.nextmoe.com).
-      editorUrl:
-        process.env.NUXT_PUBLIC_EDITOR_URL || 'https://editor.nextmoe.com',
+      editorUrl: 'https://editor.nextmoe.com',
       chatEnabled: false,
-      // Umami origin, website id, and the AIEro short link. Empty is off:
-      // nuxt-umami baked host/id into the build, so a generic image could only
-      // keep tracking by hardcoding them. The script tag reads these at runtime.
+      // Umami origin, website id, and the AIEro short link. Empty is off; the
+      // script tag reads them at runtime, so dev never reports to production.
       umamiHost: '',
       umamiId: '',
       umamiAifyUrl: ''
+    }
+  },
+
+  $production: {
+    runtimeConfig: {
+      apiBaseSsr: 'http://moyu-api:5214/api/v1',
+      public: {
+        apiBase: 'https://www.moyu.moe/api/v1',
+        // oauth.kungal.com no longer answers: its edge 308 was removed on
+        // 2026-09-13 because it strips Authorization across the host change.
+        oauthServerUrl: 'https://account.nextmoe.com/api/v1',
+        oauthWebUrl: 'https://account.nextmoe.com',
+        oauthRedirectUri: 'https://www.moyu.moe/auth/callback',
+        chatEnabled: true,
+        umamiHost: 'https://umami.kungal.org',
+        umamiId: 'da1440d0-60f7-4d5d-9a91-b4ccfb5d4b37',
+        umamiAifyUrl: 'https://kun.s.gy/7QIoGs'
+      }
     }
   }
 })

@@ -4,18 +4,11 @@
 # Build context MUST be the repo root (the install needs the workspace
 # manifests). KunUI is consumed from npm (@kungal/ui-nuxt), not from source.
 #
-# Public runtime config (apiBase, oauth*) is read by nuxt.config.ts from custom
-# KUN_*/NUXT_PUBLIC_KUN_* env names at BUILD time, so it is passed as build args
-# and baked. Any public key can still be overridden at RUNTIME via the canonical
-# NUXT_PUBLIC_* names (NUXT_PUBLIC_API_BASE, NUXT_PUBLIC_OAUTH_SERVER_URL,
-# NUXT_PUBLIC_OAUTH_WEB_URL, NUXT_PUBLIC_OAUTH_CLIENT_ID,
-# NUXT_PUBLIC_OAUTH_REDIRECT_URI) — see docker/README.md.
+# `nuxt build` runs with NODE_ENV=production, so the image's runtimeConfig
+# defaults are www.moyu.moe's (nuxt.config.ts `$production`). Any key can still
+# be overridden at container start by its canonical NUXT_* name.
 #
 #   docker build -f docker/nuxt.Dockerfile --build-arg APP=web -t moyu/web .
-#
-# NOTE: the image CDN (`imageBed`) is still HARDCODED in app/config/moyu-moe.ts
-# (not env-driven) — align it with image_service before relying on hash-
-# addressed avatar/banner display. See docker/README.md §image_service.
 ARG NODE_VERSION=24.22.1
 
 FROM node:${NODE_VERSION}-trixie-slim AS base
@@ -35,18 +28,6 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@apps/${APP}..."
 # ---- build ----
 FROM deps AS build
 ARG APP=web
-# Frontend public config, baked at build. Empty args fall back to the in-config
-# defaults (`process.env.X || '<default>'`).
-ARG PUBLIC_API_BASE=
-ARG PUBLIC_OAUTH_SERVER_URL=
-ARG PUBLIC_OAUTH_WEB_URL=
-ARG PUBLIC_OAUTH_CLIENT_ID=
-ARG PUBLIC_OAUTH_REDIRECT_URI=
-ENV KUN_VISUAL_NOVEL_NUXT_PUBLIC_API_BASE=${PUBLIC_API_BASE} \
-    NUXT_PUBLIC_KUN_OAUTH_SERVER_URL=${PUBLIC_OAUTH_SERVER_URL} \
-    NUXT_PUBLIC_KUN_OAUTH_WEB_URL=${PUBLIC_OAUTH_WEB_URL} \
-    NUXT_PUBLIC_KUN_OAUTH_CLIENT_ID=${PUBLIC_OAUTH_CLIENT_ID} \
-    NUXT_PUBLIC_KUN_OAUTH_REDIRECT_URI=${PUBLIC_OAUTH_REDIRECT_URI}
 COPY apps/${APP} apps/${APP}
 # build:limit bumps Node's heap (--max-old-space-size=8192). The web build is
 # memory-heavy (jsdom is pulled in for server-side HTML sanitization) and

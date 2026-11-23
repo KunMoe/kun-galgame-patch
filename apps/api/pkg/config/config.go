@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"strconv"
 	"strings"
 )
@@ -87,11 +86,8 @@ type ArtifactConfig struct {
 }
 
 // CommunityConfig points at the NextMoe community primitive, which owns every
-// comment wall on this site.
-//
-// The credentials are moyu's own OAuth client: community derives its tenant from
-// that client's oauth_clients.catalog_site, so there is nothing site-shaped to
-// configure here and nothing to send on the wire.
+// comment wall on this site. Image, artifact and community authenticate moyu by
+// its own OAuth client, so their ClientID/ClientSecret are always the OAuth pair.
 type CommunityConfig struct {
 	BaseURL      string
 	ClientID     string
@@ -129,26 +125,18 @@ type TrustConfig struct {
 	CallbackSecret string
 }
 
-// DlsiteConfig is the DLsite purchase entry on a game page.
-//
-// LinkTemplate is a whole template, not assembled parts: DLsite's affiliate path
-// differs per site segment, so a path change stays an env edit. Empty template
-// AND empty StoreAPIKey = no purchase entry is rendered at all.
-//
-// StoreAPIKey reaches infra's /v2/store face, which mints the per-site short
-// link that carries click attribution. It is a SECOND developer key, separate
-// from the catalog one: the face is gated on the scope store:read and the v2
-// limiter buckets per key, so minting links must not spend the catalogue's
-// minute budget. The aliases belong to the OAuth client rather than the key, so
-// moyu and kungal stay separately attributed even sharing an affiliate account.
+// DlsiteConfig reaches infra's /v2/store face, which mints the per-site short
+// link that carries click attribution. StoreAPIKey is a SECOND developer key,
+// separate from the catalog one: the face is gated on the scope store:read and
+// the v2 limiter buckets per key, so minting links must not spend the
+// catalogue's minute budget. The aliases belong to the OAuth client rather than
+// the key, so moyu and kungal stay separately attributed even sharing an
+// affiliate account. The affiliate template and the coupon page are site
+// settings, not configuration.
 type DlsiteConfig struct {
-	LinkTemplate string
-	CouponURL    string
 	StoreAPIBase string
 	StoreAPIKey  string
 }
-
-func (c DlsiteConfig) Configured() bool { return c.LinkTemplate != "" }
 
 func (c DlsiteConfig) StoreConfigured() bool { return c.StoreAPIBase != "" && c.StoreAPIKey != "" }
 
@@ -156,134 +144,133 @@ type CORSConfig struct {
 	AllowOrigins string
 }
 
+// Load takes every default from the deployment it runs in: KUN_SERVER_MODE=prod
+// picks production's topology on dokploy-network, anything else the local dev
+// stack. The production compose file therefore carries only the mode, the
+// bootstrap pair and what has no safe default; a value equal to its default
+// does not belong there.
 func Load() *Config {
-	mode := getEnv("KUN_SERVER_MODE", "dev")
+	if err := loadStore(); err != nil {
+		panic(err.Error())
+	}
+	dbURL := lookupEnvOnly(DatabaseURLEnv)
+	if dbURL == "" {
+		panic("required environment variable not set: " + DatabaseURLEnv)
+	}
+	mode := env("KUN_SERVER_MODE", "dev")
+	byMode := func(dev, prod string) string {
+		if mode == "prod" {
+			return prod
+		}
+		return dev
+	}
+	oauthID := env("OAUTH_CLIENT_ID", "df3ff6008d740bfacbe46aa8cf483cf2")
+	oauthSecret := envRequiredInProd("OAUTH_CLIENT_SECRET", mode)
+	nextMoeBase := env("KUN_NEXTMOE_API_BASE", byMode("http://127.0.0.1:9281", "http://catalog:9281"))
 	return &Config{
 		Server: ServerConfig{
-			Port: getEnv("KUN_SERVER_PORT", "5214"),
+			Port: env("KUN_SERVER_PORT", "5214"),
 			Mode: mode,
 		},
 		Database: DatabaseConfig{
-			URL:             mustGetEnv("KUN_DATABASE_URL"),
+			URL:             dbURL,
 			MaxIdleConns:    10,
 			MaxOpenConns:    100,
 			ConnMaxLifetime: 60,
 		},
 		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "127.0.0.1"),
-			Port:     getEnv("REDIS_PORT", "6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
+			Host:     env("REDIS_HOST", byMode("127.0.0.1", "redis")),
+			Port:     env("REDIS_PORT", "6379"),
+			Password: env("REDIS_PASSWORD", ""),
 			DB:       0,
 		},
 		OAuth: OAuthConfig{
-			ServerURL:    getEnv("OAUTH_SERVER_URL", "http://127.0.0.1:9277/api/v1"),
-			ClientID:     getEnv("OAUTH_CLIENT_ID", ""),
-			ClientSecret: getEnv("OAUTH_CLIENT_SECRET", ""),
-			RedirectURI:  getEnv("OAUTH_REDIRECT_URI", ""),
+			ServerURL:    env("OAUTH_SERVER_URL", byMode("http://127.0.0.1:9277/api/v1", "http://oauth:9277/api/v1")),
+			ClientID:     oauthID,
+			ClientSecret: oauthSecret,
+			RedirectURI:  env("OAUTH_REDIRECT_URI", byMode("http://127.0.0.1:6969/auth/callback", "https://www.moyu.moe/auth/callback")),
 		},
 		NextMoeAPI: NextMoeAPIConfig{
-			BaseURL: getEnv("KUN_NEXTMOE_API_BASE", "http://127.0.0.1:19281"),
-			APIKey:  getEnv("KUN_NEXTMOE_API_KEY", ""),
+			BaseURL: nextMoeBase,
+			APIKey:  env("KUN_NEXTMOE_API_KEY", ""),
 		},
 		ImageService: ImageServiceConfig{
-			BaseURL:      getEnvProd("KUN_IMAGE_SERVICE_BASE_URL", "http://127.0.0.1:9278", mode),
-			CDNBase:      getEnvProd("KUN_IMAGE_CDN_BASE", "http://127.0.0.1:9000/kun-images-dev", mode),
-			ClientID:     getEnv("KUN_IMAGE_OAUTH_CLIENT_ID", ""),
-			ClientSecret: getEnv("KUN_IMAGE_OAUTH_CLIENT_SECRET", ""),
+			BaseURL: env("KUN_IMAGE_SERVICE_BASE_URL", byMode("http://127.0.0.1:9278", "http://image:9278")),
+			// Must equal infra's KUN_IMAGE_PUBLIC_BASE_URL, or the backend and the
+			// frontend emit different URLs for the same hash.
+			CDNBase:      env("KUN_IMAGE_CDN_BASE", byMode("http://127.0.0.1:9290", "https://image.kungal.iloveren.link")),
+			ClientID:     oauthID,
+			ClientSecret: oauthSecret,
 		},
 		Artifact: ArtifactConfig{
-			BaseURL:      getEnvProd("KUN_ARTIFACT_SERVICE_BASE_URL", "http://127.0.0.1:9279", mode),
-			ClientID:     getEnv("KUN_ARTIFACT_OAUTH_CLIENT_ID", ""),
-			ClientSecret: getEnv("KUN_ARTIFACT_OAUTH_CLIENT_SECRET", ""),
+			BaseURL:      env("KUN_ARTIFACT_SERVICE_BASE_URL", byMode("http://127.0.0.1:9279", "http://artifact:9279")),
+			ClientID:     oauthID,
+			ClientSecret: oauthSecret,
 		},
 		Trust: TrustConfig{
-			BaseURL:        getEnvOptionalProd("KUN_TRUST_BASE_URL", "http://127.0.0.1:9283", mode),
-			Site:           getEnv("KUN_TRUST_SITE", "moyu"),
-			CallbackURL:    getEnv("KUN_TRUST_CALLBACK_URL", ""),
-			CallbackSecret: getEnv("KUN_TRUST_CALLBACK_SECRET", ""),
+			BaseURL: env("KUN_TRUST_BASE_URL", byMode("http://127.0.0.1:9283", "http://trust:9283")),
+			Site:    env("KUN_TRUST_SITE", "moyu"),
+			// The enforcement callback goes over the internal alias, like kungal's
+			// kungal-api:2334, so Cloudflare's WAF never sees it. Not `web`: infra's
+			// web answers to that alias too and the requests would alternate.
+			CallbackURL:    env("KUN_TRUST_CALLBACK_URL", byMode("", "http://moyu-api:5214/api/v1/trust/callback")),
+			CallbackSecret: env("KUN_TRUST_CALLBACK_SECRET", ""),
 		},
 		Community: CommunityConfig{
-			BaseURL:      getEnvOptionalProd("KUN_COMMUNITY_API_BASE", "http://127.0.0.1:9282/api/v1/community", mode),
-			ClientID:     getEnv("KUN_COMMUNITY_CLIENT_ID", getEnv("OAUTH_CLIENT_ID", "")),
-			ClientSecret: getEnv("KUN_COMMUNITY_CLIENT_SECRET", getEnv("OAUTH_CLIENT_SECRET", "")),
+			BaseURL:      env("KUN_COMMUNITY_API_BASE", byMode("http://127.0.0.1:9282/api/v1/community", "http://community:9282/api/v1/community")),
+			ClientID:     oauthID,
+			ClientSecret: oauthSecret,
 		},
 		Chat: ChatConfig{
-			BaseURL: getEnvOptionalProd("KUN_CHAT_API_BASE", "http://127.0.0.1:9285", mode),
-			Enabled: getEnvBool("KUN_CHAT_ENABLED"),
+			BaseURL: env("KUN_CHAT_API_BASE", byMode("http://127.0.0.1:9285", "http://chat:9285")),
+			Enabled: envBool("KUN_CHAT_ENABLED", mode == "prod"),
 		},
 		ActivityPush: ActivityPushConfig{
-			Enabled: getEnvBool("KUN_ACTIVITY_PUSH_ENABLED"),
+			Enabled: envBool("KUN_ACTIVITY_PUSH_ENABLED", false),
 		},
 		Dlsite: DlsiteConfig{
-			LinkTemplate: getEnv("KUN_DLSITE_LINK_TEMPLATE", ""),
-			CouponURL:    getEnv("KUN_DLSITE_COUPON_URL", ""),
-			StoreAPIBase: getEnv("KUN_STORE_API_BASE", getEnv("KUN_NEXTMOE_API_BASE", "http://127.0.0.1:19281")),
-			StoreAPIKey:  getEnv("KUN_STORE_API_KEY", ""),
+			StoreAPIBase: env("KUN_STORE_API_BASE", nextMoeBase),
+			StoreAPIKey:  env("KUN_STORE_API_KEY", ""),
 		},
 		CORS: CORSConfig{
-			AllowOrigins: getEnv(
+			AllowOrigins: env(
 				"CORS_ALLOW_ORIGINS",
-				"http://127.0.0.1:5213,http://127.0.0.1:6969",
+				byMode("http://127.0.0.1:5213,http://127.0.0.1:6969", "https://www.moyu.moe,https://moyu.moe"),
 			),
 		},
 		Site: SiteConfig{
-			BaseURL: strings.TrimRight(getEnv("KUN_SITE_BASE_URL", "https://www.moyu.moe"), "/"),
+			BaseURL: strings.TrimRight(env("KUN_SITE_BASE_URL", "https://www.moyu.moe"), "/"),
 		},
 		BotSubmit: BotSubmit{
-			Key:    getEnv("KUN_BOT_SUBMIT_KEY", ""),
-			UserID: int(getEnvUint64("KUN_BOT_SUBMIT_USER_ID", 0)),
+			Key:    env("KUN_BOT_SUBMIT_KEY", ""),
+			UserID: envInt("KUN_BOT_SUBMIT_USER_ID", byMode("", "125528")),
 		},
 	}
 }
 
-func getEnvBool(key string) bool {
-	v, _ := strconv.ParseBool(os.Getenv(key))
-	return v
-}
+func env(key, fallback string) string { return lookup(key, fallback) }
 
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+func envBool(key string, fallback bool) bool {
+	if v, err := strconv.ParseBool(lookup(key, strconv.FormatBool(fallback))); err == nil {
 		return v
 	}
 	return fallback
 }
 
-func getEnvUint64(key string, fallback uint64) uint64 {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.ParseUint(v, 10, 64)
-	if err != nil {
-		return fallback
+func envInt(key, fallback string) int {
+	n, err := strconv.Atoi(lookup(key, fallback))
+	if err != nil || n < 0 {
+		return 0
 	}
 	return n
 }
 
-func mustGetEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		panic("required environment variable not set: " + key)
+// envRequiredInProd fails the boot in prod when neither the environment nor
+// the store has the value.
+func envRequiredInProd(key, mode string) string {
+	v := lookup(key, "")
+	if v == "" && mode == "prod" {
+		panic("required variable not set in prod mode (environment and config store are both empty): " + key)
 	}
 	return v
-}
-
-func getEnvProd(key, devFallback, mode string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	if mode == "prod" {
-		panic("required environment variable not set in prod mode: " + key)
-	}
-	return devFallback
-}
-
-func getEnvOptionalProd(key, devFallback, mode string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	if mode == "prod" {
-		return ""
-	}
-	return devFallback
 }

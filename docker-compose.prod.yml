@@ -5,16 +5,21 @@
 # image:9278). Bring infra up first.
 #
 # vs docker-compose.yml (dev): `image:` not `build:`, `expose:` not `ports:`,
-# and **NO `env_file`** — all config is inline `environment:` so Dokploy needs no
-# `docker/*.env` on disk. Non-secret/domains are literal; secrets come from the
-# moyu app's **Dokploy Environment** via ${VAR}.
+# and **NO `env_file`**. Configuration is almost entirely code defaults: with
+# KUN_SERVER_MODE=prod the API defaults to this deployment's topology and
+# domains (pkg/config.Load, pinned by TestProdDefaultsAreTheDeployment), and the
+# web image is built with production's public values (nuxt.config.ts
+# `$production`). A line belongs here only when it has no safe default: the
+# mode, the bootstrap pair, and one deliberate switch. A panel variable reaches a
+# container ONLY through a ${VAR} line below; one without a line here is inert.
 #
 # Set in moyu's Dokploy Environment:
-#   POSTGRES_PASSWORD  OAUTH_CLIENT_SECRET
-#   KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID / _SECRET_ACCESS_KEY   (B2 补丁文件)
-#   (optional) KUN_VISUAL_NOVEL_EMAIL_PASSWORD  KUN_IMAGE_OAUTH_CLIENT_ID/SECRET
-# MUST match infra: POSTGRES_PASSWORD = infra POSTGRES_PASSWORD;
-# OAUTH_CLIENT_SECRET = 注册补丁 client 的明文.  (moyu 没有 JWT_SECRET — 不透明会话)
+#   POSTGRES_PASSWORD  KUN_CONFIG_KEK
+# POSTGRES_PASSWORD = infra POSTGRES_PASSWORD. KUN_CONFIG_KEK opens the config
+# store (`openssl rand -base64 32`, set once, never rotated in place): every
+# API secret lives there, sealed in the kungalgame_patch database, edited at
+# /admin/setting (环境变量与密钥) and read once when the API starts. A variable
+# set in the panel as well wins over the stored value.
 #
 #   docker compose -f docker-compose.prod.yml up -d
 # The `migrate` service runs automatically before moyu-api on every `up` (api
@@ -28,104 +33,24 @@ x-svc-health: &svc-health
   retries: 5
   start_period: 15s
 
-# ── api / migrate / tools runtime env (literal = non-secret; ${VAR} = panel) ──
+# ── api / migrate / tools runtime env ──
 x-moyu-api-env: &moyu-api-env
-  KUN_SERVER_PORT: "5214"
   KUN_SERVER_MODE: prod
   # ⚠ POSTGRES_PASSWORD 直接拼进 DSN → 必须 URL-safe(字母数字;勿含 @ : / # % ? &,否则 URL 解析坏)
   KUN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Dokploy}@postgres:5432/kungalgame_patch?sslmode=disable
-  REDIS_HOST: redis
-  REDIS_PORT: "6379"
-  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-  OAUTH_SERVER_URL: http://oauth:9277/api/v1
-  OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
-  OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in Dokploy (补丁 client 注册时的明文)}
-  OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
-  # NextMoe catalog API (galgame reads via the internal tier). BASE is the HOST
-  # base (no /api|/internal); the client derives {base}/internal (the rich read
-  # face + the S2S message feed, X-API-Key) and {base}/api (writes / submissions
-  # / image upload). The read face hard-depends on the key — an empty KEY fails
-  # fast at startup (the legacy /api rollback valve was retired in wave 05). KEY
-  # is a secret → set in the Dokploy Environment (kungal-neo
-  # /root/phase2-internal-keys.env line moyu-patch-internal-s2s).
-  KUN_NEXTMOE_API_BASE: http://catalog:9281
-  KUN_NEXTMOE_API_KEY: ${KUN_NEXTMOE_API_KEY:-}
-  # DLsite 正版购买入口。两个都留空 = 游戏页不渲染购买按钮 (当前默认)。
-  # 打开需要两个决定:
-  #   1) 联盟模板。kungal 用的是
-  #      https://dlaf.jp/soft/dlaf/=/t/s/link/work/aid/kungal/locale/zh_CN/id/{workno}.html/?locale=zh_CN
-  #      其中 aid/kungal 是联盟账号 ID。moyu 是否可以直接复用这个 aid, 取决于
-  #      DLsite 联盟条款是否按站点/域名登记 —— 先确认再填。
-  #   2) KUN_STORE_API_KEY: 第二把 developer key, scope 只需 store:read
-  #      (开发者门户自助申请)。有它才会铸造带点击归因的短链; 没有也能卖, 只是
-  #      infra 看不到是 moyu 带来的单。KUN_STORE_API_BASE 默认取
-  #      KUN_NEXTMOE_API_BASE (同一个 catalog 进程)。
-  KUN_DLSITE_LINK_TEMPLATE: ${KUN_DLSITE_LINK_TEMPLATE:-}
-  KUN_DLSITE_COUPON_URL: ${KUN_DLSITE_COUPON_URL:-}
-  KUN_STORE_API_KEY: ${KUN_STORE_API_KEY:-}
-  # ── 评论区 = NextMoe 社区原语 (kun_community) ──
-  # 每一面评论墙都在这里, 本库只留旧 id 映射表 (patch_comment_community_map),
-  # 没有点赞镜像。租户由本 client 的 oauth_clients.community_site 决定 (= moyu,
-  # 不是 catalog_site 的 kungal), 锚点是裸的 patch.id / resource.id。回复/@/关注/点赞
-  # 通知由社区生成, API 每 20s 拉 /notifications/feed 镜像进 user_message。
-  # 凭据回落到上面的 OAUTH_CLIENT_*。留空 = 评论降级 (读空墙 / 写 503), 不 panic。
-  KUN_COMMUNITY_API_BASE: http://community:9282/api/v1/community
-  # ── 举报 = NextMoe trust 服务 ──
-  # 设了 BASE_URL, 举报就在这次部署上线: 启动时 API 用 OAUTH_CLIENT_* 向 trust 登记
-  # patch_resource (带下面的回调密钥) 和 user 两种举报对象。租户同评论区, 由
-  # community_site=moyu 派生, 不是 kungal。CALLBACK_SECRET 只管入站的执法回调
-  # (隐藏/删除资源): 留空 = 回调一律 401, 举报照收但裁决不落地。
-  KUN_TRUST_BASE_URL: http://trust:9283
-  KUN_TRUST_SITE: moyu
-  # 执法回调走内网别名 (同 kungal 的 kungal-api:2334), 不经 Cloudflare WAF;
-  # 不能写 web: infra 的 web 也用这个别名, 请求会在两者间轮转。
-  KUN_TRUST_CALLBACK_URL: http://moyu-api:5214/api/v1/trust/callback
-  KUN_TRUST_CALLBACK_SECRET: ${KUN_TRUST_CALLBACK_SECRET:-}
-  # ── following feed = community activities (wave 13) ──
-  # Pushes resources and resource edits into the network-wide 关注 feed. On here
-  # and nowhere else: a staging stack is https too and may be bound to a site in
-  # the production community. The pusher starts only in the server binary.
+  KUN_CONFIG_KEK: ${KUN_CONFIG_KEK:-}
+  # Pushes resources and resource edits into the network-wide 关注 feed. Not a
+  # prod default: a staging stack runs in prod mode too and may be bound to a
+  # site in the production community.
   KUN_ACTIVITY_PUSH_ENABLED: "true"
-  # ── direct messages = NextMoe chat (infra plan 17) ──
-  # /api/v1/im/* relays to chat under the session's own token. KUN_CHAT_ENABLED
-  # is the cutover and flips in the same commit as the web's
-  # NUXT_PUBLIC_CHAT_ENABLED: on, the old PRIVATE rooms refuse writes, and infra
-  # must then re-run its import to sweep what was sent before the switch.
-  KUN_CHAT_API_BASE: http://chat:9285
-  KUN_CHAT_ENABLED: "true"
-  # image_service (prod 必填) — CDN 域 == infra KUN_IMAGE_PUBLIC_BASE_URL
-  KUN_IMAGE_SERVICE_BASE_URL: http://image:9278
-  KUN_IMAGE_CDN_BASE: https://image.kungal.iloveren.link
-  # artifact service (prod 必填,getEnvProd) — internal, on dokploy-network.
-  # Read by config.Load() in EVERY moyu binary (api/migrate/tools), so it must
-  # be here in the shared anchor, not just the Dokploy panel.
-  KUN_ARTIFACT_SERVICE_BASE_URL: http://artifact:9279
-  # forge bot lane (same key/user as letmoe). Either one empty = routes not
-  # registered. The user id is also provisioned into the local "user" table at
-  # boot -- both patch.user_id and patch_resource.user_id have a FK to it.
+  # Transitional. Until the one-time import (docs/proj/config-store.md) these
+  # still come from the panel; once the panel drops them they interpolate to
+  # empty and the config store supplies them. Delete the lines after that.
+  OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-}
+  KUN_NEXTMOE_API_KEY: ${KUN_NEXTMOE_API_KEY:-}
+  KUN_STORE_API_KEY: ${KUN_STORE_API_KEY:-}
+  KUN_TRUST_CALLBACK_SECRET: ${KUN_TRUST_CALLBACK_SECRET:-}
   KUN_BOT_SUBMIT_KEY: ${KUN_BOT_SUBMIT_KEY:-}
-  KUN_BOT_SUBMIT_USER_ID: ${KUN_BOT_SUBMIT_USER_ID:-}
-  KUN_IMAGE_OAUTH_CLIENT_ID: ${KUN_IMAGE_OAUTH_CLIENT_ID:-}
-  KUN_IMAGE_OAUTH_CLIENT_SECRET: ${KUN_IMAGE_OAUTH_CLIENT_SECRET:-}
-  # B2 — patch resource files (NOT image_service). 补丁下载/上传是补丁站核心功能,
-  # 空 key → 上传/下载链路必坏 → 所以 key fail-fast(不让一个下不了补丁的站上线)。
-  KUN_VISUAL_NOVEL_S3_STORAGE_ENDPOINT: https://s3.us-east-005.backblazeb2.com
-  KUN_VISUAL_NOVEL_S3_STORAGE_URL: https://oss.moyu.moe
-  KUN_VISUAL_NOVEL_S3_STORAGE_REGION: us-east-005
-  KUN_VISUAL_NOVEL_S3_STORAGE_BUCKET_NAME: kun-galgame-patch
-  KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID: ${KUN_VISUAL_NOVEL_S3_STORAGE_ACCESS_KEY_ID:?B2 access key — 补丁站核心,必填}
-  KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY: ${KUN_VISUAL_NOVEL_S3_STORAGE_SECRET_ACCESS_KEY:?B2 secret — 必填}
-  # mail (blank → disabled)
-  KUN_VISUAL_NOVEL_EMAIL_HOST: tuesday.mxrouting.net
-  KUN_VISUAL_NOVEL_EMAIL_PORT: "587"
-  KUN_VISUAL_NOVEL_EMAIL_ACCOUNT: auth@moyu.moe
-  KUN_VISUAL_NOVEL_EMAIL_PASSWORD: ${KUN_VISUAL_NOVEL_EMAIL_PASSWORD:-}
-  CORS_ALLOW_ORIGINS: https://www.moyu.moe,https://moyu.moe
-  # Absolute web_url on every row the /v2/moyu face answers: a third party has
-  # no way to know that a patch id becomes www.moyu.moe/patch/<id>. Same value
-  # as the code default — pinned here so it moves with the domain, not with a
-  # release.
-  KUN_SITE_BASE_URL: https://www.moyu.moe
 
 services:
   # 服务名直接叫 moyu-api(不是 `api` + alias):Dokploy 不应用 compose 的 networks.aliases,
@@ -195,28 +120,11 @@ services:
       <<: *svc-health
     restart: unless-stopped
 
-  # Public config read at RUNTIME (moyu-web is NOT baked at CI) — set below.
+  # No environment: the image carries production's values as its defaults
+  # (nuxt.config.ts `$production`); any NUXT_* variable still overrides one.
   web:
     image: ghcr.io/kunmoe/moyu-web:latest
     pull_policy: always
-    environment:
-      NUXT_API_BASE_SSR: http://moyu-api:5214/api/v1           # SSR → 本仓 api 服务名 moyu-api(唯一,避免与 kungal api 冲突)
-      NUXT_PUBLIC_API_BASE: https://www.moyu.moe/api/v1         # browser
-      # OP = account.nextmoe.com (「NextMoe·未萌 账号」) since infra's 2026-09 rebrand.
-      # oauth.kungal.com no longer answers: the edge 308 was removed on 2026-09-13
-      # because it strips Authorization across the host change, so a stale value
-      # here is an outage now, not a warning that still happens to work.
-      NUXT_PUBLIC_OAUTH_SERVER_URL: https://account.nextmoe.com/api/v1
-      NUXT_PUBLIC_OAUTH_WEB_URL: https://account.nextmoe.com
-      NUXT_PUBLIC_OAUTH_CLIENT_ID: df3ff6008d740bfacbe46aa8cf483cf2
-      NUXT_PUBLIC_OAUTH_REDIRECT_URI: https://www.moyu.moe/auth/callback
-      # Flips together with the api's KUN_CHAT_ENABLED (see the api env above).
-      NUXT_PUBLIC_CHAT_ENABLED: "true"
-      # Umami. No address is baked into the image. Unset host or id = no tracker.
-      # Unset AIFY URL = the AIEro banner and top-bar button are not rendered.
-      NUXT_PUBLIC_UMAMI_HOST: ${NUXT_PUBLIC_UMAMI_HOST:-}
-      NUXT_PUBLIC_UMAMI_ID: ${NUXT_PUBLIC_UMAMI_ID:-}
-      NUXT_PUBLIC_UMAMI_AIFY_URL: ${NUXT_PUBLIC_UMAMI_AIFY_URL:-}
     expose: ["3000"]
     depends_on:
       moyu-api: { condition: service_healthy }

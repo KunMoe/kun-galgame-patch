@@ -206,6 +206,32 @@ func (h *AdminHandler) SetCreatorOnly(c fiber.Ctx) error {
 	return response.OKMessage(c, "Setting updated")
 }
 
+func (h *AdminHandler) GetDlsiteSetting(c fiber.Ctx) error {
+	return response.OK(c, h.service.GetDlsiteSetting())
+}
+
+func (h *AdminHandler) SetDlsiteSetting(c fiber.Ctx) error {
+	var req dto.AdminDlsiteSetting
+	if err := utils.ParseAndValidate(c, &req); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	req.LinkTemplate, req.CouponURL = strings.TrimSpace(req.LinkTemplate), strings.TrimSpace(req.CouponURL)
+	if req.LinkTemplate != "" && (!isHTTPSLink(req.LinkTemplate) || !strings.Contains(req.LinkTemplate, "{workno}")) {
+		return response.Error(c, errors.ErrBadRequest("联盟链接模板必须是 https 链接, 且包含 {workno}"))
+	}
+	if req.CouponURL != "" && !isHTTPSLink(req.CouponURL) {
+		return response.Error(c, errors.ErrBadRequest("优惠券页必须是 https 链接"))
+	}
+	if err := h.service.SetDlsiteSetting(req, middleware.MustGetUser(c).ID); err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, h.service.GetDlsiteSetting())
+}
+
+func isHTTPSLink(s string) bool {
+	return strings.HasPrefix(s, "https://") && len(s) > len("https://") && !strings.ContainsAny(s, " \t\r\n")
+}
+
 func (h *AdminHandler) GetStats(c fiber.Ctx) error {
 	var req dto.AdminStatsRequest
 	if err := utils.ParseQueryAndValidate(c, &req); err != nil {
