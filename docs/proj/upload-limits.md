@@ -1,5 +1,17 @@
 # 上传限制（补丁资源文件 / 图片）
 
+> **2026-11-23 现状**：补丁资源文件早已改走 artifact 服务（不再是本文 §1 描述的 S3 直传），本文 §1 的大小与配额数字已过时。当前权威值在 `apps/api/internal/constants/upload.go` 的 `UploadTier`，前端 `useResourceUpload.ts` 与 `resource/Publish.vue` 各有一份手抄：
+>
+> | 角色 | 单文件上限 | 每日配额 |
+> |---|---|---|
+> | 普通用户 | 10 GB | 10 GB |
+> | 创作者 | 10 GB | 100 GB |
+> | 版主 | 10 GB | 5000 GB |
+> | 管理员 / 莲 | 20 GB | 不限 |
+> | forge 机器人 | 20 GB | 1024 GB |
+>
+> artifact 侧对 moyu 这个 client 的外层兜底是单文件 20 GB、全站每日 2048 GB（infra `oauth_clients.artifact_max_file_size` / `artifact_quota_bytes_daily`），提高站内上限时不能超过它。
+
 > 本文档汇总 moyu 全站**所有文件上传的大小、类型、配额、命名等限制**，以及它们在前后端各自的执行点。改动任何上传相关阈值时**请先读本文档**——前后端常量是**两份手抄副本**（不是共享代码），漏改一边会造成「前端放行、后端拒绝」或「前端拦截、后端其实允许」的不一致。
 >
 > 注意区分两条物理上完全不同的上传通道：**补丁资源文件**直传 S3（presigned URL，绕过 API），**图片**经 API 转发到 OAuth image_service。两者的大小上限差了两个数量级，原因见 §4。

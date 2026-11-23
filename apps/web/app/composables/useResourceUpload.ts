@@ -19,9 +19,9 @@
 // Explicit cancel() aborts the artifact + drops the record; an interruption keeps
 // it so the publish modal can offer to continue.
 //
-// The per-role single-file cap (1/5/20 GB for user/moderator/admin) mirrors Go's
-// internal/constants/upload.go UploadTier for an instant local error; the server
-// is authoritative (it also enforces the per-user daily quota).
+// The per-role single-file cap (20 GB for admin, 10 GB for everyone else) mirrors
+// Go's internal/constants/upload.go UploadTier for an instant local error; the
+// server is authoritative (it also enforces the per-user daily quota).
 
 const GiB = 1024 * 1024 * 1024
 
@@ -98,19 +98,9 @@ type ResumeStore = ReturnType<typeof useResourceResumeUploads>
 export const useResourceUpload = () => {
   const api = useApi()
   const userStore = useUserStore()
-  // Per-role single-file cap (mirrors backend constants.UploadTier):
-  // admin/ren 20GB > moderator 10GB > creator 5GB > user 1GB. Checked
-  // high-to-low; isAdmin/isModerator already fold admin into the higher tiers,
-  // so the isModerator branch is effectively moderator-only here.
-  const maxFileSize = computed(() =>
-    userStore.isAdmin
-      ? 20 * GiB
-      : userStore.isModerator
-        ? 10 * GiB
-        : userStore.isCreator
-          ? 5 * GiB
-          : GiB
-  )
+  // Single-file cap (mirrors backend constants.UploadTier): admin/ren 20GB,
+  // every other role 10GB.
+  const maxFileSize = computed(() => (userStore.isAdmin ? 20 : 10) * GiB)
   const status = ref<UploadStatus>('idle')
   // Per-byte progress so the bar moves smoothly even during a single large PUT.
   // Multipart aggregates uploaded-bytes-so-far across parts.
