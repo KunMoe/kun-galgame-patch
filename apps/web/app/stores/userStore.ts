@@ -126,7 +126,7 @@ export const useUserStore = defineStore('user', {
   },
   getters: {
     isLoggedIn: (state) => state.user.id > 0 && !!state.user.name,
-    // OAuth role mapping (see docs/user-migration/02-data-mapping.md §7):
+    // OAuth role mapping:
     //   moyu super-admin -> "admin"
     //   moyu/kungal admin -> "moderator"
     // The backend's middleware.RequireRole("admin", "moderator") matches the
@@ -149,7 +149,7 @@ export const useUserStore = defineStore('user', {
       )
     },
     // `creator` is OAuth's trusted-publisher tier (wiki direct-publish), and on
-    // moyu it also carries a larger daily upload allowance (100GB a day).
+    // moyu it also carries a larger daily upload allowance (300GB a day).
     // It is NOT a moderation role, so it is deliberately separate from
     // isModerator (no admin-panel / mod-action access).
     isCreator: (state) => effectiveRoles(state.user).includes('creator'),

@@ -154,7 +154,7 @@ services:
     restart: "no"
 
   # ─────────────────────── one-off jobs (profile: jobs) ──────────────────────
-  # Run AFTER infra postgres up + kungalgame_patch exists. ORDER: docs/migration.
+  # Run AFTER infra postgres up + kungalgame_patch exists.
 
   # All cmd/* binaries (migrate-oauth-prep / remap-patch-ids / backfill-release-date):
   #   docker compose -f docker-compose.prod.yml --profile jobs run --rm tools remap-patch-ids

@@ -250,6 +250,8 @@ func (a *App) RegisterRoutes() {
 	adminRoutes.Put("/setting/creator-only", need(perm.SettingManage), a.AdminHandler.SetCreatorOnly)
 	adminRoutes.Get("/setting/dlsite", need(perm.AdminAccess), a.AdminHandler.GetDlsiteSetting)
 	adminRoutes.Put("/setting/dlsite", need(perm.SettingManage), a.AdminHandler.SetDlsiteSetting)
+	adminRoutes.Get("/setting/upload", need(perm.AdminAccess), a.UploadHandler.GetTierSetting)
+	adminRoutes.Put("/setting/upload", need(perm.SettingManage), a.UploadHandler.SetTierSetting)
 	adminRoutes.Get("/setting/env", need(perm.SettingManage), a.EnvHandler.Get)
 	adminRoutes.Get("/setting/env/changes", need(perm.SettingManage), a.EnvHandler.Changes)
 	adminRoutes.Put("/setting/env/:variable", need(perm.SettingManage), a.EnvHandler.Put)
@@ -330,6 +332,7 @@ func (a *App) RegisterRoutes() {
 	}
 
 	uploadRoutes := api.Group("/upload", auth)
+	uploadRoutes.Get("/quota", a.UploadHandler.Quota)
 	uploadRoutes.Post("/init", a.UploadHandler.Init)
 	uploadRoutes.Post("/complete", a.UploadHandler.Complete)
 	uploadRoutes.Post("/resume", a.UploadHandler.Resume)

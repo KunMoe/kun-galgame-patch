@@ -81,3 +81,21 @@ interface PatchResourceDetail {
   // from other patches when the same patch has < 5 (mirrors next-web).
   recommendations: PatchResource[]
 }
+
+// GET /upload/quota: the reader's own tier in bytes; daily_limit -1 = unlimited.
+interface UploadQuota {
+  max_file_size: number
+  daily_limit: number
+  used_today: number
+}
+
+// /admin/setting/upload, in whole GiB; daily_gib 0 = unlimited.
+interface UploadTierSetting {
+  max_file_gib: number
+  daily_gib: number
+}
+
+interface AdminUploadTiers {
+  tiers: Record<'user' | 'creator' | 'moderator' | 'admin', UploadTierSetting>
+  max_file_cap_gib: number
+}

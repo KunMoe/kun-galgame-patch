@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"kun-galgame-patch-api/internal/constants"
 	"kun-galgame-patch-api/pkg/artifactclient"
 
 	"github.com/alicebob/miniredis/v2"
@@ -53,7 +52,7 @@ func TestResumeIsOwnerOnly(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 
-	init, err := svc.Init(ctx, 7, constants.AdminUploadTier, InitRequest{GalgameID: 1, FileName: "patch.zip", FileSize: 10})
+	init, err := svc.Init(ctx, 7, DefaultTiers.Admin.tier(), InitRequest{GalgameID: 1, FileName: "patch.zip", FileSize: 10})
 	if err != nil {
 		t.Fatalf("init: %v", err)
 	}
@@ -82,7 +81,7 @@ func TestUploadWithNoOwnerRecordIsRefused(t *testing.T) {
 	if err := svc.Abort(ctx, 7, AbortRequest{ArtifactUUID: testUUID}); !errors.Is(err, ErrNotUploadOwner) {
 		t.Fatalf("abort: got %v, want ErrNotUploadOwner", err)
 	}
-	_, err := svc.Complete(ctx, 7, constants.AdminUploadTier, CompleteRequest{ArtifactUUID: testUUID, DeclaredSize: 10})
+	_, err := svc.Complete(ctx, 7, DefaultTiers.Admin.tier(), CompleteRequest{ArtifactUUID: testUUID, DeclaredSize: 10})
 	if !errors.Is(err, ErrNotUploadOwner) {
 		t.Fatalf("complete: got %v, want ErrNotUploadOwner", err)
 	}

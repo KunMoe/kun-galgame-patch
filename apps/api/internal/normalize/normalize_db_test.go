@@ -496,7 +496,7 @@ func TestDailyCap(t *testing.T) {
 	}
 }
 
-// The revert in docs/specs/2026-09-15-bot-submit-lane.md: the original becomes
+// The bot submit lane's revert (2026-09-15): the original becomes
 // the file again while its delete is still queued, and must survive the drain.
 func TestRevertKeepsTheOriginal(t *testing.T) {
 	db := normalizeDB(t)

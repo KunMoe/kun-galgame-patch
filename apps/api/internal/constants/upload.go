@@ -9,15 +9,10 @@ type UploadTier struct {
 	DailyLimit  int64
 }
 
-var (
-	UserUploadTier      = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 10 * oneGiB}
-	CreatorUploadTier   = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 100 * oneGiB}
-	ModeratorUploadTier = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 5000 * oneGiB}
-	AdminUploadTier     = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: UnlimitedDailyUpload}
-	// The forge repacks every eligible patch for letmoe's merged downloads
-	// (owner's ruling, 2026-10-14). The STORE zips run ~260 GB for the first
-	// 789 patches, so the creator tier's 100 GiB a day queued them for days.
-	BotUploadTier = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: 1024 * oneGiB}
-)
+// The per-role tiers are a site setting (upload.DefaultTiers, /admin/setting).
+// The forge repacks every eligible patch for letmoe's merged downloads (owner's
+// ruling, 2026-10-14). The STORE zips run ~260 GB for the first 789 patches, so
+// the creator tier's 100 GiB a day queued them for days.
+var BotUploadTier = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: 1024 * oneGiB}
 
 var AllowedResourceExtensions = []string{".zip", ".rar", ".7z"}

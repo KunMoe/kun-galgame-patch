@@ -19,9 +19,9 @@
 // Explicit cancel() aborts the artifact + drops the record; an interruption keeps
 // it so the publish modal can offer to continue.
 //
-// The per-role single-file cap (20 GB for admin, 10 GB for everyone else) mirrors
-// Go's internal/constants/upload.go UploadTier for an instant local error; the
-// server is authoritative (it also enforces the per-user daily quota).
+// The reader's tier comes from GET /upload/quota (an admin site setting) so a
+// too-large file fails locally at once; the server stays authoritative and also
+// enforces the daily quota.
 
 const GiB = 1024 * 1024 * 1024
 
@@ -97,10 +97,11 @@ type ResumeStore = ReturnType<typeof useResourceResumeUploads>
 
 export const useResourceUpload = () => {
   const api = useApi()
-  const userStore = useUserStore()
-  // Single-file cap (mirrors backend constants.UploadTier): admin/ren 20GB,
-  // every other role 10GB.
-  const maxFileSize = computed(() => (userStore.isAdmin ? 20 : 10) * GiB)
+  const quota = ref<UploadQuota | null>(null)
+  const loadQuota = async () => {
+    const res = await api.get<UploadQuota>('/upload/quota')
+    if (res.code === 0) quota.value = res.data
+  }
   const status = ref<UploadStatus>('idle')
   // Per-byte progress so the bar moves smoothly even during a single large PUT.
   // Multipart aggregates uploaded-bytes-so-far across parts.
@@ -252,8 +253,9 @@ export const useResourceUpload = () => {
     galgameId: number
   ): Promise<UploadResult> => {
     reset()
-    if (file.size > maxFileSize.value) {
-      const msg = `文件大小超过 ${maxFileSize.value / GiB} GB 上限`
+    const maxFileSize = quota.value?.max_file_size ?? 0
+    if (maxFileSize > 0 && file.size > maxFileSize) {
+      const msg = `文件大小超过 ${maxFileSize / GiB} GB 上限`
       status.value = 'error'
       errorMessage.value = msg
       throw new Error(msg)
@@ -406,6 +408,8 @@ export const useResourceUpload = () => {
     totalBytes: readonly(totalBytes),
     progressPercent,
     errorMessage: readonly(errorMessage),
+    quota: readonly(quota),
+    loadQuota,
     upload,
     resumeUpload,
     cancel,
