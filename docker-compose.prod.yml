@@ -10,16 +10,18 @@
 # domains (pkg/config.Load, pinned by TestProdDefaultsAreTheDeployment), and the
 # web image is built with production's public values (nuxt.config.ts
 # `$production`). A line belongs here only when it has no safe default: the
-# mode, the bootstrap pair, and one deliberate switch. A panel variable reaches a
-# container ONLY through a ${VAR} line below; one without a line here is inert.
+# mode, the bootstrap pair, and one deliberate switch; no secret is here. A panel
+# variable reaches a container ONLY through a ${VAR} line below; one without a
+# line here is inert.
 #
 # Set in moyu's Dokploy Environment:
 #   POSTGRES_PASSWORD  KUN_CONFIG_KEK
 # POSTGRES_PASSWORD = infra POSTGRES_PASSWORD. KUN_CONFIG_KEK opens the config
 # store (`openssl rand -base64 32`, set once, never rotated in place): every
 # API secret lives there, sealed in the kungalgame_patch database, edited at
-# /admin/setting (环境变量与密钥) and read once when the API starts. A variable
-# set in the panel as well wins over the stored value.
+# /admin/setting (环境变量与密钥) and read once when the API starts. To override
+# a stored value from the panel for a while, add the panel variable AND a ${VAR}
+# line here: the environment wins over the store.
 #
 #   docker compose -f docker-compose.prod.yml up -d
 # The `migrate` service runs automatically before moyu-api on every `up` (api
@@ -38,19 +40,11 @@ x-moyu-api-env: &moyu-api-env
   KUN_SERVER_MODE: prod
   # ⚠ POSTGRES_PASSWORD 直接拼进 DSN → 必须 URL-safe(字母数字;勿含 @ : / # % ? &,否则 URL 解析坏)
   KUN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Dokploy}@postgres:5432/kungalgame_patch?sslmode=disable
-  KUN_CONFIG_KEK: ${KUN_CONFIG_KEK:-}
+  KUN_CONFIG_KEK: ${KUN_CONFIG_KEK:?set KUN_CONFIG_KEK in Dokploy (every API secret is sealed with it)}
   # Pushes resources and resource edits into the network-wide 关注 feed. Not a
   # prod default: a staging stack runs in prod mode too and may be bound to a
   # site in the production community.
   KUN_ACTIVITY_PUSH_ENABLED: "true"
-  # Transitional. Until the one-time import (docs/proj/config-store.md) these
-  # still come from the panel; once the panel drops them they interpolate to
-  # empty and the config store supplies them. Delete the lines after that.
-  OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-}
-  KUN_NEXTMOE_API_KEY: ${KUN_NEXTMOE_API_KEY:-}
-  KUN_STORE_API_KEY: ${KUN_STORE_API_KEY:-}
-  KUN_TRUST_CALLBACK_SECRET: ${KUN_TRUST_CALLBACK_SECRET:-}
-  KUN_BOT_SUBMIT_KEY: ${KUN_BOT_SUBMIT_KEY:-}
 
 services:
   # 服务名直接叫 moyu-api(不是 `api` + alias):Dokploy 不应用 compose 的 networks.aliases,
