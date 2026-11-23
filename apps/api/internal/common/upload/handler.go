@@ -4,7 +4,6 @@ import (
 	stderrors "errors"
 	"slices"
 
-	"kun-galgame-patch-api/internal/constants"
 	"kun-galgame-patch-api/internal/middleware"
 	"kun-galgame-patch-api/pkg/artifactclient"
 	"kun-galgame-patch-api/pkg/errors"
@@ -17,26 +16,53 @@ import (
 )
 
 type Handler struct {
-	svc *Service
-	img *imageclient.Client
+	svc   *Service
+	img   *imageclient.Client
+	tiers *TierStore
 }
 
-func NewHandler(svc *Service, img *imageclient.Client) *Handler {
-	return &Handler{svc: svc, img: img}
+func NewHandler(svc *Service, img *imageclient.Client, tiers *TierStore) *Handler {
+	return &Handler{svc: svc, img: img, tiers: tiers}
 }
 
-func uploadTier(c fiber.Ctx) constants.UploadTier {
-	switch {
-	// ast-grep-ignore: staff-power-through-permission -- an upload quota tier follows the role, it grants no power
-	case middleware.IsAdmin(c):
-		return constants.AdminUploadTier
-	case middleware.HasRole(c, "moderator"):
-		return constants.ModeratorUploadTier
-	case middleware.HasRole(c, "creator"):
-		return constants.CreatorUploadTier
-	default:
-		return constants.UserUploadTier
+type Quota struct {
+	MaxFileSize int64 `json:"max_file_size"`
+	DailyLimit  int64 `json:"daily_limit"`
+	UsedToday   int64 `json:"used_today"`
+}
+
+// Quota is the reader's own tier, in bytes; daily_limit -1 means unlimited.
+func (h *Handler) Quota(c fiber.Ctx) error {
+	user := middleware.MustGetUser(c)
+	tier := h.tiers.For(c)
+	used, err := h.svc.DailyUsed(user.ID)
+	if err != nil {
+		return response.Error(c, errors.ErrInternal(""))
 	}
+	return response.OK(c, Quota{MaxFileSize: tier.MaxFileSize, DailyLimit: tier.DailyLimit, UsedToday: used})
+}
+
+type TierSettingView struct {
+	Tiers         Tiers `json:"tiers"`
+	MaxFileCapGiB int   `json:"max_file_cap_gib"`
+}
+
+func (h *Handler) GetTierSetting(c fiber.Ctx) error {
+	return response.OK(c, TierSettingView{Tiers: h.tiers.Load(), MaxFileCapGiB: MaxFileCapGiB})
+}
+
+func (h *Handler) SetTierSetting(c fiber.Ctx) error {
+	var req TierSettingView
+	if err := c.Bind().JSON(&req); err != nil {
+		return response.Error(c, errors.ErrBadRequest("请求格式不正确"))
+	}
+	if err := req.Tiers.Validate(); err != nil {
+		return response.Error(c, errors.ErrBadRequest(err.Error()))
+	}
+	if err := h.tiers.Save(req.Tiers, middleware.MustGetUser(c).ID); err != nil {
+		return response.Error(c, errors.ErrInternal(""))
+	}
+	return response.OK(c, TierSettingView{Tiers: h.tiers.Load(), MaxFileCapGiB: MaxFileCapGiB})
 }
 
 var uploadWording = map[upstream.Kind]string{
@@ -75,7 +101,7 @@ func (h *Handler) Init(c fiber.Ctx) error {
 	}
 	user := middleware.MustGetUser(c)
 
-	resp, err := h.svc.Init(c.Context(), user.ID, uploadTier(c), req)
+	resp, err := h.svc.Init(c.Context(), user.ID, h.tiers.For(c), req)
 	if err != nil {
 		return uploadError(c, err)
 	}
@@ -89,7 +115,7 @@ func (h *Handler) Complete(c fiber.Ctx) error {
 	}
 	user := middleware.MustGetUser(c)
 
-	resp, err := h.svc.Complete(c.Context(), user.ID, uploadTier(c), req)
+	resp, err := h.svc.Complete(c.Context(), user.ID, h.tiers.For(c), req)
 	if err != nil {
 		return uploadError(c, err)
 	}

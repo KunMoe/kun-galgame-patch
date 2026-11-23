@@ -86,7 +86,10 @@ const syncResumeForPicked = () => {
     : undefined
   resumeUuid.value = match ? match.artifactUuid : null
 }
-onMounted(refreshPending)
+onMounted(() => {
+  refreshPending()
+  uploader.loadQuota()
+})
 
 const pickedEncryption = ref<ArchiveEncryption>('plain')
 watch(pickedFile, async (f) => {
@@ -354,21 +357,17 @@ const uploadStatusLabel = computed(
 )
 
 const GiB = 1024 * 1024 * 1024
-const maxFileBytes = computed(() => (userStore.isAdmin ? 20 : 10) * GiB)
-const maxFileLabel = computed(() => `${maxFileBytes.value / GiB} GB`)
-const dailyQuotaBytes = computed(() =>
-  userStore.isAdmin
-    ? -1
-    : userStore.isModerator
-      ? 5000 * GiB
-      : userStore.isCreator
-        ? 100 * GiB
-        : 10 * GiB
+const maxFileBytes = computed(() => uploader.quota.value?.max_file_size ?? 0)
+const maxFileLabel = computed(() =>
+  maxFileBytes.value ? `${maxFileBytes.value / GiB} GB` : '…'
 )
+const dailyQuotaBytes = computed(() => uploader.quota.value?.daily_limit ?? 0)
 const isQuotaUnlimited = computed(() => dailyQuotaBytes.value < 0)
-const quotaUsedBytes = computed(() => userStore.user.daily_upload_size ?? 0)
+const quotaUsedBytes = computed(
+  () => uploader.quota.value?.used_today ?? userStore.user.daily_upload_size ?? 0
+)
 const quotaPercent = computed(() =>
-  isQuotaUnlimited.value
+  isQuotaUnlimited.value || !dailyQuotaBytes.value
     ? 0
     : Math.min(
         100,
@@ -421,7 +420,13 @@ const existingFileName = computed(() => {
         </div>
         <p>
           今日已使用存储 <strong>{{ formatFileSize(quotaUsedBytes) }}</strong> /
-          {{ isQuotaUnlimited ? '无限制' : formatFileSize(dailyQuotaBytes) }}（{{
+          {{
+            isQuotaUnlimited
+              ? '无限制'
+              : dailyQuotaBytes
+                ? formatFileSize(dailyQuotaBytes)
+                : '…'
+          }}（{{
             roleLabel
           }}每日额度，每天早上 8 点重置）
         </p>
@@ -555,7 +560,7 @@ const existingFileName = computed(() => {
               </p>
               <KunFileInput
                 :accept="ALLOWED_EXTENSIONS.join(',')"
-                :max-size="maxFileBytes"
+                :max-size="maxFileBytes || undefined"
                 :trigger-text="isEdit ? '选择替换文件' : '选择补丁文件'"
                 trigger-icon="lucide:file-up"
                 :error="uploadError"

@@ -1,7 +1,7 @@
 #
 # Tools image: EVERY apps/api/cmd/* binary in one image, for moyu's one-off
 # migration jobs the api/migrate images don't carry — e.g. migrate-oauth-prep,
-# remap-patch-ids, backfill-release-date (see docs/migration + 03-bootstrap §B).
+# remap-patch-ids, backfill-release-date, config-secrets.
 #
 # The per-service Dockerfile builds ONE binary (ARG CMD); this bundles them all
 # and invokes a job by name:

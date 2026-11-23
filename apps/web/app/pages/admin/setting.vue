@@ -110,6 +110,7 @@ void refresh
           />
         </div>
       </KunCard>
+      <AdminSettingUpload />
       <AdminSettingDlsite />
     </div>
   </div>

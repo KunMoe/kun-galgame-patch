@@ -57,8 +57,8 @@ CREATE DATABASE kungalgame_patch;
   gives the production defaults (infra service names, moyu's OAuth client id);
   the file overrides only the browser-facing host ports and carries the
   secrets. Without `OAUTH_CLIENT_SECRET` the API refuses to start. Secrets can
-  instead live in the config store (`KUN_CONFIG_KEK`, see
-  `docs/proj/config-store.md`).
+  instead live in the config store (`KUN_CONFIG_KEK`; `/admin/setting`,
+  环境变量与密钥).
 - **Frontend** (`docker/web.env`): the image's defaults are production's
   (`nuxt.config.ts` `$production`); the file overrides the browser-facing URLs
   by their canonical `NUXT_*` names and blanks the tracker.

@@ -306,7 +306,7 @@ func New(cfg *config.Config) *App {
 
 	commonHdl := common.NewHandler(db, galgame, favorites, usrCli, artCli, commentSvc)
 	faceHdl := faceHandler.New(faceService.New(faceRepo.New(db), usrCli, imgCli, artCli, cfg.Site.BaseURL))
-	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli)
+	uploadHdl := uploadPkg.NewHandler(uploadSvc, imgCli, uploadPkg.NewTierStore(settingSvc))
 	repackSvc := repack.New(db, artCli, uploadSvc)
 
 	markdown.SetContentImageResolver(imgCli.VariantURL)

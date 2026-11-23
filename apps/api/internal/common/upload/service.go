@@ -109,6 +109,18 @@ func (s *Service) validatePreUpload(userID int, fileName string, declaredSize in
 	return nil
 }
 
+func (s *Service) DailyUsed(userID int) (int64, error) {
+	var user authModel.User
+	err := s.db.Select("daily_upload_size").Take(&user, userID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read daily upload size: %w", err)
+	}
+	return user.DailyUploadSize, nil
+}
+
 const dailyImageLimit = 50
 
 var errDailyImageLimit = errors.New("今日图片上传次数已达上限")
