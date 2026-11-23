@@ -210,6 +210,20 @@ func (s *AdminService) SetSetting(key string, enabled bool, adminUID int) error 
 	return s.setting.SetBool(key, enabled, adminUID)
 }
 
+func (s *AdminService) GetDlsiteSetting() dto.AdminDlsiteSetting {
+	return dto.AdminDlsiteSetting{
+		LinkTemplate: s.setting.GetString(settingService.KeyDlsiteLinkTemplate),
+		CouponURL:    s.setting.GetString(settingService.KeyDlsiteCouponURL),
+	}
+}
+
+func (s *AdminService) SetDlsiteSetting(in dto.AdminDlsiteSetting, adminUID int) error {
+	if err := s.setting.SetString(settingService.KeyDlsiteLinkTemplate, in.LinkTemplate, adminUID); err != nil {
+		return err
+	}
+	return s.setting.SetString(settingService.KeyDlsiteCouponURL, in.CouponURL, adminUID)
+}
+
 func (s *AdminService) GetStats(days int) *dto.AdminStatsResponse {
 	since := time.Now().AddDate(0, 0, -days)
 	newUser, newActive, newGalgame, newResource := s.repo.GetStats(since)

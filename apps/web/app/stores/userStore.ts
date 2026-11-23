@@ -149,7 +149,7 @@ export const useUserStore = defineStore('user', {
       )
     },
     // `creator` is OAuth's trusted-publisher tier (wiki direct-publish), and on
-    // moyu it also shares the moderator upload allowance (5GB / 100GB daily).
+    // moyu it also carries a larger daily upload allowance (100GB a day).
     // It is NOT a moderation role, so it is deliberately separate from
     // isModerator (no admin-panel / mod-action access).
     isCreator: (state) => effectiveRoles(state.user).includes('creator'),

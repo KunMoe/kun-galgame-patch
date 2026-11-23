@@ -11,7 +11,7 @@ import (
 const tmpl = "https://dlaf.jp/soft/dlaf/=/t/s/link/work/aid/kungal/id/{workno}.html"
 
 func TestResolve_FallsBackToTemplateAndEnqueues(t *testing.T) {
-	r := New(Options{LinkTemplate: tmpl, StaticCoupon: "https://coupon.example"})
+	r := New(Options{LinkTemplate: Fixed(tmpl), StaticCoupon: Fixed("https://coupon.example")})
 
 	got := r.Resolve("VJ013550")
 	if got.PurchaseURL != "https://dlaf.jp/soft/dlaf/=/t/s/link/work/aid/kungal/id/VJ013550.html" {
@@ -23,7 +23,7 @@ func TestResolve_FallsBackToTemplateAndEnqueues(t *testing.T) {
 }
 
 func TestResolve_PrefersTheMintedShortLink(t *testing.T) {
-	r := New(Options{LinkTemplate: tmpl})
+	r := New(Options{LinkTemplate: Fixed(tmpl)})
 	r.remember("RJ297925", "https://s.example/s/abc")
 
 	if got := r.Resolve("RJ297925"); got.PurchaseURL != "https://s.example/s/abc" {
@@ -32,7 +32,7 @@ func TestResolve_PrefersTheMintedShortLink(t *testing.T) {
 }
 
 func TestResolve_RunningCampaignBeatsTheStaticCoupon(t *testing.T) {
-	r := New(Options{LinkTemplate: tmpl, StaticCoupon: "https://coupon.example"})
+	r := New(Options{LinkTemplate: Fixed(tmpl), StaticCoupon: Fixed("https://coupon.example")})
 	r.setCampaign(&storeclient.Campaign{ID: "7", Name: "夏日特惠"}, "https://s.example/s/def")
 
 	got := r.Resolve("VJ013550")
@@ -49,14 +49,14 @@ func TestResolve_RunningCampaignBeatsTheStaticCoupon(t *testing.T) {
 }
 
 func TestResolve_NoWorknoAndNoTemplateRenderNothing(t *testing.T) {
-	r := New(Options{LinkTemplate: tmpl})
+	r := New(Options{LinkTemplate: Fixed(tmpl)})
 	if got := r.Resolve(""); got != (Links{}) {
 		t.Errorf("a game with no workno must render nothing, got %+v", got)
 	}
 
 	// A coupon with no purchase link is not a usable entry: the frontend hangs
 	// the coupon inside the purchase popover.
-	bare := New(Options{StaticCoupon: "https://coupon.example"})
+	bare := New(Options{StaticCoupon: Fixed("https://coupon.example")})
 	if got := bare.Resolve("VJ013550"); got != (Links{}) {
 		t.Errorf("no template and no short link must render nothing, got %+v", got)
 	}
@@ -73,7 +73,7 @@ func TestResolve_NilResolverIsSafe(t *testing.T) {
 }
 
 func TestEnqueue_IsANoOpWithoutTheStoreFace(t *testing.T) {
-	r := New(Options{LinkTemplate: tmpl})
+	r := New(Options{LinkTemplate: Fixed(tmpl)})
 	r.enqueue("RJ297925")
 	if len(r.queue) != 0 {
 		t.Errorf("queued %d worknos with no store client configured", len(r.queue))
@@ -97,7 +97,7 @@ func TestMintFailed_RateLimitPausesTheMinter(t *testing.T) {
 		{"anything else keeps the pace", storeclient.ErrUpstream, mintInterval},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := New(Options{LinkTemplate: tmpl})
+			r := New(Options{LinkTemplate: Fixed(tmpl)})
 			if got := r.mintFailed("RJ297925", tc.err, now); got != tc.want {
 				t.Errorf("wait = %v, want %v", got, tc.want)
 			}

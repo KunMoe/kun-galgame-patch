@@ -86,7 +86,7 @@ var catalog = []Entry{
 	{AdminAccess, GroupAdmin, "进入管理后台", "查看数据概览、管理日志、资源 / 评论 / 游戏列表、孤儿补丁与合并记录", false},
 	{TrustReview, GroupAdmin, "处理举报审核", "领取并裁决举报审核队列中的条目", false},
 	{DocManage, GroupAdmin, "管理文档", "创建、编辑、删除站点文档", false},
-	{SettingManage, GroupAdmin, "修改网站设置", "修改全站开关，例如「仅创作者可发布」", true},
+	{SettingManage, GroupAdmin, "修改网站设置", "修改全站开关与 DLsite 购买入口；查看并修改配置中心里的环境变量与密钥", true},
 	{CatalogMergeUndo, GroupAdmin, "撤销游戏合并", "把已合并的游戏页拆回原状", true},
 	{UserPurge, GroupAdmin, "清除用户", "不可恢复地删除一名用户在本站的全部内容", true},
 	{PermissionManage, GroupAdmin, "管理权限", "调整低于自己的角色与用户的权限；只能授予或撤销自己持有的权限", true},

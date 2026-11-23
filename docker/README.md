@@ -53,16 +53,15 @@ CREATE DATABASE kungalgame_patch;
 
 ## Configuration
 
-- **Backend** (`docker/api.env`, 12-factor `env_file`): hosts are infra service
-  names, not localhost. `KUN_SERVER_MODE=prod` makes config **fail fast** if
-  `KUN_IMAGE_SERVICE_BASE_URL` / `KUN_IMAGE_CDN_BASE` are unset (audit GPT-L02).
-  Rotate every `__SET_ME__` secret for a real deploy; prefer `docker secret`/a
-  vault over `env_file`.
-- **Frontend**: public config (`apiBase`, oauth*) is **baked at build** from the
-  `PUBLIC_*` build args in `docker-compose.yml` (mapped to the
-  `KUN_VISUAL_NOVEL_NUXT_PUBLIC_*` / `NUXT_PUBLIC_KUN_OAUTH_*` names nuxt.config
-  reads). To build once and configure at runtime instead, set the canonical
-  `NUXT_PUBLIC_*` env (see `docker/web.env.example`).
+- **Backend** (`docker/api.env`, 12-factor `env_file`): `KUN_SERVER_MODE=prod`
+  gives the production defaults (infra service names, moyu's OAuth client id);
+  the file overrides only the browser-facing host ports and carries the
+  secrets. Without `OAUTH_CLIENT_SECRET` the API refuses to start. Secrets can
+  instead live in the config store (`KUN_CONFIG_KEK`, see
+  `docs/proj/config-store.md`).
+- **Frontend** (`docker/web.env`): the image's defaults are production's
+  (`nuxt.config.ts` `$production`); the file overrides the browser-facing URLs
+  by their canonical `NUXT_*` names and blanks the tracker.
 
 ## Health checks
 

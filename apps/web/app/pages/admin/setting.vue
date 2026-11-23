@@ -51,6 +51,17 @@ const { pending, refresh } = await useAsyncData('admin-setting', async () => {
 
 const { can } = usePermissions()
 
+const tabs = computed(() => [
+  { value: 'runtime', textValue: '运行期设置' },
+  ...(can('setting.manage')
+    ? [
+        { value: 'env', textValue: '环境变量与密钥' },
+        { value: 'changes', textValue: '配置中心变更' }
+      ]
+    : [])
+])
+const activeTab = ref('runtime')
+
 const toggle = async (def: SettingDefinition) => {
   updating[def.key] = true
   try {
@@ -74,7 +85,17 @@ void refresh
   <div class="space-y-6">
     <h1 class="text-2xl font-bold">网站设置</h1>
 
-    <KunLoading v-if="pending" description="加载中..." />
+    <KunTab
+      v-model="activeTab"
+      :items="tabs"
+      variant="underlined"
+      color="primary"
+      size="sm"
+    />
+
+    <AdminSettingEnvVariables v-if="activeTab === 'env'" />
+    <AdminSettingEnvChangeLog v-else-if="activeTab === 'changes'" />
+    <KunLoading v-else-if="pending" description="加载中..." />
     <div v-else class="space-y-4">
       <KunCard v-for="def in definitions" :key="def.key" :bordered="true">
         <div class="flex items-center justify-between gap-4">
@@ -89,6 +110,7 @@ void refresh
           />
         </div>
       </KunCard>
+      <AdminSettingDlsite />
     </div>
   </div>
 </template>

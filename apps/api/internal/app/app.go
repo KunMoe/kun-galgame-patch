@@ -30,6 +30,7 @@ import (
 	docHandler "kun-galgame-patch-api/internal/doc/handler"
 	docRepository "kun-galgame-patch-api/internal/doc/repository"
 	docService "kun-galgame-patch-api/internal/doc/service"
+	"kun-galgame-patch-api/internal/envconfig"
 	"kun-galgame-patch-api/internal/face"
 	faceHandler "kun-galgame-patch-api/internal/face/handler"
 	faceRepo "kun-galgame-patch-api/internal/face/repository"
@@ -111,6 +112,7 @@ type App struct {
 	RatingHandler    *rating.Handler
 	LibraryHandler   *rating.LibraryHandler
 	PermHandler      *permission.Handler
+	EnvHandler       *envconfig.Handler
 
 	CronStop func()
 }
@@ -120,20 +122,6 @@ func validateConfig(cfg *config.Config) {
 		panic("KUN_NEXTMOE_API_BASE is set but KUN_NEXTMOE_API_KEY is empty: " +
 			"the galgame read face requires an internal-tier API key " +
 			"(the legacy /api rollback valve was retired in open-API phase 2 wave 05)")
-	}
-}
-
-// credentialSource names where an integration's client credentials came from:
-// an empty dedicated id or secret falls back to moyu's OAuth client silently,
-// and a half-dedicated pair authenticates as neither.
-func credentialSource(id, secret string) string {
-	switch {
-	case id != "" && secret != "":
-		return "dedicated"
-	case id == "" && secret == "":
-		return "oauth client"
-	default:
-		return "mixed: one dedicated, one from the oauth client"
 	}
 }
 
@@ -167,23 +155,15 @@ func New(cfg *config.Config) *App {
 
 	adminRepository := adminRepo.New(db)
 
-	artCfg := cfg.Artifact
-	if artCfg.ClientID == "" {
-		artCfg.ClientID = cfg.OAuth.ClientID
-	}
-	if artCfg.ClientSecret == "" {
-		artCfg.ClientSecret = cfg.OAuth.ClientSecret
-	}
 	artCli := artifactclient.New(artifactclient.Config{
-		BaseURL:      artCfg.BaseURL,
-		ClientID:     artCfg.ClientID,
-		ClientSecret: artCfg.ClientSecret,
+		BaseURL:      cfg.Artifact.BaseURL,
+		ClientID:     cfg.Artifact.ClientID,
+		ClientSecret: cfg.Artifact.ClientSecret,
 	})
 	if artCli.Configured() {
-		slog.Info("artifact client configured", "base_url", artCfg.BaseURL,
-			"credentials", credentialSource(cfg.Artifact.ClientID, cfg.Artifact.ClientSecret))
+		slog.Info("artifact client configured", "base_url", cfg.Artifact.BaseURL)
 	} else {
-		slog.Warn("artifact client NOT configured; resource uploads and download links fail — set KUN_ARTIFACT_SERVICE_BASE_URL + client creds")
+		slog.Warn("artifact client NOT configured; resource uploads and download links fail — set KUN_ARTIFACT_SERVICE_BASE_URL + OAuth creds")
 	}
 
 	if galgame.V2().Configured() {
@@ -200,19 +180,16 @@ func New(cfg *config.Config) *App {
 		})
 	}
 	storeLinks := storelink.New(storelink.Options{
-		DB:           db,
-		Client:       storeCli,
-		LinkTemplate: cfg.Dlsite.LinkTemplate,
-		StaticCoupon: cfg.Dlsite.CouponURL,
+		DB:     db,
+		Client: storeCli,
+		LinkTemplate: func() string {
+			return settingSvc.GetString(settingService.KeyDlsiteLinkTemplate)
+		},
+		StaticCoupon: func() string {
+			return settingSvc.GetString(settingService.KeyDlsiteCouponURL)
+		},
 	})
-	if cfg.Dlsite.Configured() || storeLinks.Configured() {
-		slog.Info("dlsite 正版购买入口已启用",
-			"short_links", storeLinks.Configured(),
-			"template_fallback", cfg.Dlsite.Configured(),
-			"static_coupon", cfg.Dlsite.CouponURL != "")
-	} else {
-		slog.Info("dlsite 正版购买入口未启用 (KUN_DLSITE_LINK_TEMPLATE 与 KUN_STORE_API_KEY 均为空); 游戏页不渲染购买按钮")
-	}
+	slog.Info("dlsite short links", "enabled", storeLinks.Configured())
 	storeStop := storeLinks.Start()
 
 	patchRepository := patchRepo.New(db)
@@ -315,24 +292,16 @@ func New(cfg *config.Config) *App {
 	ratingMirror := rating.NewMirror(db, galgame.V2(), ratingStore)
 
 	uploadSvc := uploadPkg.New(artCli, db, rdb)
-	imgCfg := cfg.ImageService
-	if imgCfg.ClientID == "" {
-		imgCfg.ClientID = cfg.OAuth.ClientID
-	}
-	if imgCfg.ClientSecret == "" {
-		imgCfg.ClientSecret = cfg.OAuth.ClientSecret
-	}
 	imgCli := imageclient.New(imageclient.Config{
-		BaseURL:      imgCfg.BaseURL,
-		CDNBase:      imgCfg.CDNBase,
-		ClientID:     imgCfg.ClientID,
-		ClientSecret: imgCfg.ClientSecret,
+		BaseURL:      cfg.ImageService.BaseURL,
+		CDNBase:      cfg.ImageService.CDNBase,
+		ClientID:     cfg.ImageService.ClientID,
+		ClientSecret: cfg.ImageService.ClientSecret,
 	})
 	if imgCli.Configured() {
-		slog.Info("image service client configured", "base_url", imgCfg.BaseURL, "cdn_base", imgCfg.CDNBase,
-			"credentials", credentialSource(cfg.ImageService.ClientID, cfg.ImageService.ClientSecret))
+		slog.Info("image service client configured", "base_url", cfg.ImageService.BaseURL, "cdn_base", cfg.ImageService.CDNBase)
 	} else {
-		slog.Warn("image service client NOT configured; image uploads fail and content images lose their dimensions — set KUN_IMAGE_SERVICE_BASE_URL + client creds")
+		slog.Warn("image service client NOT configured; image uploads fail and content images lose their dimensions — set KUN_IMAGE_SERVICE_BASE_URL + OAuth creds")
 	}
 
 	commonHdl := common.NewHandler(db, galgame, favorites, usrCli, artCli, commentSvc)
@@ -341,7 +310,7 @@ func New(cfg *config.Config) *App {
 	repackSvc := repack.New(db, artCli, uploadSvc)
 
 	markdown.SetContentImageResolver(imgCli.VariantURL)
-	markdown.RegisterContentImageHost(imgCfg.CDNBase)
+	markdown.RegisterContentImageHost(cfg.ImageService.CDNBase)
 
 	contentImageMeta := imgCli.NewMetaResolver(1500 * time.Millisecond)
 	markdown.SetContentImageMetaResolver(func(hashes []string) map[string]markdown.ImageMeta {
@@ -414,6 +383,7 @@ func New(cfg *config.Config) *App {
 		RatingHandler:    ratingHdl,
 		LibraryHandler:   libraryHdl,
 		PermHandler:      permission.NewHandler(permissionSvc),
+		EnvHandler:       envconfig.NewHandler(envconfig.New(db, config.StoreKey()), usrCli),
 		CronStop:         stopBackground,
 	}
 }

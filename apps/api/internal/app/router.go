@@ -248,6 +248,12 @@ func (a *App) RegisterRoutes() {
 
 	adminRoutes.Get("/setting/creator-only", need(perm.AdminAccess), a.AdminHandler.GetCreatorOnly)
 	adminRoutes.Put("/setting/creator-only", need(perm.SettingManage), a.AdminHandler.SetCreatorOnly)
+	adminRoutes.Get("/setting/dlsite", need(perm.AdminAccess), a.AdminHandler.GetDlsiteSetting)
+	adminRoutes.Put("/setting/dlsite", need(perm.SettingManage), a.AdminHandler.SetDlsiteSetting)
+	adminRoutes.Get("/setting/env", need(perm.SettingManage), a.EnvHandler.Get)
+	adminRoutes.Get("/setting/env/changes", need(perm.SettingManage), a.EnvHandler.Changes)
+	adminRoutes.Put("/setting/env/:variable", need(perm.SettingManage), a.EnvHandler.Put)
+	adminRoutes.Delete("/setting/env/:variable", need(perm.SettingManage), a.EnvHandler.Delete)
 
 	adminRoutes.Get("/trust/review-items", need(perm.TrustReview), a.TrustHandler.ListReviewItems)
 	adminRoutes.Get("/trust/review-items/:id", need(perm.TrustReview), a.TrustHandler.GetReviewItem)

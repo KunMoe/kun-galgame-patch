@@ -19,10 +19,12 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	logger.Init(os.Getenv("KUN_SERVER_MODE"))
-	cfg := config.Load()
+	// The container healthcheck runs this binary every 10s; probing before Load
+	// keeps it from opening a database connection to read the config store.
+	health.MaybeProbe(config.Env("KUN_SERVER_PORT", "5214"), "/healthz")
 
-	health.MaybeProbe(cfg.Server.Port, "/healthz")
+	cfg := config.Load()
+	logger.Init(cfg.Server.Mode)
 
 	application := app.New(cfg)
 	application.RegisterRoutes()

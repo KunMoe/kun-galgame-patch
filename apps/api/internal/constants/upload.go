@@ -10,8 +10,8 @@ type UploadTier struct {
 }
 
 var (
-	UserUploadTier      = UploadTier{MaxFileSize: 1 * oneGiB, DailyLimit: 1 * oneGiB}
-	CreatorUploadTier   = UploadTier{MaxFileSize: 5 * oneGiB, DailyLimit: 100 * oneGiB}
+	UserUploadTier      = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 10 * oneGiB}
+	CreatorUploadTier   = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 100 * oneGiB}
 	ModeratorUploadTier = UploadTier{MaxFileSize: 10 * oneGiB, DailyLimit: 5000 * oneGiB}
 	AdminUploadTier     = UploadTier{MaxFileSize: 20 * oneGiB, DailyLimit: UnlimitedDailyUpload}
 	// The forge repacks every eligible patch for letmoe's merged downloads

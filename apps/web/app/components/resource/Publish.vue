@@ -354,15 +354,7 @@ const uploadStatusLabel = computed(
 )
 
 const GiB = 1024 * 1024 * 1024
-const maxFileBytes = computed(() =>
-  userStore.isAdmin
-    ? 20 * GiB
-    : userStore.isModerator
-      ? 10 * GiB
-      : userStore.isCreator
-        ? 5 * GiB
-        : GiB
-)
+const maxFileBytes = computed(() => (userStore.isAdmin ? 20 : 10) * GiB)
 const maxFileLabel = computed(() => `${maxFileBytes.value / GiB} GB`)
 const dailyQuotaBytes = computed(() =>
   userStore.isAdmin
@@ -371,7 +363,7 @@ const dailyQuotaBytes = computed(() =>
       ? 5000 * GiB
       : userStore.isCreator
         ? 100 * GiB
-        : GiB
+        : 10 * GiB
 )
 const isQuotaUnlimited = computed(() => dailyQuotaBytes.value < 0)
 const quotaUsedBytes = computed(() => userStore.user.daily_upload_size ?? 0)
