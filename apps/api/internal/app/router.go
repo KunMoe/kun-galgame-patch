@@ -86,6 +86,8 @@ func (a *App) RegisterRoutes() {
 	// id spaces overlap: an old comment id is also a plausible post id.
 	patchRoutes.Get("/comment/locate", optionalAuth, a.CommentHandler.LocateComment)
 	patchRoutes.Get("/comment/:postId/markdown", a.CommentHandler.GetCommentMarkdown)
+	patchRoutes.Get("/comment/:postId/replies", optionalAuth, a.CommentHandler.GetCommentReplies)
+	patchRoutes.Get("/comment/:postId", optionalAuth, a.CommentHandler.GetComment)
 	patchRoutes.Get("/resource/:resourceId/comment", optionalAuth, a.CommentHandler.GetResourceComments)
 
 	patchRoutes.Put("/:id", auth, a.PatchHandler.UpdatePatch)
@@ -96,6 +98,9 @@ func (a *App) RegisterRoutes() {
 	patchRoutes.Put("/comment/:postId/like", auth, a.CommentHandler.LikeComment)
 	patchRoutes.Delete("/comment/:postId/like", auth, a.CommentHandler.UnlikeComment)
 	patchRoutes.Post("/comment/:postId/flag", auth, a.CommentHandler.FlagComment)
+	patchRoutes.Put("/comment/:postId/pin", auth, middleware.RequirePermission(perm.CommentPin), a.CommentHandler.PinComment)
+	patchRoutes.Delete("/comment/:postId/pin", auth, middleware.RequirePermission(perm.CommentPin), a.CommentHandler.UnpinComment)
+	patchRoutes.Post("/comment/:postId/restore", auth, middleware.RequirePermission(perm.CommentDeleteAny), a.CommentHandler.RestoreComment)
 	patchRoutes.Post("/resource/:resourceId/comment", auth, a.CommentHandler.CreateResourceComment)
 	patchRoutes.Post("/:id/resource", auth, a.PatchHandler.CreateResource)
 	patchRoutes.Put("/resource/:resourceId", auth, a.PatchHandler.UpdateResource)

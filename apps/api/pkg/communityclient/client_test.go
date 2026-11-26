@@ -37,7 +37,7 @@ func TestGetCommentsAnswersNoThreadBeforeTheFirstComment(t *testing.T) {
 		envelope(w, map[string]any{"posts": []any{}, "next_cursor": ""})
 	})
 
-	page, err := c.GetComments(context.Background(), communityclient.AnchorSiteGame, "42", "", "30", 7)
+	page, err := c.GetComments(context.Background(), communityclient.AnchorSiteGame, "42", communityclient.CommentsQuery{Limit: 30}, 7)
 	if err != nil {
 		t.Fatalf("GetComments: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestSignedOutReadSendsNoViewer(t *testing.T) {
 		})
 	})
 
-	page, err := c.GetComments(context.Background(), communityclient.AnchorSiteGame, "42", "", "30", 0)
+	page, err := c.GetComments(context.Background(), communityclient.AnchorSiteGame, "42", communityclient.CommentsQuery{Limit: 30}, 0)
 	if err != nil {
 		t.Fatalf("GetComments: %v", err)
 	}

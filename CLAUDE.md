@@ -109,20 +109,27 @@ The contract, the importer and the deployment order live in infra's
   because three sites called it to render a page it had minted 110,918 empty
   threads upstream by 2026-09-15. Read `GET /comments` (no thread until the first
   comment), write `POST /comments`.
+- A wall is read `roots_only` with `reply_preview`, so a page is top-level
+  comments and the rest of a root's replies come from
+  `GET /posts/{id}/replies`. `newest` and `top` cannot locate a post, so a
+  `#post-<id>` deep link reads the wall `oldest`-first. Pins (`comment.pin`) are
+  per site and at most 3 per wall, and `pinned_posts` repeats the pinned comments
+  that `posts` also carries.
 - **No local like mirror.** Every face that returns a post carries
   `reaction_count`, and `viewer_reacted` for the named viewer (`viewer_id` on a
   read, the acting `author_id` on `PATCH /posts/{id}`), and the like toggle
   answers the new count. The edit face answered 0 until infra cce5b4a8 and the
-  toggle carried no count until c12737ae; with the notification faces this build
-  needs a community at or past ea0baba4 (#219).
+  toggle carried no count until c12737ae. This build needs community 1.4.0
+  (infra #557) for the wall's sort / roots / pins, restore and edit mentions.
 - **Comment notifications are written by community, not by the write path.**
   Replies, mentions (`mention_user_ids` on `POST /comments`, at most 20), new
   comments on a followed wall and likes come out of community's outbox;
   `internal/community/inbox` polls `GET /notifications/feed` every 20s into
   `user_message` (upsert on `community_notification_id`, migration 041) and
   forwards the reads users make. Writing a reply / mention / like notice locally
-  again sends every one twice. The one local exception is a mention an *edit*
-  adds, which community does not notify.
+  again sends every one twice. That includes a mention an edit adds: since
+  community 1.4.0 `PATCH /posts/{id}` takes every mention in the edited body
+  and notifies only the users that post has not mentioned before.
 - **Following a wall is an anchor subscription** (`POST /anchors/notification`),
   so a wall can be followed before its first comment. Unfollow is level 1
   (normal), never 0: muted also drops the replies and mentions addressed to the

@@ -112,28 +112,24 @@ func (s *Service) Update(ctx context.Context, postID int64, userID int, isModera
 	asModerator := isModerator && post.AuthorID != int64(userID)
 
 	content = markdown.NormalizeContentImageURLs(content)
-	updated, err := s.community.EditPost(ctx, postID, communityclient.EditPostRequest{
-		AuthorID: int64(userID), Body: content, AsModerator: asModerator,
-	})
+	req := communityclient.EditPostRequest{AuthorID: int64(userID), Body: content, AsModerator: asModerator}
+	if !asModerator {
+		// Community notifies only the users this post has not mentioned before,
+		// so the whole set goes up, not a diff against the previous body.
+		req.MentionUserIDs = mentionUserIDs(content, userID)
+	}
+	updated, err := s.community.EditPost(ctx, postID, req)
 	if err != nil {
 		return nil, err
 	}
 
-	link := s.postLink(surface, postID)
 	if asModerator {
-		// No mention pass here: a moderator's save sent every mention the author
-		// wrote out again, in the moderator's name.
-		s.notifyModeratorAction(int(updated.AuthorID), moderatorNotice("编辑", reason), link)
+		s.notifyModeratorAction(int(updated.AuthorID), moderatorNotice("编辑", reason), s.postLink(surface, postID))
 		if s.audit != nil {
 			_ = s.audit.CreateLog(userID, "updateComment", map[string]any{
 				"post_id": postID, "owner_id": updated.AuthorID, "galgame_id": surface.PatchID, "reason": reason,
 			})
 		}
-	} else {
-		// Community has no edit-time mention notice. Diffing against the pre-edit
-		// body is what keeps this from duplicating the one community sent when
-		// the post was created.
-		s.notifyMentions(userID, addedMentionIDs(post.ContentRaw, content, userID), content, link)
 	}
 
 	return buildItem(*updated, surface, patchModel.NewPatchUser(s.brief(ctx, int(updated.AuthorID)))), nil
@@ -270,60 +266,4 @@ func mentionUserIDs(content string, authorID int) []int64 {
 		}
 	}
 	return out
-}
-
-func addedMentionIDs(oldBody, newBody string, authorID int) []int {
-	had := make(map[int]struct{})
-	for _, id := range markdown.ExtractMentionedUserIDs(oldBody) {
-		had[id] = struct{}{}
-	}
-	var added []int
-	for _, id := range markdown.ExtractMentionedUserIDs(newBody) {
-		if id == authorID {
-			continue
-		}
-		if _, ok := had[id]; ok {
-			continue
-		}
-		had[id] = struct{}{}
-		added = append(added, id)
-	}
-	return added
-}
-
-func (s *Service) notifyMentions(senderID int, ids []int, content, link string) {
-	excerpt := truncate(content, 233)
-	for _, uid := range ids {
-		s.notifyDedup(senderID, uid, "mention", excerpt, link)
-	}
-}
-
-func (s *Service) notifyDedup(senderID, recipientID int, msgType, content, link string) {
-	if recipientID <= 0 || recipientID == senderID {
-		return
-	}
-	var count int64
-	s.db.Table("user_message").
-		Where("type = ? AND sender_id = ? AND recipient_id = ? AND link = ?",
-			msgType, senderID, recipientID, link).
-		Count(&count)
-	if count > 0 {
-		return
-	}
-	if err := s.db.Table("user_message").Create(map[string]any{
-		"type": msgType, "content": content, "status": 0, "link": link,
-		"sender_id": senderID, "recipient_id": recipientID,
-		"created": time.Now(), "updated": time.Now(),
-	}).Error; err != nil {
-		slog.Warn("comment: notification insert failed (best-effort)",
-			"type", msgType, "recipient", recipientID, "link", link, "error", err)
-	}
-}
-
-func truncate(s string, maxRunes int) string {
-	r := []rune(s)
-	if len(r) <= maxRunes {
-		return s
-	}
-	return string(r[:maxRunes])
 }

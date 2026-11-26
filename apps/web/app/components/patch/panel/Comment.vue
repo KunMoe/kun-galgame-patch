@@ -11,40 +11,13 @@ const target = computed<CommentTarget>(() => ({
 
 const emit = defineEmits<{ 'update:loading': [boolean] }>()
 
-const {
-  groups,
-  subscription,
-  setLevel,
-  hasMore,
-  loadMore,
-  loadingMore,
-  pending,
-  expandedRoots,
-  toggleExpand,
-  onLiked,
-  onCommentAdded,
-  onEdited,
-  onRemoved
-} = useCommentList(target)
+const wall = useCommentList(target)
 
-watch(pending, (value) => emit('update:loading', value), { immediate: true })
+watch(wall.pending, (value) => emit('update:loading', value), {
+  immediate: true
+})
 </script>
 
 <template>
-  <CommentSection
-    :target="target"
-    :groups="groups"
-    :expanded-roots="expandedRoots"
-    :subscription="subscription"
-    :has-more="hasMore"
-    :loading-more="loadingMore"
-    :pending="pending"
-    @comment-added="onCommentAdded"
-    @liked="onLiked"
-    @edited="onEdited"
-    @removed="onRemoved"
-    @toggle-expand="toggleExpand"
-    @load-more="loadMore"
-    @set-level="setLevel"
-  />
+  <CommentSection :target="target" :wall="wall" />
 </template>

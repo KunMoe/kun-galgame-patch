@@ -54,7 +54,7 @@ type UnreadResult struct {
 // thread, or of a catalog-anchored one, which community does not fence by
 // tenant.
 func (s *Service) threadOf(ctx context.Context, anchorKind int32, anchorID string) (int64, error) {
-	page, err := s.community.GetComments(ctx, anchorKind, anchorID, "", "1", 0)
+	page, err := s.community.GetComments(ctx, anchorKind, anchorID, communityclient.CommentsQuery{Limit: 1}, 0)
 	if err != nil || page.Thread == nil {
 		return 0, err
 	}

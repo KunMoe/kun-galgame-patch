@@ -152,18 +152,6 @@ func TestMentionUserIDsDropsAuthorAndCapsAt20(t *testing.T) {
 	}
 }
 
-func TestAddedMentionIDs(t *testing.T) {
-	old := "[@a](/user/1) [@b](/user/2)"
-	fresh := "[@a](/user/1) [@c](/user/3) [@self](/user/9)"
-	got := addedMentionIDs(old, fresh, 9)
-	if len(got) != 1 || got[0] != 3 {
-		t.Errorf("addedMentionIDs = %v, want [3]", got)
-	}
-	if got := addedMentionIDs(old, old, 9); len(got) != 0 {
-		t.Errorf("re-save notified %v", got)
-	}
-}
-
 func TestPostLinkExtendsTheWallLink(t *testing.T) {
 	var s Service
 	game := PatchSurface(42)

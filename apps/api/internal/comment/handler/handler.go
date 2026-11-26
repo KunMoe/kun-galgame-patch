@@ -28,10 +28,14 @@ func New(svc *service.Service, galgame *galgameClient.Client, db *gorm.DB) *Hand
 }
 
 type wallRequest struct {
-	// After is a post_number, not an opaque cursor: a comment wall keysets on
-	// the thread's own numbering.
-	After string `query:"after" validate:"omitempty,max=32"`
-	Limit int    `query:"limit" validate:"omitempty,min=1,max=50"`
+	Sort string `query:"sort" validate:"omitempty,oneof=oldest newest top"`
+	// Cursor is bound to the sort that minted it.
+	Cursor string `query:"cursor" validate:"omitempty,max=256"`
+	Limit  int    `query:"limit" validate:"omitempty,min=1,max=50"`
+}
+
+func (r wallRequest) query() service.WallQuery {
+	return service.WallQuery{Sort: r.Sort, Cursor: r.Cursor, Limit: r.Limit}
 }
 
 type createRequest struct {
@@ -64,7 +68,7 @@ func (h *Handler) GetPatchComments(c fiber.Ctx) error {
 	}
 
 	page, err := h.service.Wall(c.Context(), service.PatchSurface(patchID),
-		middleware.GetUserID(c), req.After, req.Limit)
+		middleware.GetUserID(c), req.query())
 	if err != nil {
 		return fail(c, err, onRead)
 	}
@@ -81,7 +85,7 @@ func (h *Handler) GetResourceComments(c fiber.Ctx) error {
 		return response.Error(c, errors.ErrBadRequest(err.Error()))
 	}
 
-	page, err := h.service.Wall(c.Context(), surface, middleware.GetUserID(c), req.After, req.Limit)
+	page, err := h.service.Wall(c.Context(), surface, middleware.GetUserID(c), req.query())
 	if err != nil {
 		return fail(c, err, onRead)
 	}

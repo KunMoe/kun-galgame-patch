@@ -19,6 +19,7 @@ const (
 
 	CommentEditAny   Permission = "comment.edit_any"
 	CommentDeleteAny Permission = "comment.delete_any"
+	CommentPin       Permission = "comment.pin"
 	RatingDeleteAny  Permission = "rating.delete_any"
 
 	ChatRoomCreate       Permission = "chat.room_create"
@@ -77,7 +78,8 @@ var catalog = []Entry{
 	{GalgamePublishRestricted, GroupPatch, "限制期间发布游戏", "网站开启「仅创作者可发布」时仍可发布新游戏", false},
 
 	{CommentEditAny, GroupComment, "编辑他人评论", "修改任何人的评论，会通知作者并记录原因", false},
-	{CommentDeleteAny, GroupComment, "删除他人评论", "删除任何人的评论，会通知作者并记录原因", true},
+	{CommentDeleteAny, GroupComment, "删除他人评论", "删除任何人的评论，会通知作者并记录原因；也可恢复被管理员或审核移除的评论", true},
+	{CommentPin, GroupComment, "置顶评论", "在评论区置顶一级评论，每个评论区最多 3 条", false},
 	{RatingDeleteAny, GroupComment, "删除他人评分", "删除任何人的游戏评分；评分在所有 NextMoe 站点同步删除，还需中央账号持有 catalog.rating.moderate", true},
 
 	{ChatRoomCreate, GroupChat, "创建群聊", "创建新的群聊房间", false},
@@ -105,7 +107,7 @@ var Roles = []string{"creator", "moderator", "admin", RoleRen}
 var moderatorBaseline = []Permission{
 	ResourceEditAny, ResourceDeleteAny, ResourceDisableAny, ResourceReorder,
 	PatchEditAny, GalgamePublishRestricted,
-	CommentEditAny, CommentDeleteAny,
+	CommentEditAny, CommentDeleteAny, CommentPin,
 	ChatMessageDeleteAny,
 	AdminAccess, TrustReview, DocManage,
 }

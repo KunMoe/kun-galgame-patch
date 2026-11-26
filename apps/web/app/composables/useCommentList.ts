@@ -7,9 +7,8 @@
 // and emitting the count back up would settle the tab label one tick after the
 // parent first rendered — a visible flicker. The page awaits this instead.
 //
-// The wall is a community thread: a flat sequence of posts keyset by post
-// number, each naming its parent by id. So this loads FORWARD (没有页码) and
-// assembles the two-tier tree itself.
+// The wall is read as pages of top-level comments, each carrying its first few
+// replies and a count of the rest, which load per comment.
 import {
   commentAnchorId,
   commentSurface,
@@ -17,10 +16,17 @@ import {
 } from '~/shared/utils/commentTarget'
 
 export const COMMENT_LIMIT = 30
+const REPLY_PAGE_LIMIT = 20
+// The server sends this many replies of every root with the wall.
+export const REPLY_PREVIEW = 3
+
+export type CommentSort = 'oldest' | 'newest' | 'top'
 
 export interface CommentGroup {
   root: PatchPageComment
   replies: PatchPageComment[]
+  // Visible replies the reader has not loaded yet.
+  remaining: number
 }
 
 export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
@@ -31,26 +37,41 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
   const resolved = computed(() => unref(target))
   const surface = computed(() => commentSurface(resolved.value))
 
+  const sort = ref<CommentSort>('oldest')
   const subscription = ref<CommentWallState | null>(null)
   const loadingMore = ref(false)
+  const loadingReplies = ref<Set<number>>(new Set())
+  const postedHere = new Set<number>()
+  // Roots whose last reply page has been read. reply_count is a count taken
+  // with the page, so it can promise replies that are no longer there.
+  const exhausted = ref<Set<number>>(new Set())
 
   const emptyPage = (): PatchCommentPage => ({
     thread_id: 0,
+    pinned: [],
     posts: [],
+    replies: [],
     next_cursor: '',
     total: 0
   })
+
+  const pageUrl = (cursor = '') => {
+    const q = new URLSearchParams({
+      sort: sort.value,
+      limit: String(COMMENT_LIMIT)
+    })
+    if (cursor) q.set('cursor', cursor)
+    return `${surface.value.listUrl}?${q}`
+  }
 
   // The wall IS `data`: loadMore and the mutation handlers below write into it.
   // A separate ref seeded from it stays empty on the server, which runs no
   // watchers, so every wall rendered empty there and hydrated a full list over
   // it.
   const { data, pending } = useAsyncData<PatchCommentPage>(
-    () => `comments-${surface.value.listUrl}`,
+    () => `comments-${surface.value.listUrl}-${sort.value}`,
     async () => {
-      const res = await api.get<PatchCommentPage>(
-        `${surface.value.listUrl}?limit=${COMMENT_LIMIT}`
-      )
+      const res = await api.get<PatchCommentPage>(pageUrl())
       return res.code === 0 ? res.data : emptyPage()
     },
     {
@@ -60,14 +81,13 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
       // watcher would refire on any unrelated recompute of the target. On the
       // resource page `target` is a computed over the deep-reactive `detail`, so
       // bumping the download counter alone would have refetched the comments.
-      watch: [() => surface.value.listUrl],
+      watch: [() => surface.value.listUrl, sort],
       // Nuxt 4 makes `data` a shallowRef; onLiked flips fields on a post in
       // place.
       deep: true
     }
   )
 
-  const posts = computed(() => data.value.posts)
   const total = computed(() => data.value.total)
   const threadId = computed(() => data.value.thread_id)
 
@@ -118,20 +138,25 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
 
   const hasMore = computed(() => data.value.next_cursor !== '')
 
+  const mergeReplies = (incoming: PatchPageComment[]) => {
+    const page = data.value
+    const seen = new Set(page.replies.map((p) => p.id))
+    page.replies = [...page.replies, ...incoming.filter((p) => !seen.has(p.id))]
+  }
+
   const loadMore = async () => {
     if (!hasMore.value || loadingMore.value) return
     loadingMore.value = true
     try {
       const page = data.value
-      const res = await api.get<PatchCommentPage>(
-        `${surface.value.listUrl}?after=${page.next_cursor}&limit=${COMMENT_LIMIT}`
-      )
+      const res = await api.get<PatchCommentPage>(pageUrl(page.next_cursor))
       if (res.code !== 0) return
       const seen = new Set(page.posts.map((p) => p.id))
       page.posts = [
         ...page.posts,
         ...res.data.posts.filter((p) => !seen.has(p.id))
       ]
+      mergeReplies(res.data.replies)
       page.next_cursor = res.data.next_cursor
       page.total = res.data.total
     } finally {
@@ -139,45 +164,122 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
     }
   }
 
-  // Two tiers, assembled from the flat sequence. A reply whose root has not been
-  // loaded yet stands on its own rather than disappearing — the wall reads
-  // forward, so that only happens transiently while paging.
-  const groups = computed<CommentGroup[]>(() => {
-    const list: CommentGroup[] = []
-    const byRoot = new Map<number, CommentGroup>()
-    for (const p of posts.value) {
-      const rootId = p.root_comment_id
-      if (rootId == null) {
-        const group: CommentGroup = { root: p, replies: [] }
-        byRoot.set(p.id, group)
-        list.push(group)
-        continue
-      }
-      const owner = byRoot.get(rootId)
-      if (owner) owner.replies.push(p)
-      else list.push({ root: p, replies: [] })
+  const repliesByRoot = computed(() => {
+    const map = new Map<number, PatchPageComment[]>()
+    for (const r of data.value.replies) {
+      const rootId = r.root_comment_id
+      if (rootId == null) continue
+      const list = map.get(rootId)
+      if (list) list.push(r)
+      else map.set(rootId, [r])
     }
-    return list
+    for (const list of map.values()) {
+      list.sort((a, b) => a.post_number - b.post_number)
+    }
+    return map
   })
 
-  const hasComments = computed(() => groups.value.length > 0)
+  const groupOf = (root: PatchPageComment): CommentGroup => {
+    const replies = repliesByRoot.value.get(root.id) ?? []
+    const loadedVisible = replies.filter((r) => r.status === 0).length
+    return {
+      root,
+      replies,
+      remaining: exhausted.value.has(root.id)
+        ? 0
+        : Math.max(0, (root.reply_count ?? 0) - loadedVisible)
+    }
+  }
+
+  // A pinned comment also comes back at its own place in the list, so it is
+  // drawn once, on top.
+  const pinnedGroups = computed(() => data.value.pinned.map(groupOf))
+  const groups = computed<CommentGroup[]>(() => {
+    const pinned = new Set(data.value.pinned.map((p) => p.id))
+    return data.value.posts.filter((p) => !pinned.has(p.id)).map(groupOf)
+  })
+
+  const hasComments = computed(
+    () => pinnedGroups.value.length > 0 || groups.value.length > 0
+  )
+
+  const loadReplies = async (rootId: number) => {
+    if (loadingReplies.value.has(rootId)) return false
+    loadingReplies.value.add(rootId)
+    try {
+      // A reply posted from this page is the newest of its root, so paging
+      // after it would skip every reply between the loaded ones and it.
+      const after = Math.max(
+        0,
+        ...(repliesByRoot.value.get(rootId) ?? [])
+          .filter((r) => !postedHere.has(r.id))
+          .map((r) => r.post_number)
+      )
+      const res = await api.get<PatchCommentReplies>(
+        `/patch/comment/${rootId}/replies?after=${after}&limit=${REPLY_PAGE_LIMIT}`
+      )
+      if (res.code !== 0) {
+        useKunMessage(res.message || '加载回复失败', 'error')
+        return false
+      }
+      mergeReplies(res.data.posts)
+      expandedRoots.value.add(rootId)
+      if (!res.data.next_cursor) exhausted.value.add(rootId)
+      return true
+    } finally {
+      loadingReplies.value.delete(rootId)
+    }
+  }
 
   // ─── optimistic mutation handlers ───────────────────
-  const findPost = (id: number) => posts.value.find((p) => p.id === id)
+  // A pinned root is two objects, one in `pinned` and one in `posts`.
+  const copiesOf = (id: number) => {
+    const page = data.value
+    return [...page.pinned, ...page.posts, ...page.replies].filter(
+      (p) => p.id === id
+    )
+  }
+  const findPost = (id: number) => copiesOf(id)[0]
+
+  const bumpReplyCount = (rootId: number | null, delta: number) => {
+    if (rootId == null) return
+    for (const root of copiesOf(rootId)) {
+      root.reply_count = Math.max(0, (root.reply_count ?? 0) + delta)
+    }
+  }
+
+  const replace = (updated: PatchPageComment) => {
+    for (const p of copiesOf(updated.id)) {
+      Object.assign(p, {
+        ...updated,
+        reply_count: p.reply_count,
+        pinned_at: p.pinned_at
+      })
+    }
+  }
 
   const onLiked = (id: number, liked: boolean) => {
-    const p = findPost(id)
-    if (!p || p.is_liked === liked) return
-    p.like_count = Math.max(0, p.like_count + (liked ? 1 : -1))
-    p.is_liked = liked
+    for (const p of copiesOf(id)) {
+      if (p.is_liked === liked) continue
+      p.like_count = Math.max(0, p.like_count + (liked ? 1 : -1))
+      p.is_liked = liked
+    }
   }
 
   const onCommentAdded = (comment: PatchPageComment) => {
     const page = data.value
-    if (page.posts.some((p) => p.id === comment.id)) return
-    page.posts = [...page.posts, comment]
+    if (findPost(comment.id)) return
+    if (comment.root_comment_id == null) {
+      const root = { ...comment, reply_count: 0 }
+      page.posts =
+        sort.value === 'oldest' ? [...page.posts, root] : [root, ...page.posts]
+    } else {
+      postedHere.add(comment.id)
+      page.replies = [...page.replies, comment]
+      if (comment.status === 0) bumpReplyCount(comment.root_comment_id, 1)
+      expandedRoots.value.add(comment.root_comment_id)
+    }
     page.total += 1
-    expandedRoots.value.add(comment.root_comment_id ?? comment.id)
     // A new thread id reaches reportRead through its watcher.
     if (!page.thread_id && comment.thread_id) {
       page.thread_id = comment.thread_id
@@ -186,23 +288,63 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
     }
   }
 
-  const onEdited = (updated: PatchPageComment) => {
-    const page = data.value
-    page.posts = page.posts.map((p) => (p.id === updated.id ? updated : p))
-  }
+  // The edit face answers no reply count or pin, so those stay as they were.
+  const onEdited = (updated: PatchPageComment) => replace(updated)
 
   // A delete is a tombstone upstream: the post keeps its number so the wall's
   // numbering never collapses. Removing the row here instead would make replies
   // under it look orphaned until the next read. `total` is the thread's
   // posts_count, which counts the stub too; decrementing it here showed one
   // fewer comment than the same wall after a reload.
-  const onRemoved = (id: number) => {
+  const onRemoved = (id: number, source: CommentDeleteSource) => {
     const page = data.value
-    page.posts = page.posts.map((p) =>
-      p.id === id
-        ? { ...p, deleted: true, held: false, content: '', content_html: '' }
-        : p
-    )
+    const post = findPost(id)
+    if (!post || post.deleted) return
+    if (post.status === 0) bumpReplyCount(post.root_comment_id, -1)
+    for (const p of copiesOf(id)) {
+      Object.assign(p, {
+        deleted: true,
+        held: false,
+        status: 2,
+        delete_source: source,
+        content: '',
+        content_html: ''
+      })
+    }
+    page.pinned = page.pinned.filter((p) => p.id !== id)
+  }
+
+  // A post a moderator deleted while it was held comes back held, and a held
+  // post is its author's alone to see.
+  const onRestored = (updated: PatchPageComment) => {
+    const post = findPost(updated.id)
+    if (updated.held && updated.user?.id !== userStore.user.id) {
+      const page = data.value
+      const keep = (p: PatchPageComment) => p.id !== updated.id
+      page.pinned = page.pinned.filter(keep)
+      page.posts = page.posts.filter(keep)
+      page.replies = page.replies.filter(keep)
+      return
+    }
+    if (post?.deleted && updated.status === 0) {
+      bumpReplyCount(post.root_comment_id, 1)
+    }
+    replace(updated)
+  }
+
+  const onPinned = (updated: PatchPageComment) => {
+    const page = data.value
+    for (const p of copiesOf(updated.id)) p.pinned_at = updated.pinned_at
+    if (!updated.pinned_at) {
+      page.pinned = page.pinned.filter((p) => p.id !== updated.id)
+      return
+    }
+    if (page.pinned.some((p) => p.id === updated.id)) return
+    const current = findPost(updated.id)
+    page.pinned = [
+      { ...(current ?? updated), pinned_at: updated.pinned_at },
+      ...page.pinned
+    ]
   }
 
   // ─── inline thread expansion ────────────────────────
@@ -225,7 +367,6 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
   const OFF_CENTER_TOLERANCE = 120
   const SETTLE_TRIES = 12
   const SETTLE_INTERVAL = 150
-  const LOAD_GUARD = 50
 
   const offCenterBy = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
@@ -278,26 +419,50 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
     return true
   }
 
-  const jumpTo = async (postId: number) => {
-    // Reveal it if it is a collapsed reply of an already-loaded root.
-    const known = findPost(postId)
-    if (known?.root_comment_id) {
-      expandedRoots.value.add(known.root_comment_id)
-    }
-    await nextTick()
-    if (tryScroll(postId)) return
+  const LOAD_GUARD = 50
 
-    // Otherwise read forward until it arrives. The wall is ordered, so a post
-    // that exists is always ahead of where we have read to.
+  const onThisWall = (c: PatchPageComment) => {
+    const resourceId = surface.value.resourceId
+    return resourceId === null
+      ? c.resource_id == null && c.galgame_id === resolved.value.galgameId
+      : c.resource_id === resourceId
+  }
+
+  // Neither newest nor top can be searched for a post, so a deep link reads the
+  // wall oldest-first until the post's root arrives, then that root's replies.
+  const load = async (postId: number) => {
+    const res = await api
+      .get<PatchPageComment>(`/patch/comment/${postId}`)
+      .catch(() => null)
+    if (!res || res.code !== 0 || !onThisWall(res.data)) return
+    const rootId = res.data.root_comment_id ?? res.data.id
+
+    if (!findPost(rootId) && sort.value !== 'oldest') {
+      sort.value = 'oldest'
+      await nextTick()
+      await loaded()
+    }
     let guard = 0
-    while (!findPost(postId) && hasMore.value && guard++ < LOAD_GUARD) {
+    while (!findPost(rootId) && hasMore.value && guard++ < LOAD_GUARD) {
       await loadMore()
     }
+    const root = findPost(rootId)
+    if (!root || rootId === postId) return
+    guard = 0
+    while (
+      !findPost(postId) &&
+      groupOf(root).remaining > 0 &&
+      guard++ < LOAD_GUARD
+    ) {
+      if (!(await loadReplies(rootId))) break
+    }
+  }
+
+  const jumpTo = async (postId: number) => {
+    if (!findPost(postId)) await load(postId)
     const found = findPost(postId)
     if (!found) return
-    if (found.root_comment_id) {
-      expandedRoots.value.add(found.root_comment_id)
-    }
+    if (found.root_comment_id) expandedRoots.value.add(found.root_comment_id)
     await nextTick()
     tryScroll(postId)
   }
@@ -345,7 +510,8 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
   watch(() => route.hash, resolveDeepLink)
 
   return {
-    posts,
+    sort,
+    pinnedGroups,
     groups,
     total,
     threadId,
@@ -355,12 +521,18 @@ export const useCommentList = (target: Ref<CommentTarget> | CommentTarget) => {
     hasMore,
     loadMore,
     loadingMore,
+    loadReplies,
+    loadingReplies,
     pending,
     expandedRoots,
     toggleExpand,
     onLiked,
     onCommentAdded,
     onEdited,
-    onRemoved
+    onRemoved,
+    onRestored,
+    onPinned
   }
 }
+
+export type CommentWall = ReturnType<typeof useCommentList>
