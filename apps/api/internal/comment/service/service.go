@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"log/slog"
-	"strconv"
 
 	"kun-galgame-patch-api/internal/comment/repository"
 	"kun-galgame-patch-api/internal/community/anchor"
@@ -105,8 +104,11 @@ type Item struct {
 	User       *patchModel.PatchUser `json:"user,omitempty"`
 	TargetUser *patchModel.PatchUser `json:"target_user,omitempty"`
 
+	PostNumber      int32  `json:"post_number"`
 	ParentCommentID *int64 `json:"parent_comment_id"`
 	RootCommentID   *int64 `json:"root_comment_id"`
+	// ReplyCount is set on a top-level comment and counts visible replies only.
+	ReplyCount *int `json:"reply_count,omitempty"`
 
 	LikeCount int  `json:"like_count"`
 	IsLiked   bool `json:"is_liked"`
@@ -116,70 +118,9 @@ type Item struct {
 	EditedByModerator bool    `json:"edited_by_moderator"`
 	Status            int32   `json:"status"`
 	Deleted           bool    `json:"deleted"`
+	DeleteSource      string  `json:"delete_source,omitempty"`
 	Held              bool    `json:"held"`
-}
-
-type Page struct {
-	ThreadID   int64   `json:"thread_id"`
-	Posts      []*Item `json:"posts"`
-	NextCursor string  `json:"next_cursor"`
-	Total      int     `json:"total"`
-}
-
-const (
-	defaultPageLimit = 30
-	maxPageLimit     = 50
-)
-
-// Wall reads one anchor's comments. Before the first comment there is no thread
-// and this says so — it does not create one. Its predecessor
-// POST /comments/resolve was get-or-create, and because every site called it to
-// RENDER a page it had minted 110,918 empty threads upstream by 2026-09-15.
-func (s *Service) Wall(ctx context.Context, surface Surface, viewerID int, after string, limit int) (*Page, error) {
-	if !s.community.Configured() {
-		return emptyPage(), nil
-	}
-	page, err := s.community.GetComments(ctx, surface.AnchorKind, surface.AnchorID,
-		after, clampLimit(limit), int64(viewerID))
-	if err != nil {
-		if unavailable(ctx, err, "wall") {
-			return emptyPage(), nil
-		}
-		return nil, err
-	}
-	if page.Thread == nil {
-		return emptyPage(), nil
-	}
-	return &Page{
-		ThreadID:   page.Thread.ID,
-		Posts:      s.render(ctx, surface, viewerID, page.Posts),
-		NextCursor: page.NextCursor,
-		Total:      int(page.Thread.PostsCount),
-	}, nil
-}
-
-func (s *Service) render(ctx context.Context, surface Surface, viewerID int, posts []communityclient.PostView) []*Item {
-	uids := make([]int, 0, len(posts)*2)
-	for _, p := range posts {
-		uids = append(uids, int(p.AuthorID))
-		if p.TargetUserID != 0 {
-			uids = append(uids, int(p.TargetUserID))
-		}
-	}
-	briefs := userclient.BriefMapByInt(ctx, s.users, uids)
-
-	out := make([]*Item, 0, len(posts))
-	for _, p := range posts {
-		if !visibleTo(p.Status, p.AuthorID, viewerID) {
-			continue
-		}
-		item := buildItem(p, surface, patchModel.NewPatchUser(briefs[int(p.AuthorID)]))
-		if p.TargetUserID != 0 {
-			item.TargetUser = patchModel.NewPatchUser(briefs[int(p.TargetUserID)])
-		}
-		out = append(out, item)
-	}
-	return out
+	PinnedAt          *string `json:"pinned_at"`
 }
 
 // A held post — the TL0 newcomer sandbox holds a first post for review — is
@@ -206,6 +147,7 @@ func buildItem(p communityclient.PostView, surface Surface, author *patchModel.P
 		GalgameID:         surface.PatchID,
 		ResourceID:        surface.resourceRef(),
 		User:              author,
+		PostNumber:        p.PostNumber,
 		ParentCommentID:   nonZero(p.ReplyToPostID),
 		RootCommentID:     nonZero(p.RootPostID),
 		LikeCount:         int(p.ReactionCount),
@@ -215,6 +157,17 @@ func buildItem(p communityclient.PostView, surface Surface, author *patchModel.P
 		Status:            p.Status,
 		Deleted:           deleted,
 		Held:              p.Status == communityclient.PostHeld,
+	}
+	if deleted {
+		item.DeleteSource = p.DeleteSource
+	}
+	if p.ReplyCount != nil {
+		n := int(*p.ReplyCount)
+		item.ReplyCount = &n
+	}
+	if p.PinnedAt != "" {
+		pinned := p.PinnedAt
+		item.PinnedAt = &pinned
 	}
 	if p.EditedAt != "" {
 		edited := p.EditedAt
@@ -315,15 +268,6 @@ func nonZero(id int64) *int64 {
 	}
 	return &id
 }
-
-func clampLimit(limit int) string {
-	if limit < 1 || limit > maxPageLimit {
-		limit = defaultPageLimit
-	}
-	return strconv.Itoa(limit)
-}
-
-func emptyPage() *Page { return &Page{Posts: []*Item{}} }
 
 // unavailable is the one failure a wall or feed read answers as empty. Every
 // other one — moyu's credential, its tenant binding, a malformed request — goes

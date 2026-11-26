@@ -99,7 +99,7 @@ func TestFailuresAreClassifiedByWhoseFaultTheyAre(t *testing.T) {
 // Community carries the reason in the message; it has to reach the log, which
 // is the only place that can tell a lost site binding from a lost secret.
 func TestTheUpstreamReasonIsKeptForTheLog(t *testing.T) {
-	_, err := fake(t, unbound).GetComments(context.Background(), 1, "42", "", "30", 0)
+	_, err := fake(t, unbound).GetComments(context.Background(), 1, "42", communityclient.CommentsQuery{Limit: 30}, 0)
 	e, _ := upstream.As(err)
 	if e == nil || e.Code != "5" || e.Detail != "client is not bound to a site; it cannot act on the community" {
 		t.Fatalf("error = %+v", e)
@@ -109,7 +109,7 @@ func TestTheUpstreamReasonIsKeptForTheLog(t *testing.T) {
 func TestUnreachableCommunityIsUnavailable(t *testing.T) {
 	c, srv := newClient(t, func(http.ResponseWriter, *http.Request) {})
 	srv.Close()
-	_, err := c.GetComments(context.Background(), 1, "42", "", "30", 0)
+	_, err := c.GetComments(context.Background(), 1, "42", communityclient.CommentsQuery{Limit: 30}, 0)
 	if upstream.KindOf(err) != upstream.Unavailable {
 		t.Fatalf("err = %v, want Unavailable", err)
 	}
@@ -120,7 +120,7 @@ func TestUnconfiguredClientNeverDials(t *testing.T) {
 	if c.Configured() {
 		t.Fatal("Configured() is true with no base URL")
 	}
-	_, err := c.GetComments(context.Background(), 1, "1", "", "", 0)
+	_, err := c.GetComments(context.Background(), 1, "1", communityclient.CommentsQuery{}, 0)
 	if !stderrors.Is(err, communityclient.ErrNotConfigured) || upstream.KindOf(err) != upstream.Unavailable {
 		t.Errorf("err = %v, want an Unavailable ErrNotConfigured", err)
 	}

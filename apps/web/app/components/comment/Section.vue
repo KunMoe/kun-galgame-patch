@@ -1,48 +1,61 @@
 <script setup lang="ts">
-import type { CommentGroup } from '~/composables/useCommentList'
+import {
+  REPLY_PREVIEW,
+  type CommentGroup,
+  type CommentSort,
+  type CommentWall
+} from '~/composables/useCommentList'
 import type { CommentTarget } from '~/shared/utils/commentTarget'
 import { commentSurface } from '~/shared/utils/commentTarget'
 
 const props = withDefaults(
   defineProps<{
     target: CommentTarget
-    groups: CommentGroup[]
-    expandedRoots: Set<number>
-    subscription: CommentWallState | null
-    hasMore?: boolean
-    loadingMore?: boolean
-    pending?: boolean
+    wall: CommentWall
     mentionUser?: KunUser | null
   }>(),
-  {
-    hasMore: false,
-    loadingMore: false,
-    pending: false,
-    mentionUser: null
-  }
+  { mentionUser: null }
 )
 
-const emit = defineEmits<{
-  commentAdded: [comment: PatchPageComment]
-  liked: [id: number, liked: boolean]
-  edited: [updated: PatchPageComment]
-  removed: [id: number]
-  toggleExpand: [rootId: number]
-  loadMore: []
-  setLevel: [level: CommentNotificationLevel]
-}>()
+const {
+  sort,
+  pinnedGroups,
+  groups,
+  subscription,
+  setLevel,
+  hasComments,
+  hasMore,
+  loadMore,
+  loadingMore,
+  loadReplies,
+  loadingReplies,
+  pending,
+  expandedRoots,
+  toggleExpand,
+  onLiked,
+  onCommentAdded,
+  onEdited,
+  onRemoved,
+  onRestored,
+  onPinned
+} = props.wall
 
 const userStore = useUserStore()
 const surface = commentSurface(props.target)
 
-const INLINE_LIMIT = 3
+const SORT_TABS: { value: CommentSort; textValue: string }[] = [
+  { value: 'oldest', textValue: '最早' },
+  { value: 'newest', textValue: '最新' },
+  { value: 'top', textValue: '最热' }
+]
+
 const visibleReplies = (group: CommentGroup) =>
-  props.expandedRoots.has(group.root.id)
+  expandedRoots.value.has(group.root.id)
     ? group.replies
-    : group.replies.slice(0, INLINE_LIMIT)
+    : group.replies.slice(0, REPLY_PREVIEW)
 
 const hiddenReplyCount = (group: CommentGroup) =>
-  Math.max(0, group.replies.length - INLINE_LIMIT)
+  group.replies.length - visibleReplies(group).length
 
 const composerSeed = computed(() => {
   const u = props.mentionUser
@@ -84,7 +97,7 @@ const composerSeed = computed(() => {
         <CommentComposer
           :target="target"
           :seed="composerSeed"
-          @submitted="(c) => emit('commentAdded', c)"
+          @submitted="onCommentAdded"
         />
       </div>
     </div>
@@ -103,29 +116,43 @@ const composerSeed = computed(() => {
       后发表评论
     </div>
 
-    <div v-if="userStore.user.id" class="flex justify-end">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <KunTab
+        v-model="sort"
+        :items="SORT_TABS"
+        variant="light"
+        size="sm"
+        name="comment-sort"
+      />
       <CommentSubscribe
+        v-if="userStore.user.id"
         :subscription="subscription"
-        @set-level="(l) => emit('setLevel', l)"
+        @set-level="setLevel"
       />
     </div>
 
     <KunLoading v-if="pending" description="加载评论中..." />
 
-    <div v-else-if="groups.length" class="space-y-8">
+    <div v-else-if="hasComments" class="space-y-8">
       <CommentRow
-        v-for="g in groups"
+        v-for="g in [...pinnedGroups, ...groups]"
         :key="g.root.id"
         :comment="g.root"
         :target="target"
         :depth="0"
         :expanded="expandedRoots.has(g.root.id)"
-        :reply-count="hiddenReplyCount(g)"
-        @liked="(id, l) => emit('liked', id, l)"
-        @reply-added="(r) => emit('commentAdded', r)"
-        @edited="(u) => emit('edited', u)"
-        @removed="(id) => emit('removed', id)"
-        @toggle-expand="(id) => emit('toggleExpand', id)"
+        :hidden-reply-count="hiddenReplyCount(g)"
+        :remaining-reply-count="g.remaining"
+        :collapsible="g.replies.length > REPLY_PREVIEW"
+        :loading-replies="loadingReplies.has(g.root.id)"
+        @liked="onLiked"
+        @reply-added="onCommentAdded"
+        @edited="onEdited"
+        @removed="onRemoved"
+        @restored="onRestored"
+        @pinned="onPinned"
+        @toggle-expand="toggleExpand"
+        @load-replies="loadReplies"
       >
         <template #replies>
           <div v-if="visibleReplies(g).length" class="mt-4 space-y-4">
@@ -135,10 +162,11 @@ const composerSeed = computed(() => {
               :comment="r"
               :target="target"
               :depth="1"
-              @liked="(id, l) => emit('liked', id, l)"
-              @reply-added="(rr) => emit('commentAdded', rr)"
-              @edited="(u) => emit('edited', u)"
-              @removed="(id) => emit('removed', id)"
+              @liked="onLiked"
+              @reply-added="onCommentAdded"
+              @edited="onEdited"
+              @removed="onRemoved"
+              @restored="onRestored"
             />
           </div>
         </template>
@@ -148,16 +176,16 @@ const composerSeed = computed(() => {
     <KunNull v-else :description="surface.emptyDescription" />
 
     <!--
-      Load more, not a paginator: the wall is keyset by post number and the
-      upstream face answers a cursor, so there is no page count to render.
+      Load more, not a paginator: the wall is keyset and the upstream face
+      answers a cursor, so there is no page count to render.
     -->
-    <div v-if="hasMore" class="flex justify-center">
+    <div v-if="hasMore && !pending" class="flex justify-center">
       <KunButton
         variant="light"
         color="primary"
         :loading="loadingMore"
         :disabled="loadingMore"
-        @click="emit('loadMore')"
+        @click="loadMore"
       >
         加载更多评论
       </KunButton>

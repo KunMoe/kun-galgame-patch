@@ -80,6 +80,10 @@ const (
 	msgKeyReused        = "Idempotency-Key was reused with a different request"
 	msgCannotFollowSelf = "cannot follow yourself"
 	msgFollowingLimit   = "following limit reached (max 5000)"
+	// service/wall.go Pin: "pin limit reached (max 3 per wall)".
+	msgPinLimit = "pin limit reached"
+	// A catalog merge rehomed the wall while the pin was written.
+	msgPinMoved = "the comment moved to another wall"
 )
 
 // Refusal names the community rule behind a refusal, so a caller can word it
@@ -93,6 +97,8 @@ const (
 	RefusalSandbox
 	RefusalKeyReused
 	RefusalFollowingLimit
+	RefusalPinLimit
+	RefusalPinMoved
 )
 
 func RefusalOf(err error) Refusal {
@@ -111,6 +117,10 @@ func RefusalOf(err error) Refusal {
 		return RefusalKeyReused
 	case e.Detail == msgFollowingLimit:
 		return RefusalFollowingLimit
+	case strings.HasPrefix(e.Detail, msgPinLimit):
+		return RefusalPinLimit
+	case strings.HasPrefix(e.Detail, msgPinMoved):
+		return RefusalPinMoved
 	}
 	return RefusalOther
 }

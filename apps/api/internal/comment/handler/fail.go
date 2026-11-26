@@ -15,10 +15,12 @@ type refusalWording struct {
 }
 
 var (
-	onRead   = refusalWording{}
-	onCreate = refusalWording{notFound: "回复的评论不存在或已被删除", conflict: "该评论区已关闭"}
-	onEdit   = refusalWording{notFound: "评论不存在或已被删除", conflict: "该评论已被删除或正在审核，暂时无法编辑"}
-	onPost   = refusalWording{notFound: "评论不存在或已被删除"}
+	onRead    = refusalWording{}
+	onCreate  = refusalWording{notFound: "回复的评论不存在或已被删除", conflict: "该评论区已关闭"}
+	onEdit    = refusalWording{notFound: "评论不存在或已被删除", conflict: "该评论已被删除或正在审核，暂时无法编辑"}
+	onPost    = refusalWording{notFound: "评论不存在或已被删除"}
+	onPin     = refusalWording{notFound: "评论不存在或已被删除", conflict: "只能置顶未删除、未在审核中的评论"}
+	onRestore = refusalWording{notFound: "评论不存在", conflict: "只能恢复被管理员或审核移除的评论"}
 )
 
 func (w refusalWording) of(err error) string {
@@ -26,8 +28,11 @@ func (w refusalWording) of(err error) string {
 	case upstream.NotFound:
 		return w.notFound
 	case upstream.Conflict:
-		if communityclient.RefusalOf(err) == communityclient.RefusalKeyReused {
+		switch communityclient.RefusalOf(err) {
+		case communityclient.RefusalKeyReused:
 			return "这次提交的内容与重试前不一致，请重新发布"
+		case communityclient.RefusalPinLimit:
+			return "每个评论区最多置顶 3 条评论，请先取消一条"
 		}
 		return w.conflict
 	case upstream.Rejected:

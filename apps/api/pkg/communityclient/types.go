@@ -79,7 +79,30 @@ type PostView struct {
 	// ViewerReacted needs a viewer: viewer_id on a read, the acting author_id on
 	// an edit.
 	ViewerReacted bool `json:"viewer_reacted"`
+
+	// DeleteSource names who removed a tombstone; empty on one written before
+	// community 1.4.0. Only moderator and review can be restored.
+	DeleteSource string `json:"delete_source"`
+	// PinnedAt is set by GET /comments and the pin faces only.
+	PinnedAt string `json:"pinned_at"`
+	// ReplyCount is set on a roots_only read and counts visible replies only.
+	ReplyCount *int32 `json:"reply_count"`
 }
+
+const (
+	DeletedByAuthor    = "author"
+	DeletedByModerator = "moderator"
+	DeletedByReview    = "review"
+	DeletedByTrust     = "trust"
+	DeletedByPurge     = "purge"
+)
+
+// The wall's orders. A cursor is bound to the sort that minted it.
+const (
+	SortOldest = "oldest"
+	SortNewest = "newest"
+	SortTop    = "top"
+)
 
 type ThreadView struct {
 	ID                int64  `json:"id"`
@@ -100,9 +123,23 @@ type ThreadView struct {
 // CommentsPage is the anchor read face. Thread is nil until somebody comments:
 // the wall is not created by looking at it.
 type CommentsPage struct {
-	Thread     *ThreadView `json:"thread"`
-	Posts      []PostView  `json:"posts"`
-	NextCursor string      `json:"next_cursor"`
+	Thread *ThreadView `json:"thread"`
+	// PinnedPosts is on the first page only. The same posts also appear in
+	// Posts at their own place.
+	PinnedPosts []PostView `json:"pinned_posts"`
+	Posts       []PostView `json:"posts"`
+	// ReplyPreviews is one flat list for every listed root, pinned ones
+	// included; group it by RootPostID.
+	ReplyPreviews []PostView `json:"reply_previews"`
+	NextCursor    string     `json:"next_cursor"`
+}
+
+type CommentsQuery struct {
+	Sort         string
+	Cursor       string
+	Limit        int
+	RootsOnly    bool
+	ReplyPreview int
 }
 
 type CommentRequest struct {
@@ -172,6 +209,20 @@ type EditPostRequest struct {
 	AuthorID    int64  `json:"author_id"`
 	Body        string `json:"body"`
 	AsModerator bool   `json:"as_moderator,omitempty"`
+	// MentionUserIDs is every user the edited body mentions, not only the new
+	// ones: community keeps the set it has already told and notifies the rest.
+	MentionUserIDs []int64 `json:"mention_user_ids,omitempty"`
+}
+
+type PostActorRequest struct {
+	ActorID int64 `json:"actor_id"`
+}
+
+// PostChange answers the pin, unpin and restore faces. Changed is false on a
+// repeat.
+type PostChange struct {
+	Post    PostView `json:"post"`
+	Changed bool     `json:"changed"`
 }
 
 type ReactionRequest struct {

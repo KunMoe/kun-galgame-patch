@@ -12,17 +12,33 @@ const props = withDefaults(
     target: CommentTarget
     depth?: number
     expanded?: boolean
-    replyCount?: number
+    // Loaded replies the collapsed view leaves out.
+    hiddenReplyCount?: number
+    // Visible replies not loaded yet.
+    remainingReplyCount?: number
+    // More replies are loaded than the collapsed view shows.
+    collapsible?: boolean
+    loadingReplies?: boolean
   }>(),
-  { depth: 0, expanded: false, replyCount: 0 }
+  {
+    depth: 0,
+    expanded: false,
+    hiddenReplyCount: 0,
+    remainingReplyCount: 0,
+    collapsible: false,
+    loadingReplies: false
+  }
 )
 
 const emit = defineEmits<{
   liked: [id: number, liked: boolean]
   replyAdded: [reply: PatchPageComment]
   edited: [updated: PatchPageComment]
-  removed: [id: number]
+  removed: [id: number, source: CommentDeleteSource]
+  restored: [updated: PatchPageComment]
+  pinned: [updated: PatchPageComment]
   toggleExpand: [rootId: number]
+  loadReplies: [rootId: number]
 }>()
 
 const api = useApi()
@@ -34,10 +50,88 @@ const surface = commentSurface(props.target)
 const isAuthor = computed(() => userStore.user.id === props.comment.user?.id)
 const { can } = usePermissions()
 const canEdit = computed(() => isAuthor.value || can('comment.edit_any'))
-const canDelete = computed(
-  () => isAuthor.value || can('comment.delete_any')
-)
+const canDelete = computed(() => isAuthor.value || can('comment.delete_any'))
 const isEdited = computed(() => !!props.comment.edited)
+const canPin = computed(
+  () => props.depth === 0 && !props.comment.held && can('comment.pin')
+)
+const canRestore = computed(
+  () =>
+    can('comment.delete_any') &&
+    (props.comment.delete_source === 'moderator' ||
+      props.comment.delete_source === 'review')
+)
+
+const TOMBSTONE: Record<CommentDeleteSource, string> = {
+  author: '该评论已被作者删除',
+  moderator: '该评论已被管理员删除',
+  review: '该评论因违反社区规范已被移除',
+  trust: '该评论因违反社区规范已被移除',
+  purge: '该评论已删除'
+}
+const tombstone = computed(() =>
+  props.comment.delete_source
+    ? TOMBSTONE[props.comment.delete_source]
+    : '该评论已删除'
+)
+
+const moreReplyCount = computed(
+  () => props.hiddenReplyCount + props.remainingReplyCount
+)
+const showReplyBar = computed(
+  () =>
+    props.depth === 0 &&
+    (props.expanded
+      ? props.remainingReplyCount > 0 || props.collapsible
+      : moreReplyCount.value > 0)
+)
+
+const expandReplies = () => {
+  emit('toggleExpand', props.comment.id)
+  if (props.hiddenReplyCount === 0 && props.remainingReplyCount > 0) {
+    emit('loadReplies', props.comment.id)
+  }
+}
+
+const pinning = ref(false)
+const togglePin = async () => {
+  pinning.value = true
+  try {
+    const url = `/patch/comment/${props.comment.id}/pin`
+    const res = props.comment.pinned_at
+      ? await api.delete<PatchPageComment>(url)
+      : await api.put<PatchPageComment>(url)
+    if (res.code === 0 && res.data) {
+      emit('pinned', res.data)
+      useKunMessage(res.data.pinned_at ? '已置顶' : '已取消置顶', 'success')
+    } else {
+      useKunMessage(res.message || '操作失败', 'error')
+    }
+  } finally {
+    pinning.value = false
+  }
+}
+
+const restoring = ref(false)
+const restore = async () => {
+  restoring.value = true
+  try {
+    const res = await api.post<PatchPageComment>(
+      `/patch/comment/${props.comment.id}/restore`
+    )
+    if (res.code === 0 && res.data) {
+      emit('restored', res.data)
+      useKunMessage(
+        res.data.held ? '评论已恢复，仍在审核中，仅作者可见' : '评论已恢复',
+        'success'
+      )
+    } else {
+      useKunMessage(res.message || '恢复失败', 'error')
+    }
+  } finally {
+    restoring.value = false
+  }
+}
 
 const liked = ref(props.comment.is_liked)
 const likeCount = ref(props.comment.like_count)
@@ -159,7 +253,7 @@ const confirmDelete = async () => {
       isAuthor.value ? undefined : { reason: deleteReason.value.trim() }
     )
     if (res.code === 0) {
-      emit('removed', props.comment.id)
+      emit('removed', props.comment.id, isAuthor.value ? 'author' : 'moderator')
       useKunMessage('已删除', 'success')
     } else {
       useKunMessage(res.message || '删除失败', 'error')
@@ -201,6 +295,15 @@ const reportComment = () => {
             formatDate(comment.created, { isPrecise: true, isShowYear: true })
           }}
         </span>
+        <KunChip
+          v-if="depth === 0 && comment.pinned_at"
+          color="primary"
+          size="xs"
+          variant="flat"
+        >
+          <KunIcon name="lucide:pin" class="size-3" />
+          置顶
+        </KunChip>
         <span v-if="isEdited" class="text-default-400 italic">
           {{ comment.edited_by_moderator ? '已编辑（管理）' : '已编辑' }}
         </span>
@@ -217,9 +320,24 @@ const reportComment = () => {
         </span>
       </div>
 
-      <p v-if="comment.deleted" class="text-default-400 mt-2 text-sm italic">
-        该评论已删除
-      </p>
+      <div
+        v-if="comment.deleted"
+        class="mt-2 flex flex-wrap items-center gap-2 text-sm"
+      >
+        <span class="text-default-400 italic">{{ tombstone }}</span>
+        <KunButton
+          v-if="canRestore"
+          variant="light"
+          color="primary"
+          size="xs"
+          :loading="restoring"
+          :disabled="restoring"
+          @click="restore"
+        >
+          <KunIcon name="lucide:undo-2" class="size-3.5" />
+          恢复评论
+        </KunButton>
+      </div>
       <KunContent
         v-else-if="!editing"
         class="mt-2"
@@ -303,6 +421,23 @@ const reportComment = () => {
 
           <div class="flex w-44 flex-col gap-2 p-2">
             <KunButton
+              v-if="canPin"
+              variant="light"
+              color="default"
+              size="sm"
+              class-name="w-full justify-start gap-2 whitespace-nowrap"
+              :loading="pinning"
+              :disabled="pinning"
+              @click="togglePin"
+            >
+              <KunIcon
+                :name="comment.pinned_at ? 'lucide:pin-off' : 'lucide:pin'"
+                class="size-4"
+              />
+              {{ comment.pinned_at ? '取消置顶' : '置顶评论' }}
+            </KunButton>
+
+            <KunButton
               v-if="canEdit"
               variant="light"
               color="default"
@@ -356,20 +491,41 @@ const reportComment = () => {
 
       <slot name="replies" />
 
-      <KunButton
-        v-if="depth === 0 && replyCount > 0"
-        variant="light"
-        color="primary"
-        size="sm"
-        class-name="mt-3"
-        @click="emit('toggleExpand', comment.id)"
-      >
-        <KunIcon
-          :name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
-          class="size-4"
-        />
-        {{ expanded ? '收起回复' : `展开更多 ${replyCount} 条回复` }}
-      </KunButton>
+      <div v-if="showReplyBar" class="mt-3 flex flex-wrap gap-1">
+        <KunButton
+          v-if="!expanded && moreReplyCount > 0"
+          variant="light"
+          color="primary"
+          size="sm"
+          :loading="loadingReplies"
+          @click="expandReplies"
+        >
+          <KunIcon name="lucide:chevron-down" class="size-4" />
+          展开更多 {{ moreReplyCount }} 条回复
+        </KunButton>
+        <KunButton
+          v-if="expanded && remainingReplyCount > 0"
+          variant="light"
+          color="primary"
+          size="sm"
+          :loading="loadingReplies"
+          :disabled="loadingReplies"
+          @click="emit('loadReplies', comment.id)"
+        >
+          <KunIcon name="lucide:chevron-down" class="size-4" />
+          加载更多回复（还有 {{ remainingReplyCount }} 条）
+        </KunButton>
+        <KunButton
+          v-if="expanded && collapsible"
+          variant="light"
+          color="default"
+          size="sm"
+          @click="emit('toggleExpand', comment.id)"
+        >
+          <KunIcon name="lucide:chevron-up" class="size-4" />
+          收起回复
+        </KunButton>
+      </div>
     </div>
 
     <CommentFlagModal
@@ -391,7 +547,11 @@ const reportComment = () => {
           from collapsing under it.
         -->
         <p class="text-default-600 text-sm">
-          此操作不可恢复，该评论会保留位置并显示为「已删除」。
+          {{
+            isAuthor
+              ? '此操作不可恢复，该评论会保留位置并显示为「已删除」。'
+              : '该评论会保留位置并显示为「已被管理员删除」，之后仍可由管理员恢复。'
+          }}
         </p>
         <div v-if="!isAuthor" class="space-y-1">
           <label class="text-default-600 text-sm">

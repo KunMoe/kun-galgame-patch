@@ -18,8 +18,7 @@ export type CommentTarget =
 
 export interface CommentSurface {
   kind: CommentTarget['kind']
-  // Keyset list read. Both areas take the same ?after=&limit=, where `after` is
-  // a post_number rather than an opaque cursor.
+  // Keyset list read. Both areas take the same ?sort=&cursor=&limit=.
   listUrl: string
   // POST target; the body is { content, reply_to_post_id? } for both.
   createUrl: string
@@ -44,7 +43,8 @@ export const commentAnchorId = (postId: number) => `post-${postId}`
 
 // Links minted before the cutover. They still arrive from notifications and from
 // anywhere a reader saved one, and only the server's map table can resolve them.
-export const legacyCommentAnchorId = (commentId: number) => `comment-${commentId}`
+export const legacyCommentAnchorId = (commentId: number) =>
+  `comment-${commentId}`
 
 export const commentSurface = (target: CommentTarget): CommentSurface => {
   if (target.kind === 'resource') {
@@ -84,10 +84,8 @@ export const commentSurface = (target: CommentTarget): CommentSurface => {
 
 // Absolute URL of one comment — the evidence link handed to the report flow, so
 // a moderator opens the comment in context on whichever surface it lives.
-export const commentAbsoluteUrl = (
-  surface: CommentSurface,
-  postId: number
-) => `${kunMoyuMoe.domain.main}${surface.pagePath}#${commentAnchorId(postId)}`
+export const commentAbsoluteUrl = (surface: CommentSurface, postId: number) =>
+  `${kunMoyuMoe.domain.main}${surface.pagePath}#${commentAnchorId(postId)}`
 
 // The report reasons the community service accepts, in its own numbering.
 export const COMMENT_FLAG_REASONS = [

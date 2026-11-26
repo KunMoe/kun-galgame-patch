@@ -10,16 +10,57 @@ import (
 // POST /comments/resolve was get-or-create, and because every site called it to
 // RENDER a page it had minted 110,918 empty threads by 2026-09-15 — 97.2% of
 // every thread in the community database. Never call resolve from a read path.
-//
-// `after` is a post_number, not an opaque cursor: this face keysets on the
-// thread's own numbering.
-func (c *Client) GetComments(ctx context.Context, anchorKind int32, anchorID, after, limit string, viewerID int64) (*CommentsPage, error) {
+func (c *Client) GetComments(ctx context.Context, anchorKind int32, anchorID string, q CommentsQuery, viewerID int64) (*CommentsPage, error) {
 	var out CommentsPage
-	q := query(map[string]string{
-		"anchor_kind": itoa(int64(anchorKind)), "anchor_id": anchorID, "after": after, "limit": limit,
-		"viewer_id": viewer(viewerID),
-	})
-	err := c.do(ctx, "getComments", http.MethodGet, "/comments"+q, nil, &out)
+	params := map[string]string{
+		"anchor_kind": itoa(int64(anchorKind)), "anchor_id": anchorID,
+		"sort": q.Sort, "cursor": q.Cursor, "viewer_id": viewer(viewerID),
+	}
+	if q.Limit > 0 {
+		params["limit"] = itoa(int64(q.Limit))
+	}
+	if q.RootsOnly {
+		params["roots_only"] = "true"
+	}
+	if q.ReplyPreview > 0 {
+		params["reply_preview"] = itoa(int64(q.ReplyPreview))
+	}
+	err := c.do(ctx, "getComments", http.MethodGet, "/comments"+query(params), nil, &out)
+	return &out, err
+}
+
+// ListReplies pages one top-level post's replies, oldest first. `after` is a
+// post_number; a reply's id is a 422.
+func (c *Client) ListReplies(ctx context.Context, rootID int64, after string, limit int, viewerID int64) (*PostListResponse, error) {
+	var out PostListResponse
+	q := map[string]string{"after": after, "viewer_id": viewer(viewerID)}
+	if limit > 0 {
+		q["limit"] = itoa(int64(limit))
+	}
+	err := c.do(ctx, "listReplies", http.MethodGet, "/posts/"+itoa(rootID)+"/replies"+query(q), nil, &out)
+	return &out, err
+}
+
+// PinPost and UnpinPost act for moyu's site only: a catalog wall is shared by
+// every site and each pins its own. Both are idempotent.
+func (c *Client) PinPost(ctx context.Context, postID, actorID int64) (*PostChange, error) {
+	var out PostChange
+	err := c.do(ctx, "pinPost", http.MethodPut, "/posts/"+itoa(postID)+"/pin", PostActorRequest{ActorID: actorID}, &out)
+	return &out, err
+}
+
+func (c *Client) UnpinPost(ctx context.Context, postID, actorID int64) (*PostChange, error) {
+	var out PostChange
+	q := query(map[string]string{"actor_id": itoa(actorID)})
+	err := c.do(ctx, "unpinPost", http.MethodDelete, "/posts/"+itoa(postID)+"/pin"+q, nil, &out)
+	return &out, err
+}
+
+// RestorePost undoes a moderator's or the review queue's removal. An author's
+// own delete, a purge and a tombstone whose remover is unknown are a 409.
+func (c *Client) RestorePost(ctx context.Context, postID, actorID int64) (*PostChange, error) {
+	var out PostChange
+	err := c.do(ctx, "restorePost", http.MethodPost, "/posts/"+itoa(postID)+"/restore", PostActorRequest{ActorID: actorID}, &out)
 	return &out, err
 }
 

@@ -105,22 +105,8 @@ const commentTarget = computed<CommentTarget>(() => ({
   galgameId: detail.value?.resource.galgame_id ?? 0
 }))
 
-const {
-  groups: commentGroups,
-  total: commentTotal,
-  subscription: commentSubscription,
-  setLevel: setCommentLevel,
-  hasMore: hasMoreComments,
-  loadMore: loadMoreComments,
-  loadingMore: loadingMoreComments,
-  pending: commentsPending,
-  expandedRoots,
-  toggleExpand,
-  onLiked,
-  onCommentAdded,
-  onEdited: onCommentEdited,
-  onRemoved
-} = useCommentList(commentTarget)
+const commentWall = useCommentList(commentTarget)
+const { total: commentTotal } = commentWall
 
 const PANEL_GROUP = 'resource-detail'
 const activePanel = ref('download')
@@ -189,9 +175,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
     <KunLoading v-if="pending" description="加载资源中..." />
 
     <template v-else-if="detail && resource">
-      <div
-        class="bg-content1 shadow-kun-sm mb-6 overflow-hidden rounded-3xl"
-      >
+      <div class="bg-content1 shadow-kun-sm mb-6 overflow-hidden rounded-3xl">
         <div class="flex flex-col gap-5 p-6 sm:flex-row sm:p-8">
           <div
             v-if="detail.patch"
@@ -226,11 +210,15 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             </p>
 
             <div class="flex flex-wrap items-center gap-2">
-              <h1 class="text-2xl font-bold break-words sm:text-3xl"><NuxtLink
+              <h1 class="text-2xl font-bold break-words sm:text-3xl">
+                <NuxtLink
                   v-if="detail.patch"
                   :to="`/galgame/${detail.patch.id}?tab=resource`"
                   class="hover:text-primary transition-colors"
-                >{{ titleName }}</NuxtLink><template v-else>{{ titleName }}</template>{{ titleSuffix }}</h1>
+                  >{{ titleName }}</NuxtLink
+                ><template v-else>{{ titleName }}</template
+                >{{ titleSuffix }}
+              </h1>
               <KunTooltip
                 v-if="detail.patch"
                 :text="GALGAME_AGE_LIMIT_DETAIL[detail.patch.content_limit]"
@@ -454,20 +442,8 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             />
             <CommentSection
               :target="commentTarget"
-              :groups="commentGroups"
-              :expanded-roots="expandedRoots"
-              :subscription="commentSubscription"
-              :has-more="hasMoreComments"
-              :loading-more="loadingMoreComments"
-              :pending="commentsPending"
+              :wall="commentWall"
               :mention-user="resource.user"
-              @comment-added="onCommentAdded"
-              @liked="onLiked"
-              @edited="onCommentEdited"
-              @removed="onRemoved"
-              @toggle-expand="toggleExpand"
-              @load-more="loadMoreComments"
-              @set-level="setCommentLevel"
             />
           </section>
         </div>
@@ -479,7 +455,7 @@ useResourceSeo(detail, { title: composedTitle, commentCount: commentTotal })
             :to="`/resource/${r.id}`"
             class="border-default/20 bg-content1 shadow-kun-sm hover:bg-primary/5 block space-y-2 rounded-2xl border p-4 transition-colors"
           >
-            <p class="font-semibold line-clamp-2">{{ recName(r) }}</p>
+            <p class="line-clamp-2 font-semibold">{{ recName(r) }}</p>
             <p v-if="r.note" class="text-default-500 line-clamp-2 text-sm">
               {{ markdownToText(r.note) }}
             </p>

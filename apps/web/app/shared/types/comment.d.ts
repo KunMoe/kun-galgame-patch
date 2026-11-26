@@ -39,12 +39,18 @@ interface PatchCommentFeed {
   next_cursor: string
 }
 
-// PatchPageComment is one comment on a wall. Replies are NOT nested — community
-// numbers a wall's posts in one flat sequence and names the parent by id, so the
-// tree is assembled where it is drawn (see useCommentList's `groups`).
+// Who removed a tombstone; absent on one older than community 1.4.0. Only
+// moderator and review can be restored.
+type CommentDeleteSource = 'author' | 'moderator' | 'review' | 'trust' | 'purge'
+
+// PatchPageComment is one comment on a wall. Replies are NOT nested: a page
+// lists top-level comments and their replies separately, each reply naming its
+// root by id (see useCommentList's `groups`).
 interface PatchPageComment {
   id: number
   thread_id: number
+  // The keyset of a root's reply pages.
+  post_number: number
   content: string
   content_html: string
   galgame_id: number
@@ -54,6 +60,10 @@ interface PatchPageComment {
   target_user?: KunUser | null
   parent_comment_id: number | null
   root_comment_id: number | null
+  // Top-level comments only: visible replies, loaded or not.
+  reply_count?: number
+  // Set while this site has the comment pinned on its wall.
+  pinned_at: string | null
   like_count: number
   is_liked: boolean
   created: string
@@ -66,6 +76,7 @@ interface PatchPageComment {
   // A tombstone: the post keeps its number so the wall's numbering never
   // collapses, and renders as a stub with no content.
   deleted: boolean
+  delete_source?: CommentDeleteSource
   // Held for review by the newcomer sandbox. Only its own author ever sees it.
   held: boolean
 }
@@ -74,9 +85,21 @@ interface PatchCommentPage {
   // 0 until somebody comments: the wall's thread is created by the first
   // comment, not by looking at the page.
   thread_id: number
+  // First page only, newest pin first. The same comments also come back in
+  // `posts` at their own place.
+  pinned: PatchPageComment[]
+  // Top-level comments.
   posts: PatchPageComment[]
+  // The first replies of every listed top-level comment, pinned ones included.
+  replies: PatchPageComment[]
+  // Bound to the sort that minted it.
   next_cursor: string
   total: number
+}
+
+interface PatchCommentReplies {
+  posts: PatchPageComment[]
+  next_cursor: string
 }
 
 // 0=muted 1=normal 2=tracking 3=watching, 4=watching first post (anchor-level only).
